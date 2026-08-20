@@ -1,0 +1,538 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Keyboard,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
+
+import { Screen, Header, Card, EmptyState, pct } from '../ui/kit';
+import { useTheme } from '../ui/theme';
+import { useApp } from '../context/AppContext';
+import { TRENDING, FOR_YOU, CATEGORIES, categoryMeta, localized } from '../constants/content';
+import { APP_NAME } from '../constants/brand';
+import { accentAt, alpha } from '../utils/colors';
+import { todayISO } from '../utils/date';
+import { useT } from '../utils/useT';
+import { txt, tr, detectLang } from '../constants/i18n';
+
+import GradientCover from '../components/GradientCover';
+import ManifestCard from '../components/ManifestCard';
+import SectionHeading from '../components/SectionHeading';
+
+// Dicionário local da tela — toda string visível passa por t(S.chave).
+const S = {
+  loading: { en: 'Tuning into your frequency…', pt: 'Sintonizando na sua frequência…' },
+  subtitle: {
+    en: '{name}, your practice is compounding',
+    pt: '{name}, sua prática cresce a cada dia',
+  },
+  heroLead: { en: '{name}, what do you want to', pt: '{name}, o que você quer' },
+  heroAccent: { en: 'manifest?', pt: 'manifestar?' },
+  placeholder: { en: 'I want to manifest…', pt: 'Eu quero manifestar…' },
+  sendDesire: { en: 'Send your desire', pt: 'Enviar seu desejo' },
+  inviteTitle: { en: 'Start a 21-day practice', pt: 'Comece uma prática de 21 dias' },
+  // Só o que a pessoa escreve AQUI nasce com 21 dias; os cards sugeridos têm
+  // metas próprias (14, 21 ou 30). O texto fala apenas do que ele faz.
+  inviteSub: {
+    en: 'The manifestation you write here runs for 21 days of daily practice. Tap to write yours.',
+    pt: 'A manifestação que você escrever aqui roda 21 dias de prática diária. Toque para escrever a sua.',
+  },
+  inviteDismiss: { en: 'Dismiss this invite', pt: 'Fechar este convite' },
+  streakOne: { en: '1 day streak', pt: '1 dia seguido' },
+  streakMany: { en: '{n} day streak', pt: '{n} dias seguidos' },
+  practisedOne: {
+    en: '{n} of {m} manifestation practised today',
+    pt: '{n} de {m} manifestação praticada hoje',
+  },
+  practisedMany: {
+    en: '{n} of {m} manifestations practised today',
+    pt: '{n} de {m} manifestações praticadas hoje',
+  },
+  // Não é ranking nem prova social: é uma lista fixa de partida escrita por nós.
+  starters: { en: 'To get you started', pt: 'Para começar' },
+  forYou: { en: 'For you', pt: 'Para você' },
+  yours: { en: 'Your manifestations', pt: 'Suas manifestações' },
+  emptyTitle: { en: 'Nothing in motion yet', pt: 'Nada em movimento ainda' },
+  emptyBody: {
+    en: 'Type a desire above and {app} will build your practice around it.',
+    pt: 'Escreva um desejo aí em cima e o {app} monta sua prática em volta dele.',
+  },
+};
+
+// Dispensar o convite é preferência de interface, não dado de conta: guardamos
+// em chave própria para a escolha sobreviver ao reload sem inchar o contexto.
+const INVITE_KEY = '@celeste_home_invite_dismissed_v1';
+
+export default function HomeScreen() {
+  const th = useTheme();
+  const navigation = useNavigation();
+  const { state, loading, derived, addManifestation, logSession, undoSession } = useApp();
+  const { t, lang } = useT();
+  const [desire, setDesire] = useState('');
+  const [category, setCategory] = useState('Wealth');
+  // null = ainda lendo do storage; assim o convite não pisca antes de sabermos
+  // se a pessoa já o dispensou.
+  const [inviteDismissed, setInviteDismissed] = useState(null);
+  // Só com o campo focado o envio precisa sair na descida do dedo (ver o botão).
+  const [inputFocused, setInputFocused] = useState(false);
+
+  const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  // O envio dispara no onPressIn (ver `submit`); o onPress que vem logo atrás
+  // cairia de novo no mesmo texto — este ref segura o segundo disparo.
+  const sentRef = useRef('');
+
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(INVITE_KEY)
+      .then((v) => {
+        if (alive) setInviteDismissed(v === '1');
+      })
+      .catch(() => {
+        if (alive) setInviteDismissed(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const doneToday = useMemo(() => {
+    if (!state) return 0;
+    const day = todayISO();
+    return state.manifestations.filter((m) => m.sessions.includes(day)).length;
+  }, [state]);
+
+  // TRENDING / FOR_YOU chegam bilíngues de constants/content.js: localized()
+  // resolve tanto um campo solto { en, pt } quanto o objeto de conteúdo inteiro.
+  const asItem = (item) => localized(item, lang);
+  const asText = (item) => {
+    const v = asItem(item);
+    if (!v) return '';
+    if (typeof v === 'string') return v;
+    return txt(v.label || v.title || v.text || '', lang);
+  };
+
+  if (loading || !state) {
+    // Ainda não temos state.lang — cai no idioma do aparelho para não piscar em inglês.
+    const bootLang = state && state.lang ? state.lang : detectLang();
+    return (
+      <Screen>
+        <Header title={APP_NAME} />
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={th.accent} />
+          <Text style={{ color: th.textMuted, marginTop: 12 }}>{tr(S.loading, bootLang)}</Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  // Todo lugar que escreve no campo passa por aqui: além de setar o texto,
+  // libera o envio de novo (senão o guarda de duplo disparo bloquearia).
+  const writeDesire = (text) => {
+    sentRef.current = '';
+    setDesire(text);
+  };
+
+  // Sugestão que preenche um campo fora da tela parece que não fez nada:
+  // voltamos ao topo e deixamos o cursor no campo.
+  const focusDesire = () => {
+    if (scrollRef.current && scrollRef.current.scrollTo) {
+      scrollRef.current.scrollTo({ y: 0, animated: true });
+    }
+    if (inputRef.current && inputRef.current.focus) inputRef.current.focus();
+  };
+
+  // Chamado no onPressIn do botão: com o teclado aberto, o toque que fecha o
+  // teclado engolia o clique e obrigava a tocar duas vezes. Disparando na
+  // descida do dedo, o primeiro toque já envia.
+  const submit = () => {
+    const title = desire.trim();
+    if (!title || sentRef.current === title) return;
+    sentRef.current = title;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const meta = categoryMeta(category);
+    // A categoria escolhida no chip vai junto e fica gravada no item: o card
+    // nasce com o rótulo, o ícone e o acento dela.
+    const id = addManifestation({ title, category, accent: meta.accent, goalDays: 21 });
+    setDesire('');
+    Keyboard.dismiss();
+    navigation.navigate('Manifestation', { id });
+  };
+
+  const dismissInvite = () => {
+    setInviteDismissed(true);
+    AsyncStorage.setItem(INVITE_KEY, '1').catch(() => {});
+  };
+
+  const toggleToday = (m) => {
+    Haptics.selectionAsync().catch(() => {});
+    if (m.sessions.includes(todayISO())) undoSession(m.id);
+    else logSession(m.id);
+  };
+
+  const totalActive = state.manifestations.length;
+  const dailyPercent = pct(doneToday, Math.max(totalActive, 1));
+  const streakLabel =
+    derived.streak === 1 ? t(S.streakOne) : t(S.streakMany, { n: derived.streak });
+  const practisedLabel =
+    totalActive === 1
+      ? t(S.practisedOne, { n: doneToday, m: totalActive })
+      : t(S.practisedMany, { n: doneToday, m: totalActive });
+
+  return (
+    // scroll={false}: a rolagem passa a ser a ScrollView daqui de dentro.
+    // Aninhada na do Screen, o primeiro toque com o teclado aberto era gasto
+    // para fechá-lo e o scrollTo das sugestões não saía do lugar. O cabeçalho
+    // vem junto, dentro da rolagem, para a tela continuar rolando inteira.
+    <Screen scroll={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroller}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scroll}
+      >
+        {/* O Screen já afasta 16 das bordas; o cabeçalho desconta o recuo
+            extra do conteúdo para ficar onde sempre esteve. */}
+        <View style={styles.headerHold}>
+          <Header title={APP_NAME} subtitle={t(S.subtitle, { name: state.name })} />
+        </View>
+
+        {/* ---- Hero ---- */}
+        <GradientCover accent={0} radius={24} style={styles.hero} intensity={0.9}>
+          <View style={styles.heroInner}>
+            <View style={[styles.avatar, { borderColor: alpha('#FFFFFF', 0.6) }]}>
+              <Ionicons name="person" size={24} color="#FFFFFF" />
+            </View>
+            <Text style={styles.heroTitle}>
+              {t(S.heroLead, { name: state.name })}{' '}
+              <Text style={styles.heroItalic}>{t(S.heroAccent)}</Text>
+            </Text>
+
+            <View style={[styles.inputRow, { backgroundColor: alpha('#FFFFFF', 0.92) }]}>
+              <TextInput
+                ref={inputRef}
+                value={desire}
+                onChangeText={writeDesire}
+                placeholder={t(S.placeholder)}
+                placeholderTextColor={alpha(th.text, 0.4)}
+                style={[styles.input, { color: th.text }]}
+                returnKeyType="done"
+                onSubmitEditing={submit}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+              />
+              <TouchableOpacity
+                activeOpacity={0.8}
+                // Com o teclado ABERTO o clique se perde no reflow do blur, e
+                // só o onPressIn salva. Com o teclado fechado, disparar na
+                // descida do dedo criaria a manifestação num simples arrastar —
+                // então lá o onPress normal (cancelável) é quem atende.
+                onPressIn={() => {
+                  if (inputFocused) submit();
+                }}
+                onPress={submit}
+                accessibilityRole="button"
+                accessibilityLabel={t(S.sendDesire)}
+                style={[
+                  styles.sendBtn,
+                  { backgroundColor: desire.trim() ? accentAt(th, 0) : alpha(th.text, 0.2) },
+                ]}
+              >
+                <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.catRow}>
+              {CATEGORIES.map((c) => {
+                const active = c.key === category;
+                const label = c.label ? txt(c.label, lang) : c.key;
+                return (
+                  <TouchableOpacity
+                    key={c.key}
+                    activeOpacity={0.8}
+                    onPress={() => setCategory(c.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={label}
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      styles.catChip,
+                      {
+                        backgroundColor: active ? '#FFFFFF' : alpha('#FFFFFF', 0.25),
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={c.icon}
+                      size={12}
+                      color={active ? accentAt(th, c.accent) : '#FFFFFF'}
+                    />
+                    <Text
+                      style={[
+                        styles.catText,
+                        { color: active ? accentAt(th, c.accent) : '#FFFFFF' },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </GradientCover>
+
+        {/* ---- Convite (não anuncia recurso que não existe: só explica que a
+             prática padrão dura 21 dias e leva de volta ao campo) ---- */}
+        {inviteDismissed === false ? (
+          <Card
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              focusDesire();
+            }}
+            style={[styles.todayCard, { backgroundColor: th.surface }]}
+          >
+            <View style={styles.todayRow}>
+              <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 1), 0.16) }]}>
+                <Ionicons name="sparkles" size={20} color={accentAt(th, 1)} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.todayTitle, { color: th.text }]}>{t(S.inviteTitle)}</Text>
+                <Text style={[styles.todaySub, { color: th.textMuted }]}>{t(S.inviteSub)}</Text>
+              </View>
+              <TouchableOpacity
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                onPress={dismissInvite}
+                accessibilityRole="button"
+                accessibilityLabel={t(S.inviteDismiss)}
+                style={{ marginLeft: 10 }}
+              >
+                <Ionicons name="close" size={18} color={th.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </Card>
+        ) : null}
+
+        {/* ---- Today strip ---- */}
+        <Card style={[styles.todayCard, { backgroundColor: th.surface }]}>
+          <View style={styles.todayRow}>
+            <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 2), 0.16) }]}>
+              <Ionicons name="flame" size={20} color={accentAt(th, 2)} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.todayTitle, { color: th.text }]}>{streakLabel}</Text>
+              <Text style={[styles.todaySub, { color: th.textMuted }]}>{practisedLabel}</Text>
+            </View>
+            <Text style={[styles.todayPct, { color: accentAt(th, 0) }]}>{dailyPercent}%</Text>
+          </View>
+          <View style={[styles.track, { backgroundColor: alpha(accentAt(th, 0), 0.14) }]}>
+            <View
+              style={[
+                styles.fill,
+                { width: `${dailyPercent}%`, backgroundColor: accentAt(th, 0) },
+              ]}
+            />
+          </View>
+        </Card>
+
+        {/* ---- Ideias de partida (lista fixa nossa, não é o que "outras
+             pessoas" estão manifestando) ---- */}
+        <SectionHeading title={t(S.starters)} />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.chipScroll}
+        >
+          {TRENDING.map((item, i) => {
+            const label = asText(item);
+            return (
+              <TouchableOpacity
+                key={`${i}-${label}`}
+                activeOpacity={0.8}
+                onPress={() => {
+                  writeDesire(label);
+                  Haptics.selectionAsync().catch(() => {});
+                  focusDesire();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                style={[
+                  styles.trendChip,
+                  {
+                    backgroundColor: alpha(accentAt(th, i), 0.14),
+                    borderColor: alpha(accentAt(th, i), 0.3),
+                  },
+                ]}
+              >
+                <Ionicons name="sparkles" size={13} color={accentAt(th, i)} />
+                <Text style={[styles.trendText, { color: accentAt(th, i) }]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* ---- For you ---- */}
+        <SectionHeading title={t(S.forYou)} />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.forYouScroll}
+        >
+          {FOR_YOU.map((item) => {
+            const card = asItem(item);
+            const title = txt(card.title, lang);
+            const tagline = txt(card.tagline, lang);
+            return (
+              <TouchableOpacity
+                key={card.id}
+                activeOpacity={0.88}
+                onPress={() => navigation.navigate('Manifestation', { template: card })}
+                accessibilityRole="button"
+                accessibilityLabel={`${title}. ${tagline}`}
+                style={[
+                  styles.forYouCard,
+                  {
+                    backgroundColor: th.surface,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 8,
+                    elevation: 3,
+                  },
+                ]}
+              >
+                <GradientCover
+                  accent={card.accent}
+                  radius={14}
+                  style={styles.forYouCover}
+                  icon={categoryMeta(card.category).icon}
+                />
+                <Text numberOfLines={1} style={[styles.forYouTitle, { color: th.text }]}>
+                  {title}
+                </Text>
+                <Text numberOfLines={2} style={[styles.forYouTag, { color: th.textMuted }]}>
+                  {tagline}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* ---- Active ---- */}
+        <SectionHeading title={t(S.yours)} />
+        {state.manifestations.length === 0 ? (
+          <EmptyState
+            icon="sparkles-outline"
+            title={t(S.emptyTitle)}
+            body={t(S.emptyBody, { app: APP_NAME })}
+          />
+        ) : (
+          state.manifestations.map((m) => (
+            <ManifestCard
+              key={m.id}
+              item={m}
+              onPress={() => navigation.navigate('Manifestation', { id: m.id })}
+              onToggleToday={() => toggleToday(m)}
+            />
+          ))
+        )}
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroller: { flex: 1 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 96 },
+  headerHold: { marginHorizontal: -16 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  hero: { paddingVertical: 22, paddingHorizontal: 18, marginTop: 4 },
+  heroInner: { alignItems: 'center' },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 14,
+    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  heroItalic: { fontStyle: 'italic', fontWeight: '500' },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 26,
+    paddingLeft: 18,
+    paddingRight: 6,
+    height: 52,
+    width: '100%',
+  },
+  input: { flex: 1, fontSize: 15 },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  catChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    margin: 4,
+  },
+  catText: { fontSize: 11.5, fontWeight: '700', marginLeft: 5 },
+  todayCard: { marginTop: 16, padding: 16, borderRadius: 18 },
+  todayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  todayTitle: { fontSize: 16, fontWeight: '700' },
+  todaySub: { fontSize: 12.5, marginTop: 2 },
+  todayPct: { fontSize: 18, fontWeight: '800' },
+  track: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  fill: { height: 8, borderRadius: 4 },
+  chipScroll: { paddingRight: 8, paddingVertical: 2 },
+  trendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    marginRight: 8,
+    borderWidth: 1,
+  },
+  trendText: { fontSize: 13, fontWeight: '700', marginLeft: 6 },
+  forYouScroll: { paddingRight: 8, paddingVertical: 2 },
+  forYouCard: { width: 172, borderRadius: 18, padding: 10, marginRight: 12 },
+  forYouCover: { height: 120, width: '100%', marginBottom: 10 },
+  forYouTitle: { fontSize: 14.5, fontWeight: '700', paddingHorizontal: 2 },
+  forYouTag: { fontSize: 12, lineHeight: 17, marginTop: 4, paddingHorizontal: 2, marginBottom: 4 },
+});

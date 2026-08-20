@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Celeste",
+    "slug": "celeste",
+    "scheme": "celeste",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#E6EFF8"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lenda.celeste"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#AFC8E7"
+      },
+      "package": "com.lenda.celeste"
+    }
+  }
+}

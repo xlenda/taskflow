@@ -1,0 +1,4 @@
+# A Vercel ignora node_modules por padrão — mas o export web do Expo coloca as
+# fontes dos ícones em assets/node_modules/@expo/... Sem isso, ícone vira ▯.
+!**/node_modules
+!**/node_modules/**
