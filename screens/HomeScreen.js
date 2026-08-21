@@ -8,19 +8,21 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Keyboard,
+  Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
-import { Screen, Header, Card, EmptyState, pct } from '../ui/kit';
+import { Screen, Header, Card, EmptyState, Button } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { TRENDING, FOR_YOU, CATEGORIES, categoryMeta, localized } from '../constants/content';
 import { APP_NAME } from '../constants/brand';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
+import { confirmAsync } from '../utils/confirm';
 import { useT } from '../utils/useT';
 import { txt, tr, detectLang } from '../constants/i18n';
 
@@ -37,7 +39,12 @@ const S = {
   },
   heroLead: { en: '{name}, what do you want to', pt: '{name}, o que você quer' },
   heroAccent: { en: 'manifest?', pt: 'manifestar?' },
-  placeholder: { en: 'I want to manifest…', pt: 'Eu quero manifestar…' },
+  // Forma nominal: o texto digitado entra direto na afirmação, então o exemplo
+  // não pode trazer verbo ("Eu quero manifestar…" quebrava o português dela).
+  placeholder: {
+    en: 'true love, an extra $1,000 a month…',
+    pt: 'um amor de verdade, 10 mil por mês…',
+  },
   sendDesire: { en: 'Send your desire', pt: 'Enviar seu desejo' },
   inviteTitle: { en: 'Start a 21-day practice', pt: 'Comece uma prática de 21 dias' },
   // Só o que a pessoa escreve AQUI nasce com 21 dias; os cards sugeridos têm
@@ -49,14 +56,24 @@ const S = {
   inviteDismiss: { en: 'Dismiss this invite', pt: 'Fechar este convite' },
   streakOne: { en: '1 day streak', pt: '1 dia seguido' },
   streakMany: { en: '{n} day streak', pt: '{n} dias seguidos' },
-  practisedOne: {
-    en: '{n} of {m} manifestation practised today',
-    pt: '{n} de {m} manifestação praticada hoje',
+  // Meta do dia = 1 prática, qualquer uma. Nada de "0 de 8 · 0%": a faixa diz
+  // se hoje já foi e quantas seguem ativas — número honesto, sem denominador.
+  todayDone: { en: 'today ✓', pt: 'hoje ✓' },
+  todayPending: { en: 'today pending', pt: 'hoje pendente' },
+  activeOne: { en: '1 active', pt: '1 ativa' },
+  activeMany: { en: '{n} active', pt: '{n} ativas' },
+  allDone: { en: 'all manifested ✨', pt: 'todas realizadas ✨' },
+  todaysPractice: { en: 'Today’s practice', pt: 'Prática de hoje' },
+  practiceBtn: { en: 'Practice', pt: 'Praticar' },
+  newManifest: { en: 'New manifestation', pt: 'Nova manifestação' },
+  // Mesmo texto da tela interna: desfazer pede confirmação, marcar não.
+  undoTitle: { en: 'Undo today’s practice?', pt: 'Desfazer a prática de hoje?' },
+  undoBody: {
+    en: 'Today will no longer count as practised for this manifestation.',
+    pt: 'Hoje deixa de contar como praticado nesta manifestação.',
   },
-  practisedMany: {
-    en: '{n} of {m} manifestations practised today',
-    pt: '{n} de {m} manifestações praticadas hoje',
-  },
+  undoConfirm: { en: 'Undo', pt: 'Desfazer' },
+  keep: { en: 'Keep it', pt: 'Manter' },
   // Não é ranking nem prova social: é uma lista fixa de partida escrita por nós.
   starters: { en: 'To get you started', pt: 'Para começar' },
   forYou: { en: 'For you', pt: 'Para você' },
@@ -75,10 +92,13 @@ const INVITE_KEY = '@celeste_home_invite_dismissed_v1';
 export default function HomeScreen() {
   const th = useTheme();
   const navigation = useNavigation();
-  const { state, loading, derived, addManifestation, logSession, undoSession } = useApp();
+  const { state, loading, derived, addManifestation, togglePractice } = useApp();
   const { t, lang } = useT();
   const [desire, setDesire] = useState('');
   const [category, setCategory] = useState('Wealth');
+  // Com manifestações na lista o campo de desejo recolhe: a Home do décimo dia
+  // abre na prática do dia, não no funil de novata.
+  const [composerOpen, setComposerOpen] = useState(false);
   // null = ainda lendo do storage; assim o convite não pisca antes de sabermos
   // se a pessoa já o dispensou.
   const [inviteDismissed, setInviteDismissed] = useState(null);
@@ -145,10 +165,14 @@ export default function HomeScreen() {
   // Sugestão que preenche um campo fora da tela parece que não fez nada:
   // voltamos ao topo e deixamos o cursor no campo.
   const focusDesire = () => {
+    // O composer pode estar recolhido — abre primeiro e foca depois do render.
+    setComposerOpen(true);
     if (scrollRef.current && scrollRef.current.scrollTo) {
       scrollRef.current.scrollTo({ y: 0, animated: true });
     }
-    if (inputRef.current && inputRef.current.focus) inputRef.current.focus();
+    setTimeout(() => {
+      if (inputRef.current && inputRef.current.focus) inputRef.current.focus();
+    }, 0);
   };
 
   // Chamado no onPressIn do botão: com o teclado aberto, o toque que fecha o
@@ -164,6 +188,7 @@ export default function HomeScreen() {
     // nasce com o rótulo, o ícone e o acento dela.
     const id = addManifestation({ title, category, accent: meta.accent, goalDays: 21 });
     setDesire('');
+    setComposerOpen(false);
     Keyboard.dismiss();
     navigation.navigate('Manifestation', { id });
   };
@@ -173,20 +198,148 @@ export default function HomeScreen() {
     AsyncStorage.setItem(INVITE_KEY, '1').catch(() => {});
   };
 
-  const toggleToday = (m) => {
+  // Mesma regra da tela interna: desfazer apaga registro e pede confirmação;
+  // marcar não pede. O togglePractice do contexto não confirma nada — quem
+  // chama (aqui) segura o gesto destrutivo.
+  const toggleToday = async (m) => {
+    if (m.sessions.includes(todayISO())) {
+      const ok = await confirmAsync({
+        title: t(S.undoTitle),
+        message: t(S.undoBody),
+        confirmLabel: t(S.undoConfirm),
+        cancelLabel: t(S.keep),
+      });
+      if (!ok) return;
+    }
     Haptics.selectionAsync().catch(() => {});
-    if (m.sessions.includes(todayISO())) undoSession(m.id);
-    else logSession(m.id);
+    togglePractice(m.id);
   };
 
-  const totalActive = state.manifestations.length;
-  const dailyPercent = pct(doneToday, Math.max(totalActive, 1));
+  // Concluída (completedAt gravado ou meta batida) sai das pendências: ela não
+  // conta mais como "falta praticar hoje".
+  const isComplete = (m) => !!m.completedAt || m.sessions.length >= m.goalDays;
+  const activeOnes = state.manifestations.filter((m) => !isComplete(m));
+  const pendingToday = activeOnes.filter((m) => !m.sessions.includes(todayISO()));
+  const firstPending = pendingToday[0] || null;
+  const hasItems = state.manifestations.length > 0;
+  // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
+  // concluídas por último (sort estável preserva a ordem de criação).
+  const rankOf = (m) => (isComplete(m) ? 2 : m.sessions.includes(todayISO()) ? 1 : 0);
+  const sorted = [...state.manifestations].sort((a, b) => rankOf(a) - rankOf(b));
+
+  // Faixa e botão Praticar levam pra primeira pendente de hoje; se todas já
+  // foram praticadas, cai na primeira da lista mesmo.
+  const openFirstPending = () => {
+    const target = firstPending || state.manifestations[0];
+    if (target) navigation.navigate('Manifestation', { id: target.id });
+  };
+
   const streakLabel =
     derived.streak === 1 ? t(S.streakOne) : t(S.streakMany, { n: derived.streak });
-  const practisedLabel =
-    totalActive === 1
-      ? t(S.practisedOne, { n: doneToday, m: totalActive })
-      : t(S.practisedMany, { n: doneToday, m: totalActive });
+  const activeLabel =
+    activeOnes.length === 1 ? t(S.activeOne) : t(S.activeMany, { n: activeOnes.length });
+  // Com tudo concluído não há pendência — a faixa não pode cobrar "hoje pendente · 0 ativas".
+  const todaySubLabel =
+    activeOnes.length === 0
+      ? t(S.allDone)
+      : `${doneToday > 0 ? t(S.todayDone) : t(S.todayPending)} · ${activeLabel}`;
+
+  // O hero de escrever desejo. Com a lista vazia fica sempre aberto; com itens
+  // recolhe em "Nova manifestação" e só expande quando pedirem.
+  const composer = (
+    <GradientCover accent={0} radius={24} style={styles.hero} intensity={0.9}>
+      <View style={styles.heroInner}>
+        <View style={[styles.avatar, { borderColor: alpha('#FFFFFF', 0.6) }]}>
+          <Ionicons name="person" size={24} color="#FFFFFF" />
+        </View>
+        <Text style={styles.heroTitle}>
+          {t(S.heroLead, { name: state.name })}{' '}
+          <Text style={styles.heroItalic}>{t(S.heroAccent)}</Text>
+        </Text>
+
+        {/* Chips ANTES do campo: ela escolhe o assunto e depois escreve.
+            Abaixo do campo, o teclado aberto os escondia e quase toda
+            manifestação nascia 'Wealth' sem ninguém ter escolhido. */}
+        <View style={styles.catRow}>
+          {CATEGORIES.map((c) => {
+            const active = c.key === category;
+            const label = c.label ? txt(c.label, lang) : c.key;
+            return (
+              <TouchableOpacity
+                key={c.key}
+                activeOpacity={0.8}
+                onPress={() => setCategory(c.key)}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.catChip,
+                  {
+                    backgroundColor: active ? '#FFFFFF' : alpha('#FFFFFF', 0.25),
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={c.icon}
+                  size={12}
+                  color={active ? accentAt(th, c.accent) : '#FFFFFF'}
+                />
+                <Text
+                  style={[
+                    styles.catText,
+                    { color: active ? accentAt(th, c.accent) : '#FFFFFF' },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* A pílula INTEIRA leva o foco pro campo: o TextInput ocupava 20px no
+            meio dos 52 e clicar perto da borda deixava o foco no body. */}
+        <Pressable
+          onPress={() => {
+            if (inputRef.current && inputRef.current.focus) inputRef.current.focus();
+          }}
+          style={[styles.inputRow, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
+        >
+          <TextInput
+            ref={inputRef}
+            value={desire}
+            onChangeText={writeDesire}
+            placeholder={t(S.placeholder)}
+            placeholderTextColor={alpha(th.text, 0.4)}
+            style={[styles.input, { color: th.text }]}
+            returnKeyType="done"
+            onSubmitEditing={submit}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+          />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            // Com o teclado ABERTO o clique se perde no reflow do blur, e
+            // só o onPressIn salva. Com o teclado fechado, disparar na
+            // descida do dedo criaria a manifestação num simples arrastar —
+            // então lá o onPress normal (cancelável) é quem atende.
+            onPressIn={() => {
+              if (inputFocused) submit();
+            }}
+            onPress={submit}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.sendDesire)}
+            style={[
+              styles.sendBtn,
+              { backgroundColor: desire.trim() ? accentAt(th, 0) : alpha(th.text, 0.2) },
+            ]}
+          >
+            <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </Pressable>
+      </View>
+    </GradientCover>
+  );
 
   return (
     // scroll={false}: a rolagem passa a ser a ScrollView daqui de dentro.
@@ -207,142 +360,123 @@ export default function HomeScreen() {
           <Header title={APP_NAME} subtitle={t(S.subtitle, { name: state.name })} />
         </View>
 
-        {/* ---- Hero ---- */}
-        <GradientCover accent={0} radius={24} style={styles.hero} intensity={0.9}>
-          <View style={styles.heroInner}>
-            <View style={[styles.avatar, { borderColor: alpha('#FFFFFF', 0.6) }]}>
-              <Ionicons name="person" size={24} color="#FFFFFF" />
-            </View>
-            <Text style={styles.heroTitle}>
-              {t(S.heroLead, { name: state.name })}{' '}
-              <Text style={styles.heroItalic}>{t(S.heroAccent)}</Text>
-            </Text>
+        {hasItems ? (
+          <>
+            {/* ---- Faixa do dia: meta = 1 prática, qualquer uma. Sem
+                 "0 de 8 · 0%" — só hoje feito/pendente e quantas seguem
+                 ativas. Tocar abre a primeira pendente. ---- */}
+            <Card
+              onPress={openFirstPending}
+              accessibilityRole="button"
+              accessibilityLabel={t(S.todaysPractice)}
+              style={[styles.todayCard, { backgroundColor: th.surface }]}
+            >
+              <View style={[styles.todayRow, { marginBottom: 0 }]}>
+                <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 2), 0.16) }]}>
+                  <Ionicons name="flame" size={20} color={accentAt(th, 2)} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.todayTitle, { color: th.text }]}>{streakLabel}</Text>
+                  <Text style={[styles.todaySub, { color: th.textMuted }]}>{todaySubLabel}</Text>
+                </View>
+                <Ionicons
+                  name={doneToday > 0 ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={24}
+                  color={doneToday > 0 ? accentAt(th, 0) : th.textMuted}
+                />
+              </View>
+            </Card>
 
-            <View style={[styles.inputRow, { backgroundColor: alpha('#FFFFFF', 0.92) }]}>
-              <TextInput
-                ref={inputRef}
-                value={desire}
-                onChangeText={writeDesire}
-                placeholder={t(S.placeholder)}
-                placeholderTextColor={alpha(th.text, 0.4)}
-                style={[styles.input, { color: th.text }]}
-                returnKeyType="done"
-                onSubmitEditing={submit}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
+            {/* ---- Prática do dia: a Home do décimo dia abre no que importa —
+                 a próxima pendente, com o caminho de um toque. ---- */}
+            {firstPending ? (
+              <Card
+                onPress={() => navigation.navigate('Manifestation', { id: firstPending.id })}
+                style={[styles.todayCard, { backgroundColor: th.surface }]}
+              >
+                <Text style={[styles.todaySub, { color: th.textMuted }]}>
+                  {t(S.todaysPractice)}
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  style={[styles.todayTitle, { color: th.text, marginTop: 2 }]}
+                >
+                  {txt(firstPending.title, lang)}
+                </Text>
+                <Button
+                  icon="play"
+                  label={t(S.practiceBtn)}
+                  onPress={() => navigation.navigate('Manifestation', { id: firstPending.id })}
+                  style={{ marginTop: 10 }}
+                />
+              </Card>
+            ) : null}
+
+            {/* Campo compacto: quem já pratica só abre o composer se quiser. */}
+            {composerOpen ? (
+              composer
+            ) : (
+              <Button
+                icon="add"
+                variant="soft"
+                label={t(S.newManifest)}
+                onPress={() => setComposerOpen(true)}
+                style={{ marginTop: 12 }}
               />
-              <TouchableOpacity
-                activeOpacity={0.8}
-                // Com o teclado ABERTO o clique se perde no reflow do blur, e
-                // só o onPressIn salva. Com o teclado fechado, disparar na
-                // descida do dedo criaria a manifestação num simples arrastar —
-                // então lá o onPress normal (cancelável) é quem atende.
-                onPressIn={() => {
-                  if (inputFocused) submit();
+            )}
+
+            {/* ---- Suas manifestações: a lista dela vem ANTES das sugestões;
+                 pendentes de hoje primeiro, concluídas por último ---- */}
+            <SectionHeading title={t(S.yours)} />
+            {sorted.map((m) => (
+              <ManifestCard
+                key={m.id}
+                item={m}
+                onPress={() => navigation.navigate('Manifestation', { id: m.id })}
+                onToggleToday={() => toggleToday(m)}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            {composer}
+
+            {/* ---- Convite de novata: só com a lista vazia (não anuncia
+                 recurso que não existe: explica que a prática padrão dura
+                 21 dias e leva de volta ao campo) ---- */}
+            {inviteDismissed === false ? (
+              <Card
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  focusDesire();
                 }}
-                onPress={submit}
-                accessibilityRole="button"
-                accessibilityLabel={t(S.sendDesire)}
-                style={[
-                  styles.sendBtn,
-                  { backgroundColor: desire.trim() ? accentAt(th, 0) : alpha(th.text, 0.2) },
-                ]}
+                style={[styles.todayCard, { backgroundColor: th.surface }]}
               >
-                <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.catRow}>
-              {CATEGORIES.map((c) => {
-                const active = c.key === category;
-                const label = c.label ? txt(c.label, lang) : c.key;
-                return (
-                  <TouchableOpacity
-                    key={c.key}
-                    activeOpacity={0.8}
-                    onPress={() => setCategory(c.key)}
-                    accessibilityRole="button"
-                    accessibilityLabel={label}
-                    accessibilityState={{ selected: active }}
-                    style={[
-                      styles.catChip,
-                      {
-                        backgroundColor: active ? '#FFFFFF' : alpha('#FFFFFF', 0.25),
-                      },
-                    ]}
+                <View style={styles.todayRow}>
+                  <View
+                    style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 1), 0.16) }]}
                   >
-                    <Ionicons
-                      name={c.icon}
-                      size={12}
-                      color={active ? accentAt(th, c.accent) : '#FFFFFF'}
-                    />
-                    <Text
-                      style={[
-                        styles.catText,
-                        { color: active ? accentAt(th, c.accent) : '#FFFFFF' },
-                      ]}
-                    >
-                      {label}
-                    </Text>
+                    <Ionicons name="sparkles" size={20} color={accentAt(th, 1)} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.todayTitle, { color: th.text }]}>{t(S.inviteTitle)}</Text>
+                    <Text style={[styles.todaySub, { color: th.textMuted }]}>{t(S.inviteSub)}</Text>
+                  </View>
+                  {/* hitSlop não aumenta área de toque no RN-web: o alvo de 44
+                      é real, via minWidth/minHeight. */}
+                  <TouchableOpacity
+                    onPress={dismissInvite}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(S.inviteDismiss)}
+                    style={styles.inviteClose}
+                  >
+                    <Ionicons name="close" size={18} color={th.textMuted} />
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        </GradientCover>
-
-        {/* ---- Convite (não anuncia recurso que não existe: só explica que a
-             prática padrão dura 21 dias e leva de volta ao campo) ---- */}
-        {inviteDismissed === false ? (
-          <Card
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              focusDesire();
-            }}
-            style={[styles.todayCard, { backgroundColor: th.surface }]}
-          >
-            <View style={styles.todayRow}>
-              <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 1), 0.16) }]}>
-                <Ionicons name="sparkles" size={20} color={accentAt(th, 1)} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.todayTitle, { color: th.text }]}>{t(S.inviteTitle)}</Text>
-                <Text style={[styles.todaySub, { color: th.textMuted }]}>{t(S.inviteSub)}</Text>
-              </View>
-              <TouchableOpacity
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                onPress={dismissInvite}
-                accessibilityRole="button"
-                accessibilityLabel={t(S.inviteDismiss)}
-                style={{ marginLeft: 10 }}
-              >
-                <Ionicons name="close" size={18} color={th.textMuted} />
-              </TouchableOpacity>
-            </View>
-          </Card>
-        ) : null}
-
-        {/* ---- Today strip ---- */}
-        <Card style={[styles.todayCard, { backgroundColor: th.surface }]}>
-          <View style={styles.todayRow}>
-            <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 2), 0.16) }]}>
-              <Ionicons name="flame" size={20} color={accentAt(th, 2)} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.todayTitle, { color: th.text }]}>{streakLabel}</Text>
-              <Text style={[styles.todaySub, { color: th.textMuted }]}>{practisedLabel}</Text>
-            </View>
-            <Text style={[styles.todayPct, { color: accentAt(th, 0) }]}>{dailyPercent}%</Text>
-          </View>
-          <View style={[styles.track, { backgroundColor: alpha(accentAt(th, 0), 0.14) }]}>
-            <View
-              style={[
-                styles.fill,
-                { width: `${dailyPercent}%`, backgroundColor: accentAt(th, 0) },
-              ]}
-            />
-          </View>
-        </Card>
+                </View>
+              </Card>
+            ) : null}
+          </>
+        )}
 
         {/* ---- Ideias de partida (lista fixa nossa, não é o que "outras
              pessoas" estão manifestando) ---- */}
@@ -429,24 +563,18 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {/* ---- Active ---- */}
-        <SectionHeading title={t(S.yours)} />
-        {state.manifestations.length === 0 ? (
-          <EmptyState
-            icon="sparkles-outline"
-            title={t(S.emptyTitle)}
-            body={t(S.emptyBody, { app: APP_NAME })}
-          />
-        ) : (
-          state.manifestations.map((m) => (
-            <ManifestCard
-              key={m.id}
-              item={m}
-              onPress={() => navigation.navigate('Manifestation', { id: m.id })}
-              onToggleToday={() => toggleToday(m)}
+        {/* ---- Lista vazia: aqui só o estado vazio (com itens, a lista dela
+             já apareceu lá em cima, antes das sugestões) ---- */}
+        {!hasItems ? (
+          <>
+            <SectionHeading title={t(S.yours)} />
+            <EmptyState
+              icon="sparkles-outline"
+              title={t(S.emptyTitle)}
+              body={t(S.emptyBody, { app: APP_NAME })}
             />
-          ))
-        )}
+          </>
+        ) : null}
         <View style={{ height: 24 }} />
       </ScrollView>
     </Screen>
@@ -487,8 +615,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     height: 52,
     width: '100%',
+    marginTop: 12,
   },
-  input: { flex: 1, fontSize: 15 },
+  // height 100%: o campo preenche a pílula inteira — antes tinha ~20px no
+  // meio de 52 e clique a 6px do topo deixava o foco no body.
+  input: { flex: 1, fontSize: 15, height: '100%' },
   sendBtn: {
     width: 40,
     height: 40,
@@ -500,7 +631,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginTop: 14,
   },
   catChip: {
     flexDirection: 'row',
@@ -516,9 +646,7 @@ const styles = StyleSheet.create({
   todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   todayTitle: { fontSize: 16, fontWeight: '700' },
   todaySub: { fontSize: 12.5, marginTop: 2 },
-  todayPct: { fontSize: 18, fontWeight: '800' },
-  track: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  fill: { height: 8, borderRadius: 4 },
+  inviteClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   chipScroll: { paddingRight: 8, paddingVertical: 2 },
   trendChip: {
     flexDirection: 'row',

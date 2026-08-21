@@ -60,16 +60,17 @@ export default function ManifestCard({ item, onPress, onToggleToday }) {
       <GradientCover accent={item.accent} radius={14} style={styles.cover} icon={meta.icon} />
       <View style={styles.body}>
         <View style={styles.topRow}>
-          <Text numberOfLines={1} style={[styles.title, { color: th.text }]}>
+          <Text numberOfLines={2} style={[styles.title, { color: th.text }]}>
             {title}
           </Text>
           {/* Antes era um ícone morto com cara de checkbox. Agora é o controle
-              de verdade da prática de hoje; sem handler, vira só status. */}
+              de verdade da prática de hoje; sem handler, vira só status.
+              hitSlop não aumenta área de toque no RN-web — o alvo de 44 é
+              real, via minWidth/minHeight no estilo. */}
           {onToggleToday ? (
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={onToggleToday}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityState={{ selected: doneToday }}
               accessibilityLabel={doneToday ? t(S.undoToday) : t(S.markToday)}
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, marginLeft: 14 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 15.5, fontWeight: '700', flex: 1, marginRight: 8 },
-  toggle: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  toggle: { minWidth: 44, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   subRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3, marginBottom: 10 },
   subIcon: { marginRight: 5 },
   sub: { fontSize: 12.5, flex: 1 },

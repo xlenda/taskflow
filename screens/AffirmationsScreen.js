@@ -20,7 +20,13 @@ import { APP_NAME, APP_URL } from '../constants/brand';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { useT } from '../utils/useT';
-import { narrate, stopSpeaking, warmUpVoices } from '../utils/speech';
+import {
+  narrate,
+  stopSpeaking,
+  warmUpVoices,
+  hasNeuralAudio,
+  isSpeechAvailable,
+} from '../utils/speech';
 
 import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
@@ -30,6 +36,8 @@ const S = {
   title: { en: 'Affirmations', pt: 'Afirmações' },
   subtitle: { en: 'Come back once daily', pt: 'Volte aqui uma vez por dia' },
   all: { en: 'All', pt: 'Todas' },
+  listen: { en: 'Listen to this affirmation', pt: 'Ouvir esta afirmação' },
+  stopListen: { en: 'Stop the audio', pt: 'Parar o áudio' },
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
   copied: { en: 'Copied ✓', pt: 'Copiado ✓' },
   emptyTitle: { en: 'No affirmations here', pt: 'Nenhuma afirmação por aqui' },
@@ -155,6 +163,9 @@ export default function AffirmationsScreen() {
   const readToday = state.affirmationDates.includes(todayISO());
   const daysLogged = state.affirmationDates.length;
   const catLabel = (key) => loc(categoryMeta(key), lang).label || key;
+  // A ação principal da tela é OUVIR — botão grande com rótulo, não um ícone
+  // cinza de 20px no canto do card. Só existe quando o aparelho tem MP3 ou voz.
+  const canHear = current ? hasNeuralAudio(current.id, lang) || isSpeechAvailable() : false;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -277,7 +288,6 @@ export default function AffirmationsScreen() {
               categoryLabel={catLabel(current.category)}
               accent={meta.accent}
               favorite={state.favoriteAffirmations.includes(current.id)}
-              speaking={speaking}
               onToggleFavorite={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 const guardando = !state.favoriteAffirmations.includes(current.id);
@@ -285,7 +295,8 @@ export default function AffirmationsScreen() {
                 // Guardar uma afirmação é ação real: conta o dia. Tirar não.
                 if (guardando) markAffirmationRead();
               }}
-              onToggleSpeak={toggleSpeak}
+              // Sem onToggleSpeak: o ícone cinza de 20px saiu do card — ouvir
+              // agora é o botão grande logo abaixo.
               onShare={shareIt}
             />
 
@@ -315,33 +326,16 @@ export default function AffirmationsScreen() {
               </TouchableOpacity>
             </View>
 
-            <PrimaryButton
-              label={copied ? t(S.copied) : t(S.share)}
-              icon="share-outline"
-              accent={meta.accent}
-              variant="soft"
-              onPress={shareIt}
-              style={{ marginTop: 16 }}
-            />
-
-            {manual ? (
-              <Card style={[styles.manualCard, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.manualTitle, { color: theme.text }]}>{t(S.copyManual)}</Text>
-                <Text selectable style={[styles.manualText, { color: theme.textMuted }]}>
-                  {manual}
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => setManual(null)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(S.copyDone)}
-                  style={styles.manualClose}
-                >
-                  <Text style={[styles.manualCloseText, { color: accentAt(theme, meta.accent) }]}>
-                    {t(S.copyDone)}
-                  </Text>
-                </TouchableOpacity>
-              </Card>
+            {/* Invertido: OUVIR é a ação principal, grande e com rótulo — era
+                um ícone cinza de 20px enquanto o botão dourado compartilhava. */}
+            {canHear ? (
+              <PrimaryButton
+                label={speaking ? t(S.stopListen) : t(S.listen)}
+                icon={speaking ? 'stop' : 'volume-high'}
+                accent={meta.accent}
+                onPress={toggleSpeak}
+                style={{ marginTop: 16 }}
+              />
             ) : null}
           </>
         ) : (
@@ -352,6 +346,8 @@ export default function AffirmationsScreen() {
           />
         )}
 
+        {/* O status do dia mora logo abaixo do card da afirmação — antes
+            ficava em y=616, fora da tela. */}
         <Card style={[styles.todayCard, { backgroundColor: theme.surface }]}>
           <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(theme, 3), 0.15) }]}>
             <Ionicons
@@ -387,6 +383,40 @@ export default function AffirmationsScreen() {
             }}
             style={{ marginTop: 12 }}
           />
+        ) : null}
+
+        {current ? (
+          <>
+            {/* Compartilhar agora é o secundário. */}
+            <PrimaryButton
+              label={copied ? t(S.copied) : t(S.share)}
+              icon="share-outline"
+              accent={meta.accent}
+              variant="ghost"
+              onPress={shareIt}
+              style={{ marginTop: 12 }}
+            />
+
+            {manual ? (
+              <Card style={[styles.manualCard, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.manualTitle, { color: theme.text }]}>{t(S.copyManual)}</Text>
+                <Text selectable style={[styles.manualText, { color: theme.textMuted }]}>
+                  {manual}
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setManual(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.copyDone)}
+                  style={styles.manualClose}
+                >
+                  <Text style={[styles.manualCloseText, { color: accentAt(theme, meta.accent) }]}>
+                    {t(S.copyDone)}
+                  </Text>
+                </TouchableOpacity>
+              </Card>
+            ) : null}
+          </>
         ) : null}
 
         <SectionHeading title={t(S.favTitle, { n: favorites.length })} />
@@ -452,7 +482,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderRadius: 18,
-    marginTop: 24,
+    marginTop: 16,
   },
   todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   todayTitle: { fontSize: 14.5, fontWeight: '700' },

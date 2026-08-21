@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -101,6 +102,30 @@ const S = {
     pt: 'Todo o histórico de prática dela será apagado.',
   },
   releaseConfirm: { en: 'Release', pt: 'Deixar ir' },
+  releaseAction: { en: 'Release this manifestation', pt: 'Deixar esta manifestação ir' },
+
+  storyTitle: { en: 'Your story', pt: 'Sua história' },
+
+  // Recibo do dia feito — números vêm do estado, nunca inventados.
+  receipt: {
+    en: 'Done — day {done} logged ✓ · {done} of {goal}',
+    pt: 'Pronto — dia {done} registrado ✓ · {done} de {goal}',
+  },
+  constancyInvite: {
+    en: 'Your first practice opens your constancy record here.',
+    pt: 'Sua primeira prática abre aqui o seu registro de constância.',
+  },
+  completedBanner: { en: '{goal} of {goal} — realized ✨', pt: '{goal} de {goal} — realizada ✨' },
+
+  markDayTitle: { en: 'Mark the practice for {date}?', pt: 'Marcar a prática de {date}?' },
+  unmarkDayTitle: { en: 'Undo the practice for {date}?', pt: 'Desfazer a prática de {date}?' },
+  markConfirm: { en: 'Mark', pt: 'Marcar' },
+
+  edit: { en: 'Edit title and affirmation', pt: 'Editar título e afirmação' },
+  editTitle: { en: 'Title', pt: 'Título' },
+  editAffirmation: { en: 'Affirmation', pt: 'Afirmação' },
+  save: { en: 'Save', pt: 'Salvar' },
+  cancel: { en: 'Cancel', pt: 'Cancelar' },
 };
 
 // Rótulo das categorias (a chave guardada continua em inglês — é ela que liga
@@ -172,7 +197,9 @@ export default function ManifestationScreen() {
   const { t, lang } = useT();
   const navigation = useNavigation();
   const route = useRoute();
-  const { state, addManifestation, logSession, undoSession, removeManifestation } = useApp();
+  // Regra única: toda marcação/desmarcação de prática passa pelo togglePractice
+  // do contexto (mesmo caminho da Home) — quem confirma é quem chama.
+  const { state, addManifestation, togglePractice, updateManifestation, removeManifestation } = useApp();
 
   const [localId, setLocalId] = useState(route.params?.id || null);
 
@@ -184,7 +211,8 @@ export default function ManifestationScreen() {
     if (routeId && routeId !== localId) setLocalId(routeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
-  const template = route.params?.template || null;
+  // Via URL (/m/undefined?template=...) o linking entrega template como STRING — só objeto vale.
+  const template = route.params?.template && typeof route.params.template === 'object' ? route.params.template : null;
 
   const saved = useMemo(
     () => (state ? state.manifestations.find((m) => m.id === localId) : null),
@@ -264,6 +292,13 @@ export default function ManifestationScreen() {
   // esta manifestação" no meio da narração já tem prática para marcar, e a
   // variável capturada no closure ainda estava null.
   const savedIdRef = useRef(saved ? saved.id : null);
+  // Prática de hoje no MOMENTO de finalizar a narrativa: togglePractice é
+  // toggle — sem este espelho, terminar a narração com o dia já feito DESFARIA.
+  const doneTodayRef = useRef([]);
+  // Edição pelo lápis do cabeçalho: título + afirmação, sem regenerar a história.
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftAffirmation, setDraftAffirmation] = useState('');
   // Token da reprodução atual: qualquer onDone de uma sessão antiga é ignorado
   // (evita duas vozes ou um "fim" fantasma depois de pausar).
   const runRef = useRef(0);
@@ -271,6 +306,9 @@ export default function ManifestationScreen() {
 
   useEffect(() => {
     savedIdRef.current = saved ? saved.id : null;
+    // Espelha as SESSÕES e avalia o "hoje" na hora do uso — virada de
+    // meia-noite durante a narração não congela o dia de ontem.
+    doneTodayRef.current = saved ? saved.sessions : [];
   }, [saved]);
 
   // Relógio só da barra de progresso — quem manda no áudio é a voz.
@@ -320,11 +358,12 @@ export default function ManifestationScreen() {
     setPlaying(false);
     setPosition(duration);
     const id = savedIdRef.current;
-    if (id) {
-      logSession(id);
+    // Fim da narrativa só MARCA o dia — se já estava feito, fica como está.
+    if (id && !doneTodayRef.current.includes(todayISO())) {
+      togglePractice(id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-  }, [duration, logSession]);
+  }, [duration, togglePractice]);
 
   // Fala frase a frase e encadeia a próxima no onDone da anterior.
   const playFrom = (index, run) => {
@@ -369,6 +408,8 @@ export default function ManifestationScreen() {
   const goal = item.goalDays || 21;
   const percent = pct(done, goal);
   const doneToday = saved ? saved.sessions.includes(todayISO()) : false;
+  // Ciclo fechado: chegou na meta — a tela celebra e para de cobrar check-in.
+  const completed = done >= goal;
 
   const week = lastNDays(7).map((iso) => ({
     iso,
@@ -525,8 +566,9 @@ export default function ManifestationScreen() {
     }
   };
 
-  const togglePractice = async () => {
+  const onTogglePractice = async () => {
     if (!saved) return;
+    // Desfazer sempre confirma antes; marcar hoje é direto.
     if (doneToday) {
       const ok = await confirmAsync({
         title: t(S.undoTitle),
@@ -535,12 +577,45 @@ export default function ManifestationScreen() {
         cancelLabel: t(S.keep),
       });
       if (!ok) return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      undoSession(saved.id);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      logSession(saved.id);
     }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    togglePractice(saved.id);
+  };
+
+  // Bolinha da semana: marca/desfaz o dia que ela mostra (últimos 7), sempre
+  // com confirmação datada — é edição de histórico, não enfeite.
+  const onToggleDay = async (d) => {
+    if (!saved) return;
+    // Dia anterior à criação não existe pra marcar — número honesto.
+    if (saved.createdAt && d.iso < String(saved.createdAt).slice(0, 10)) return;
+    const date = prettyDateIn(d.iso, lang);
+    const ok = await confirmAsync({
+      title: d.hit ? t(S.unmarkDayTitle, { date }) : t(S.markDayTitle, { date }),
+      confirmLabel: d.hit ? t(S.undoConfirm) : t(S.markConfirm),
+      cancelLabel: t(S.keep),
+      destructive: d.hit,
+    });
+    if (!ok) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    togglePractice(saved.id, d.iso);
+  };
+
+  const startEdit = () => {
+    if (!saved) return;
+    setDraftTitle(item.title || '');
+    setDraftAffirmation(item.affirmation || '');
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    const titulo = draftTitle.trim();
+    const afirmacao = draftAffirmation.trim();
+    // Só o que sobrou preenchido entra no patch; campo apagado não zera nada.
+    const patch = {};
+    if (titulo) patch.title = titulo;
+    if (afirmacao) patch.affirmation = afirmacao;
+    if (saved && Object.keys(patch).length) updateManifestation(saved.id, patch);
+    setEditing(false);
   };
 
   const confirmDelete = async () => {
@@ -583,80 +658,100 @@ export default function ManifestationScreen() {
         >
           <Ionicons name="chevron-back" size={20} color={color} />
         </TouchableOpacity>
-        {saved ? (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={confirmDelete}
-            accessibilityLabel={t(S.releaseConfirm)}
-            style={[styles.navBtn, { backgroundColor: alpha(th.textMuted, 0.12) }]}
-          >
-            <Ionicons name="trash-outline" size={18} color={th.textMuted} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.navBtn} />
-        )}
+        {/* A lixeira saiu daqui: apagar tudo não merece o melhor canto da
+            tela — ela vive discreta no fim do scroll. */}
+        <View style={styles.navBtn} />
       </View>
 
-      <Header title={item.title} subtitle={item.intention} />
+      <Header
+        title={item.title}
+        subtitle={item.intention}
+        right={
+          saved ? (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={startEdit}
+              accessibilityRole="button"
+              accessibilityLabel={t(S.edit)}
+              style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
+            >
+              <Ionicons name="pencil" size={17} color={color} />
+            </TouchableOpacity>
+          ) : null
+        }
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <GradientCover accent={item.accent} radius={22} style={styles.hero}>
-          <View style={styles.heroInner}>
-            <View style={[styles.badge, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
-              <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
-              <Text style={styles.badgeText}>{categoryLabel(item.category, lang)}</Text>
-            </View>
-            <Text style={styles.heroQuote}>{item.affirmation}</Text>
-            {saved ? (
-              <Text style={styles.heroMeta}>
-                {t(S.startedOn, {
-                  date: prettyDateIn(saved.createdAt, lang),
-                  day: Math.min(done, goal),
-                  goal,
-                })}
-              </Text>
-            ) : (
-              <Text style={styles.heroMeta}>{t(S.suggested, { goal })}</Text>
-            )}
-          </View>
-        </GradientCover>
-
-        {saved ? (
-          <Card style={[styles.card, { backgroundColor: th.surface }]}>
-            <View style={styles.rowBetween}>
-              <Text style={[styles.cardTitle, { color: th.text }]}>{t(S.progressTitle)}</Text>
-              <Text style={[styles.pctText, { color }]}>{percent}%</Text>
-            </View>
-            <View style={[styles.track, { backgroundColor: alpha(color, 0.15) }]}>
-              <View style={[styles.fill, { width: `${percent}%`, backgroundColor: color }]} />
-            </View>
-            <Text style={[styles.trackLabel, { color: th.textMuted }]}>
-              {t(S.daysDone, { done: Math.min(done, goal), goal })}
-            </Text>
-            <View style={styles.weekRow}>
-              {week.map((d, i) => (
-                <View key={d.iso} style={styles.weekCol}>
-                  <View
-                    style={[
-                      styles.weekDot,
-                      {
-                        backgroundColor: d.hit ? accentAt(th, item.accent + i) : alpha(th.textMuted, 0.12),
-                      },
-                    ]}
-                  >
-                    {d.hit ? <Ionicons name="checkmark" size={13} color="#FFFFFF" /> : null}
-                  </View>
-                  <Text style={[styles.weekLabel, { color: th.textMuted }]}>{d.label}</Text>
-                </View>
-              ))}
+        {editing ? (
+          // Modo de ajuste (lápis do cabeçalho): título e afirmação viram
+          // campos, prefill com o valor atual. Salvar NÃO regenera a história —
+          // o que a pessoa já ouviu continua igual.
+          <Card style={[styles.card, { backgroundColor: th.surface, marginTop: 4 }]}>
+            <Text style={[styles.inputLabel, { color: th.textMuted }]}>{t(S.editTitle)}</Text>
+            <TextInput
+              value={draftTitle}
+              onChangeText={setDraftTitle}
+              style={[
+                styles.input,
+                { color: th.text, borderColor: th.border, backgroundColor: alpha(th.textMuted, 0.06) },
+              ]}
+            />
+            <Text style={[styles.inputLabel, { color: th.textMuted }]}>{t(S.editAffirmation)}</Text>
+            <TextInput
+              value={draftAffirmation}
+              onChangeText={setDraftAffirmation}
+              multiline
+              style={[
+                styles.input,
+                styles.inputMulti,
+                { color: th.text, borderColor: th.border, backgroundColor: alpha(th.textMuted, 0.06) },
+              ]}
+            />
+            <View style={styles.editRow}>
+              <PrimaryButton
+                label={t(S.cancel)}
+                variant="ghost"
+                accent={item.accent}
+                onPress={() => setEditing(false)}
+                style={{ flex: 1, marginRight: 10 }}
+              />
+              <PrimaryButton
+                label={t(S.save)}
+                icon="checkmark"
+                accent={item.accent}
+                onPress={saveEdit}
+                style={{ flex: 1 }}
+              />
             </View>
           </Card>
-        ) : null}
+        ) : (
+          <GradientCover accent={item.accent} radius={22} style={styles.hero}>
+            <View style={styles.heroInner}>
+              <View style={[styles.badge, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
+                <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
+                <Text style={styles.badgeText}>{categoryLabel(item.category, lang)}</Text>
+              </View>
+              <Text style={styles.heroQuote}>{item.affirmation}</Text>
+              {saved ? (
+                <Text style={styles.heroMeta}>
+                  {t(S.startedOn, {
+                    date: prettyDateIn(saved.createdAt, lang),
+                    day: Math.min(done, goal),
+                    goal,
+                  })}
+                </Text>
+              ) : (
+                <Text style={styles.heroMeta}>{t(S.suggested, { goal })}</Text>
+              )}
+            </View>
+          </GradientCover>
+        )}
 
+        {/* Player logo depois da afirmação: é a ação principal da tela e fica
+            antes da dobra — não atrás de um boletim de números. A história em
+            texto desceu para o fim; a constância, para depois do botão. */}
         <SectionHeading title={t(S.audioTitle)} />
         <Card style={[styles.card, { backgroundColor: th.surface }]}>
-          <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
-
           {audioOn ? (
             <View>
               <View style={[styles.playerTrack, { backgroundColor: alpha(color, 0.15) }]}>
@@ -710,13 +805,99 @@ export default function ManifestationScreen() {
               </View>
               <Text style={[styles.hint, { color: th.textMuted }]}>
                 {audioFailed ? t(S.audioFail) : audioHint}
-                {saved && !audioFailed ? ` ${t(S.hintLogs)}` : ''}
+                {/* Depois do feito, a frase futura vira recibo: o dia JÁ entrou. */}
+                {saved && !audioFailed
+                  ? ` ${
+                      doneToday
+                        ? t(S.receipt, { done: Math.min(done, goal), goal })
+                        : t(S.hintLogs)
+                    }`
+                  : ''}
               </Text>
             </View>
           ) : (
             <Text style={[styles.hint, { color: th.textMuted }]}>{t(S.noVoice)}</Text>
           )}
         </Card>
+
+        {saved ? (
+          completed ? (
+            // Ciclo fechado: celebração no lugar do botão — sem cobrar check-in
+            // de quem já chegou lá. Desfazer um dia segue pelas bolinhas abaixo.
+            <View style={[styles.doneBanner, { backgroundColor: alpha(color, 0.14) }]}>
+              <Ionicons name="checkmark-circle" size={20} color={color} />
+              <Text style={[styles.doneBannerText, { color }]}>{t(S.completedBanner, { goal })}</Text>
+            </View>
+          ) : (
+            <PrimaryButton
+              label={doneToday ? t(S.practiceDone) : t(S.markPractice)}
+              icon={doneToday ? 'checkmark-circle' : 'sparkles'}
+              accent={item.accent}
+              variant={doneToday ? 'soft' : 'solid'}
+              onPress={onTogglePractice}
+              style={{ marginTop: 16 }}
+            />
+          )
+        ) : (
+          <PrimaryButton
+            label={t(S.startThis)}
+            icon="add-circle-outline"
+            accent={item.accent}
+            onPress={start}
+            style={{ marginTop: 16 }}
+          />
+        )}
+
+        {/* Constância só existe depois da 1ª prática — boletim de zeros não
+            recebe ninguém. Antes disso, um convite de uma linha. */}
+        {saved && done === 0 ? (
+          <Text style={[styles.hint, { color: th.textMuted }]}>{t(S.constancyInvite)}</Text>
+        ) : null}
+        {saved && done > 0 ? (
+          <Card style={[styles.card, { backgroundColor: th.surface }]}>
+            <View style={styles.rowBetween}>
+              <Text style={[styles.cardTitle, { color: th.text }]}>{t(S.progressTitle)}</Text>
+              <Text style={[styles.pctText, { color }]}>{percent}%</Text>
+            </View>
+            <View style={[styles.track, { backgroundColor: alpha(color, 0.15) }]}>
+              <View style={[styles.fill, { width: `${percent}%`, backgroundColor: color }]} />
+            </View>
+            <Text style={[styles.trackLabel, { color: th.textMuted }]}>
+              {t(S.daysDone, { done: Math.min(done, goal), goal })}
+            </Text>
+            <View style={styles.weekRow}>
+              {/* Bolinhas tocáveis: marcam/desfazem o dia que mostram (últimos
+                  7), sempre com confirmação datada — quem esqueceu ontem
+                  conserta aqui, em vez de perder a sequência sem apelação. */}
+              {week.map((d, i) => (
+                <TouchableOpacity
+                  key={d.iso}
+                  activeOpacity={0.7}
+                  onPress={() => onToggleDay(d)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    d.hit
+                      ? t(S.unmarkDayTitle, { date: prettyDateIn(d.iso, lang) })
+                      : t(S.markDayTitle, { date: prettyDateIn(d.iso, lang) })
+                  }
+                  style={styles.weekCol}
+                >
+                  <View
+                    style={[
+                      styles.weekDot,
+                      {
+                        backgroundColor: d.hit ? accentAt(th, item.accent + i) : alpha(th.textMuted, 0.12),
+                      },
+                    ]}
+                  >
+                    {d.hit ? <Ionicons name="checkmark" size={13} color="#FFFFFF" /> : null}
+                  </View>
+                  <Text style={[styles.weekLabel, { color: th.textMuted }]}>{d.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Card>
+        ) : null}
 
         <SectionHeading title={t(S.ritual)} />
         <Card style={[styles.card, { backgroundColor: th.surface }]}>
@@ -734,24 +915,24 @@ export default function ManifestationScreen() {
           ))}
         </Card>
 
+        <SectionHeading title={t(S.storyTitle)} />
+        <Card style={[styles.card, { backgroundColor: th.surface }]}>
+          <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
+        </Card>
+
         {saved ? (
-          <PrimaryButton
-            label={doneToday ? t(S.practiceDone) : t(S.markPractice)}
-            icon={doneToday ? 'checkmark-circle' : 'sparkles'}
-            accent={item.accent}
-            variant={doneToday ? 'soft' : 'solid'}
-            onPress={togglePractice}
-            style={{ marginTop: 24 }}
-          />
-        ) : (
-          <PrimaryButton
-            label={t(S.startThis)}
-            icon="add-circle-outline"
-            accent={item.accent}
-            onPress={start}
-            style={{ marginTop: 24 }}
-          />
-        )}
+          // Apagar é raro: item discreto no fim, longe do caminho do dedo.
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.releaseAction)}
+            style={styles.releaseRow}
+          >
+            <Ionicons name="trash-outline" size={15} color={th.textMuted} />
+            <Text style={[styles.releaseText, { color: th.textMuted }]}>{t(S.releaseAction)}</Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={{ height: 32 }} />
       </ScrollView>
     </Screen>
@@ -796,7 +977,8 @@ const styles = StyleSheet.create({
   fill: { height: 8, borderRadius: 4 },
   trackLabel: { fontSize: 11.5, fontWeight: '600', marginTop: 8 },
   weekRow: { flexDirection: 'row', marginTop: 16 },
-  weekCol: { flex: 1, alignItems: 'center' },
+  // Tocável de verdade: altura mínima real (hitSlop não aumenta toque na web).
+  weekCol: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
   weekDot: {
     width: 30,
     height: 30,
@@ -805,7 +987,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   weekLabel: { fontSize: 11, marginTop: 6, fontWeight: '600' },
-  story: { fontSize: 15, lineHeight: 24, marginBottom: 18 },
+  story: { fontSize: 15, lineHeight: 24 },
   playerTrack: { height: 5, borderRadius: 3, overflow: 'hidden' },
   playerFill: { height: 5, borderRadius: 3 },
   time: { fontSize: 11.5, marginTop: 6, fontWeight: '600' },
@@ -833,6 +1015,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hint: { fontSize: 12, textAlign: 'center', marginTop: 14, lineHeight: 18 },
+  // Celebração do ciclo fechado — mesma silhueta do botão que ela substitui.
+  doneBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 26,
+    marginTop: 16,
+  },
+  doneBannerText: { fontSize: 15.5, fontWeight: '700', marginLeft: 8 },
+  inputLabel: { fontSize: 12, fontWeight: '700', marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginTop: 6 },
+  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
+  editRow: { flexDirection: 'row', marginTop: 18 },
+  // Lixeira discreta do fim da tela — altura mínima real para o toque.
+  releaseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    marginTop: 20,
+  },
+  releaseText: { fontSize: 13, fontWeight: '600', marginLeft: 6 },
   stepRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
   stepDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   stepIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },

@@ -14,15 +14,23 @@ import { Ionicons } from '@expo/vector-icons';
 import Typewriter from '../../components/Typewriter';
 import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
-import { UI, txt } from '../../constants/i18n';
-import { FLOW, fill, stepLines } from './flow';
+import { UI, txt, tr } from '../../constants/i18n';
+import { FLOW, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
+// v: 2 = fluxo enxuto de 20/08 — rascunho de versão antiga é descartado
+// (o idx apontaria pra outra pergunta e as respostas cortadas virariam órfãs).
 const DRAFT_KEY = '@celeste_onb_draft';
+const DRAFT_V = 2;
+
+// Strings locais da tela (padrão do app: {en,pt} + tr()).
+const S = {
+  counter: { en: '{n} of {total}', pt: '{n} de {total}' },
+};
 
 export default function ChatOnboardingScreen({ navigation }) {
-  const { saveProfile, state } = useApp();
+  const { saveProfile, addManifestation, state } = useApp();
   const lang = (state && state.lang) || 'en';
   const T = UI[lang];
 
@@ -30,6 +38,9 @@ export default function ChatOnboardingScreen({ navigation }) {
   const [answers, setAnswers] = useState({});
   const [typing, setTyping] = useState(true);
   const [instant, setInstant] = useState(false);
+  // Depois do 1º toque pra pular a digitação, TODAS as próximas perguntas já
+  // nascem reveladas (a preferência é lembrada — ninguém pula duas vezes à toa).
+  const [fastMode, setFastMode] = useState(false);
   const [value, setValue] = useState('');
   const [selected, setSelected] = useState(null);
   const [items, setItems] = useState([]);
@@ -55,7 +66,9 @@ export default function ChatOnboardingScreen({ navigation }) {
   // Reset per-step UI state, prefilling previous answers when going back.
   useEffect(() => {
     setTyping(step.type !== 'intro'); // telas de valor não digitam — botão na hora
-    setInstant(false);
+    // fastMode: o Typewriter recebe instant e dispara onDone na hora, então a
+    // lógica de statements/auto-avanço continua a mesma, só sem a espera.
+    setInstant(fastMode);
     const prev = answers[step.key];
     setValue(step.type === 'text' && typeof prev === 'string' ? prev : '');
     setSelected(step.type === 'chips' || step.type === 'boolean' ? (prev !== undefined ? prev : null) : null);
@@ -76,6 +89,7 @@ export default function ChatOnboardingScreen({ navigation }) {
           alive &&
           draft &&
           typeof draft === 'object' &&
+          draft.v === DRAFT_V &&
           Number.isInteger(draft.idx) &&
           draft.idx > 0 &&
           draft.idx < FLOW.length &&
@@ -101,11 +115,30 @@ export default function ChatOnboardingScreen({ navigation }) {
     if (i >= FLOW.length) {
       AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
       saveProfile(ans);
-      navigation.replace('Paywall');
+      // Recompensa antes da cobrança: o desejo dela vira a 1ª manifestação e a
+      // tela Reveal mostra o resultado ANTES do paywall. Os setState do contexto
+      // são funcionais e em ordem — o addManifestation já enxerga o profile.
+      const id = addManifestation({
+        title: String(ans.hopedChange || '').trim(),
+        category: inferCategory(ans.hopedChange),
+      });
+      navigation.replace('Reveal', { id });
     } else {
-      AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ idx: i, answers: ans })).catch(() => {});
+      AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ v: DRAFT_V, idx: i, answers: ans })).catch(() => {});
       setIdx(i);
     }
+  };
+
+  // Pular pergunta não essencial: some a resposta anterior (se houver) e avança.
+  const skipStep = () => {
+    clearTimeout(autoTimer.current);
+    const next = { ...answers };
+    if (step.key) delete next[step.key];
+    for (const s of FLOW) {
+      if (s.key && s.when && !s.when(next)) delete next[s.key];
+    }
+    setAnswers(next);
+    goNext(next);
   };
 
   const goBack = () => {
@@ -189,10 +222,30 @@ export default function ChatOnboardingScreen({ navigation }) {
               }}
             />
           </View>
+          {/* Contador honesto: posição no roteiro (mesma conta da barra) */}
+          <Text style={{ marginLeft: 10, fontSize: 13, color: ONB.inkSoft, fontVariant: ['tabular-nums'] }}>
+            {tr(S.counter, lang, { n: idx + 1, total: FLOW.length })}
+          </Text>
+          {step.skippable ? (
+            <Pressable
+              onPress={skipStep}
+              accessibilityRole="button"
+              // hitSlop não aumenta área de toque no RN-web — dimensão real
+              style={{ marginLeft: 12, minWidth: 48, minHeight: 36, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '600', color: ONB.inkSoft }}>{T.skip}</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Question area — tap anywhere to finish typing instantly */}
-        <Pressable style={{ flex: 1 }} onPress={() => setInstant(true)}>
+        <Pressable
+          style={{ flex: 1 }}
+          onPress={() => {
+            setInstant(true);
+            setFastMode(true); // 1º toque desliga a máquina de escrever pro resto do fluxo
+          }}
+        >
           <View
             style={{
               flex: 1,

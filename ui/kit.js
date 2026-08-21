@@ -83,6 +83,8 @@ export function Card(props) {
   if (props.onPress) {
     return React.createElement(Pressable, {
       onPress: props.onPress,
+      accessibilityRole: props.accessibilityRole,
+      accessibilityLabel: props.accessibilityLabel,
       style: function (s) { return [style, s.pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]; },
     }, props.children);
   }

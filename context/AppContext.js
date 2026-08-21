@@ -8,6 +8,27 @@ import { dreamToAffirmation } from '../utils/dreamToAffirmation';
 const STORAGE_KEY = '@stella_state_v2';
 const AppCtx = createContext(null);
 
+// Merge defensivo sobre o estado default — usado no load e no import.
+// Campo novo entra sempre com default AQUI (estado salvo antigo continua válido).
+function mergeDefensivo(parsed) {
+  const base = initialState();
+  const st = parsed && Array.isArray(parsed.manifestations) ? { ...base, ...parsed } : base;
+  // Defensive: any array field missing/corrupted in the stored blob falls back to the default.
+  ['manifestations', 'favoriteAffirmations', 'affirmationDates', 'savedVisions', 'visionPlays'].forEach(
+    (key) => {
+      if (!Array.isArray(st[key])) st[key] = base[key];
+    }
+  );
+  // Item importado/antigo sem sessions derrubaria derived e setPractice —
+  // normalizar aqui protege load e import de uma vez.
+  st.manifestations = st.manifestations.map((m) =>
+    m && Array.isArray(m.sessions) ? m : { ...(m || {}), sessions: [] }
+  );
+  if (!st.lang) st.lang = detectLang();
+  if (st.mood === undefined) st.mood = null; // clima da Jornada sobrevive ao reload
+  return st;
+}
+
 export function AppProvider({ children }) {
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,16 +39,7 @@ export function AppProvider({ children }) {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        const base = initialState();
-        const st = parsed && Array.isArray(parsed.manifestations) ? { ...base, ...parsed } : base;
-        // Defensive: any array field missing/corrupted in the stored blob falls back to the default.
-        ['manifestations', 'favoriteAffirmations', 'affirmationDates', 'savedVisions', 'visionPlays'].forEach(
-          (key) => {
-            if (!Array.isArray(st[key])) st[key] = base[key];
-          }
-        );
-        if (!st.lang) st.lang = detectLang();
-        if (alive) setState(st);
+        if (alive) setState(mergeDefensivo(parsed));
       } catch (e) {
         if (alive) setState(initialState());
       } finally {
@@ -77,23 +89,35 @@ export function AppProvider({ children }) {
     return id;
   }, []);
 
-  const logSession = useCallback((id) => {
-    const day = todayISO();
+  // Regra ÚNICA de marcar/desmarcar prática por data (sessions = lista de ISO).
+  // `on`: true marca, false desmarca, undefined alterna. Não confirma nada —
+  // quem chama confirma (confirmAsync) ANTES de desfazer. Ao cruzar goalDays
+  // pela 1ª vez grava completedAt (e não apaga se desmarcar depois — honesto).
+  const setPractice = useCallback((id, day, on) => {
     setState((s) => ({
       ...s,
-      manifestations: s.manifestations.map((m) =>
-        m.id === id && !m.sessions.includes(day) ? { ...m, sessions: [...m.sessions, day] } : m
-      ),
+      manifestations: s.manifestations.map((m) => {
+        if (m.id !== id) return m;
+        const marcado = m.sessions.includes(day);
+        const quer = on === undefined ? !marcado : on;
+        if (quer === marcado) return m;
+        const sessions = quer ? [...m.sessions, day] : m.sessions.filter((d) => d !== day);
+        const next = { ...m, sessions };
+        if (quer && !m.completedAt && sessions.length >= m.goalDays) next.completedAt = todayISO();
+        return next;
+      }),
     }));
   }, []);
 
-  const undoSession = useCallback((id) => {
-    const day = todayISO();
+  const togglePractice = useCallback((id, dateIso) => setPractice(id, dateIso || todayISO()), [setPractice]);
+  // Atalhos de hoje: logSession só marca (2ª prática no dia não desmarca), undo só desmarca.
+  const logSession = useCallback((id) => setPractice(id, todayISO(), true), [setPractice]);
+  const undoSession = useCallback((id) => setPractice(id, todayISO(), false), [setPractice]);
+
+  const updateManifestation = useCallback((id, patch) => {
     setState((s) => ({
       ...s,
-      manifestations: s.manifestations.map((m) =>
-        m.id === id ? { ...m, sessions: m.sessions.filter((d) => d !== day) } : m
-      ),
+      manifestations: s.manifestations.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     }));
   }, []);
 
@@ -138,7 +162,32 @@ export function AppProvider({ children }) {
   }, []);
 
   const resetAll = useCallback(() => {
-    setState(initialState());
+    // Reset apaga os dados, não as preferências: idioma e clima ficam
+    // (senão quem tem celular em inglês volta pro inglês do detectLang).
+    setState((s) => ({ ...initialState(), lang: s.lang, mood: s.mood }));
+  }, []);
+
+  // Clima escolhido na Jornada — persiste junto com o resto do estado.
+  const setMood = useCallback((m) => {
+    setState((s) => ({ ...s, mood: m }));
+  }, []);
+
+  const exportStateJson = useCallback(() => JSON.stringify(state || initialState()), [state]);
+
+  // Import valida (JSON parseável + shape mínimo) e passa pelo mesmo merge
+  // defensivo do load. `erro` é código de máquina — a tela traduz via i18n.
+  const importStateJson = useCallback((str) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(str);
+    } catch (e) {
+      return { ok: false, erro: 'invalid_json' };
+    }
+    if (!parsed || !Array.isArray(parsed.manifestations)) {
+      return { ok: false, erro: 'invalid_shape' };
+    }
+    setState(mergeDefensivo(parsed));
+    return { ok: true, erro: null };
   }, []);
 
   // ── Onboarding ────────────────────────────────────────────────────────────
@@ -183,6 +232,8 @@ export function AppProvider({ children }) {
       loading,
       derived,
       addManifestation,
+      updateManifestation,
+      togglePractice,
       logSession,
       undoSession,
       removeManifestation,
@@ -191,7 +242,10 @@ export function AppProvider({ children }) {
       toggleSavedVision,
       logVisionPlay,
       setName,
+      setMood,
       resetAll,
+      exportStateJson,
+      importStateJson,
       saveProfile,
       completeOnboarding,
       resetOnboarding,
@@ -202,6 +256,8 @@ export function AppProvider({ children }) {
       loading,
       derived,
       addManifestation,
+      updateManifestation,
+      togglePractice,
       logSession,
       undoSession,
       removeManifestation,
@@ -210,7 +266,10 @@ export function AppProvider({ children }) {
       toggleSavedVision,
       logVisionPlay,
       setName,
+      setMood,
       resetAll,
+      exportStateJson,
+      importStateJson,
       saveProfile,
       completeOnboarding,
       resetOnboarding,

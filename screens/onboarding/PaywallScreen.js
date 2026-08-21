@@ -1,61 +1,41 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { OnbScreen } from './onboardingUI';
 import { APP_NAME, ONB, SERIF } from '../../constants/brand';
 import { UI } from '../../constants/i18n';
+import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
 
-const DEADLINE_KEY = '@celeste_paywall_deadline';
+// Paywall placeholder — ligar react-native-purchases (RevenueCat) aqui depois.
+// Sem billing ligado: o CTA destrava o app; "Restaurar" só avisa que assinatura
+// entra em breve (fingir restauração de compra seria mentira).
 
-function fmt(total) {
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+const S = {
+  // Chamada aponta pra manifestação REAL criada no onboarding — nada de
+  // "histórias que expiram" (não existem) nem contagem regressiva inventada.
+  ready: {
+    en: 'Your first manifestation is ready — continue with it.',
+    pt: 'Sua primeira manifestação está pronta — continue com ela.',
+  },
+  // Preço legível COLADO no CTA, mesmo peso visual da palavra "grátis".
+  price: { en: 'Free for 7 days, then R$ 49,90/week', pt: 'Grátis por 7 dias, depois R$ 49,90/semana' },
+  // 49,90 × 52 semanas ÷ 12 meses = 216,23 — aritmética, não estimativa.
+  priceMonth: { en: 'that works out to R$ 216,23 per month', pt: 'isso dá R$ 216,23 por mês' },
+  restoreNote: {
+    en: 'Subscriptions are coming soon — there is nothing to restore yet.',
+    pt: 'Assinatura entra em breve — ainda não há nada para restaurar.',
+  },
+};
 
-// Placeholder paywall — wire react-native-purchases (RevenueCat) here later.
-// "Try for free" and "Restore" both unlock the app for now.
 export default function PaywallScreen() {
   const { state, completeOnboarding } = useApp();
+  const { t } = useT();
   const T = UI[(state && state.lang) || 'en'];
-  const [left, setLeft] = useState(null);
-  const timer = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const start = async () => {
-      let deadline = null;
-      try {
-        const raw = await AsyncStorage.getItem(DEADLINE_KEY);
-        const parsed = raw ? parseInt(raw, 10) : NaN;
-        if (Number.isFinite(parsed)) deadline = parsed;
-      } catch (e) {
-        // ignore — fall through to a fresh deadline
-      }
-      if (!deadline) {
-        deadline = Date.now() + 3 * 3600 * 1000;
-        AsyncStorage.setItem(DEADLINE_KEY, String(deadline)).catch(() => {});
-      }
-      if (cancelled) return;
-      const tick = () => {
-        const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-        setLeft(remaining);
-        if (remaining <= 0) clearInterval(timer.current);
-      };
-      tick();
-      timer.current = setInterval(tick, 1000);
-    };
-    start();
-    return () => {
-      cancelled = true;
-      clearInterval(timer.current);
-    };
-  }, []);
+  const [restoreMsg, setRestoreMsg] = useState(false);
 
   const p = (s) => s.replace(/\{app\}/g, APP_NAME);
+  const primeira = state && state.manifestations && state.manifestations[0];
 
   return (
     <OnbScreen>
@@ -76,21 +56,19 @@ export default function PaywallScreen() {
             elevation: 6,
           }}
         >
-          {left !== null && left > 0 ? (
+          {primeira ? (
             <View
               style={{
                 backgroundColor: ONB.badgeBg,
-                borderRadius: 999,
+                borderRadius: 18,
                 paddingVertical: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
+                paddingHorizontal: 16,
                 marginBottom: 24,
               }}
             >
-              <Text style={{ fontSize: 15, color: ONB.badgeText }}>{T.pwExpire}</Text>
-              <Text style={{ fontSize: 16, color: ONB.badgeText, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
-                {fmt(left)}
+              <Text style={{ fontSize: 15, lineHeight: 21, color: ONB.badgeText }}>{t(S.ready)}</Text>
+              <Text style={{ fontSize: 15, color: ONB.badgeText, fontWeight: '700', marginTop: 4 }} numberOfLines={2}>
+                “{primeira.title}”
               </Text>
             </View>
           ) : null}
@@ -121,15 +99,32 @@ export default function PaywallScreen() {
             <Ionicons name="arrow-forward" size={20} color={ONB.ctaInk} style={{ marginLeft: 10 }} />
           </Pressable>
 
-          <Text style={{ fontSize: 14, color: ONB.surfaceInk, textAlign: 'center', marginTop: 14 }}>{T.pwPrice}</Text>
+          {/* Preço no mesmo peso visual do "grátis" do botão — ninguém assina sem ver */}
+          <Text style={{ fontSize: 17, fontWeight: '600', color: ONB.surfaceInk, textAlign: 'center', marginTop: 12 }}>
+            {t(S.price)}
+          </Text>
+          <Text style={{ fontSize: 15, color: ONB.surfaceSoft, textAlign: 'center', marginTop: 4 }}>
+            {t(S.priceMonth)}
+          </Text>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 28, marginTop: 22 }}>
             <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwPrivacy}</Text>
             <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwTerms}</Text>
-            <Pressable onPress={completeOnboarding}>
+            <Pressable
+              onPress={() => setRestoreMsg(true)}
+              accessibilityRole="button"
+              // hitSlop não aumenta área de toque no RN-web — dimensão real
+              style={{ minHeight: 32, justifyContent: 'center' }}
+            >
               <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwRestore}</Text>
             </Pressable>
           </View>
+
+          {restoreMsg ? (
+            <Text style={{ fontSize: 14, lineHeight: 20, color: ONB.surfaceSoft, textAlign: 'center', marginTop: 14 }}>
+              {t(S.restoreNote)}
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
     </OnbScreen>

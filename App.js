@@ -24,7 +24,10 @@ import ReferralScreen from './screens/onboarding/ReferralScreen';
 import NotificationsScreen from './screens/onboarding/NotificationsScreen';
 import GrowScreen from './screens/onboarding/GrowScreen';
 import ChatOnboardingScreen from './screens/onboarding/ChatOnboardingScreen';
+import RevealScreen from './screens/onboarding/RevealScreen';
 import PaywallScreen from './screens/onboarding/PaywallScreen';
+
+import { APP_URL } from './constants/brand';
 
 // O Google Tradutor do Chrome reescreve os nós de texto do DOM e quebra o React
 // no meio da digitação (texto trocado/cortado, chips e inputs que nunca chegam
@@ -136,12 +139,50 @@ function RootNav() {
           <Root.Screen name="Notifications" component={NotificationsScreen} />
           <Root.Screen name="Grow" component={GrowScreen} />
           <Root.Screen name="ChatOnboarding" component={ChatOnboardingScreen} />
+          <Root.Screen name="Reveal" component={RevealScreen} />
           <Root.Screen name="Paywall" component={PaywallScreen} />
         </>
       )}
     </Root.Navigator>
   );
 }
+
+// Sem linking, a URL nunca muda e o voltar do navegador sai do app inteiro
+// (history.back() vai pro site anterior). Com um path por tela, o voltar anda
+// tela a tela e F5 recarrega na mesma tela — o fallback SPA do Vercel já manda
+// qualquer path pro index.html. Paths são chaves técnicas, não passam por i18n.
+const linking = {
+  prefixes: [APP_URL],
+  config: {
+    screens: {
+      Main: {
+        screens: {
+          Manifest: {
+            screens: {
+              HomeMain: '',
+              Manifestation: 'm/:id',
+            },
+          },
+          Visions: {
+            screens: {
+              VisionsMain: 'visoes',
+              VisionPlayer: 'visao/:visionId',
+            },
+          },
+          Affirm: 'afirmacoes',
+          Journey: 'jornada',
+        },
+      },
+      Welcome: 'bem-vindo',
+      Referral: 'convite',
+      Notifications: 'notificacoes',
+      Grow: 'crescer',
+      ChatOnboarding: 'conversa',
+      Reveal: 'revelacao',
+      Paywall: 'oferta',
+    },
+  },
+};
 
 export default function App() {
   return (
@@ -154,7 +195,7 @@ export default function App() {
         >
           <AppProvider>
             <StatusBar style="dark" />
-            <NavigationContainer>
+            <NavigationContainer linking={linking}>
               <RootNav />
             </NavigationContainer>
           </AppProvider>

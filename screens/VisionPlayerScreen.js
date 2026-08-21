@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -10,8 +18,8 @@ import { useApp } from '../context/AppContext';
 import { VISIONS, categoryMeta, localized } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
-import { speak, stopSpeaking, isSpeechAvailable, splitScript, playId, hasNeuralAudio } from '../utils/speech';
-import { audioDur } from '../utils/audioBank';
+import { speak, stopSpeaking, isSpeechAvailable, splitScript, hasNeuralAudio } from '../utils/speech';
+import { audioDur, audioUrl } from '../utils/audioBank';
 import { accentAt, alpha } from '../utils/colors';
 import { formatTime } from '../utils/date';
 
@@ -31,9 +39,17 @@ const S = {
   endLabel: { en: 'Complete', pt: 'Completa' },
   play: { en: 'Play narration', pt: 'Ouvir a narração' },
   resume: { en: 'Resume narration', pt: 'Continuar a narração' },
-  // O arquivo neural não sabe pausar daqui: o botão para e a próxima escuta
-  // começa do início. O rótulo diz isso em vez de prometer um pause.
+  // Parar guarda a posição real do MP3: a volta oferece "Continuar de 0:12".
   stop: { en: 'Stop narration', pt: 'Parar a narração' },
+  resumeFrom: { en: 'Continue from {time}', pt: 'Continuar de {time}' },
+  soundTip: {
+    en: 'Sound on? On iPhone, the silent switch can mute the narration — headphones help.',
+    pt: 'Som ligado? No iPhone, a chavinha de silencioso corta a narração — fone ajuda.',
+  },
+  checkVolume: {
+    en: "The narration hasn't moved yet — check the volume and press play.",
+    pt: 'A narração ainda não andou — confira o volume e toque no play.',
+  },
   prev: { en: 'Previous sentence', pt: 'Frase anterior' },
   next: { en: 'Next sentence', pt: 'Próxima frase' },
   finish: { en: "I've finished this vision", pt: 'Terminei esta visão' },
@@ -82,9 +98,17 @@ function localize(item, lang) {
   return out;
 }
 
+// Posição de retomada por visão/idioma. Vive na memória da sessão: sair da
+// tela no meio e voltar oferece "Continuar de 0:12" em vez de zerar a escuta.
+const RESUME = new Map();
+
 export default function VisionPlayerScreen() {
   const th = useTheme();
   const { t, lang } = useT();
+  const { height: winH } = useWindowDimensions();
+  // Palco compacto no celular: com 320px o play caía atrás da barra de abas
+  // (y=581 numa área visível de 580) enquanto o texto pedia "toque para ouvir".
+  const compact = winH > 0 && winH < 760;
   const navigation = useNavigation();
   const route = useRoute();
   const { state, toggleSavedVision, logVisionPlay } = useApp();
@@ -122,6 +146,10 @@ export default function VisionPlayerScreen() {
   const [mode, setMode] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [failed, setFailed] = useState(false);
+  // Posição guardada da última escuta desta visão — alimenta "Continuar de X".
+  const [resumeAt, setResumeAt] = useState(0);
+  // "Terminei" sem o MP3 ter andado não vira conclusão: vira este convite.
+  const [volumeNote, setVolumeNote] = useState(false);
 
   // Enquanto o arquivo único for o caminho, não existe "frase atual": some com
   // os botões de frase e com o rótulo "Frase X de Y". Sem voz do aparelho eles
@@ -131,6 +159,10 @@ export default function VisionPlayerScreen() {
 
   const linesRef = useRef(lines);
   const speakLineRef = useRef(null);
+  // Elemento de áudio do MP3, gerenciado AQUI (e não em utils/speech) porque a
+  // retomada, o registro em ~70% e a conclusão honesta leem o currentTime real.
+  const audioRef = useRef(null);
+  const keyRef = useRef('');
   // Cada fala nasce com um token. Quem para/pula incrementa o token, então o
   // onDone da fala antiga (o cancel() do navegador dispara "end") é ignorado e
   // nunca empurra o roteiro sozinho.
@@ -141,21 +173,41 @@ export default function VisionPlayerScreen() {
     linesRef.current = lines;
   }, [lines]);
 
+  // Pausa o MP3 e, se pedido, guarda onde parou (só se andou de verdade e não
+  // estava a segundos do fim). Devolve a posição em segundos. Só mexe em refs.
+  const haltNeural = useCallback((save) => {
+    const el = audioRef.current;
+    if (!el) return 0;
+    audioRef.current = null;
+    let pos = 0;
+    let dur = 0;
+    try {
+      el.pause();
+      pos = el.currentTime || 0;
+      dur = el.duration || 0;
+      el.onended = null;
+      el.onerror = null;
+    } catch (e) {}
+    if (save && pos > 1 && (!(dur > 0) || pos < dur - 2)) RESUME.set(keyRef.current, pos);
+    return pos;
+  }, []);
+
   const stopVoice = useCallback(() => {
     sessionRef.current += 1;
     stopSpeaking();
+    // Parar o MP3 guarda a posição real: a volta oferece "Continuar de 0:12".
+    haltNeural(true);
+    setResumeAt(RESUME.get(keyRef.current) || 0);
     setPlaying(false);
-    // Parar o MP3 volta ao começo — a tela mostra isso em vez de fingir que
-    // guardou o ponto da narração.
-    if (mode === 'neural') {
-      setElapsed(0);
-      setStarted(false);
-    }
-  }, [mode]);
+  }, [haltNeural]);
 
   const finish = useCallback(() => {
     sessionRef.current += 1;
     stopSpeaking();
+    haltNeural(false);
+    RESUME.delete(keyRef.current);
+    setResumeAt(0);
+    setVolumeNote(false);
     setPlaying(false);
     setStarted(true);
     setCompleted(true);
@@ -165,7 +217,7 @@ export default function VisionPlayerScreen() {
       logVisionPlay(vision.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-  }, [vision.id, logVisionPlay]);
+  }, [vision.id, logVisionPlay, haltNeural]);
 
   // Caminho da voz do aparelho: frase a frase, com progresso real por frase.
   const speakLine = useCallback(
@@ -216,28 +268,36 @@ export default function VisionPlayerScreen() {
     speakLineRef.current = speakLine;
   }, [speakLine]);
 
-  // Caminho do arquivo neural: UM MP3 com o roteiro inteiro. Se ele não tocar
-  // (404, autoplay barrado, iPhone no silencioso), cai na voz do aparelho.
-  const startNeural = useCallback(() => {
-    const token = sessionRef.current + 1;
-    sessionRef.current = token;
-    setMode('neural');
-    setIdx(0);
-    setElapsed(0);
-    setStarted(true);
-    setCompleted(false);
-    setFailed(false);
-    setPlaying(true);
+  // Caminho do arquivo neural: UM MP3 com o roteiro inteiro, num elemento
+  // próprio — é o currentTime dele que dá retomada, registro em ~70% e
+  // conclusão honesta. Se não tocar (404, autoplay barrado), cai na voz do
+  // aparelho.
+  const startNeural = useCallback(
+    (fromSec) => {
+      const url = audioUrl(vision.id, lang);
+      if (!url) return false;
+      const token = sessionRef.current + 1;
+      sessionRef.current = token;
+      stopSpeaking();
+      haltNeural(false);
+      let el;
+      try {
+        el = new Audio(url);
+      } catch (e) {
+        return false;
+      }
+      setMode('neural');
+      setIdx(0);
+      setElapsed(Math.floor(fromSec) || 0);
+      setStarted(true);
+      setCompleted(false);
+      setFailed(false);
+      setVolumeNote(false);
+      setPlaying(true);
 
-    const tocou = playId(vision.id, {
-      lang,
-      onDone: () => {
+      const falhou = () => {
         if (sessionRef.current !== token) return;
-        if (neuralDur > 0) setElapsed(neuralDur);
-        finish();
-      },
-      onError: () => {
-        if (sessionRef.current !== token) return;
+        haltNeural(false);
         setPlaying(false);
         setMode('voice');
         if (speechOk && linesRef.current.length && speakLineRef.current) {
@@ -246,20 +306,42 @@ export default function VisionPlayerScreen() {
           setStarted(false);
           setFailed(true);
         }
-      },
-    });
-    if (!tocou) {
-      setPlaying(false);
-      setStarted(false);
-      setMode('voice');
-    }
-    return tocou;
-  }, [vision.id, lang, finish, speechOk, neuralDur]);
+      };
+
+      el.preload = 'auto';
+      el.onended = () => {
+        if (sessionRef.current !== token) return;
+        if (neuralDur > 0) setElapsed(neuralDur);
+        finish();
+      };
+      el.onerror = falhou;
+      // Retomada: o navegador só aceita o seek com os metadados carregados.
+      if (fromSec > 1) {
+        const seek = () => {
+          try {
+            el.currentTime = fromSec;
+          } catch (e) {}
+        };
+        if (el.readyState >= 1) seek();
+        else el.addEventListener('loadedmetadata', seek, { once: true });
+      }
+      audioRef.current = el;
+      // play() DIRETO no gesto — qualquer await antes e o Safari corta o áudio.
+      const p = el.play();
+      if (p && p.catch) p.catch(falhou);
+      return true;
+    },
+    [vision.id, lang, finish, speechOk, neuralDur, haltNeural]
+  );
 
   // Trocou de visão ou de idioma: silêncio e roteiro do zero (as frases mudam).
+  // O MP3 antigo é guardado (chave antiga ainda em keyRef) antes de trocar.
   useEffect(() => {
     sessionRef.current += 1;
     stopSpeaking();
+    haltNeural(true);
+    keyRef.current = `${vision.id}:${lang}`;
+    setResumeAt(RESUME.get(keyRef.current) || 0);
     setPlaying(false);
     setIdx(0);
     setStarted(false);
@@ -267,31 +349,42 @@ export default function VisionPlayerScreen() {
     setMode(null);
     setElapsed(0);
     setFailed(false);
+    setVolumeNote(false);
     logged.current = false;
-  }, [vision.id, lang]);
+  }, [vision.id, lang, haltNeural]);
 
-  // Relógio da locução neural: o MP3 não avisa o progresso daqui, então a barra
-  // anda com um tick de 1s até a duração real do arquivo.
+  // Relógio da locução neural: lê o currentTime REAL do elemento — é ele que
+  // move a barra, permite retomar e registra a escuta a partir de ~70%.
   useEffect(() => {
     if (!playing || mode !== 'neural') return undefined;
     const tick = setInterval(() => {
-      setElapsed((s) => (neuralDur > 0 ? Math.min(neuralDur, s + 1) : s + 1));
+      const el = audioRef.current;
+      if (!el) return;
+      const pos = el.currentTime || 0;
+      setElapsed(neuralDur > 0 ? Math.min(neuralDur, Math.floor(pos)) : Math.floor(pos));
+      // Quem ouviu ~70% viveu a cena: registra aqui, não só no fim do arquivo.
+      if (!logged.current && neuralDur > 0 && pos >= neuralDur * 0.7) {
+        logged.current = true;
+        logVisionPlay(vision.id);
+      }
     }, 1000);
     return () => clearInterval(tick);
-  }, [playing, mode, neuralDur]);
+  }, [playing, mode, neuralDur, vision.id, logVisionPlay]);
 
   // Saiu da tela (aba, back, outra rota): a voz para junto.
   useEffect(() => {
     if (!isFocused) stopVoice();
   }, [isFocused, stopVoice]);
 
-  // Unmount: nunca deixar voz tocando com a tela fechada.
+  // Unmount: nunca deixar voz tocando com a tela fechada — e a posição do MP3
+  // fica guardada para a próxima visita oferecer "Continuar de 0:12".
   useEffect(
     () => () => {
       sessionRef.current += 1;
       stopSpeaking();
+      haltNeural(true);
     },
-    []
+    [haltNeural]
   );
 
   // Progresso: no MP3 é tempo real (tick x duração do arquivo); na voz do
@@ -338,7 +431,7 @@ export default function VisionPlayerScreen() {
     // Depois de cair na voz do aparelho, o arquivo só é tentado de novo quando
     // não existe voz nenhuma — aí uma nova tentativa é a única saída.
     if (neuralOk && (mode !== 'voice' || !speechOk)) {
-      if (startNeural()) return;
+      if (startNeural(resumeAt)) return;
     }
     if (speechOk && total > 0) {
       speakLine(from);
@@ -378,12 +471,30 @@ export default function VisionPlayerScreen() {
   };
 
   const finishNow = () => {
+    // Conclusão honesta: no caminho do MP3, "Terminei" só vale se o áudio
+    // ANDOU (currentTime > 1). Senão, convite a checar o volume — nada é
+    // declarado nem registrado. Na voz do aparelho segue como sempre foi.
+    if (usingNeural) {
+      const el = audioRef.current;
+      const pos = (el && el.currentTime) || elapsed || resumeAt || 0;
+      if (!(pos > 1)) {
+        setVolumeNote(true);
+        return;
+      }
+    }
     finish();
   };
 
+  // Voltou com posição guardada: o convite "Continuar de 0:12" fica visível
+  // no lugar do "toque para começar".
+  const showResume = !playing && !completed && usingNeural && resumeAt > 1;
+  const leftLabelFinal = showResume
+    ? t(S.resumeFrom, { time: formatTime(Math.floor(resumeAt)) })
+    : leftLabel;
+
   const mainLabel = playing
     ? t(S.stop)
-    : started && !completed && !usingNeural
+    : (started && !completed) || showResume
     ? t(S.resume)
     : t(S.play);
 
@@ -416,12 +527,16 @@ export default function VisionPlayerScreen() {
       <Header title={vision.title} subtitle={t(S.subtitle, { category: catLabel })} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <GradientCover accent={vision.accent} radius={26} style={styles.stage}>
+        <GradientCover
+          accent={vision.accent}
+          radius={26}
+          style={[styles.stage, compact && styles.stageCompact]}
+        >
           <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
             <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
             <Text style={styles.pillText}>{catLabel}</Text>
           </View>
-          <Text style={styles.caption}>{vision.caption}</Text>
+          <Text style={[styles.caption, compact && styles.captionCompact]}>{vision.caption}</Text>
           {canNarrate && showTrack ? (
             <View style={styles.waveRow}>
               {Array.from({ length: 22 }).map((_, i) => {
@@ -452,7 +567,7 @@ export default function VisionPlayerScreen() {
               </View>
             ) : null}
             <View style={styles.timeRow}>
-              <Text style={[styles.time, { color: th.textMuted }]}>{leftLabel}</Text>
+              <Text style={[styles.time, { color: th.textMuted }]}>{leftLabelFinal}</Text>
               <Text style={[styles.time, { color: th.textMuted }]}>{rightLabel}</Text>
             </View>
 
@@ -489,6 +604,12 @@ export default function VisionPlayerScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
+
+            {/* Antes do primeiro play da sessão: a chavinha de silencioso do
+                iPhone corta o áudio sem nenhum erro — a linha avisa antes. */}
+            {!started ? (
+              <Text style={[styles.tip, { color: th.textMuted }]}>{t(S.soundTip)}</Text>
+            ) : null}
           </>
         ) : null}
 
@@ -496,6 +617,13 @@ export default function VisionPlayerScreen() {
           <View style={[styles.noteBox, { backgroundColor: alpha(color, 0.1) }]}>
             <Ionicons name="alert-circle-outline" size={18} color={color} />
             <Text style={[styles.noteText, { color: th.textMuted }]}>{t(S.audioFail)}</Text>
+          </View>
+        ) : null}
+
+        {volumeNote ? (
+          <View style={[styles.noteBox, { backgroundColor: alpha(color, 0.1) }]}>
+            <Ionicons name="volume-mute-outline" size={18} color={color} />
+            <Text style={[styles.noteText, { color: th.textMuted }]}>{t(S.checkVolume)}</Text>
           </View>
         ) : null}
 
@@ -558,6 +686,8 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
   navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   stage: { height: 320, padding: 20, justifyContent: 'space-between' },
+  // Celular (390x664): palco menor para play + controles caberem sem rolagem.
+  stageCompact: { height: 200, padding: 16 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -574,6 +704,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontStyle: 'italic',
   },
+  captionCompact: { fontSize: 19, lineHeight: 26 },
+  tip: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 14 },
   waveRow: { flexDirection: 'row', alignItems: 'flex-end', height: 36 },
   wave: { width: 4, borderRadius: 2, marginRight: 5 },
   trackWrap: { height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 22 },

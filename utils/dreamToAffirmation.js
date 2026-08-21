@@ -27,9 +27,38 @@ function hash(str) {
 }
 const pick = (arr, seed) => arr[hash(seed) % arr.length];
 
-// Tira o artigo inicial para a frase encaixar ("um carro novo" → "carro novo")
-function limpa(desejo) {
-  return norm(desejo).replace(/^(um|uma|uns|umas|o|a|os|as|my|a |an |the )\s+/i, '');
+// Tira o "eu quero (manifestar)", o verbo no infinitivo e o artigo iniciais
+// para a frase encaixar nos templates ("encontrar um amor de verdade" →
+// "amor de verdade"). Sem isso saía "Eu recebo encontrar um amor…".
+// Verbo seguido de preposição fica inteiro em PT ("ganhar na loteria") e cai
+// junto com ela em EN ("be at peace" → "peace"). Lookahead, nunca lookbehind
+// (iOS < 16.4 nem parseia lookbehind e o app abre em branco).
+// Caem: verbos de aquisição — tirar não muda o sentido ('ter paz' → 'paz').
+const VERBOS_CAEM_PT = 'encontrar|ter|conseguir|receber|ganhar|arrumar|achar|realizar|atrair|construir|criar|comprar|manifestar|alcançar|abrir|montar';
+// Ficam inteiros: tirar INVERTERIA o sentido ('perder peso' → 'peso', 'quitar as
+// dívidas' → 'dívidas') ou deixaria adjetivo solto ('ser feliz' → 'feliz').
+const VERBOS_FICAM_PT = 'ser|estar|ficar|viver|virar|quitar|pagar|sair|largar|parar|perder|deixar|superar|vencer|emagrecer|casar|passar|mudar';
+const VERBOS_EN = 'find|have|get|be|become|receive|earn|attract|build|create|buy|win|achieve|manifest';
+const QUERO_PT = /^(eu\s+)?(quero|desejo|gostaria\s+de|vou)\s+(manifestar\s+)?/i;
+const QUERO_EN = /^i\s+(want|wish|would\s+like)\s+(to\s+)?/i;
+const VERBO_PT = new RegExp('^(' + VERBOS_CAEM_PT + ')\\s+(?!(em|na|no|nas|nos|de|do|da|das|dos|com|para|pra)\\b)', 'i');
+const VERBO_PREP_EN = new RegExp('^(to\\s+)?(' + VERBOS_EN + ')\\s+(in|on|at|with|for|of)\\s+', 'i');
+// ponytail: "be happy" em EN ainda sobra "have happy" — adjetivo pós-verbo
+// pede template próprio; mexer quando o público EN existir de verdade.
+const VERBO_EN = new RegExp('^(to\\s+)?(' + VERBOS_EN + ')\\s+', 'i');
+// O que sobrar começando em verbo (PT) pede template que aceite verbo.
+const COMECA_VERBO_PT = new RegExp('^(' + VERBOS_CAEM_PT + '|' + VERBOS_FICAM_PT + ')\\b', 'i');
+function limpa(desejo, L) {
+  let d = norm(desejo).replace(L === 'pt' ? QUERO_PT : QUERO_EN, '');
+  // verbos encadeados ("conseguir comprar uma casa") caem um por vez
+  let antes;
+  do {
+    antes = d;
+    d = L === 'pt' ? d.replace(VERBO_PT, '') : d.replace(VERBO_PREP_EN, '').replace(VERBO_EN, '');
+  } while (d !== antes);
+  // Artigo só cai em PT ("o carro novo" → "carro novo"); em inglês ele é
+  // obrigatório — "have lottery" sem "the" quebra a frase.
+  return L === 'pt' ? d.replace(/^(um|uma|uns|umas|o|a|os|as)\s+/i, '') : d;
 }
 
 const AFIRMACOES = {
@@ -110,11 +139,16 @@ function casaEmIdioma(valor, L) {
  */
 export function dreamToAffirmation(desejo, perfil = {}, lang = 'pt') {
   const L = lang === 'pt' ? 'pt' : 'en';
-  const d = limpa(desejo) || (L === 'pt' ? 'a vida que eu quero' : 'the life I want');
+  const d = limpa(desejo, L) || (L === 'pt' ? 'a vida que eu quero' : 'the life I want');
   const seed = `${d}|${L}`;
   const usou = [];
 
-  const affirmation = pick(AFIRMACOES[L], seed)(d);
+  // Frase verbal ("ganhar na loteria") não encaixa em "a pessoa que tem X" —
+  // sorteia só entre os templates que aceitam verbo.
+  const ehVerboPT = L === 'pt' && COMECA_VERBO_PT.test(d);
+  const affirmation = (ehVerboPT
+    ? pick([AFIRMACOES.pt[1], AFIRMACOES.pt[3]], seed)
+    : pick(AFIRMACOES[L], seed))(d);
 
   // ── cena montada com o que a pessoa contou ────────────────────────────────
   const partes = [];
@@ -187,8 +221,11 @@ export function dreamToAffirmation(desejo, perfil = {}, lang = 'pt') {
 
   partes.push(pick(FECHOS[L], seed + 'f'));
 
-  const intention =
-    L === 'pt' ? `Viver ${d} como algo normal.` : `Living ${d} as something ordinary.`;
+  const intention = ehVerboPT
+    ? `${cap(d)} — e achar isso normal.`
+    : L === 'pt'
+    ? `Viver ${d} como algo normal.`
+    : `Living ${d} as something ordinary.`;
 
   return { affirmation, story: partes.join(' '), intention, usouDoPerfil: usou };
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import { Screen, Header, Card, EmptyState } from '../ui/kit';
@@ -21,6 +21,7 @@ import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { formatTime } from '../utils/date';
 import { audioDur } from '../utils/audioBank';
+import { playId, stopSpeaking, hasNeuralAudio } from '../utils/speech';
 
 import GradientCover from '../components/GradientCover';
 import SectionHeading from '../components/SectionHeading';
@@ -48,6 +49,8 @@ const S = {
     pt: 'Seu histórico de escuta vai aparecer aqui.',
   },
   replay: { en: 'Play again', pt: 'Ouvir de novo' },
+  playNow: { en: 'Play this vision now', pt: 'Tocar esta visão agora' },
+  stopNow: { en: 'Stop the narration', pt: 'Parar a narração' },
 };
 
 // Rótulo das categorias (a chave em inglês continua sendo o identificador do
@@ -100,9 +103,22 @@ export default function VisionsScreen() {
   const { t, lang } = useT();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  const { state, loading, toggleSavedVision } = useApp();
+  const { state, loading, toggleSavedVision, logVisionPlay } = useApp();
   const [index, setIndex] = useState(0);
+  // Visão tocando AQUI pelo círculo do card (null = nada tocando nesta tela).
+  const [playingId, setPlayingId] = useState(null);
   const scrollRef = useRef(null);
+  const isFocused = useIsFocused();
+
+  // A escuta do card nunca sobrevive à tela: para ao perder o foco e no
+  // desmonte.
+  useEffect(() => {
+    if (!isFocused && playingId) {
+      stopSpeaking();
+      setPlayingId(null);
+    }
+  }, [isFocused, playingId]);
+  useEffect(() => () => stopSpeaking(), []);
 
   const CARD_W = width - 72;
 
@@ -150,6 +166,35 @@ export default function VisionsScreen() {
       setIndex(i);
       Haptics.selectionAsync().catch(() => {});
     }
+  };
+
+  // O círculo de play do card TOCA de verdade — antes ele só navegava e o
+  // primeiro play mentia (o de verdade ficava atrás da barra de abas, no
+  // player). O MP3 começa DIRETO no gesto (Safari corta com await antes);
+  // sem MP3 neste aparelho, abre o player, onde vive a voz do aparelho.
+  const onPlayCircle = (v) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (playingId === v.id) {
+      stopSpeaking();
+      setPlayingId(null);
+      return;
+    }
+    const tocou =
+      hasNeuralAudio(v.id, lang) &&
+      playId(v.id, {
+        lang,
+        onDone: () => {
+          setPlayingId(null);
+          // Ouviu o arquivo inteiro daqui: escuta real, entra no histórico.
+          logVisionPlay(v.id);
+        },
+        onError: () => setPlayingId(null),
+      });
+    if (tocou) {
+      setPlayingId(v.id);
+      return;
+    }
+    navigation.navigate('VisionPlayer', { visionId: v.id });
   };
 
   return (
@@ -211,9 +256,19 @@ export default function VisionsScreen() {
                   </View>
 
                   <View style={styles.slideBottom}>
-                    <View style={[styles.playCircle, { backgroundColor: alpha('#FFFFFF', 0.92) }]}>
-                      <Ionicons name="play" size={20} color={accentAt(th, v.accent)} />
-                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => onPlayCircle(v)}
+                      accessibilityRole="button"
+                      accessibilityLabel={playingId === v.id ? t(S.stopNow) : t(S.playNow)}
+                      style={[styles.playCircle, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
+                    >
+                      <Ionicons
+                        name={playingId === v.id ? 'stop' : 'play'}
+                        size={20}
+                        color={accentAt(th, v.accent)}
+                      />
+                    </TouchableOpacity>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text numberOfLines={1} style={styles.slideTitle}>
                         {v.title}

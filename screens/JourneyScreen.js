@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -75,6 +76,7 @@ const S = {
   profile: { en: 'Your profile', pt: 'Seu perfil' },
   save: { en: 'Save', pt: 'Salvar' },
   edit: { en: 'Edit', pt: 'Editar' },
+  language: { en: 'Language', pt: 'Idioma' },
 
   mood: { en: 'Mood of the app', pt: 'Clima do app' },
   themeBlossom: { en: 'Blossom', pt: 'Florada' },
@@ -84,12 +86,31 @@ const S = {
 
   resetCta: { en: 'Reset my journey', pt: 'Recomeçar minha jornada' },
   resetTitle: { en: 'Reset your journey?', pt: 'Recomeçar sua jornada?' },
+  // A conta real do que some — nada de aviso genérico.
   resetMessage: {
-    en: 'This restores {app} to its starting state.',
-    pt: 'Isso devolve o {app} ao estado inicial.',
+    en: 'Your {n} manifestations and your {m} days of practice will be gone, and you redo the questionnaire. Your language stays. There is no way back.',
+    pt: 'Suas {n} manifestações e seus {m} dias de prática somem, e você refaz o questionário. O idioma fica. Isso não tem volta.',
   },
   resetConfirm: { en: 'Reset', pt: 'Recomeçar' },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
+
+  backupTitle: { en: 'Backup', pt: 'Cópia de segurança' },
+  backupNote: {
+    en: 'Your practice lives only in this browser — keep a copy.',
+    pt: 'Sua prática fica só neste navegador — guarde uma cópia.',
+  },
+  saveCopy: { en: 'Save a copy', pt: 'Salvar uma cópia' },
+  restoreCopy: { en: 'Restore from a file', pt: 'Restaurar de um arquivo' },
+  restoreTitle: { en: 'Restore this copy?', pt: 'Restaurar esta cópia?' },
+  restoreMessage: {
+    en: 'This replaces your current practice with the one in the file. There is no way back.',
+    pt: 'Isso troca sua prática atual pela do arquivo. Isso não tem volta.',
+  },
+  restoreConfirm: { en: 'Restore', pt: 'Restaurar' },
+  restoreFail: {
+    en: 'That file is not a valid {app} copy.',
+    pt: 'Esse arquivo não é uma cópia válida do {app}.',
+  },
 
   footer: {
     en: '{app} · your practice is stored privately on this device',
@@ -114,9 +135,29 @@ export default function JourneyScreen() {
   const setTheme = useSetTheme();
   const navigation = useNavigation();
   const { t, lang } = useT();
-  const { state, loading, derived, resetAll, setName } = useApp();
+  // setMood/exportStateJson/importStateJson vêm do contrato novo do AppContext.
+  const {
+    state,
+    loading,
+    derived,
+    resetAll,
+    setName,
+    setLang,
+    setMood,
+    exportStateJson,
+    importStateJson,
+  } = useApp();
+
+  // O clima salvo precisa virar tema aplicado já no load — sem isto o chip
+  // marca o clima guardado com a tela ainda renderizando o tema padrão.
+  useEffect(() => {
+    if (state && state.mood && state.mood !== theme.name) setTheme(state.mood);
+    // roda uma vez no load; depois quem sincroniza é o toque no chip
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [nameDraft, setNameDraft] = useState('');
   const [editing, setEditing] = useState(false);
+  const [backupErro, setBackupErro] = useState(false);
 
   // UMA definição de prática para a tela inteira: sessão de manifestação, visão
   // ouvida até o fim ou afirmação recebida. Antes o gráfico contava as visões e
@@ -216,13 +257,63 @@ export default function JourneyScreen() {
   const confirmReset = async () => {
     const ok = await confirmAsync({
       title: t(S.resetTitle),
-      message: t(S.resetMessage, { app: APP_NAME }),
+      // A conta real: N manifestações e M dias de prática (a mesma definição
+      // de prática do resto da tela).
+      message: t(S.resetMessage, { n: state.manifestations.length, m: practice.days.length }),
       confirmLabel: t(S.resetConfirm),
       cancelLabel: t(S.cancel),
     });
     if (!ok) return;
     resetAll();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+  };
+
+  // Web-only de propósito: no export estático a prática vive no navegador.
+  // Blob + clique DENTRO do gesto é o que o navegador aceita para baixar.
+  const saveBackup = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    try {
+      const blob = new Blob([exportStateJson()], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${APP_NAME.toLowerCase()}-${todayISO()}.json`;
+      // Firefox antigo só dispara o download com o anchor no documento.
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (e) {}
+  };
+
+  const restoreBackup = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    setBackupErro(false);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        // Confirma ANTES de aplicar: restaurar apaga a prática atual.
+        const ok = await confirmAsync({
+          title: t(S.restoreTitle),
+          message: t(S.restoreMessage),
+          confirmLabel: t(S.restoreConfirm),
+          cancelLabel: t(S.cancel),
+        });
+        if (!ok) return;
+        const r = importStateJson(String(reader.result || ''));
+        if (r && r.ok) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        } else {
+          setBackupErro(true);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   };
 
   return (
@@ -252,6 +343,119 @@ export default function JourneyScreen() {
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t(s.label)}</Text>
             </Card>
           ))}
+        </View>
+
+        {/* Perfil e clima moram logo abaixo das placas de número — antes
+            ficavam a 2,6 telas de rolagem, afundando a cada manifestação. */}
+        <SectionHeading title={t(S.profile)} />
+        <Card style={[styles.card, { backgroundColor: theme.surface }]}>
+          <View style={styles.profileRow}>
+            <View style={[styles.avatar, { backgroundColor: alpha(accentAt(theme, 1), 0.18) }]}>
+              <Ionicons name="person" size={20} color={accentAt(theme, 1)} />
+            </View>
+            {editing ? (
+              <TextInput
+                value={nameDraft}
+                onChangeText={setNameDraft}
+                autoFocus
+                // Abre PREENCHIDO com o nome atual e já selecionado — antes
+                // abria vazio, com um placeholder que parecia texto digitado.
+                selectTextOnFocus
+                style={[
+                  styles.nameInput,
+                  { color: theme.text, borderColor: alpha(theme.textMuted, 0.3) },
+                ]}
+                onSubmitEditing={saveName}
+                returnKeyType="done"
+              />
+            ) : (
+              <Text style={[styles.name, { color: theme.text }]}>{state.name}</Text>
+            )}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                if (editing) {
+                  saveName();
+                } else {
+                  setNameDraft(state.name);
+                  setEditing(true);
+                }
+              }}
+              style={[styles.editBtn, { backgroundColor: alpha(accentAt(theme, 0), 0.14) }]}
+            >
+              <Text style={[styles.editText, { color: accentAt(theme, 0) }]}>
+                {editing ? t(S.save) : t(S.edit)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Pílulas EN/PT — mesmo padrão do onboarding, chamando setLang.
+              Trocar de idioma não exige mais apagar tudo. */}
+          <View style={styles.langRow}>
+            <Text style={[styles.langLabel, { color: theme.textMuted }]}>{t(S.language)}</Text>
+            {['en', 'pt'].map((l) => {
+              const on = lang === l;
+              const c = accentAt(theme, 0);
+              return (
+                <TouchableOpacity
+                  key={l}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setLang(l);
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.langPill, { backgroundColor: on ? c : alpha(c, 0.12) }]}
+                >
+                  <Text style={[styles.langPillText, { color: on ? '#FFFFFF' : c }]}>
+                    {l.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Card>
+
+        <SectionHeading title={t(S.mood)} />
+        <View style={styles.themeRow}>
+          {THEMES.map((th, i) => {
+            // state.mood é o clima persistido no contexto; theme.name cobre o
+            // primeiro load, antes de qualquer escolha.
+            const on = (state.mood || theme.name) === th.key;
+            const c = accentAt(theme, i);
+            const onText = theme.dark ? '#0B0E14' : '#FFFFFF';
+            return (
+              <TouchableOpacity
+                key={th.key}
+                activeOpacity={0.85}
+                onPress={() => {
+                  // O clima persiste via contexto (state.mood); setTheme mantém
+                  // a troca visual imediata.
+                  setMood(th.key);
+                  setTheme(th.key);
+                  Haptics.selectionAsync().catch(() => {});
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t(th.label)}
+                accessibilityState={{ selected: on }}
+                style={[
+                  styles.themeChip,
+                  {
+                    backgroundColor: on ? c : alpha(c, 0.14),
+                    borderColor: on ? c : alpha(c, 0.35),
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={on ? 'checkmark-circle' : 'color-palette-outline'}
+                  size={14}
+                  color={on ? onText : c}
+                />
+                <Text style={[styles.themeText, { color: on ? onText : c }]}>{t(th.label)}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <SectionHeading title={t(S.thisWeek)} />
@@ -351,78 +555,35 @@ export default function JourneyScreen() {
           })}
         </Card>
 
-        <SectionHeading title={t(S.profile)} />
-        <Card style={[styles.card, { backgroundColor: theme.surface }]}>
-          <View style={styles.profileRow}>
-            <View style={[styles.avatar, { backgroundColor: alpha(accentAt(theme, 1), 0.18) }]}>
-              <Ionicons name="person" size={20} color={accentAt(theme, 1)} />
-            </View>
-            {editing ? (
-              <TextInput
-                value={nameDraft}
-                onChangeText={setNameDraft}
-                placeholder={state.name}
-                placeholderTextColor={alpha(theme.text, 0.35)}
-                autoFocus
-                style={[
-                  styles.nameInput,
-                  { color: theme.text, borderColor: alpha(theme.textMuted, 0.3) },
-                ]}
-                onSubmitEditing={saveName}
-                returnKeyType="done"
-              />
-            ) : (
-              <Text style={[styles.name, { color: theme.text }]}>{state.name}</Text>
-            )}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => (editing ? saveName() : setEditing(true))}
-              style={[styles.editBtn, { backgroundColor: alpha(accentAt(theme, 0), 0.14) }]}
-            >
-              <Text style={[styles.editText, { color: accentAt(theme, 0) }]}>
-                {editing ? t(S.save) : t(S.edit)}
+        {/* Só o "Recomeçar" (e a cópia de segurança) mora no fim da página. */}
+        {Platform.OS === 'web' ? (
+          <>
+            <SectionHeading title={t(S.backupTitle)} />
+            <Text style={[styles.backupNote, { color: theme.textMuted }]}>
+              {t(S.backupNote)}
+            </Text>
+            <PrimaryButton
+              label={t(S.saveCopy)}
+              icon="download-outline"
+              accent={0}
+              variant="soft"
+              onPress={saveBackup}
+            />
+            <PrimaryButton
+              label={t(S.restoreCopy)}
+              icon="folder-open-outline"
+              accent={0}
+              variant="ghost"
+              onPress={restoreBackup}
+              style={{ marginTop: 10 }}
+            />
+            {backupErro ? (
+              <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
+                {t(S.restoreFail, { app: APP_NAME })}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </Card>
-
-        <SectionHeading title={t(S.mood)} />
-        <View style={styles.themeRow}>
-          {THEMES.map((th, i) => {
-            // theme.name é o clima realmente aplicado — sem isso os quatro chips
-            // ficavam idênticos e ninguém sabia qual estava valendo.
-            const on = theme.name === th.key;
-            const c = accentAt(theme, i);
-            const onText = theme.dark ? '#0B0E14' : '#FFFFFF';
-            return (
-              <TouchableOpacity
-                key={th.key}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setTheme(th.key);
-                  Haptics.selectionAsync().catch(() => {});
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={t(th.label)}
-                accessibilityState={{ selected: on }}
-                style={[
-                  styles.themeChip,
-                  {
-                    backgroundColor: on ? c : alpha(c, 0.14),
-                    borderColor: on ? c : alpha(c, 0.35),
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={on ? 'checkmark-circle' : 'color-palette-outline'}
-                  size={14}
-                  color={on ? onText : c}
-                />
-                <Text style={[styles.themeText, { color: on ? onText : c }]}>{t(th.label)}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+            ) : null}
+          </>
+        ) : null}
 
         <PrimaryButton
           label={t(S.resetCta)}
@@ -496,5 +657,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   themeText: { fontSize: 13, fontWeight: '700', marginLeft: 6 },
+  langRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  langLabel: { flex: 1, fontSize: 13, fontWeight: '600' },
+  // 32px de altura real — hitSlop não aumenta área nenhuma no react-native-web.
+  langPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, marginLeft: 8 },
+  langPillText: { fontSize: 13, fontWeight: '700' },
+  backupNote: { fontSize: 12.5, lineHeight: 18, marginBottom: 12 },
+  backupErro: { fontSize: 12.5, fontWeight: '600', marginTop: 10 },
   footer: { fontSize: 11.5, textAlign: 'center', marginTop: 18 },
 });

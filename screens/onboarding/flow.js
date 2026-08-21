@@ -1,9 +1,18 @@
 import { txt } from '../../constants/i18n';
 
-// The chat-onboarding script, faithful to the competitor flow, in EN + PT-BR.
-// Every text field is { en, pt }. {app} → app name, {name} → the user's name answer.
-// `when(answers)` gates conditional steps (kids list, specific person name).
-// Chip answers are stored canonically in EN via option `en` values.
+// O roteiro do chat de onboarding, em EN + PT-BR.
+// Todo campo de texto é { en, pt }. {app} → nome do app, {name} → nome respondido.
+// `when(answers)` liga passos condicionais (lista de filhos).
+// Chips gravam o valor canônico em inglês (option `en`).
+//
+// Enxugado em 20/08: a primeira pergunta é a que importa (o desejo, que vira a
+// 1ª manifestação na tela Reveal) e SÓ ficam perguntas cujo campo alguém lê
+// (utils/dreamToAffirmation lê hopedChange, whyMatters, obstacle, name, city,
+// dreamLocation, dreamHome, kids, people — nada além disso é lido no app).
+// Cortados por ninguém ler: age, gender, sexuality, work, workFeeling,
+// relationshipStatus, pastInfluence, aboutYou, partnerDesire, manifestingSomeone,
+// manifestingName. `skippable: true` mostra "Pular" no canto (pergunta que
+// enriquece a personalização mas não é essencial).
 
 export const FLOW = [
   {
@@ -18,29 +27,42 @@ export const FLOW = [
     ],
   },
   {
-    id: 'preface',
-    type: 'statement',
-    needsContinue: true,
-    lines: [
-      {
-        en: 'Before we begin, I have a few important questions.',
-        pt: 'Antes de começarmos, tenho algumas perguntas importantes.',
-      },
-      {
-        en: 'The more honest you are, the more personal {app} can feel.',
-        pt: 'Quanto mais sincero você for, mais pessoal o {app} se torna.',
-      },
-      {
-        en: 'Everything you share is completely confidential.',
-        pt: 'Tudo o que você compartilhar é totalmente confidencial.',
-      },
-    ],
+    id: 'hope',
+    type: 'text',
+    key: 'hopedChange',
+    question: {
+      en: 'What do you want to change in your life right now?',
+      pt: 'O que você quer que mude na sua vida agora?',
+    },
+    placeholder: { en: 'Love, confidence, peace…', pt: 'Amor, confiança, paz…' },
+  },
+  {
+    id: 'why',
+    type: 'text',
+    key: 'whyMatters',
+    skippable: true,
+    question: {
+      en: 'Why does this matter so much to you right now?',
+      pt: 'Por que isso importa tanto para você agora?',
+    },
+    placeholder: { en: 'What will change if this came true?', pt: 'O que vai mudar se isso se realizar?' },
+  },
+  {
+    id: 'obstacle',
+    type: 'text',
+    key: 'obstacle',
+    skippable: true,
+    question: {
+      en: 'What feels like the biggest thing standing in your way right now?',
+      pt: 'O que parece ser o maior obstáculo no seu caminho agora?',
+    },
+    placeholder: { en: 'Doubt, timing, money, fear…', pt: 'Dúvida, timing, dinheiro, medo…' },
   },
   {
     id: 'name',
     type: 'text',
     key: 'name',
-    question: { en: 'First, what should I call you?', pt: 'Primeiro, como devo te chamar?' },
+    question: { en: 'By the way, what should I call you?', pt: 'A propósito, como devo te chamar?' },
     placeholder: { en: 'Your name', pt: 'Seu nome' },
   },
   {
@@ -52,36 +74,9 @@ export const FLOW = [
     id: 'city',
     type: 'text',
     key: 'city',
+    skippable: true,
     question: { en: 'Where do you live?', pt: 'Onde você mora?' },
     placeholder: { en: 'Your city', pt: 'Sua cidade' },
-  },
-  {
-    id: 'age',
-    type: 'text',
-    key: 'age',
-    question: { en: 'How old are you?', pt: 'Quantos anos você tem?' },
-    placeholder: { en: '28', pt: '28' },
-    keyboard: 'number-pad',
-  },
-  {
-    id: 'gender',
-    type: 'chips',
-    key: 'gender',
-    question: { en: "What's your gender?", pt: 'Qual é o seu gênero?' },
-    options: [
-      { en: 'Female', pt: 'Feminino' },
-      { en: 'Male', pt: 'Masculino' },
-      { en: 'Non-binary', pt: 'Não-binário' },
-      { en: 'Prefer not to say', pt: 'Prefiro não dizer' },
-    ],
-  },
-  {
-    id: 'sexuality',
-    type: 'text',
-    key: 'sexuality',
-    question: { en: 'What is your sexuality?', pt: 'Qual é a sua sexualidade?' },
-    placeholder: { en: 'e.g. Straight, Gay, Bisexual…', pt: 'ex.: Hétero, Gay, Bissexual…' },
-    optional: true,
   },
   {
     id: 'hasKids',
@@ -114,88 +109,6 @@ export const FLOW = [
     extraPlaceholder: { en: 'Relationship (mom, partner, friend…)', pt: 'Relação (mãe, parceiro, amigo…)' },
   },
   {
-    id: 'work',
-    type: 'text',
-    key: 'work',
-    question: { en: 'What do you do for work?', pt: 'O que você faz da vida?' },
-    placeholder: { en: 'Student, nurse, founder, designer…', pt: 'Estudante, enfermeira, fundador, designer…' },
-  },
-  {
-    id: 'workFeel',
-    type: 'chips',
-    key: 'workFeeling',
-    question: { en: 'How do you feel about your work?', pt: 'Como você se sente em relação ao seu trabalho?' },
-    options: [
-      { en: 'Love it', pt: 'Amo' },
-      { en: "It's fine for now", pt: 'Está bom por enquanto' },
-      { en: "I'm ready for something new", pt: 'Estou pronto para algo novo' },
-      { en: "I'm building something on the side", pt: 'Estou construindo algo em paralelo' },
-    ],
-  },
-  {
-    id: 'rel',
-    type: 'chips',
-    key: 'relationshipStatus',
-    question: { en: "What's your relationship status?", pt: 'Qual é o seu estado civil?' },
-    options: [
-      { en: 'Single', pt: 'Solteiro(a)' },
-      { en: 'In a relationship', pt: 'Em um relacionamento' },
-      { en: 'Married', pt: 'Casado(a)' },
-      { en: "It's complicated", pt: 'É complicado' },
-    ],
-  },
-  {
-    id: 'hope',
-    type: 'text',
-    key: 'hopedChange',
-    question: {
-      en: '{name}, what are you hoping changes in your life right now?',
-      pt: '{name}, o que você espera que mude na sua vida agora?',
-    },
-    placeholder: { en: 'Love, confidence, peace…', pt: 'Amor, confiança, paz…' },
-  },
-  {
-    id: 'why',
-    type: 'text',
-    key: 'whyMatters',
-    question: {
-      en: 'Why does this matter so much to you right now?',
-      pt: 'Por que isso importa tanto para você agora?',
-    },
-    placeholder: { en: 'What will change if this came true?', pt: 'O que vai mudar se isso se realizar?' },
-  },
-  {
-    id: 'obstacle',
-    type: 'text',
-    key: 'obstacle',
-    question: {
-      en: 'What feels like the biggest thing standing in your way right now?',
-      pt: 'O que parece ser o maior obstáculo no seu caminho agora?',
-    },
-    placeholder: { en: 'Doubt, timing, money, fear…', pt: 'Dúvida, timing, dinheiro, medo…' },
-  },
-  {
-    id: 'past',
-    type: 'text',
-    key: 'pastInfluence',
-    question: {
-      en: 'Is there anything from your past that still shapes what you want today?',
-      pt: 'Existe algo do seu passado que ainda molda o que você quer hoje?',
-    },
-    placeholder: { en: 'Only share what feels relevant…', pt: 'Compartilhe só o que fizer sentido…' },
-    optional: true,
-  },
-  {
-    id: 'about',
-    type: 'text',
-    key: 'aboutYou',
-    question: {
-      en: "Since we've never met, {name}, what should I know about you to understand you better?",
-      pt: 'Como nunca nos vimos, {name}, o que eu deveria saber para te entender melhor?',
-    },
-    placeholder: { en: 'How would you describe yourself?', pt: 'Como você se descreveria?' },
-  },
-  {
     id: 'intro-visualize',
     type: 'intro',
     icon: 'sparkles',
@@ -219,6 +132,7 @@ export const FLOW = [
     id: 'dreamPlace',
     type: 'text',
     key: 'dreamLocation',
+    skippable: true,
     question: {
       en: 'When you imagine your dream life, where are you living?',
       pt: 'Quando você imagina a vida dos seus sonhos, onde você está morando?',
@@ -229,6 +143,7 @@ export const FLOW = [
     id: 'dreamHome',
     type: 'chips',
     key: 'dreamHome',
+    skippable: true,
     question: { en: 'What kind of home would you want to live in?', pt: 'Em que tipo de casa você gostaria de morar?' },
     options: [
       { en: 'Luxury Penthouse', pt: 'Cobertura de Luxo' },
@@ -242,46 +157,6 @@ export const FLOW = [
     ],
     wrap: true,
     needsContinue: true,
-  },
-  {
-    id: 'intro-future',
-    type: 'intro',
-    icon: 'planet',
-    title: { en: 'Meet your future self.', pt: 'Conheça o seu futuro eu.' },
-    sub: {
-      en: 'Step into the life you are calling in — one visualization at a time.',
-      pt: 'Entre na vida que você está atraindo — uma visualização por vez.',
-    },
-  },
-  {
-    id: 'partner',
-    type: 'text',
-    key: 'partnerDesire',
-    question: {
-      en: '{name}, what kind of partner do you want to call in?',
-      pt: '{name}, que tipo de parceiro(a) você quer atrair?',
-    },
-    placeholder: { en: 'How should they make you feel?', pt: 'Como essa pessoa deve te fazer sentir?' },
-  },
-  {
-    id: 'specific',
-    type: 'boolean',
-    key: 'manifestingSomeone',
-    question: {
-      en: "Is there a specific person you're manifesting?",
-      pt: 'Existe uma pessoa específica que você está manifestando?',
-    },
-  },
-  {
-    id: 'personName',
-    type: 'text',
-    key: 'manifestingName',
-    question: {
-      en: "What's the name of the person you're manifesting?",
-      pt: 'Qual é o nome da pessoa que você está manifestando?',
-    },
-    placeholder: { en: 'Their name', pt: 'O nome da pessoa' },
-    when: (a) => a.manifestingSomeone === true,
   },
   {
     id: 'thanks',
@@ -305,4 +180,22 @@ export function fill(str, answers, app) {
 export function stepLines(step, answers, app, lang) {
   const raw = step.type === 'statement' ? step.lines : [step.question];
   return raw.map((s) => fill(txt(s, lang), answers, app));
+}
+
+// Categoria da 1ª manifestação inferida do desejo — só quando é óbvia pelo
+// texto; senão devolve undefined e vale o default do AppContext.
+// ponytail: heurística de palavra-chave; trocar por classificação de verdade
+// só se a categoria errada começar a incomodar.
+const CAT_RX = [
+  ['Love', /amor|amoros|relacionament|casament|namor|love|relationship|partner|marria/i],
+  ['Health', /sa[uú]de|corpo|peso|emagre|health|body|weight|fitness/i],
+  ['Career', /carreira|trabalho|emprego|neg[oó]cio|empresa|career|job|work|business/i],
+  ['Wealth', /dinheiro|rico|riqueza|financ|grana|sal[aá]rio|money|wealth|rich/i],
+  ['Peace', /paz|calma|ansiedade|tranquil|peace|calm|anxiety/i],
+  ['Confidence', /confian[çc]a|autoestima|confidence|self[- ]esteem/i],
+];
+export function inferCategory(text) {
+  const t = String(text || '');
+  const hit = CAT_RX.find(([, rx]) => rx.test(t));
+  return hit ? hit[0] : undefined;
 }

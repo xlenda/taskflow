@@ -73,7 +73,7 @@ export default function WelcomeScreen({ navigation }) {
               <Text style={{ fontFamily: SERIF, fontSize: 52, color: ONB.ink }}>{APP_NAME}</Text>
             </View>
             <View style={{ paddingHorizontal: 20, paddingBottom: 28 }}>
-              <ContinueButton label={T.continue} onPress={() => navigation.navigate('Referral')} />
+              <ContinueButton label={T.continue} onPress={() => navigation.navigate('ChatOnboarding')} />
               <Text style={{ fontSize: 12, color: ONB.inkFaint, textAlign: 'center', marginTop: 16, lineHeight: 18 }}>
                 {T.terms}
               </Text>
