@@ -14,6 +14,11 @@ import {
 import { generatePersonalizedScene } from '../services/generatePersonalizedScene';
 import { translateManifestationScene } from '../services/translateManifestationScene';
 import { createSerialStorageWriter } from '../utils/serialStorageWriter';
+import {
+  beginCommunityDataReset,
+  cancelCommunityDataReset,
+  finishCommunityDataReset,
+} from '../services/communityStories';
 
 const STORAGE_KEY = '@stella_state_v2';
 const AUXILIARY_STORAGE_KEYS = [
@@ -23,17 +28,58 @@ const AUXILIARY_STORAGE_KEYS = [
 ];
 const STORAGE_READ_TIMEOUT_MS = 6000;
 const STORAGE_WRITE_TIMEOUT_MS = 6000;
+const TRANSLATION_BATCH_SIZE = 8;
+const TRANSLATION_BATCH_DELAY_MS = 61000;
+const TRANSLATION_START_DELAY_MS = 350;
 const AppCtx = createContext(null);
+
+function settleWithin(promise, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ settled: false, value: null, error: null });
+    }, Math.max(1, timeoutMs));
+    Promise.resolve(promise).then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ settled: true, value, error: null });
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ settled: true, value: null, error });
+      }
+    );
+  });
+}
 
 const RITUAL_THEMES = ['clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal'];
 const RITUAL_FEELINGS = ['calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful'];
 const RITUAL_DETAIL_KEYS = ['dream_anchor', 'feeling', 'theme'];
+const VISUAL_MOODS = ['midnight', 'violet', 'ember', 'forest', 'paper', 'cloud', 'blossom', 'mono'];
 const validTime = (value) => {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
   return !!match && Number(match[1]) < 24 && Number(match[2]) < 60;
 };
 const shortText = (value, max) =>
   typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+const validDay = (value) =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+const uniqueShortStrings = (values, maxLength, maxItems) =>
+  Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => shortText(value, maxLength))
+        .filter(Boolean)
+    )
+  ).slice(0, maxItems);
 const isKnownMinor = (profile) => {
   const age = shortText(profile && profile.age, 40)
     .toLocaleLowerCase('en-US')
@@ -52,10 +98,23 @@ function mergeDefensivo(parsed) {
       if (!Array.isArray(st[key])) st[key] = base[key];
     }
   );
+  st.favoriteAffirmations = uniqueShortStrings(st.favoriteAffirmations, 160, 500);
+  st.savedVisions = uniqueShortStrings(st.savedVisions, 160, 200);
+  st.affirmationDates = Array.from(new Set(st.affirmationDates.filter(validDay))).slice(0, 3650);
+  st.visionPlays = st.visionPlays
+    .filter((play) => play && typeof play === 'object' && !Array.isArray(play))
+    .map((play) => ({
+      visionId: shortText(play.visionId, 160),
+      date: validDay(play.date) ? play.date : null,
+    }))
+    .filter((play) => play.visionId && play.date)
+    .slice(0, 200);
   // Estados antigos podem trazer strings. Somente true real (ou seu legado
   // serializado) libera o app; `"false"` e `"0"` nunca podem ser truthy aqui.
   st.onboardingDone = st.onboardingDone === true || st.onboardingDone === 'true';
   if (st.lang !== 'pt' && st.lang !== 'en') st.lang = detectLang();
+  st.name = shortText(st.name, 80);
+  st.mood = VISUAL_MOODS.includes(st.mood) ? st.mood : null;
   st.profile = st.profile && typeof st.profile === 'object' && !Array.isArray(st.profile)
     ? { ...st.profile }
     : {};
@@ -67,7 +126,9 @@ function mergeDefensivo(parsed) {
   st.profile.cloudAdultConfirmed = cloudAllowed;
   // Item importado/antigo sem sessions derrubaria derived e setPractice —
   // normalizar aqui protege load e import de uma vez.
-  st.manifestations = st.manifestations.map((raw, manifestationIndex) => {
+  st.manifestations = st.manifestations
+    .filter((raw) => raw && typeof raw === 'object' && !Array.isArray(raw))
+    .map((raw, manifestationIndex) => {
     const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const itemLang = m.lang === 'pt' || m.lang === 'en' ? m.lang : st.lang;
     const categories = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
@@ -117,13 +178,14 @@ function mergeDefensivo(parsed) {
       goalDays:
         Number.isInteger(m.goalDays) && m.goalDays > 0 && m.goalDays <= 365 ? m.goalDays : 21,
     };
-    return localizeManifestation(normalized, st.profile, st.lang);
-  });
+      return localizeManifestation(normalized, st.profile, st.lang);
+    });
   const savedRitual = st.morningRitual && typeof st.morningRitual === 'object' ? st.morningRitual : {};
   const defaultRitual = base.morningRitual;
   st.morningRitual = {
     alarmStatus: 'native_integration_required',
     reminderEnabled: savedRitual.reminderEnabled === true,
+    alarmSyncError: savedRitual.alarmSyncError === true,
     reminderTime: validTime(savedRitual.reminderTime)
       ? savedRitual.reminderTime
       : defaultRitual.reminderTime,
@@ -167,7 +229,6 @@ function mergeDefensivo(parsed) {
       }))
       .slice(0, 90),
   };
-  if (st.mood === undefined) st.mood = null; // clima da Jornada sobrevive ao reload
   return st;
 }
 
@@ -176,15 +237,26 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState(false);
   const [storageLoadError, setStorageLoadError] = useState(false);
+  const [storageCorrupt, setStorageCorrupt] = useState(false);
+  const [storageMutation, setStorageMutation] = useState(null);
   const stateRef = useRef(null);
   const pendingOnboardingRef = useRef(false);
   const mountedRef = useRef(true);
   const hydratedRef = useRef(false);
   const skipNextPersistRef = useRef(false);
   const readAttemptRef = useRef(0);
+  const storageRepairRef = useRef(false);
   const generationEpochRef = useRef(0);
+  const translationLanguageEpochRef = useRef(0);
+  const desiredLanguageRef = useRef(null);
+  const lastDreamSaveRef = useRef({ epoch: -1, signature: '', id: null, at: 0 });
   const resetInProgressRef = useRef(false);
+  const storageMutationRef = useRef(null);
   const pendingResetRevisionRef = useRef(0);
+  const pendingResetFinalizeRef = useRef(null);
+  const pendingImportRevisionRef = useRef(0);
+  const pendingImportFinalizeRef = useRef(null);
+  const pendingStoragePreparationRef = useRef(null);
   const writerRef = useRef(null);
   stateRef.current = state;
 
@@ -195,8 +267,19 @@ export function AppProvider({ children }) {
       onStatus: ({ type, revision }) => {
         if (!mountedRef.current) return;
         if (type === 'ok') {
-          if (!pendingResetRevisionRef.current || revision >= pendingResetRevisionRef.current) {
-            pendingResetRevisionRef.current = 0;
+          if (
+            pendingResetRevisionRef.current &&
+            revision === pendingResetRevisionRef.current &&
+            pendingResetFinalizeRef.current
+          ) {
+            void pendingResetFinalizeRef.current();
+          } else if (
+            pendingImportRevisionRef.current &&
+            revision === pendingImportRevisionRef.current &&
+            pendingImportFinalizeRef.current
+          ) {
+            void pendingImportFinalizeRef.current();
+          } else if (!pendingResetRevisionRef.current && !pendingImportRevisionRef.current) {
             setStorageError(false);
           }
         }
@@ -211,6 +294,7 @@ export function AppProvider({ children }) {
     hydratedRef.current = false;
     setLoading(true);
     setStorageLoadError(false);
+    setStorageCorrupt(false);
 
     let finished = false;
     const timer = setTimeout(() => {
@@ -227,27 +311,43 @@ export function AppProvider({ children }) {
         if (!mountedRef.current || readAttemptRef.current !== attempt) return;
         finished = true;
         clearTimeout(timer);
-        const parsed = raw ? JSON.parse(raw) : null;
+        let parsed = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch (_error) {
+          const invalid = new Error('invalid_stored_state');
+          invalid.code = 'invalid_stored_state';
+          throw invalid;
+        }
         if (
           parsed !== null &&
           (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.manifestations))
         ) {
-          throw new Error('invalid_stored_state');
+          const invalid = new Error('invalid_stored_state');
+          invalid.code = 'invalid_stored_state';
+          throw invalid;
         }
+        const merged = mergeDefensivo(parsed);
+        const needsRepair = !!raw && JSON.stringify(parsed) !== JSON.stringify(merged);
         hydratedRef.current = true;
-        skipNextPersistRef.current = true;
-        setState(mergeDefensivo(parsed));
+        desiredLanguageRef.current = merged.lang;
+        // A valid old/corrupted shape is upgraded once. A genuinely empty
+        // storage remains untouched until the person changes something.
+        skipNextPersistRef.current = !needsRepair;
+        setState(merged);
         setStorageError(false);
         setStorageLoadError(false);
+        setStorageCorrupt(false);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!mountedRef.current || readAttemptRef.current !== attempt) return;
         finished = true;
         clearTimeout(timer);
         hydratedRef.current = false;
         setLoading(false);
         setStorageLoadError(true);
+        setStorageCorrupt(error && error.code === 'invalid_stored_state');
       });
   }, []);
 
@@ -265,8 +365,40 @@ export function AppProvider({ children }) {
     loadStoredState();
   }, [loadStoredState]);
 
+  const repairCorruptedStorage = useCallback(async () => {
+    if (!storageCorrupt || storageRepairRef.current) return false;
+    storageRepairRef.current = true;
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error('storage_repair_timeout')),
+        STORAGE_WRITE_TIMEOUT_MS
+      );
+    });
+    try {
+      await Promise.race([AsyncStorage.removeItem(STORAGE_KEY), timeout]);
+      if (!mountedRef.current) return false;
+      generationEpochRef.current += 1;
+      setStorageCorrupt(false);
+      setStorageLoadError(false);
+      loadStoredState();
+      return true;
+    } catch (_error) {
+      if (mountedRef.current) setStorageLoadError(true);
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+      storageRepairRef.current = false;
+    }
+  }, [loadStoredState, storageCorrupt]);
+
   useEffect(() => {
     if (!state || !hydratedRef.current || !writerRef.current) return;
+    if (
+      storageMutationRef.current ||
+      pendingResetRevisionRef.current ||
+      pendingImportRevisionRef.current
+    ) return;
     if (skipNextPersistRef.current) {
       skipNextPersistRef.current = false;
       return;
@@ -279,6 +411,42 @@ export function AppProvider({ children }) {
 
   const retryPersist = useCallback(async () => {
     if (!state || !hydratedRef.current || !writerRef.current) return false;
+    if (pendingStoragePreparationRef.current) {
+      const preparation = pendingStoragePreparationRef.current;
+      const outcome = await settleWithin(preparation.promise, STORAGE_WRITE_TIMEOUT_MS);
+      if (!outcome.settled || outcome.error || outcome.value !== true) {
+        if (mountedRef.current) setStorageError(true);
+        return false;
+      }
+    }
+    if (pendingResetRevisionRef.current) {
+      const pendingRevision = pendingResetRevisionRef.current;
+      writerRef.current.resume();
+      const saved = await writerRef.current.waitFor(pendingRevision, STORAGE_WRITE_TIMEOUT_MS);
+      if (saved && pendingResetFinalizeRef.current) {
+        const finalized = await settleWithin(
+          pendingResetFinalizeRef.current(),
+          STORAGE_WRITE_TIMEOUT_MS
+        );
+        if (finalized.settled && !finalized.error) return finalized.value === true;
+      }
+      if (mountedRef.current) setStorageError(true);
+      return false;
+    }
+    if (pendingImportRevisionRef.current) {
+      const pendingRevision = pendingImportRevisionRef.current;
+      writerRef.current.resume();
+      const saved = await writerRef.current.waitFor(pendingRevision, STORAGE_WRITE_TIMEOUT_MS);
+      if (saved && pendingImportFinalizeRef.current) {
+        const finalized = await settleWithin(
+          pendingImportFinalizeRef.current(),
+          STORAGE_WRITE_TIMEOUT_MS
+        );
+        if (finalized.settled && !finalized.error) return finalized.value === true;
+      }
+      if (mountedRef.current) setStorageError(true);
+      return false;
+    }
     const completesOnboarding = pendingOnboardingRef.current;
     const next = completesOnboarding ? { ...state, onboardingDone: true } : state;
     const revision = writerRef.current.enqueue(JSON.stringify(next));
@@ -315,6 +483,7 @@ export function AppProvider({ children }) {
     expectedTargetVariant,
     profile,
     generationEpoch,
+    languageEpoch,
   }) => {
     let remote;
     try {
@@ -329,7 +498,11 @@ export function AppProvider({ children }) {
       // network errors are deliberately never logged.
       return;
     }
-    if (!mountedRef.current || generationEpoch !== generationEpochRef.current) return;
+    if (
+      !mountedRef.current ||
+      generationEpoch !== generationEpochRef.current ||
+      languageEpoch !== translationLanguageEpochRef.current
+    ) return;
 
     const translated = manifestationVariantFromScene({
       title: remote.scene.title,
@@ -337,7 +510,12 @@ export function AppProvider({ children }) {
       generation: remote.generation,
     });
     setState((currentState) => {
-      if (!currentState || generationEpoch !== generationEpochRef.current) return currentState;
+      if (
+        !currentState ||
+        currentState.lang !== targetLang ||
+        generationEpoch !== generationEpochRef.current ||
+        languageEpoch !== translationLanguageEpochRef.current
+      ) return currentState;
       const index = currentState.manifestations.findIndex((item) => item.id === id);
       if (index < 0) return currentState;
       const current = currentState.manifestations[index];
@@ -544,13 +722,28 @@ export function AppProvider({ children }) {
   }, []);
 
   const removeManifestation = useCallback((id) => {
-    setState((s) => ({
-      ...s,
-      manifestations: s.manifestations.filter((m) => m.id !== id),
-      favoriteAffirmations: s.favoriteAffirmations.filter(
-        (favoriteId) => favoriteId !== `manifestation:${id}`
-      ),
-    }));
+    setState((s) => {
+      const alarmId = `manifestation:${id}`;
+      const usedAsAlarm = s.morningRitual?.wakeAffirmationId === alarmId;
+      return {
+        ...s,
+        manifestations: s.manifestations.filter((m) => m.id !== id),
+        favoriteAffirmations: s.favoriteAffirmations.filter(
+          (favoriteId) => favoriteId !== alarmId
+        ),
+        ...(usedAsAlarm
+          ? {
+              morningRitual: {
+                ...s.morningRitual,
+                reminderEnabled: false,
+                wakeAffirmationId: null,
+                wakeAffirmationText: '',
+                wakeAffirmationLang: s.lang === 'en' ? 'en' : 'pt',
+              },
+            }
+          : {}),
+      };
+    });
   }, []);
 
   const toggleFavoriteAffirmation = useCallback((id) => {
@@ -586,41 +779,134 @@ export function AppProvider({ children }) {
   }, []);
 
   const setName = useCallback((name) => {
-    setState((s) => ({ ...s, name: name.trim() || s.name }));
+    setState((s) => ({ ...s, name: shortText(name, 80) || s.name }));
   }, []);
 
   const resetAll = useCallback(async () => {
-    if (resetInProgressRef.current || !hydratedRef.current || !writerRef.current) return false;
+    if (
+      resetInProgressRef.current ||
+      storageMutationRef.current ||
+      pendingResetRevisionRef.current ||
+      pendingImportRevisionRef.current ||
+      !hydratedRef.current ||
+      !writerRef.current
+    ) return false;
     resetInProgressRef.current = true;
+    storageMutationRef.current = 'reset';
+    setStorageMutation('reset');
     generationEpochRef.current += 1;
     pendingOnboardingRef.current = false;
     const current = stateRef.current || initialState();
     // Reset apaga os dados, não as preferências: idioma e clima ficam
     // (senão quem tem celular em inglês volta pro inglês do detectLang).
     const next = { ...initialState(), lang: current.lang, mood: current.mood };
+    let communityToken = null;
+    let preparationPromise = null;
     try {
-      // Auxiliary records are cleared while the Journey screen is still busy,
-      // before onboarding can create a new draft under the same keys.
-      await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS);
-      const revision = writerRef.current.enqueue(JSON.stringify(next));
-      if (!revision) return false;
-      pendingResetRevisionRef.current = revision;
+      preparationPromise = (async () => {
+        communityToken = await beginCommunityDataReset();
+        // Privacy-sensitive auxiliary records must be gone before the empty
+        // onboarding can ever become visible again.
+        await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS);
+        const revision = writerRef.current.enqueue(JSON.stringify(next));
+        if (!revision) throw new Error('storage_writer_unavailable');
+        pendingResetRevisionRef.current = revision;
 
-      // The reset is visible immediately. If the storage acknowledgement is
-      // late, memory and the eventual disk write still describe the same state.
-      skipNextPersistRef.current = true;
-      setState(next);
-      writerRef.current.resume();
+        let finalizePromise = null;
+        const finalizeReset = () => {
+          if (pendingResetRevisionRef.current !== revision) return Promise.resolve(false);
+          if (finalizePromise) return finalizePromise;
+          finalizePromise = (async () => {
+            const slowTimer = setTimeout(() => {
+              if (mountedRef.current) setStorageError(true);
+            }, STORAGE_WRITE_TIMEOUT_MS);
+            try {
+              // The generation barrier rejects submits that started before reset;
+              // this final pass waits for their local writes before unlocking.
+              await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS);
+              await finishCommunityDataReset(communityToken);
+              if (mountedRef.current) {
+                skipNextPersistRef.current = true;
+                desiredLanguageRef.current = next.lang;
+                setState(next);
+                setStorageError(false);
+                setStorageMutation(null);
+              }
+              storageMutationRef.current = null;
+              pendingResetRevisionRef.current = 0;
+              pendingResetFinalizeRef.current = null;
+              return true;
+            } catch (_error) {
+              finalizePromise = null;
+              if (mountedRef.current) setStorageError(true);
+              return false;
+            } finally {
+              clearTimeout(slowTimer);
+            }
+          })();
+          return finalizePromise;
+        };
+        pendingResetFinalizeRef.current = finalizeReset;
+        writerRef.current.resume();
+        return true;
+      })();
+      const preparation = { kind: 'reset', promise: preparationPromise };
+      pendingStoragePreparationRef.current = preparation;
+      void preparationPromise.then(
+        () => {
+          if (pendingStoragePreparationRef.current === preparation) {
+            pendingStoragePreparationRef.current = null;
+          }
+        },
+        () => {
+          if (pendingStoragePreparationRef.current === preparation) {
+            pendingStoragePreparationRef.current = null;
+          }
+          if (!pendingResetRevisionRef.current && storageMutationRef.current === 'reset') {
+            cancelCommunityDataReset(communityToken);
+            storageMutationRef.current = null;
+            if (mountedRef.current) {
+              setStorageError(true);
+              setStorageMutation(null);
+            }
+          }
+        }
+      );
 
+      const prepared = await settleWithin(preparationPromise, STORAGE_WRITE_TIMEOUT_MS);
+      if (!prepared.settled || prepared.error || prepared.value !== true) {
+        if (mountedRef.current) setStorageError(true);
+        if (prepared.error && !pendingResetRevisionRef.current) {
+          cancelCommunityDataReset(communityToken);
+          storageMutationRef.current = null;
+          if (mountedRef.current) setStorageMutation(null);
+        }
+        return false;
+      }
+      const revision = pendingResetRevisionRef.current;
       const saved = await writerRef.current.waitFor(revision, STORAGE_WRITE_TIMEOUT_MS);
       if (!saved) {
         if (mountedRef.current) setStorageError(true);
         return false;
       }
-      setStorageError(false);
-      return true;
+      const finalized = await settleWithin(
+        pendingResetFinalizeRef.current(),
+        STORAGE_WRITE_TIMEOUT_MS
+      );
+      if (!finalized.settled || finalized.error) {
+        if (mountedRef.current) setStorageError(true);
+        return false;
+      }
+      return finalized.value === true;
     } catch (_error) {
-      if (mountedRef.current) setStorageError(true);
+      if (mountedRef.current) {
+        setStorageError(true);
+        if (!pendingResetRevisionRef.current) {
+          cancelCommunityDataReset(communityToken);
+          storageMutationRef.current = null;
+          setStorageMutation(null);
+        }
+      }
       return false;
     } finally {
       resetInProgressRef.current = false;
@@ -629,6 +915,7 @@ export function AppProvider({ children }) {
 
   // Clima escolhido na Jornada — persiste junto com o resto do estado.
   const setMood = useCallback((m) => {
+    if (!VISUAL_MOODS.includes(m)) return;
     setState((s) => ({ ...s, mood: m }));
   }, []);
 
@@ -638,6 +925,9 @@ export function AppProvider({ children }) {
       const next = { ...current };
       if (patch && typeof patch.reminderEnabled === 'boolean') {
         next.reminderEnabled = patch.reminderEnabled;
+      }
+      if (patch && typeof patch.alarmSyncError === 'boolean') {
+        next.alarmSyncError = patch.alarmSyncError;
       }
       if (patch && validTime(patch.reminderTime)) next.reminderTime = patch.reminderTime;
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeAffirmationId')) {
@@ -658,21 +948,43 @@ export function AppProvider({ children }) {
     const affirmation = shortText(data && data.affirmation, 800);
     if (!dream || !affirmation) return null;
 
-    const now = new Date().toISOString();
-    const id = `dream-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const feeling = RITUAL_FEELINGS.includes(data.feeling) ? data.feeling : '';
+    const theme = RITUAL_THEMES.includes(data.theme) ? data.theme : 'clarity';
+    const reflection = shortText(data.reflection, 800);
+    const dreamAnchor = shortText(data.dreamAnchor, 120);
+    const lang = data.lang === 'en' ? 'en' : 'pt';
+    const signature = JSON.stringify({ dream, affirmation, feeling, theme, reflection, dreamAnchor, lang });
+    const nowMs = Date.now();
+    const previous = lastDreamSaveRef.current;
+    if (
+      previous.epoch === generationEpochRef.current &&
+      previous.signature === signature &&
+      nowMs - previous.at < 1500
+    ) {
+      return previous.id;
+    }
+
+    const now = new Date(nowMs).toISOString();
+    const id = `dream-${nowMs}-${Math.random().toString(36).slice(2, 7)}`;
+    lastDreamSaveRef.current = {
+      epoch: generationEpochRef.current,
+      signature,
+      id,
+      at: nowMs,
+    };
     const item = {
       id,
       dream,
-      feeling: RITUAL_FEELINGS.includes(data.feeling) ? data.feeling : '',
-      theme: RITUAL_THEMES.includes(data.theme) ? data.theme : 'clarity',
+      feeling,
+      theme,
       affirmation,
-      reflection: shortText(data.reflection, 800),
-      dreamAnchor: shortText(data.dreamAnchor, 120),
+      reflection,
+      dreamAnchor,
       usedDetails: (Array.isArray(data.usedDetails) ? data.usedDetails : [])
         .filter((key) => RITUAL_DETAIL_KEYS.includes(key))
         .filter((key, index, values) => values.indexOf(key) === index),
       generatorVersion: shortText(data.generatorVersion, 40) || 'dream-local-v2',
-      lang: data.lang === 'en' ? 'en' : 'pt',
+      lang,
       createdAt: now,
       practiceCount: 0,
       lastPracticedAt: null,
@@ -714,6 +1026,9 @@ export function AppProvider({ children }) {
   const removeDreamRitual = useCallback((id) => {
     const target = shortText(id, 160);
     if (!target) return;
+    if (lastDreamSaveRef.current.id === target) {
+      lastDreamSaveRef.current = { epoch: -1, signature: '', id: null, at: 0 };
+    }
     setState((s) => {
       const ritual = s.morningRitual || initialState().morningRitual;
       const usedAsAlarm = ritual.wakeAffirmationId === `ritual:${target}`;
@@ -738,7 +1053,7 @@ export function AppProvider({ children }) {
 
   // Import valida (JSON parseável + shape mínimo) e passa pelo mesmo merge
   // defensivo do load. `erro` é código de máquina — a tela traduz via i18n.
-  const importStateJson = useCallback((str) => {
+  const importStateJson = useCallback(async (str) => {
     let parsed;
     try {
       parsed = JSON.parse(str);
@@ -756,9 +1071,57 @@ export function AppProvider({ children }) {
       cloudPersonalization: false,
       cloudAdultConfirmed: false,
     };
+    if (
+      pendingResetRevisionRef.current ||
+      pendingImportRevisionRef.current ||
+      storageMutationRef.current ||
+      !hydratedRef.current ||
+      !writerRef.current
+    ) {
+      return { ok: false, erro: 'storage_unavailable' };
+    }
     generationEpochRef.current += 1;
-    setState(restored);
-    return { ok: true, erro: null };
+    storageMutationRef.current = 'import';
+    setStorageMutation('import');
+    const revision = writerRef.current.enqueue(JSON.stringify(restored));
+    if (!revision) {
+      storageMutationRef.current = null;
+      setStorageMutation(null);
+      return { ok: false, erro: 'storage_unavailable' };
+    }
+    pendingImportRevisionRef.current = revision;
+    writerRef.current.resume();
+
+    let finalizePromise = null;
+    const finalizeImport = () => {
+      if (pendingImportRevisionRef.current !== revision) return Promise.resolve(false);
+      if (finalizePromise) return finalizePromise;
+      finalizePromise = Promise.resolve().then(() => {
+        if (mountedRef.current) {
+          skipNextPersistRef.current = true;
+          desiredLanguageRef.current = restored.lang;
+          setState(restored);
+          setStorageError(false);
+          setStorageMutation(null);
+        }
+        storageMutationRef.current = null;
+        pendingImportRevisionRef.current = 0;
+        pendingImportFinalizeRef.current = null;
+        return true;
+      });
+      return finalizePromise;
+    };
+    pendingImportFinalizeRef.current = finalizeImport;
+
+    const saved = await writerRef.current.waitFor(revision, STORAGE_WRITE_TIMEOUT_MS);
+    if (!saved) {
+      if (mountedRef.current) setStorageError(true);
+      return { ok: false, erro: 'storage_unavailable' };
+    }
+    const finalized = await finalizeImport();
+    return finalized
+      ? { ok: true, erro: null }
+      : { ok: false, erro: 'storage_unavailable' };
   }, []);
 
   // ── Onboarding ────────────────────────────────────────────────────────────
@@ -783,7 +1146,12 @@ export function AppProvider({ children }) {
 
   const completeOnboarding = useCallback(async () => {
     const current = stateRef.current;
-    if (!current || !hydratedRef.current || !writerRef.current) return false;
+    if (
+      !current ||
+      !hydratedRef.current ||
+      !writerRef.current ||
+      storageMutationRef.current
+    ) return false;
     const next = { ...current, onboardingDone: true };
     pendingOnboardingRef.current = true;
     // Confirma a gravacao antes de desmontar o paywall. A fila impede que uma
@@ -811,6 +1179,11 @@ export function AppProvider({ children }) {
   const setLang = useCallback((lang) => {
     const nextLang = lang === 'pt' ? 'pt' : 'en';
     const snapshot = stateRef.current;
+    const requestedLang = desiredLanguageRef.current || (snapshot && snapshot.lang);
+    if (requestedLang === nextLang) return;
+    desiredLanguageRef.current = nextLang;
+    const languageEpoch = translationLanguageEpochRef.current + 1;
+    translationLanguageEpochRef.current = languageEpoch;
     const generationEpoch = generationEpochRef.current;
     setState((s) => ({
       ...s,
@@ -832,22 +1205,47 @@ export function AppProvider({ children }) {
     const localizedItems = snapshot.manifestations.map((item) =>
       localizeManifestation(item, snapshot.profile, nextLang)
     );
-    localizedItems
-      .filter((item) => {
-        return shouldTranslateManifestationVariant(item, nextLang);
-      })
-      .slice(0, 6)
-      .forEach((item) => {
+    const pending = localizedItems.filter((item) =>
+      shouldTranslateManifestationVariant(item, nextLang)
+    );
+    const translateBatch = (offset) => {
+      if (
+        !mountedRef.current ||
+        generationEpoch !== generationEpochRef.current ||
+        languageEpoch !== translationLanguageEpochRef.current
+      ) return;
+      const latest = stateRef.current;
+      if (
+        !latest ||
+        latest.lang !== nextLang ||
+        isKnownMinor(latest.profile) ||
+        latest.profile.cloudPersonalization !== true ||
+        latest.profile.cloudAdultConfirmed !== true
+      ) {
+        return;
+      }
+      pending.slice(offset, offset + TRANSLATION_BATCH_SIZE).forEach((queuedItem) => {
+        const current = latest.manifestations.find((item) => item.id === queuedItem.id);
+        if (!current) return;
+        const item = localizeManifestation(current, latest.profile, nextLang);
+        if (!shouldTranslateManifestationVariant(item, nextLang)) return;
         void translateAndStoreVariant({
           id: item.id,
           sourceLang: item.originLang,
           targetLang: nextLang,
           sourceVariant: item.contentByLang[item.originLang],
           expectedTargetVariant: item.contentByLang[nextLang],
-          profile: snapshot.profile,
+          profile: latest.profile,
           generationEpoch,
+          languageEpoch,
         });
       });
+      const nextOffset = offset + TRANSLATION_BATCH_SIZE;
+      if (nextOffset < pending.length) {
+        setTimeout(() => translateBatch(nextOffset), TRANSLATION_BATCH_DELAY_MS);
+      }
+    };
+    setTimeout(() => translateBatch(0), TRANSLATION_START_DELAY_MS);
   }, [translateAndStoreVariant]);
 
   const derived = useMemo(() => {
@@ -871,8 +1269,11 @@ export function AppProvider({ children }) {
       state,
       loading,
       storageError,
+      storageMutation,
       storageLoadError,
+      storageCorrupt,
       retryLoad,
+      repairCorruptedStorage,
       retryPersist,
       derived,
       addManifestation,
@@ -906,8 +1307,11 @@ export function AppProvider({ children }) {
       state,
       loading,
       storageError,
+      storageMutation,
       storageLoadError,
+      storageCorrupt,
       retryLoad,
+      repairCorruptedStorage,
       retryPersist,
       derived,
       addManifestation,

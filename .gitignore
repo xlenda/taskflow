@@ -5,4 +5,6 @@ dist-trigger-check/
 .expo/
 .env
 .env.local
+.env.*
+!.env.example
 scripts/e2e-shots/falha.png

@@ -10,6 +10,7 @@
 // Uso: node scripts/verificar-icones.js   (roda depois do enxugar-fontes)
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -20,8 +21,8 @@ const FONT_DIR = path.join(
 const glyphPath = path.join(ROOT, 'node_modules', '@expo', 'vector-icons', 'build', 'vendor', 'react-native-vector-icons', 'glyphmaps', 'Ionicons.json');
 
 if (!fs.existsSync(FONT_DIR) || !fs.existsSync(glyphPath)) {
-  console.log('dist ou glyphmap ausente — nada a verificar');
-  process.exit(0);
+  console.error('dist ou glyphmap ausente — verificacao de icones nao pode continuar');
+  process.exit(1);
 }
 const glyphs = JSON.parse(fs.readFileSync(glyphPath, 'utf8'));
 
@@ -36,7 +37,7 @@ function lerCodigo() {
       else if (n.endsWith('.js')) out.push(p);
     }
   };
-  ['screens', 'components', 'ui'].forEach((d) => walk(path.join(ROOT, d)));
+  ['screens', 'components', 'ui', 'constants'].forEach((d) => walk(path.join(ROOT, d)));
   const app = path.join(ROOT, 'App.js');
   if (fs.existsSync(app)) out.push(app);
   return out.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
@@ -57,6 +58,26 @@ if (!ttf) {
   process.exit(1);
 }
 const fonte = path.join(FONT_DIR, ttf);
+const fontHash = crypto.createHash('md5').update(fs.readFileSync(fonte)).digest('hex');
+if (ttf !== `Ionicons.${fontHash}.ttf`) {
+  console.error(`nome imutavel da fonte nao corresponde ao conteudo: ${ttf}`);
+  process.exit(1);
+}
+const bundleDir = path.join(ROOT, 'dist', '_expo', 'static', 'js', 'web');
+const bundles = fs.existsSync(bundleDir)
+  ? fs.readdirSync(bundleDir).filter((name) => /^AppEntry-[a-f0-9]+\.js$/i.test(name))
+  : [];
+if (bundles.length !== 1) {
+  console.error(`bundle web unico nao encontrado: ${bundles.length}`);
+  process.exit(1);
+}
+const bundlePath = path.join(bundleDir, bundles[0]);
+const bundleSource = fs.readFileSync(bundlePath, 'utf8');
+const bundleHash = crypto.createHash('md5').update(bundleSource).digest('hex');
+if (bundles[0] !== `AppEntry-${bundleHash}.js` || !bundleSource.includes(ttf)) {
+  console.error('bundle ou referencia da fonte nao recebeu cache bust pelo conteudo');
+  process.exit(1);
+}
 
 // ── codepoints realmente presentes na fonte publicada ───────────────────────
 let presentes;
@@ -72,8 +93,8 @@ print(','.join(str(c) for c in sorted(cps)))
 `, fonte], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   presentes = new Set(saida.trim().split(',').filter(Boolean).map(Number));
 } catch (e) {
-  console.log('fontTools indisponível — verificação de glifos pulada:', String(e.message).slice(0, 80));
-  process.exit(0);
+  console.error('fontTools indisponivel — nao foi possivel verificar os glifos:', String(e.message).slice(0, 80));
+  process.exit(1);
 }
 
 const faltando = [...usados].filter((n) => !presentes.has(glyphs[n]));

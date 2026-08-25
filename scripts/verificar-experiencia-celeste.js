@@ -18,6 +18,7 @@ const journey = read('screens/JourneyScreen.js');
 const morning = read('screens/MorningRitualScreen.js');
 const community = read('screens/CommunityScreen.js');
 const profile = read('screens/ProfileScreen.js');
+const manifestation = read('screens/ManifestationScreen.js');
 const context = read('context/AppContext.js');
 const legal = read('constants/legal.js');
 const chat = read('screens/onboarding/ChatOnboardingScreen.js');
@@ -29,6 +30,7 @@ for (const file of [
   'screens/MorningRitualScreen.js',
   'screens/CommunityScreen.js',
   'screens/ProfileScreen.js',
+  'screens/ManifestationScreen.js',
   'screens/onboarding/ChatOnboardingScreen.js',
   'services/affirmationAlarm.js',
   'services/communityStories.js',
@@ -51,6 +53,35 @@ assert.ok(
 );
 assert.ok(home.includes('testID="open-profile"'), 'Home precisa abrir o perfil');
 assert.ok(
+  manifestation.includes('startBusyRef.current') &&
+    manifestation.includes('testID="start-manifestation"') &&
+    manifestation.includes('disabled={starting}'),
+  'toque duplo nao pode criar duas copias da mesma sugestao'
+);
+assert.ok(
+  manifestation.includes('await getAffirmationAlarmCapability()') &&
+    manifestation.includes('await cancelAffirmationAlarm()') &&
+    manifestation.indexOf('await cancelAffirmationAlarm()') <
+      manifestation.indexOf('removeManifestation(saved.id)'),
+  'apagar manifestacao usada no despertador deve cancelar o AlarmKit primeiro'
+);
+assert.ok(
+  manifestation.includes('afirmacao !== state.morningRitual?.wakeAffirmationText') &&
+    manifestation.includes('lang !== state.morningRitual?.wakeAffirmationLang'),
+  'editar manifestacao deve comparar com o conteudo realmente gravado no despertador'
+);
+assert.ok(
+  app.includes('<NativeAlarmContentSync />') &&
+    app.includes('function NativeAlarmContentSync()') &&
+    app.includes('replaceScheduledAffirmationAlarm'),
+  'idioma e afirmacao do despertador devem sincronizar no nivel global do app'
+);
+assert.ok(
+  context.includes('const usedAsAlarm = s.morningRitual?.wakeAffirmationId === alarmId') &&
+    context.includes("wakeAffirmationText: ''"),
+  'provider deve remover a copia privada da afirmacao apagada'
+);
+assert.ok(
   home.includes('isUnder18Age(currentProfile.age)') &&
     home.includes('cloudAdultConfirmed = cloudPersonalization') &&
     home.includes('cloudPersonalization, cloudAdultConfirmed'),
@@ -62,6 +93,11 @@ assert.ok(!journey.includes('gemini-personalization-switch'), 'configuracao Gemi
 assert.ok(
   journey.includes('await cancelAffirmationAlarm()') && journey.includes('if (!cancelled.ok)'),
   'recomecar deve desligar o despertador nativo antes de apagar os dados'
+);
+assert.ok(
+  journey.includes('await getAffirmationAlarmCapability()') &&
+    journey.includes('alarmCapability?.supported === true'),
+  'recomecar deve consultar o AlarmKit mesmo se o estado local disser que o alarme esta desligado'
 );
 assert.ok(
   journey.includes('const reset = await resetAll()') && journey.includes('if (!reset)'),
@@ -92,8 +128,11 @@ assert.ok(
   'Voltar deve fechar o documento legal antes de sair do Perfil'
 );
 assert.ok(
-  chat.includes('DRAFT_READ_TIMEOUT_MS') && chat.includes('if (!draftLoaded)') && chat.includes('!finished'),
-  'quiz deve bloquear interacao ate restaurar o rascunho, sem aplicar leitura atrasada'
+  chat.includes('DRAFT_READ_TIMEOUT_MS') &&
+    chat.includes('if (!draftLoaded)') &&
+    chat.includes('draftInteractionRef.current') &&
+    chat.includes('!draftInteractionRef.current'),
+  'quiz deve liberar com seguranca e aceitar rascunho tardio apenas antes da interacao'
 );
 
 assert.ok(

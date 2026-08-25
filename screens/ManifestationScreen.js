@@ -30,6 +30,12 @@ import {
   splitScript,
 } from '../utils/speech';
 import { audioDur } from '../utils/audioBank';
+import {
+  DEFAULT_AFFIRMATION_ALARM_ID,
+  cancelAffirmationAlarm,
+  getAffirmationAlarmCapability,
+  scheduleAffirmationAlarm,
+} from '../services/affirmationAlarm';
 
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
@@ -102,6 +108,14 @@ const S = {
   },
   releaseConfirm: { en: 'Release', pt: 'Deixar ir' },
   releaseAction: { en: 'Release this manifestation', pt: 'Deixar esta manifestação ir' },
+  releaseAlarmFailed: {
+    en: 'The manifestation was kept because its alarm could not be turned off. Try again.',
+    pt: 'A manifestação foi mantida porque o despertador não pôde ser desligado. Tente novamente.',
+  },
+  editAlarmFailed: {
+    en: 'The change was not saved because the alarm could not be updated. Try again.',
+    pt: 'A alteração não foi salva porque o despertador não pôde ser atualizado. Tente novamente.',
+  },
 
   storyTitle: { en: 'Your story', pt: 'Sua história' },
 
@@ -207,7 +221,15 @@ export default function ManifestationScreen() {
   const route = useRoute();
   // Regra única: toda marcação/desmarcação de prática passa pelo togglePractice
   // do contexto (mesmo caminho da Home) — quem confirma é quem chama.
-  const { state, addManifestation, togglePractice, updateManifestation, addEvidence, removeManifestation } = useApp();
+  const {
+    state,
+    addManifestation,
+    togglePractice,
+    updateManifestation,
+    addEvidence,
+    removeManifestation,
+    saveMorningRitualPreferences,
+  } = useApp();
 
   // Vindo da aba Jornada, o React Navigation REAPROVEITA esta tela (mesma key,
   // sem remontar) e só troca os params — sem isto, tocar num segundo card abria
@@ -317,10 +339,18 @@ export default function ManifestationScreen() {
   const [draftAnchorStep, setDraftAnchorStep] = useState('');
   const [evidenceDraft, setEvidenceDraft] = useState('');
   const [evidenceSaved, setEvidenceSaved] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const startBusyRef = useRef(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseError, setReleaseError] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState(false);
   // Token da reprodução atual: qualquer onDone de uma sessão antiga é ignorado
   // (evita duas vozes ou um "fim" fantasma depois de pausar).
   const runRef = useRef(0);
   const isFocused = useIsFocused();
+  const focusRef = useRef(isFocused);
+  focusRef.current = isFocused;
 
   const contentKey = routeId || (template && template.id) || effectiveId || null;
   useEffect(() => {
@@ -470,26 +500,34 @@ export default function ManifestationScreen() {
   };
 
   const start = async () => {
+    if (startBusyRef.current) return;
+    startBusyRef.current = true;
+    setStarting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    const existing = findExisting();
-    if (existing) {
-      openSaved(existing.id);
-      return;
+    try {
+      const existing = findExisting();
+      if (existing) {
+        openSaved(existing.id);
+        return;
+      }
+      const id = await addManifestation({
+        title: item.title,
+        category: item.category,
+        lang,
+        accent: item.accent,
+        intention: item.intention,
+        affirmation: item.affirmation,
+        story: item.story,
+        goalDays: item.goalDays,
+        // marca de origem: é ela que evita a segunda cópia no próximo toque
+        templateId,
+      });
+      if (!id) return;
+      openSaved(id);
+    } finally {
+      startBusyRef.current = false;
+      setStarting(false);
     }
-    const id = await addManifestation({
-      title: item.title,
-      category: item.category,
-      lang,
-      accent: item.accent,
-      intention: item.intention,
-      affirmation: item.affirmation,
-      story: item.story,
-      goalDays: item.goalDays,
-      // marca de origem: é ela que evita a segunda cópia no próximo toque
-      templateId,
-    });
-    if (!id) return;
-    openSaved(id);
   };
 
   // Safari só deixa falar dentro do gesto: narrate()/speak() saem daqui, do
@@ -600,20 +638,76 @@ export default function ManifestationScreen() {
 
   const startEdit = () => {
     if (!saved) return;
+    setEditError(false);
     setDraftTitle(item.title || '');
     setDraftAffirmation(item.affirmation || '');
     setDraftAnchorStep(item.anchorStep || '');
     setEditing(true);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
+    if (editBusy) return;
     const titulo = draftTitle.trim();
     const afirmacao = draftAffirmation.trim();
     const ponte = draftAnchorStep.trim();
     if (!titulo || !afirmacao || !ponte) return;
-    const patch = { title: titulo, affirmation: afirmacao, anchorStep: ponte };
-    if (saved) updateManifestation(saved.id, patch);
-    setEditing(false);
+    if (!saved) return;
+    setEditBusy(true);
+    setEditError(false);
+    try {
+      const usedAsAlarm =
+        state.morningRitual?.wakeAffirmationId === `manifestation:${saved.id}`;
+      const alarmContentChanged =
+        afirmacao !== state.morningRitual?.wakeAffirmationText ||
+        lang !== state.morningRitual?.wakeAffirmationLang;
+      if (usedAsAlarm && state.morningRitual?.reminderEnabled && alarmContentChanged) {
+        const capability = await getAffirmationAlarmCapability().catch(() => null);
+        if (!capability) {
+          setEditError(true);
+          return;
+        }
+        if (
+          Platform.OS === 'ios' &&
+          (capability.supported === true || capability.nativeModuleAvailable === true)
+        ) {
+          const scheduled = await scheduleAffirmationAlarm({
+            time: state.morningRitual.reminderTime,
+            affirmation: afirmacao,
+            locale: lang === 'pt' ? 'pt-BR' : 'en-US',
+            requestAuthorization: true,
+          });
+          if (!scheduled.ok) {
+            const currentCapability = await getAffirmationAlarmCapability().catch(() => null);
+            const scheduledIds = Array.isArray(scheduled.scheduledAlarmIds)
+              ? scheduled.scheduledAlarmIds
+              : currentCapability && currentCapability.scheduledAlarmIds;
+            if (Array.isArray(scheduledIds)) {
+              saveMorningRitualPreferences({
+                reminderEnabled: scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID),
+                alarmSyncError: scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID),
+              });
+            }
+            setEditError(true);
+            return;
+          }
+        }
+      }
+      if (usedAsAlarm) {
+        saveMorningRitualPreferences({
+          wakeAffirmationText: afirmacao,
+          wakeAffirmationLang: lang,
+          alarmSyncError: false,
+        });
+      }
+      updateManifestation(saved.id, {
+        title: titulo,
+        affirmation: afirmacao,
+        anchorStep: ponte,
+      });
+      setEditing(false);
+    } finally {
+      setEditBusy(false);
+    }
   };
 
   const saveEvidence = () => {
@@ -626,18 +720,39 @@ export default function ManifestationScreen() {
   };
 
   const confirmDelete = async () => {
-    if (!saved) return;
+    if (!saved || releaseBusy) return;
+    setReleaseError(false);
     const ok = await confirmAsync({
       title: t(S.releaseTitle),
       message: t(S.releaseBody, { n: (saved.evidence || []).length }),
       confirmLabel: t(S.releaseConfirm),
       cancelLabel: t(S.keep),
     });
-    if (ok) {
+    if (!ok) return;
+    setReleaseBusy(true);
+    try {
+      const usedAsAlarm =
+        state.morningRitual?.wakeAffirmationId === `manifestation:${saved.id}`;
+      if (usedAsAlarm && Platform.OS === 'ios') {
+        const capability = await getAffirmationAlarmCapability().catch(() => null);
+        if (!capability) {
+          setReleaseError(true);
+          return;
+        }
+        if (capability.supported === true || capability.nativeModuleAvailable === true) {
+          const cancelled = await cancelAffirmationAlarm();
+          if (!cancelled.ok) {
+            setReleaseError(true);
+            return;
+          }
+        }
+      }
       runRef.current += 1;
       stopSpeaking();
       removeManifestation(saved.id);
-      navigation.goBack();
+      if (focusRef.current) navigation.goBack();
+    } finally {
+      setReleaseBusy(false);
     }
   };
 
@@ -660,8 +775,15 @@ export default function ManifestationScreen() {
       <View style={styles.navRow}>
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => navigation.goBack()}
-          style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
+          disabled={releaseBusy}
+          onPress={() => {
+            if (!releaseBusy) navigation.goBack();
+          }}
+          style={[
+            styles.navBtn,
+            { backgroundColor: alpha(color, 0.14) },
+            releaseBusy && { opacity: 0.5 },
+          ]}
         >
           <Ionicons name="chevron-back" size={20} color={color} />
         </TouchableOpacity>
@@ -742,10 +864,20 @@ export default function ManifestationScreen() {
                 icon="checkmark"
                 accent={item.accent}
                 onPress={saveEdit}
-                disabled={!draftTitle.trim() || !draftAffirmation.trim() || !draftAnchorStep.trim()}
+                disabled={
+                  editBusy ||
+                  !draftTitle.trim() ||
+                  !draftAffirmation.trim() ||
+                  !draftAnchorStep.trim()
+                }
                 style={{ flex: 1 }}
               />
             </View>
+            {editError ? (
+              <Text style={[styles.releaseError, { color: accentAt(th, 1) }]}>
+                {t(S.editAlarmFailed)}
+              </Text>
+            ) : null}
           </Card>
         ) : (
           <GradientCover accent={item.accent} radius={22} style={styles.hero}>
@@ -884,10 +1016,12 @@ export default function ManifestationScreen() {
           )
         ) : (
           <PrimaryButton
+            testID="start-manifestation"
             label={t(S.startThis)}
             icon="add-circle-outline"
             accent={item.accent}
             onPress={start}
+            disabled={starting}
             style={{ marginTop: 16 }}
           />
         )}
@@ -1006,17 +1140,26 @@ export default function ManifestationScreen() {
         </Card>
 
         {saved ? (
-          // Apagar é raro: item discreto no fim, longe do caminho do dedo.
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={confirmDelete}
-            accessibilityRole="button"
-            accessibilityLabel={t(S.releaseAction)}
-            style={styles.releaseRow}
-          >
-            <Ionicons name="trash-outline" size={15} color={th.textMuted} />
-            <Text style={[styles.releaseText, { color: th.textMuted }]}>{t(S.releaseAction)}</Text>
-          </TouchableOpacity>
+          <>
+            {/* Apagar é raro: item discreto no fim, longe do caminho do dedo. */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={confirmDelete}
+              disabled={releaseBusy}
+              accessibilityRole="button"
+              accessibilityLabel={t(S.releaseAction)}
+              accessibilityState={{ disabled: releaseBusy }}
+              style={[styles.releaseRow, releaseBusy && { opacity: 0.5 }]}
+            >
+              <Ionicons name="trash-outline" size={15} color={th.textMuted} />
+              <Text style={[styles.releaseText, { color: th.textMuted }]}>{t(S.releaseAction)}</Text>
+            </TouchableOpacity>
+            {releaseError ? (
+              <Text style={[styles.releaseError, { color: accentAt(th, 1) }]}>
+                {t(S.releaseAlarmFailed)}
+              </Text>
+            ) : null}
+          </>
         ) : null}
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -1144,6 +1287,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   releaseText: { fontSize: 13, fontWeight: '600', marginLeft: 6 },
+  releaseError: { fontSize: 12.5, lineHeight: 18, marginTop: 8, textAlign: 'center' },
   stepRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
   stepDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   stepIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },

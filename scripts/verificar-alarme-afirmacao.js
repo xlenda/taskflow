@@ -46,6 +46,56 @@ function loadService() {
 async function main() {
   const service = loadService();
 
+  const serializedEvents = [];
+  let releaseFirst;
+  const firstOperation = new Promise((resolve) => { releaseFirst = resolve; });
+  const serialized = service.createSerializedAlarmController({
+    getCapability: async () => {
+      serializedEvents.push('get');
+      return { supported: true };
+    },
+    schedule: async () => {
+      serializedEvents.push('schedule:start');
+      await firstOperation;
+      serializedEvents.push('schedule:end');
+      return { ok: true };
+    },
+    cancel: async () => {
+      serializedEvents.push('cancel');
+      return { ok: true };
+    },
+    test: async () => ({ ok: true }),
+  });
+  const scheduling = serialized.schedule({});
+  const cancelling = serialized.cancel();
+  const inspecting = serialized.getCapability();
+  await Promise.resolve();
+  assert.deepStrictEqual(serializedEvents, ['schedule:start'], 'operacoes nativas iniciaram em paralelo');
+  releaseFirst();
+  await Promise.all([scheduling, cancelling, inspecting]);
+  assert.deepStrictEqual(
+    serializedEvents,
+    ['schedule:start', 'schedule:end', 'cancel', 'get'],
+    'a ultima intencao precisa vencer e a leitura deve observar a fila concluida'
+  );
+
+  let absentScheduleCalls = 0;
+  const absent = service.createSerializedAlarmController({
+    getCapability: async () => ({ supported: true, scheduledAlarmIds: [] }),
+    schedule: async () => {
+      absentScheduleCalls += 1;
+      return { ok: true };
+    },
+    cancel: async () => ({ ok: true }),
+    test: async () => ({ ok: true }),
+  });
+  const absentReplacement = await absent.replaceScheduled({
+    time: '07:00',
+    affirmation: 'I wake calmly.',
+  });
+  assert.strictEqual(absentReplacement.reason, 'alarm_not_scheduled');
+  assert.strictEqual(absentScheduleCalls, 0, 'content sync recriou um alarme nativo ausente');
+
   const web = service.createAffirmationAlarmAdapter({
     platform: { OS: 'web' },
     getNativeModule: () => null,
@@ -125,6 +175,7 @@ async function main() {
   assert.deepStrictEqual(calls[1][1].weekdays, [1, 3, 5]);
   assert.strictEqual(calls[1][1].hour, 6);
   assert.strictEqual(calls[1][1].affirmation, 'I wake with calm and purpose.');
+  assert.strictEqual(calls[1][1].stopLabel, 'Stop', 'English alarm button must be localized');
 
   const invalid = await ios.schedule({ time: '25:10', affirmation: 'A valid phrase.' });
   assert.strictEqual(invalid.reason, 'invalid_time');
@@ -208,6 +259,8 @@ async function main() {
   assert.match(coordinatorSwift, /try alarmManager\.cancel/);
   assert.match(coordinatorSwift, /result\["scheduledAlarmIds"\]/);
   assert.match(coordinatorSwift, /sound: \.named\(soundFileName\)/);
+  assert.match(coordinatorSwift, /let localizedStopLabel = LocalizedStringResource/);
+  assert.match(coordinatorSwift, /text: localizedStopLabel/);
   assert.match(coordinatorSwift, /appendingPathComponent\("Sounds"/);
   assert.doesNotMatch(coordinatorSwift, /UNUserNotificationCenter|UNNotificationRequest/);
 

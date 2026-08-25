@@ -175,7 +175,9 @@ assert.ok(chatSource.includes('draft.v === DRAFT_V'), 'restauracao deve validar 
 assert.ok(chatSource.includes('DRAFT_READ_TIMEOUT_MS'), 'restauracao do rascunho precisa de limite de espera');
 assert.ok(chatSource.includes('if (!draftLoaded)'), 'quiz nao pode aceitar resposta antes de restaurar o rascunho');
 assert.ok(
-  chatSource.includes('alive &&') && chatSource.includes('!finished'),
+  chatSource.includes('draftInteractionRef.current') &&
+    chatSource.includes('!draftInteractionRef.current') &&
+    !chatSource.includes('!finished'),
   'leitura atrasada do rascunho nao pode apagar uma resposta atual'
 );
 assert.ok(

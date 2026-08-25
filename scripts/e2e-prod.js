@@ -133,6 +133,8 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     }
   });
   const fontErrors = [];
+  const runtimeErrors = [];
+  page.on('pageerror', (error) => runtimeErrors.push(String(error)));
   page.on('console', (m) => {
     if (/OTS parsing|Failed to decode downloaded font/.test(m.text())) fontErrors.push(m.text());
   });
@@ -414,6 +416,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await page.type('[data-testid="dream-report-input"]', dreamReport, { delay: 12 });
   await clickTestId(page, 'dream-feeling-calm');
   await clickTestId(page, 'transform-dream');
+  await page.click('[data-testid="transform-dream"]');
   await page.waitForFunction(
     () =>
       (document.querySelector('[data-testid="dream-personalized-affirmation"]')?.innerText || '')
@@ -429,6 +432,14 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     },
     { timeout: 15000, polling: 200 }
   );
+  await sleep(900);
+  const matchingDreams = await page.evaluate((report) => {
+    const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
+    return entries.filter((entry) => entry.dream === report).length;
+  }, dreamReport);
+  if (matchingDreams !== 1) {
+    throw new Error(`Clique duplo criou ${matchingDreams} copias do mesmo sonho`);
+  }
   await page.evaluate(() => {
     window.scrollTo(0, 0);
     [...document.querySelectorAll('*')]
@@ -536,15 +547,38 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await page.evaluate(() => {
     Object.getPrototypeOf(window.localStorage).setItem = window.__celesteOriginalSetItem;
     delete window.__celesteOriginalSetItem;
+    localStorage.setItem('__celeste_retry_probe', 'ok');
+    localStorage.removeItem('__celeste_retry_probe');
   });
-  await waitAndClick(page, 'Tentar novamente');
-  await page.waitForFunction(
-    `!document.body.innerText.includes('Não conseguimos guardar suas últimas mudanças')`,
-    { timeout: 15000 }
-  );
+  await clickTestId(page, 'celeste-storage-persist-retry');
+  try {
+    await page.waitForSelector('[data-testid="celeste-storage-persist-retry"]', {
+      hidden: true,
+      timeout: 15000,
+    });
+  } catch (_error) {
+    const retryState = await page.evaluate(() => {
+      const button = document.querySelector('[data-testid="celeste-storage-persist-retry"]');
+      const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+      return {
+        buttonText: button?.innerText || button?.textContent || null,
+        buttonDisabled: button?.getAttribute('aria-disabled') || button?.disabled || false,
+        sessions: saved.manifestations?.map((item) => item.sessions) || [],
+      };
+    });
+    throw new Error(`Nova tentativa de persistencia nao concluiu: ${JSON.stringify(retryState)}`);
+  }
+  const retriedPracticePersisted = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    return saved.manifestations?.some((item) => Array.isArray(item.sessions) && item.sessions.length > 0);
+  });
+  if (!retriedPracticePersisted) throw new Error('A nova tentativa sumiu com a pratica pendente');
 
   if (fontErrors.length) {
     throw new Error(`FONTE DOS ÍCONES quebrada em produção: ${fontErrors[0]}`);
+  }
+  if (runtimeErrors.length) {
+    throw new Error(`Erro JavaScript durante o fluxo principal: ${runtimeErrors[0]}`);
   }
 
   // Backup antigo ou adulterado não pode derrubar a revelação. Este era um bug
@@ -593,7 +627,89 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   if (importedErrors.length) throw new Error(`Reveal de backup corrompido falhou: ${importedErrors[0]}`);
   await imported.close();
 
-  console.log('✅ E2E COMPLETO PASSOU: onboarding + persistência + backup defensivo + paywall + app principal');
+  const missingReveal = await browser.newPage();
+  const missingRevealErrors = [];
+  missingReveal.on('pageerror', (error) => missingRevealErrors.push(String(error)));
+  await missingReveal.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await missingReveal.evaluate(() => {
+    localStorage.setItem(
+      '@stella_state_v2',
+      JSON.stringify({
+        lang: 'pt',
+        onboardingDone: false,
+        profile: {},
+        manifestations: [],
+        favoriteAffirmations: [],
+        affirmationDates: [],
+        savedVisions: [],
+        visionPlays: [],
+      })
+    );
+  });
+  const missingRevealUrl = new globalThis.URL('/revelacao/nao-existe', URL).toString();
+  await missingReveal.goto(missingRevealUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+  await missingReveal.waitForSelector('[data-testid="missing-anchor-scene"]', {
+    visible: true,
+    timeout: 15000,
+  });
+  await waitAndClick(missingReveal, 'Voltar ao início', 15000);
+  await missingReveal.waitForFunction(
+    () => location.pathname === '/bem-vindo',
+    { timeout: 15000, polling: 100 }
+  );
+  if (missingRevealErrors.length) {
+    throw new Error(`Deep link de cena inexistente falhou: ${missingRevealErrors[0]}`);
+  }
+  await missingReveal.close();
+
+  const duplicateTemplate = await browser.newPage();
+  const duplicateTemplateErrors = [];
+  duplicateTemplate.on('pageerror', (error) => duplicateTemplateErrors.push(String(error)));
+  await duplicateTemplate.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await duplicateTemplate.evaluate(() => {
+    localStorage.setItem(
+      '@stella_state_v2',
+      JSON.stringify({
+        lang: 'pt',
+        onboardingDone: true,
+        profile: {},
+        manifestations: [],
+        favoriteAffirmations: [],
+        affirmationDates: [],
+        savedVisions: [],
+        visionPlays: [],
+      })
+    );
+  });
+  const templateUrl = new globalThis.URL('/m?templateId=fy-1', URL).toString();
+  await duplicateTemplate.goto(templateUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+  await duplicateTemplate.waitForSelector('[data-testid="start-manifestation"]', {
+    visible: true,
+    timeout: 30000,
+  });
+  await duplicateTemplate.$eval('[data-testid="start-manifestation"]', (button) => {
+    button.click();
+    button.click();
+  });
+  await duplicateTemplate.waitForFunction(
+    () => {
+      const items = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').manifestations || [];
+      return items.filter((item) => item.templateId === 'fy-1').length === 1;
+    },
+    { timeout: 15000, polling: 200 }
+  );
+  await sleep(900);
+  const templateCopies = await duplicateTemplate.evaluate(() => {
+    const items = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').manifestations || [];
+    return items.filter((item) => item.templateId === 'fy-1').length;
+  });
+  if (templateCopies !== 1) throw new Error(`Toque duplo criou ${templateCopies} sugestoes iguais`);
+  if (duplicateTemplateErrors.length) {
+    throw new Error(`Erro ao iniciar sugestao: ${duplicateTemplateErrors[0]}`);
+  }
+  await duplicateTemplate.close();
+
+  console.log('✅ E2E COMPLETO PASSOU: onboarding + persistência + idempotência + links órfãos + app principal');
   await browser.close();
 })().catch(async (e) => {
   console.error('❌ E2E FALHOU:', String(e).slice(0, 400));

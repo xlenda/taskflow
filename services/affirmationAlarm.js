@@ -1,8 +1,8 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { NativeModules, Platform } from 'react-native';
 
-export const AFFIRMATION_ALARM_NATIVE_MODULE = 'CelesteAffirmationAlarm';
-export const AFFIRMATION_ALARM_MIN_IOS_VERSION = 26;
+const AFFIRMATION_ALARM_NATIVE_MODULE = 'CelesteAffirmationAlarm';
+const AFFIRMATION_ALARM_MIN_IOS_VERSION = 26;
 export const DEFAULT_AFFIRMATION_ALARM_ID = 'c31e57e0-75ee-4de2-9526-0cc321f55a11';
 
 const DEFAULT_TEST_ALARM_ID = '81d83a39-af98-4879-9aad-22f08ffdb2d7';
@@ -168,6 +168,7 @@ function normalizeAlarmContent(input, fallbackId) {
   const affirmation = cleanText(input.affirmation, 800);
   const title = cleanText(input.title, 120) || 'Celeste';
   const locale = cleanText(input.locale, 32) || 'pt-BR';
+  const stopLabel = cleanText(input.stopLabel, 32) || (/^en(?:-|$)/i.test(locale) ? 'Stop' : 'Parar');
   const voiceIdentifier = cleanText(input.voiceIdentifier, 160) || null;
   const soundFileName = cleanText(input.soundFileName, 120) || null;
 
@@ -184,6 +185,7 @@ function normalizeAlarmContent(input, fallbackId) {
       affirmation,
       title,
       locale,
+      stopLabel,
       voiceIdentifier,
       soundFileName,
     },
@@ -403,14 +405,36 @@ export function createAffirmationAlarmAdapter({
 
 const affirmationAlarm = createAffirmationAlarmAdapter();
 
-export const getAffirmationAlarmCapability = affirmationAlarm.getCapability;
-export const scheduleAffirmationAlarm = affirmationAlarm.schedule;
-export const cancelAffirmationAlarm = affirmationAlarm.cancel;
-export const testAffirmationAlarm = affirmationAlarm.test;
+export function createSerializedAlarmController(adapter) {
+  let tail = Promise.resolve();
+  const enqueue = (operation) => {
+    const result = tail.then(operation, operation);
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  return {
+    getCapability: () => enqueue(() => adapter.getCapability()),
+    schedule: (input) => enqueue(() => adapter.schedule(input)),
+    replaceScheduled: (input) => enqueue(async () => {
+      const capability = await adapter.getCapability();
+      const alarmId = cleanText(input && input.alarmId, 80) || DEFAULT_AFFIRMATION_ALARM_ID;
+      const scheduledAlarmIds = capability && capability.scheduledAlarmIds;
+      if (!Array.isArray(scheduledAlarmIds) || !scheduledAlarmIds.includes(alarmId)) {
+        return failure('schedule', 'alarm_not_scheduled', capability, {
+          alarmId,
+          scheduledAlarmIds: Array.isArray(scheduledAlarmIds) ? scheduledAlarmIds : [],
+        });
+      }
+      return adapter.schedule(input);
+    }),
+    cancel: (alarmId) => enqueue(() => adapter.cancel(alarmId)),
+    test: (input) => enqueue(() => adapter.test(input)),
+  };
+}
 
-export const __test = {
-  iosMajor,
-  normalizeAlarmContent,
-  normalizeScheduleInput,
-  normalizeTestInput,
-};
+const serializedAlarm = createSerializedAlarmController(affirmationAlarm);
+
+export const getAffirmationAlarmCapability = serializedAlarm.getCapability;
+export const scheduleAffirmationAlarm = serializedAlarm.schedule;
+export const replaceScheduledAffirmationAlarm = serializedAlarm.replaceScheduled;
+export const cancelAffirmationAlarm = serializedAlarm.cancel;

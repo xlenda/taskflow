@@ -130,6 +130,7 @@ export default function VisionsScreen() {
     if (!state) return [];
     const ultima = new Map();
     state.visionPlays.forEach((p) => {
+      if (!p || !p.visionId || !p.date) return;
       const atual = ultima.get(p.visionId);
       if (!atual || String(p.date) > String(atual.date)) ultima.set(p.visionId, p);
     });

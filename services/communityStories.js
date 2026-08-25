@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 export const COMMUNITY_STORAGE_KEY = '@celeste_community_stories_v1';
 export const COMMUNITY_BODY_MIN = 10;
 export const COMMUNITY_BODY_MAX = 600;
+export const COMMUNITY_STORAGE_ERROR_CODE = 'community_storage_unreadable';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -18,6 +19,55 @@ const CATEGORY_CIRCLES = {
 };
 
 let client;
+let localMutationTail = Promise.resolve();
+let communityGeneration = 0;
+let communityResetToken = 0;
+
+function serializeLocalMutation(operation) {
+  const result = localMutationTail.then(operation, operation);
+  localMutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function communityResetError() {
+  const error = new Error('community_reset_in_progress');
+  error.code = 'community_reset_in_progress';
+  return error;
+}
+
+function assertCommunityGeneration(expectedGeneration) {
+  if (communityResetToken || expectedGeneration !== communityGeneration) {
+    throw communityResetError();
+  }
+}
+
+export async function beginCommunityDataReset() {
+  if (communityResetToken) throw communityResetError();
+  communityGeneration += 1;
+  const token = communityGeneration;
+  communityResetToken = token;
+  try {
+    // Close the gate first, then wait for older mutations without deleting yet.
+    // The caller removes all reset keys together; if that operation fails, it can
+    // release this gate without having already erased the community receipts.
+    await serializeLocalMutation(() => Promise.resolve());
+    return token;
+  } catch (error) {
+    if (communityResetToken === token) communityResetToken = 0;
+    throw error;
+  }
+}
+
+export async function finishCommunityDataReset(token) {
+  if (!token || communityResetToken !== token) throw communityResetError();
+  await serializeLocalMutation(() => AsyncStorage.removeItem(COMMUNITY_STORAGE_KEY));
+  if (communityResetToken === token) communityResetToken = 0;
+  return true;
+}
+
+export function cancelCommunityDataReset(token) {
+  if (token && communityResetToken === token) communityResetToken = 0;
+}
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
@@ -43,6 +93,22 @@ function safeText(value, max) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function stableLegacyId(raw, body, index) {
+  const seed = JSON.stringify([
+    body,
+    safeText(raw && raw.createdAt, 40),
+    safeText(raw && raw.manifestationId, 120),
+    safeText(raw && raw.manifestationTitle, 160),
+    Number.isInteger(index) ? index : 0,
+  ]);
+  let hash = 2166136261;
+  for (let offset = 0; offset < seed.length; offset += 1) {
+    hash ^= seed.charCodeAt(offset);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `community-legacy-${(hash >>> 0).toString(36)}`;
+}
+
 export function normalizeCommunityStory(value) {
   if (typeof value !== 'string') return '';
   return value
@@ -59,7 +125,7 @@ export function validateCommunityStory(value) {
   return { ok: true, body };
 }
 
-function sanitizeLocalItem(raw) {
+function sanitizeLocalItem(raw, index = 0) {
   if (!raw || typeof raw !== 'object') return null;
   const body = normalizeCommunityStory(raw.body).slice(0, COMMUNITY_BODY_MAX);
   if (body.length < COMMUNITY_BODY_MIN) return null;
@@ -67,7 +133,7 @@ function sanitizeLocalItem(raw) {
     ? raw.status
     : 'local_draft';
   return {
-    id: safeText(raw.id, 160) || makeId(),
+    id: safeText(raw.id, 160) || stableLegacyId(raw, body, index),
     remoteId: safeText(raw.remoteId, 160) || null,
     body,
     status,
@@ -75,8 +141,8 @@ function sanitizeLocalItem(raw) {
     manifestationId: safeText(raw.manifestationId, 120) || null,
     manifestationTitle: safeText(raw.manifestationTitle, 160) || null,
     publicationConsentAt: safeText(raw.publicationConsentAt, 40) || null,
-    createdAt: safeText(raw.createdAt, 40) || new Date().toISOString(),
-    updatedAt: safeText(raw.updatedAt, 40) || safeText(raw.createdAt, 40) || new Date().toISOString(),
+    createdAt: safeText(raw.createdAt, 40) || new Date(0).toISOString(),
+    updatedAt: safeText(raw.updatedAt, 40) || safeText(raw.createdAt, 40) || new Date(0).toISOString(),
     syncReason: safeText(raw.syncReason, 80) || null,
   };
 }
@@ -84,38 +150,54 @@ function sanitizeLocalItem(raw) {
 export async function loadLocalCommunityStories() {
   try {
     const raw = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return (Array.isArray(parsed) ? parsed : []).map(sanitizeLocalItem).filter(Boolean);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('invalid_community_storage_shape');
+    return parsed.map((item, index) => sanitizeLocalItem(item, index)).filter(Boolean);
   } catch (error) {
-    return [];
+    const storageError = new Error(COMMUNITY_STORAGE_ERROR_CODE);
+    storageError.code = COMMUNITY_STORAGE_ERROR_CODE;
+    storageError.cause = error;
+    throw storageError;
   }
 }
 
 async function persistLocalCommunityStories(items) {
-  const safe = (Array.isArray(items) ? items : []).map(sanitizeLocalItem).filter(Boolean).slice(0, 50);
+  const safe = (Array.isArray(items) ? items : [])
+    .map((item, index) => sanitizeLocalItem(item, index))
+    .filter(Boolean)
+    .slice(0, 50);
   await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(safe));
   return safe;
 }
 
-async function upsertLocalCommunityStory(item) {
-  const safe = sanitizeLocalItem(item);
-  if (!safe) throw new Error('INVALID_STORY');
-  const items = await loadLocalCommunityStories();
-  const match = (candidate) =>
-    candidate.id === safe.id || (safe.remoteId && candidate.remoteId === safe.remoteId);
-  const next = [safe, ...items.filter((candidate) => !match(candidate))];
-  await persistLocalCommunityStories(next);
-  return safe;
+async function upsertLocalCommunityStory(item, expectedGeneration = communityGeneration) {
+  return serializeLocalMutation(async () => {
+    assertCommunityGeneration(expectedGeneration);
+    const safe = sanitizeLocalItem(item);
+    if (!safe) throw new Error('INVALID_STORY');
+    const items = await loadLocalCommunityStories();
+    const match = (candidate) =>
+      candidate.id === safe.id || (safe.remoteId && candidate.remoteId === safe.remoteId);
+    const next = [safe, ...items.filter((candidate) => !match(candidate))];
+    await persistLocalCommunityStories(next);
+    return safe;
+  });
 }
 
-export async function removeLocalCommunityStory(id) {
-  const target = safeText(id, 160);
-  const items = await loadLocalCommunityStories();
-  await persistLocalCommunityStories(items.filter((item) => item.id !== target));
-}
-
-export function isCommunityCloudConfigured() {
-  return !!getClient();
+export async function removeLocalCommunityStory(id, remoteId = null) {
+  const expectedGeneration = communityGeneration;
+  return serializeLocalMutation(async () => {
+    assertCommunityGeneration(expectedGeneration);
+    const target = safeText(id, 160);
+    const remoteTarget = safeText(remoteId, 160);
+    const items = await loadLocalCommunityStories();
+    await persistLocalCommunityStories(
+      items.filter(
+        (item) => item.id !== target && (!remoteTarget || item.remoteId !== remoteTarget)
+      )
+    );
+  });
 }
 
 async function getAuthenticatedUser(supabase) {
@@ -168,7 +250,7 @@ async function findOrJoinCircle(supabase, userId, category) {
 
 function remotePostToItem(post, localReceipt) {
   return {
-    id: post.id,
+    id: localReceipt ? localReceipt.id : post.id,
     remoteId: post.id,
     userId: post.user_id,
     body: normalizeCommunityStory(post.body),
@@ -213,6 +295,8 @@ export async function loadCommunityState() {
 }
 
 export async function submitCommunityStory(input) {
+  const operationGeneration = communityGeneration;
+  assertCommunityGeneration(operationGeneration);
   const validation = validateCommunityStory(input && input.body);
   if (!validation.ok) {
     const error = new Error(validation.reason);
@@ -240,26 +324,40 @@ export async function submitCommunityStory(input) {
     syncReason: null,
   };
 
+  // A readable, durable local receipt is required before any private text is
+  // sent to the community backend. Corruption therefore fails closed.
+  await upsertLocalCommunityStory(localDraft, operationGeneration);
+
   const supabase = getClient();
   if (!supabase) {
-    const item = await upsertLocalCommunityStory({ ...localDraft, syncReason: 'not_configured' });
+    const item = await upsertLocalCommunityStory(
+      { ...localDraft, syncReason: 'not_configured' },
+      operationGeneration
+    );
     return { item, synced: false, reason: 'not_configured' };
   }
 
   const user = await getAuthenticatedUser(supabase);
   if (!user) {
-    const item = await upsertLocalCommunityStory({ ...localDraft, syncReason: 'sign_in_required' });
+    const item = await upsertLocalCommunityStory(
+      { ...localDraft, syncReason: 'sign_in_required' },
+      operationGeneration
+    );
     return { item, synced: false, reason: 'sign_in_required' };
   }
 
+  let created = null;
   try {
     const circle = await findOrJoinCircle(supabase, user.id, input.category);
     if (!circle) {
-      const item = await upsertLocalCommunityStory({ ...localDraft, syncReason: 'profile_required' });
+      const item = await upsertLocalCommunityStory(
+        { ...localDraft, syncReason: 'profile_required' },
+        operationGeneration
+      );
       return { item, synced: false, reason: 'profile_required' };
     }
 
-    const { data: created, error: createError } = await supabase
+    const { data: createdPost, error: createError } = await supabase
       .from('community_posts')
       .insert({
         user_id: user.id,
@@ -272,7 +370,8 @@ export async function submitCommunityStory(input) {
       })
       .select('id, content_revision, status, created_at, updated_at')
       .single();
-    if (createError || !created) throw createError || new Error('CREATE_FAILED');
+    if (createError || !createdPost) throw createError || new Error('CREATE_FAILED');
+    created = createdPost;
 
     const { data: submitted, error: submitError } = await supabase.rpc('community_submit_post', {
       target_post: created.id,
@@ -280,17 +379,45 @@ export async function submitCommunityStory(input) {
     });
 
     const pending = submitted === true && !submitError;
-    const item = await upsertLocalCommunityStory({
-      ...localDraft,
-      remoteId: created.id,
-      status: pending ? 'pending' : 'draft',
-      createdAt: created.created_at || now,
-      updatedAt: created.updated_at || now,
-      syncReason: pending ? null : 'submit_failed',
-    });
+    let item;
+    try {
+      item = await upsertLocalCommunityStory(
+        {
+          ...localDraft,
+          remoteId: created.id,
+          status: pending ? 'pending' : 'draft',
+          createdAt: created.created_at || now,
+          updatedAt: created.updated_at || now,
+          syncReason: pending ? null : 'submit_failed',
+        },
+        operationGeneration
+      );
+    } catch (localError) {
+      // Do not leave a remote story without a local receipt the author can use
+      // to find and delete it.
+      const rollback = await supabase
+        .rpc('community_delete_own_post', { target_post: created.id })
+        .catch(() => null);
+      if (rollback && rollback.data === true && !rollback.error) created = null;
+      throw localError;
+    }
     return { item, synced: pending, reason: pending ? null : 'submit_failed' };
   } catch (error) {
-    const item = await upsertLocalCommunityStory({ ...localDraft, syncReason: 'unavailable' });
+    const item = await upsertLocalCommunityStory(
+      {
+        ...localDraft,
+        ...(created
+          ? {
+              remoteId: created.id,
+              status: 'pending',
+              createdAt: created.created_at || now,
+              updatedAt: created.updated_at || now,
+            }
+          : {}),
+        syncReason: created ? 'remote_cleanup_required' : 'unavailable',
+      },
+      operationGeneration
+    );
     return { item, synced: false, reason: 'unavailable' };
   }
 }
@@ -301,7 +428,7 @@ export async function deleteCommunityStory(item) {
   if (!localId) return { ok: false, reason: 'invalid_story' };
 
   if (!remoteId) {
-    await removeLocalCommunityStory(localId);
+    await removeLocalCommunityStory(localId, remoteId);
     return { ok: true, remoteDeleted: false };
   }
 
@@ -315,7 +442,7 @@ export async function deleteCommunityStory(item) {
       target_post: remoteId,
     });
     if (error || data !== true) return { ok: false, reason: 'delete_unconfirmed' };
-    await removeLocalCommunityStory(localId);
+    await removeLocalCommunityStory(localId, remoteId);
     return { ok: true, remoteDeleted: true };
   } catch (error) {
     return { ok: false, reason: 'unavailable' };

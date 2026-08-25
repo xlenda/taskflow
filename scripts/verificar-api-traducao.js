@@ -45,7 +45,8 @@ function configure() {
   process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
   process.env.CELESTE_ALLOWED_ORIGINS = 'https://celeste.example';
   delete process.env.GEMINI_TIMEOUT_MS;
-  endpoint._internals.resetRateLimits();
+  endpoint._internals.resetSecurityForTests();
+  endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
 }
 
 function restore() {
@@ -54,7 +55,7 @@ function restore() {
     else process.env[key] = originalEnv[key];
   }
   global.fetch = originalFetch;
-  endpoint._internals.resetRateLimits();
+  endpoint._internals.resetSecurityForTests();
 }
 
 function sourceScene() {
@@ -100,13 +101,24 @@ function geminiPayload(scene = translatedScene()) {
 }
 
 function request(body, overrides = {}) {
+  const { headers: overrideHeaders, ...requestOverrides } = overrides;
   return {
     method: 'POST',
     body,
-    headers: {},
+    headers: {
+      origin: 'https://celeste.example',
+      'x-is-human': 'unit-test-challenge',
+      ...(overrideHeaders || {}),
+    },
     socket: { remoteAddress: '127.0.0.1' },
-    ...overrides,
+    ...requestOverrides,
   };
+}
+
+function requestWithoutOrigin(body, overrides = {}) {
+  const req = request(body, overrides);
+  delete req.headers.origin;
+  return req;
 }
 
 function response() {
@@ -198,6 +210,49 @@ test('manifestation translation API contract', async (t) => {
     res = await invoke(request(validBody({ targetLang: 'pt' })));
     assert.strictEqual(res.statusCode, 400);
     assert.strictEqual(calls, 0);
+  });
+
+  await t.test('fails closed before Gemini when Origin is absent from POST and OPTIONS', async () => {
+    configure();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return { ok: true, status: 200, json: async () => geminiPayload() };
+    };
+
+    let res = await invoke(requestWithoutOrigin(validBody(), {
+      headers: { 'x-forwarded-for': '10.0.0.220' },
+    }));
+    assert.strictEqual(res.statusCode, 403);
+    assert.deepStrictEqual(res.body, { error: 'origin_not_allowed' });
+    assert.strictEqual(res.headers['access-control-allow-origin'], undefined);
+    assert.strictEqual(calls, 0, 'a POST without Origin must never spend a Gemini request');
+
+    res = await invoke(requestWithoutOrigin(undefined, { method: 'OPTIONS' }));
+    assert.strictEqual(res.statusCode, 403);
+    assert.deepStrictEqual(res.body, { error: 'origin_not_allowed' });
+    assert.strictEqual(res.headers['access-control-allow-origin'], undefined);
+    assert.strictEqual(calls, 0, 'an OPTIONS request without Origin must never reach Gemini');
+  });
+
+  await t.test('blocks bots and verification failures before translating with Gemini', async () => {
+    configure();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return { ok: true, status: 200, json: async () => geminiPayload() };
+    };
+
+    endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: false, isBot: true }));
+    let res = await invoke(request(validBody()));
+    assert.strictEqual(res.statusCode, 403);
+    assert.deepStrictEqual(res.body, { error: 'automated_request_blocked' });
+
+    endpoint._internals.setBotVerifierForTests(async () => { throw new Error('provider unavailable'); });
+    res = await invoke(request(validBody()));
+    assert.strictEqual(res.statusCode, 503);
+    assert.deepStrictEqual(res.body, { error: 'bot_verification_unavailable' });
+    assert.strictEqual(calls, 0, 'failed BotID checks must never spend a Gemini translation');
   });
 
   await t.test('translates the exact scene with deterministic metadata and no cache', async () => {

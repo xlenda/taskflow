@@ -1,12 +1,11 @@
 const crypto = require('crypto');
+const { checkBotId } = require('botid/server');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v1.json');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const PROMPT_VERSION = 'celeste-scene-v5';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_BODY_BYTES = 24 * 1024;
-const RATE_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT = 10;
 const CATEGORIES = new Set(['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace']);
 const FIELD_KEYS = [
   'desire',
@@ -70,7 +69,7 @@ const RECEIPT_LABELS = {
   },
 };
 
-const rateWindow = new Map();
+let botVerifier = checkBotId;
 
 class GenerationError extends Error {
   constructor(code) {
@@ -640,29 +639,32 @@ function setResponseHeaders(req, res) {
   res.setHeader('Vary', 'Origin');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const origin = cleanText((req.headers && req.headers.origin) || '', 500);
-  const allowed = !origin || allowedOrigins().has(origin);
+  const allowed = Boolean(origin) && allowedOrigins().has(origin);
   if (origin && allowed) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Is-Human, X-Path, X-Method');
   return allowed;
 }
 
-function clientIp(req) {
-  const forwarded = cleanText((req.headers && req.headers['x-forwarded-for']) || '', 300);
-  return (forwarded.split(',')[0] || cleanText(req.socket && req.socket.remoteAddress, 100) || 'unknown').trim();
-}
-
-function exceedsRateLimit(req) {
-  const now = Date.now();
-  const ip = clientIp(req);
-  const current = rateWindow.get(ip);
-  const entry = !current || now - current.since >= RATE_WINDOW_MS
-    ? { since: now, count: 0 }
-    : current;
-  entry.count += 1;
-  rateWindow.set(ip, entry);
-  if (rateWindow.size > 5000) rateWindow.clear();
-  return entry.count > RATE_LIMIT;
+async function verifyHumanRequest(req) {
+  try {
+    const verification = await botVerifier({
+      developmentOptions: {
+        isDevelopment: process.env.VERCEL_ENV !== 'production',
+        bypass: 'HUMAN',
+      },
+      advancedOptions: {
+        checkLevel: 'basic',
+        headers: (req && req.headers) || {},
+      },
+    });
+    if (!verification || verification.isBot || verification.isHuman !== true) {
+      return { status: 403, error: 'automated_request_blocked' };
+    }
+    return null;
+  } catch (_error) {
+    return { status: 503, error: 'bot_verification_unavailable' };
+  }
 }
 
 function sendJson(res, status, code) {
@@ -680,6 +682,9 @@ async function handler(req, res) {
     return sendJson(res, 405, 'method_not_allowed');
   }
 
+  const botError = await verifyHumanRequest(req);
+  if (botError) return sendJson(res, botError.status, botError.error);
+
   const parsedBody = parseBody(req);
   if (parsedBody.error) return sendJson(res, parsedBody.status, parsedBody.error);
   const validated = validateInput(parsedBody.body);
@@ -691,8 +696,6 @@ async function handler(req, res) {
   if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
     return sendJson(res, 503, 'generation_not_configured');
   }
-  if (exceedsRateLimit(req)) return sendJson(res, 429, 'rate_limited');
-
   const configuredModel = cleanText(process.env.GEMINI_MODEL || DEFAULT_MODEL, 80);
   const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
   const seed = deterministicSeed(validated.value);
@@ -737,5 +740,8 @@ module.exports._internals = {
   validateGeneratedScene,
   validateInput,
   knowledgeVersion: CELESTE_KNOWLEDGE.version,
-  resetRateLimits: () => rateWindow.clear(),
+  resetSecurityForTests: () => { botVerifier = checkBotId; },
+  setBotVerifierForTests: (verifier) => {
+    botVerifier = typeof verifier === 'function' ? verifier : checkBotId;
+  },
 };

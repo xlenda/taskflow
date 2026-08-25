@@ -90,7 +90,7 @@ async function retriesAfterRejection() {
   writer.dispose();
 }
 
-async function keepsLateResetConsistent() {
+async function publishesResetOnlyAfterAck() {
   const delayed = deferred();
   let persisted = 'old-state';
   let memory = 'old-state';
@@ -103,11 +103,11 @@ async function keepsLateResetConsistent() {
   });
 
   const revision = writer.enqueue('reset-state');
-  memory = 'reset-state';
   assert.strictEqual(await writer.waitFor(revision, 28), false, 'late reset should release the UI');
-  assert.strictEqual(memory, 'reset-state', 'memory cannot keep data that a late reset may erase on disk');
+  assert.strictEqual(memory, 'old-state', 'reset sem ack nao pode desmontar a tela atual');
   delayed.resolve();
   assert.strictEqual(await writer.waitFor(revision, 80), true, 'late reset never completed');
+  memory = 'reset-state';
   assert.strictEqual(persisted, memory, 'late reset left memory and disk describing different states');
   writer.dispose();
 }
@@ -115,15 +115,17 @@ async function keepsLateResetConsistent() {
 async function run() {
   await serializesLateWrites();
   await retriesAfterRejection();
-  await keepsLateResetConsistent();
+  await publishesResetOnlyAfterAck();
 
   const context = read('context/AppContext.js');
   const app = read('App.js');
+  const community = read('services/communityStories.js');
   const chat = read('screens/onboarding/ChatOnboardingScreen.js');
   const welcome = read('screens/onboarding/WelcomeScreen.js');
   const video = read('components/WelcomeVideo.js');
   const sceneClient = read('services/generatePersonalizedScene.js');
   const deploy = read('scripts/deploy-celeste.js');
+  const journey = read('screens/JourneyScreen.js');
 
   assert.ok(context.includes('createSerialStorageWriter'), 'AppContext nao usa fila serial');
   assert.ok(context.includes('storageLoadError'), 'falha de leitura continua invisivel');
@@ -143,15 +145,29 @@ async function run() {
     context.includes('AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)'),
     'reset nao limpa rascunho, comunidade e convite locais'
   );
-  const resetBlock = context.slice(context.indexOf('const resetAll'), context.indexOf('const setMood'));
   assert.ok(
-    resetBlock.indexOf('AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)') <
-      resetBlock.indexOf('writerRef.current.enqueue'),
-    'reset abre o onboarding antes de limpar os registros auxiliares antigos'
+    context.includes('.filter((play) => play && typeof play === \'object\'') &&
+      context.includes('.filter((play) => play.visionId && play.date)'),
+    'visionPlays malformado precisa ser removido no load e no import'
+  );
+  const resetBlock = context.slice(context.indexOf('const resetAll'), context.indexOf('const setMood'));
+  const firstAuxiliaryClear = resetBlock.indexOf('await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)');
+  const resetEnqueue = resetBlock.indexOf('writerRef.current.enqueue(JSON.stringify(next))');
+  const finalizeBlock = resetBlock.slice(resetBlock.indexOf('const finalizeReset'));
+  assert.ok(
+    firstAuxiliaryClear >= 0 &&
+      firstAuxiliaryClear < resetEnqueue &&
+      finalizeBlock.includes('await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)') &&
+      finalizeBlock.indexOf('await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)') <
+        finalizeBlock.indexOf('setState(next)'),
+    'reset precisa limpar auxiliares antes da escrita e novamente antes de liberar a tela'
   );
   assert.ok(
-    resetBlock.indexOf('setState(next)') < resetBlock.indexOf('await writerRef.current.waitFor'),
-    'timeout do reset pode manter dados na memoria e apaga-los somente no reload'
+    resetBlock.includes('let finalizePromise = null') &&
+      resetBlock.includes('if (finalizePromise) return finalizePromise') &&
+      resetBlock.indexOf('await writerRef.current.waitFor(revision') <
+        resetBlock.lastIndexOf('pendingResetFinalizeRef.current()'),
+    'finalizacao deve ser idempotente e a tela so pode mudar apos o ack'
   );
   assert.ok(
     resetBlock.includes('catch (_error)') && resetBlock.includes('return false'),
@@ -161,8 +177,48 @@ async function run() {
     resetBlock.includes('await writerRef.current.waitFor(revision'),
     'reset confirma sucesso antes da gravacao principal terminar'
   );
+  assert.ok(
+    context.includes('storageMutationRef.current ||') &&
+      context.includes('pendingResetRevisionRef.current ||') &&
+      context.includes('pendingImportRevisionRef.current'),
+    'mudancas antigas nao podem entrar na fila enquanto um reset aguarda confirmacao'
+  );
+  assert.ok(
+    app.includes('celeste-storage-mutation-guard') && app.includes('<StorageMutationGuard />'),
+    'timeout de reset/import precisa bloquear interacoes ate a confirmacao real'
+  );
+  assert.ok(
+    app.includes('celeste-storage-persist-retry') &&
+      app.includes('celeste-storage-mutation-retry'),
+    'acoes de recuperacao precisam ter alvos unicos para acessibilidade e testes'
+  );
+  assert.ok(
+    resetBlock.includes('beginCommunityDataReset') && resetBlock.includes('finishCommunityDataReset'),
+    'reset precisa invalidar relatos que ja estavam sendo enviados'
+  );
+  assert.ok(
+    community.includes('serializeLocalMutation(() => Promise.resolve())') &&
+      !community.slice(
+        community.indexOf('export async function beginCommunityDataReset'),
+        community.indexOf('export async function finishCommunityDataReset')
+      ).includes('removeItem(COMMUNITY_STORAGE_KEY)'),
+    'barreira de reset nao pode apagar relatos antes da limpeza principal confirmar'
+  );
   assert.ok(app.includes('celeste-storage-recovery'), 'tela de recuperacao local ausente');
   assert.ok(app.includes('Nada foi apagado'), 'recuperacao nao protege a confianca da pessoa');
+
+  const importBlock = context.slice(context.indexOf('const importStateJson'), context.indexOf('// â”€â”€ Onboarding'));
+  assert.ok(
+    importBlock.includes('useCallback(async (str)') &&
+      importBlock.indexOf('writerRef.current.enqueue') < importBlock.indexOf('await writerRef.current.waitFor') &&
+      importBlock.indexOf('await writerRef.current.waitFor') < importBlock.lastIndexOf('await finalizeImport()') &&
+      importBlock.includes('if (finalizePromise) return finalizePromise'),
+    'restauracao de backup precisa aguardar o ack antes de confirmar sucesso'
+  );
+  assert.ok(
+    journey.includes("const r = await importStateJson(String(reader.result || ''))"),
+    'Jornada precisa aguardar a restauracao persistida'
+  );
 
   assert.ok(chat.includes('try {') && chat.includes('catch (_error)'), 'criacao nao captura falha');
   assert.ok(chat.includes('retry-scene-creation'), 'criacao falha nao oferece nova tentativa');
@@ -170,7 +226,12 @@ async function run() {
   assert.ok(chat.includes('AsyncStorage.removeItem(DRAFT_KEY)'), 'rascunho nao e removido depois do sucesso');
   assert.ok(chat.includes('DRAFT_READ_TIMEOUT_MS'), 'leitura do rascunho pode prender o quiz');
   assert.ok(chat.includes('if (!draftLoaded)'), 'quiz aceita resposta antes de restaurar o rascunho');
-  assert.ok(chat.includes('alive &&') && chat.includes('!finished'), 'leitura atrasada pode sobrescrever respostas atuais');
+  assert.ok(
+    chat.includes('draftInteractionRef.current') &&
+      chat.includes('!draftInteractionRef.current') &&
+      !chat.includes('!finished'),
+    'rascunho atrasado deve ser aceito somente antes da primeira interacao'
+  );
 
   assert.ok(welcome.includes('OPENING_FALLBACK_MS = 11000'), 'abertura ainda espera alem do video');
   assert.ok(welcome.includes('onPlaybackIssue={finishOpening}'), 'falha do video nao avanca a abertura');

@@ -276,8 +276,3 @@ export function audioDur(id, lang = 'pt') {
   if (!e || typeof e === 'string') return null;
   return typeof e.dur === 'number' ? e.dur : null;
 }
-
-export function audioCount(lang) {
-  if (lang) return Object.keys(AUDIO_BANK[lang] || {}).length;
-  return Object.keys(AUDIO_BANK.pt).length + Object.keys(AUDIO_BANK.en).length;
-}

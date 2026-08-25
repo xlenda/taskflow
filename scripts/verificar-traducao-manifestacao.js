@@ -232,6 +232,24 @@ assert.ok(contextSource.includes('contentByLang'), 'contexto nao preserva varian
 assert.ok(contextSource.includes('translateManifestationScene'), 'contexto nao aciona traducao privada');
 assert.ok(contextSource.includes('generationEpoch'), 'traducao tardia nao respeita reset/import');
 assert.ok(
+  contextSource.includes('TRANSLATION_BATCH_SIZE') &&
+    contextSource.includes('TRANSLATION_BATCH_DELAY_MS') &&
+    !contextSource.includes('.slice(0, 6)'),
+  'fila de traducao nao pode abandonar manifestacoes depois do sexto item'
+);
+assert.ok(
+  /const translateBatch[\s\S]*const latest = stateRef\.current[\s\S]*latest\.profile\.cloudPersonalization !== true/.test(
+    contextSource
+  ),
+  'lote atrasado precisa revalidar consentimento antes de enviar dados'
+);
+assert.ok(
+  contextSource.includes('translationLanguageEpochRef.current') &&
+    contextSource.includes('latest.lang !== nextLang') &&
+    contextSource.includes('TRANSLATION_START_DELAY_MS'),
+  'troca de idioma precisa cancelar lotes antigos e agrupar alternancias rapidas'
+);
+assert.ok(
   contextSource.includes("source: 'user-edited'") && contextSource.includes('shouldTranslateManifestationVariant'),
   'edicoes ou idioma original nao estao protegidos contra retraducao'
 );

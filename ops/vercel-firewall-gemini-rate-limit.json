@@ -1,0 +1,56 @@
+{
+  "action": "rules.insert",
+  "id": null,
+  "value": {
+    "name": "Celeste Gemini API rate limit",
+    "description": "Protege geracao e traducao Gemini contra abuso distribuido",
+    "active": true,
+    "conditionGroup": [
+      {
+        "conditions": [
+          {
+            "type": "path",
+            "op": "eq",
+            "value": "/api/gerar-cena"
+          },
+          {
+            "type": "method",
+            "op": "eq",
+            "value": "POST"
+          }
+        ]
+      },
+      {
+        "conditions": [
+          {
+            "type": "path",
+            "op": "eq",
+            "value": "/api/traduzir-cena"
+          },
+          {
+            "type": "method",
+            "op": "eq",
+            "value": "POST"
+          }
+        ]
+      }
+    ],
+    "action": {
+      "mitigate": {
+        "redirect": null,
+        "action": "rate_limit",
+        "rateLimit": {
+          "limit": 5,
+          "action": "deny",
+          "window": 60,
+          "algo": "fixed_window",
+          "keys": [
+            "ip",
+            "ja4"
+          ]
+        },
+        "actionDuration": "1m"
+      }
+    }
+  }
+}

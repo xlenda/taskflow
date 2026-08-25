@@ -3,7 +3,9 @@
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
+const puppeteer = require('puppeteer-core');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.resolve(ROOT, 'dist');
@@ -13,20 +15,23 @@ const VERCEL_PROJECT = 'celeste';
 const VERCEL_ORG_ID = 'team_cFfjLrJklzEd8k1IOcGcBjXv';
 const VERCEL_PROJECT_ID = 'prj_MlPNJAFLd3AtJdafeqwcLzFs6xBA';
 const NODE = process.execPath;
+const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const EXPO_CLI = path.join(ROOT, 'node_modules', 'expo', 'bin', 'cli');
 const UTF8 = 'utf8';
 
 const STATIC_GATES = [
   ['scripts/verificar-gemini-api.js', 'Teste local da API Gemini falhou'],
+  ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],
   ['scripts/verificar-base-conhecimento.js', 'Base de conhecimento da Celeste falhou'],
   ['scripts/verificar-video-abertura.js', 'Teste do video de abertura falhou'],
   ['scripts/verificar-recuperacao-travamentos.js', 'Recuperacao de travamentos falhou'],
+  ['scripts/verificar-privacidade-voz.js', 'Privacidade da voz pessoal falhou'],
   ['scripts/verificar-haptica-digitacao.js', 'Teste de haptica/digitacao falhou'],
   ['scripts/verificar-perguntas-stella.js', 'Roteiro completo da Stella falhou'],
   ['scripts/verificar-cena-ancora.js', 'Personalizacao local da Cena-Ancora falhou'],
   ['scripts/verificar-ritual-matinal.js', 'Despertador e bonus de sonho falharam'],
   ['scripts/verificar-alarme-afirmacao.js', 'Contrato do alarme de afirmacao falhou'],
-  ['scripts/verificar-comunidade.js', 'Comunidade real/moderada falhou'],
+  ['scripts/verificar-comunidade.js', 'Comunidade local e moderacao falharam'],
   ['scripts/verificar-experiencia-celeste.js', 'Integracao das novas telas falhou'],
   ['scripts/verificar-traducao-manifestacao.js', 'Traducao das manifestacoes pessoais falhou'],
   ['scripts/verificar-api-traducao.js', 'API privada de traducao das manifestacoes falhou'],
@@ -94,6 +99,15 @@ function copyDeployInputs() {
   for (const name of apiFiles) fs.copyFileSync(path.join(apiSource, name), path.join(apiTarget, name));
   assert(fs.existsSync(path.join(apiTarget, 'gerar-cena.js')), 'Funcao Gemini ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'traduzir-cena.js')), 'Funcao de traducao ausente do pacote');
+
+  const projectPackage = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), UTF8));
+  const botidVersion = projectPackage.dependencies && projectPackage.dependencies.botid;
+  assert(typeof botidVersion === 'string' && botidVersion, 'Dependencia BotID ausente');
+  fs.writeFileSync(
+    path.join(DIST, 'package.json'),
+    `${JSON.stringify({ private: true, dependencies: { botid: botidVersion } }, null, 2)}\n`,
+    UTF8
+  );
 
   const knowledgeSource = path.join(ROOT, 'knowledge', 'celeste-core-v1.json');
   const knowledgeTarget = path.join(DIST, 'knowledge');
@@ -268,7 +282,7 @@ async function liveAssetChecks() {
   assert(font, 'Fonte Ionicons ausente do pacote');
   const fontPath = path.relative(DIST, font).split(path.sep).join('/');
   const [fontResponse, videoResponse] = await Promise.all([
-    fetchWithTimeout(`${PROD}/${fontPath}`, { method: 'HEAD', cache: 'no-store' }),
+    fetchWithTimeout(`${PROD}/${fontPath}?verify=${Date.now()}`, { cache: 'no-store' }),
     fetchWithTimeout(`${PROD}/video/celeste-abertura.mp4`, {
       headers: { Range: 'bytes=0-1023' },
       cache: 'no-store',
@@ -277,46 +291,38 @@ async function liveAssetChecks() {
   const fontType = fontResponse.headers.get('content-type') || '';
   const videoType = videoResponse.headers.get('content-type') || '';
   assert(fontResponse.ok && !/html/i.test(fontType), `Fonte invalida em producao: ${fontType}`);
+  const liveFont = Buffer.from(await fontResponse.arrayBuffer());
+  const localFont = fs.readFileSync(font);
+  assert(
+    crypto.createHash('sha256').update(liveFont).digest('hex') ===
+      crypto.createHash('sha256').update(localFont).digest('hex'),
+    'Conteudo da fonte ao vivo diverge do subset validado'
+  );
   assert(videoResponse.status === 206 && /^video\/mp4/i.test(videoType), `Video sem MP4/range: ${videoResponse.status} ${videoType}`);
   console.log(`Verificado ao vivo: bundle=${liveBundle}, fonte=${fontType}, video=${videoType}/206`);
 }
 
-async function postJsonWithRetry(pathname, body, label) {
-  let lastError;
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
-    try {
-      const response = await fetchWithTimeout(`${PROD}${pathname}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: PROD },
-        body: JSON.stringify(body),
-      }, 35000);
-      const text = await response.text();
-      let payload;
-      try { payload = JSON.parse(text); } catch (_error) { throw new Error(`JSON invalido: ${text.slice(0, 180)}`); }
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 220)}`);
-      return payload;
-    } catch (error) {
-      lastError = error;
-      if (attempt < 5) await sleep(Math.min(attempt * 4000, 12000));
-    }
-  }
-  throw new Error(`${label}: ${lastError ? lastError.message : 'falha desconhecida'}`);
-}
-
 async function liveGeminiChecks() {
-  const generation = await postJsonWithRetry('/api/gerar-cena', {
+  const blocked = await fetchWithTimeout(`${PROD}/api/gerar-cena`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: PROD },
+    body: '{}',
+  }, 25000);
+  const blockedPayload = await blocked.json().catch(() => ({}));
+  assert(
+    blocked.status === 403 && blockedPayload.error === 'automated_request_blocked',
+    `Cliente sem BotID nao foi bloqueado: HTTP ${blocked.status} ${JSON.stringify(blockedPayload)}`
+  );
+
+  const generationBody = {
     desire: 'uma rotina criativa com calma',
     category: 'Career',
     lang: 'pt',
     profile: {},
     cloudConsent: true,
     adultConfirmed: true,
-  }, 'Gemini ao vivo falhou');
-  assert(generation.scene && generation.generation?.source === 'gemini', 'Gemini nao devolveu scene/source=gemini');
-  assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v1', 'Gemini nao confirmou a base esperada');
-  console.log(`Gemini ao vivo: ${generation.generation.model} / ${generation.generation.knowledgeVersion}`);
-
-  const translation = await postJsonWithRetry('/api/traduzir-cena', {
+  };
+  const translationBody = {
     sourceLang: 'pt',
     targetLang: 'en',
     scene: {
@@ -330,12 +336,69 @@ async function liveGeminiChecks() {
     },
     cloudConsent: true,
     adultConfirmed: true,
-  }, 'Traducao Gemini ao vivo falhou');
+  };
+
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    // BotID deve reprovar navegadores headless. O smoke usa uma janela real,
+    // posicionada fora da tela, para validar o mesmo caminho de uma pessoa.
+    headless: false,
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: [
+      '--no-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--window-position=-32000,-32000',
+      '--window-size=420,900',
+      '--lang=pt-BR',
+    ],
+    defaultViewport: { width: 420, height: 900 },
+  });
+  let results;
+  try {
+    const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch (_error) {}
+    });
+    await page.goto(`${PROD}/?botid_check=${Date.now()}`, {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+    results = await page.evaluate(async ({ generationBody: generationInput, translationBody: translationInput }) => {
+      const post = async (pathname, body) => {
+        const response = await fetch(pathname, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify(body),
+        });
+        const text = await response.text();
+        let payload;
+        try { payload = JSON.parse(text); } catch (_error) { payload = { invalidJson: text.slice(0, 180) }; }
+        return { status: response.status, payload };
+      };
+      return {
+        generation: await post('/api/gerar-cena', generationInput),
+        translation: await post('/api/traduzir-cena', translationInput),
+      };
+    }, { generationBody, translationBody });
+  } finally {
+    await browser.close();
+  }
+
+  assert(results.generation.status === 200, `Gemini/BotID ao vivo falhou: ${JSON.stringify(results.generation)}`);
+  const generation = results.generation.payload;
+  assert(generation.scene && generation.generation?.source === 'gemini', 'Gemini nao devolveu scene/source=gemini');
+  assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v1', 'Gemini nao confirmou a base esperada');
+
+  assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);
+  const translation = results.translation.payload;
   const translatedText = Object.values(translation.scene || {}).flat().join(' ');
   assert(translation.generation?.source === 'gemini-translation', 'Traducao nao confirmou source=gemini-translation');
   assert(/blue mug/i.test(translatedText) && /27/.test(translatedText), 'Traducao perdeu o detalhe sentinela blue mug 27');
   assert(/\b(I|my|mine)\b/i.test(translation.scene.affirmation || ''), 'Afirmacao traduzida nao esta em primeira pessoa');
-  console.log(`Traducao ao vivo: ${translation.generation.model} / blue mug 27 preservado`);
+  console.log(`BotID bloqueou cliente nu; Gemini ${generation.generation.model} e traducao ${translation.generation.model} passaram no navegador real`);
 }
 
 async function main() {
@@ -356,6 +419,7 @@ async function main() {
   for (const [script, failure] of STATIC_GATES) await runNode(script, { failure });
   await run(NODE, [EXPO_CLI, 'export', '--platform', 'web', '--output-dir', DIST], { failure: 'Export web do Expo falhou' });
   await runNode('scripts/enxugar-fontes.js', { failure: 'Subset das fontes falhou' });
+  await runNode('scripts/verificar-icones.js', { failure: 'Subset de icones quebrou glifos usados pelo app' });
   copyDeployInputs();
   patchExportHtml();
   await runNode('scripts/i18n-parity.js', { failure: 'Paridade EN/PT reprovou o deploy' });
@@ -379,9 +443,9 @@ async function main() {
   await runNode('scripts/verificar-recuperacao-browser.js', { env: prodEnv, failure: 'Recuperacao de armazenamento falhou no navegador' });
   await runNode('scripts/e2e-prod.js', { env: { ...prodEnv, E2E_GEMINI: '1' }, failure: 'Portao E2E/Gemini falhou' });
   await runNode('scripts/verify-app-pt.js', { env: prodEnv, failure: 'Portao do app interno falhou' });
-  await runNode('scripts/verificar-icones.js', { env: prodEnv, failure: 'Icones quebrados em producao' });
   await runNode('scripts/auditoria-idiomas.js', { env: prodEnv, failure: 'Vazamento de idioma detectado' });
   await runNode('scripts/qa-novos-recursos.js', { env: prodEnv, failure: 'Telas novas falharam em producao' });
+  await runNode('scripts/medir-performance.js', { env: prodEnv, failure: 'Performance 4G ficou abaixo do portao' });
   console.log(`Deploy concluido e todos os portoes foram aprovados: ${PROD}`);
 }
 

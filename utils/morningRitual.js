@@ -265,6 +265,3 @@ export function createDreamAffirmation({ dream, feeling, theme = 'auto', lang = 
     generatorVersion: 'dream-local-v3',
   };
 }
-
-export const MORNING_RITUAL_THEMES = THEMES;
-export const MORNING_RITUAL_FEELINGS = FEELINGS;

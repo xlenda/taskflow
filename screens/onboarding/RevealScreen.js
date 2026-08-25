@@ -50,6 +50,12 @@ const S = {
   receipt: { en: 'Personalized with', pt: 'Personalizada com' },
   yourWish: { en: 'your stated intention', pt: 'sua intenção declarada' },
   cta: { en: 'Keep my anchor scene', pt: 'Guardar minha Cena-Âncora' },
+  missingTitle: { en: 'This scene is no longer available.', pt: 'Esta cena não está mais disponível.' },
+  missingBody: {
+    en: 'Let’s return to the beginning and create a new one from your words.',
+    pt: 'Vamos voltar ao início e criar uma nova a partir das suas palavras.',
+  },
+  restart: { en: 'Return to the beginning', pt: 'Voltar ao início' },
 };
 
 // personalizedWith é dado salvo em PT por compatibilidade com versões antigas.
@@ -78,9 +84,9 @@ export default function RevealScreen({ navigation, route }) {
   // história íntima de outra manifestação.
   const m = id ? list.find((x) => x.id === id) : null;
 
-  useEffect(() => {
-    if (!m) navigation.replace('Welcome');
-  }, [m, navigation]);
+  const returnToWelcome = () => {
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+  };
 
   useEffect(() => {
     audioRun.current += 1;
@@ -120,7 +126,20 @@ export default function RevealScreen({ navigation, route }) {
     };
   }, [reveal]);
 
-  if (!m) return null;
+  if (!m) {
+    return (
+      <OnbScreen>
+        <View testID="missing-anchor-scene" style={styles.missingShell}>
+          <View style={styles.mark}>
+            <Ionicons name="sparkles" size={30} color={ONB.heart} />
+          </View>
+          <Text style={serifStyle(29, styles.missingTitle)}>{t(S.missingTitle)}</Text>
+          <Text style={styles.missingBody}>{t(S.missingBody)}</Text>
+          <ContinueButton label={t(S.restart)} onPress={returnToWelcome} style={styles.cta} />
+        </View>
+      </OnbScreen>
+    );
+  }
 
   const personalizedWith = Array.isArray(m.personalizedWith) ? m.personalizedWith : [];
   const itens = [t(S.yourWish)].concat(
@@ -300,6 +319,16 @@ export default function RevealScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 20, paddingVertical: 30 },
   shell: { width: '100%', maxWidth: 560 },
+  missingShell: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  missingTitle: { marginTop: 22 },
+  missingBody: { color: ONB.inkSoft, fontSize: 16, lineHeight: 24, marginTop: 10 },
   mark: {
     width: 64,
     height: 64,

@@ -1,8 +1,6 @@
 // Minimal EN / PT-BR i18n for the onboarding + paywall.
 // Text fields in the flow are { en, pt } objects resolved by txt().
 
-export const LANGS = ['en', 'pt'];
-
 export function detectLang() {
   try {
     const l =

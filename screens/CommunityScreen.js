@@ -225,6 +225,8 @@ export default function CommunityScreen({ navigation }) {
   const [deletingId, setDeletingId] = useState(null);
   const [community, setCommunity] = useState({ feed: [], own: [], mode: 'local', reason: null });
   const refreshRequestRef = useRef(0);
+  const submitRef = useRef(false);
+  const deleteRef = useRef(false);
 
   const manifestations = (state && Array.isArray(state.manifestations) ? state.manifestations : []).slice(0, 12);
   const selectedManifestation = useMemo(
@@ -269,12 +271,13 @@ export default function CommunityScreen({ navigation }) {
   };
 
   const closeComposer = () => {
-    if (submitting) return;
+    if (submitting || submitRef.current) return;
     setComposer(false);
     setError(null);
   };
 
   const submit = async () => {
+    if (submitRef.current) return;
     if (normalizedBody.length < COMMUNITY_BODY_MIN) {
       setError(t(S.tooShort));
       return;
@@ -283,6 +286,7 @@ export default function CommunityScreen({ navigation }) {
       setError(t(S.consentNeeded));
       return;
     }
+    submitRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -304,29 +308,33 @@ export default function CommunityScreen({ navigation }) {
     } catch (submitFailure) {
       setError(submitFailure && submitFailure.code === 'consent_required' ? t(S.consentNeeded) : t(S.loadError));
     } finally {
+      submitRef.current = false;
       setSubmitting(false);
     }
   };
 
   const removeStory = async (item) => {
-    const allowed = await confirmAsync({
-      title: t(S.deleteTitle),
-      message: t(S.deleteBody),
-      confirmLabel: t(S.deleteConfirm),
-      cancelLabel: t(S.cancel),
-      destructive: true,
-      lang,
-    });
-    if (!allowed) return;
-    setDeletingId(item.id);
-    setError(null);
+    if (deleteRef.current) return;
+    deleteRef.current = true;
     try {
+      const allowed = await confirmAsync({
+        title: t(S.deleteTitle),
+        message: t(S.deleteBody),
+        confirmLabel: t(S.deleteConfirm),
+        cancelLabel: t(S.cancel),
+        destructive: true,
+        lang,
+      });
+      if (!allowed) return;
+      setDeletingId(item.id);
+      setError(null);
       const response = await deleteCommunityStory(item);
       await refresh({ clearError: response.ok });
       if (!response.ok) setError(t(S.deleteFailed));
     } catch (_error) {
       setError(t(S.deleteFailed));
     } finally {
+      deleteRef.current = false;
       setDeletingId(null);
     }
   };

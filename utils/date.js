@@ -1,4 +1,4 @@
-export const toISO = (d) => {
+const toISO = (d) => {
   const y = d.getFullYear();
   const m = `${d.getMonth() + 1}`.padStart(2, '0');
   const day = `${d.getDate()}`.padStart(2, '0');
@@ -7,7 +7,7 @@ export const toISO = (d) => {
 
 export const todayISO = () => toISO(new Date());
 
-export const daysAgoISO = (n) => {
+const daysAgoISO = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return toISO(d);
@@ -17,17 +17,6 @@ export const lastNDays = (n) => {
   const out = [];
   for (let i = n - 1; i >= 0; i--) out.push(daysAgoISO(i));
   return out;
-};
-
-export const weekdayLetter = (iso) => {
-  const d = new Date(`${iso}T00:00:00`);
-  return ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
-};
-
-export const prettyDate = (iso) => {
-  const d = new Date(`${iso}T00:00:00`);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
 };
 
 /** Streak of consecutive days ending today (or yesterday) present in the date list. */

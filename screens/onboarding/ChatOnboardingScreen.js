@@ -83,6 +83,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   const finishingRef = useRef(false);
   const finalAnswersRef = useRef(null);
   const lastTypingPulse = useRef(0);
+  const draftInteractionRef = useRef(false);
 
   const step = FLOW[idx];
   const lines = useMemo(() => stepLines(step, answers, APP_NAME, lang), [idx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -172,10 +173,9 @@ export default function ChatOnboardingScreen({ navigation }) {
   // Restore a saved draft (reload / tab killed mid-chat resumes where the user stopped).
   useEffect(() => {
     let alive = true;
-    let finished = false;
+    let readSettled = false;
     const timer = setTimeout(() => {
-      if (!alive || finished) return;
-      finished = true;
+      if (!alive || readSettled) return;
       setDraftLoaded(true);
     }, DRAFT_READ_TIMEOUT_MS);
     (async () => {
@@ -184,7 +184,7 @@ export default function ChatOnboardingScreen({ navigation }) {
         const draft = raw ? JSON.parse(raw) : null;
         if (
           alive &&
-          !finished &&
+          !draftInteractionRef.current &&
           draft &&
           typeof draft === 'object' &&
           draft.v === DRAFT_V &&
@@ -200,8 +200,8 @@ export default function ChatOnboardingScreen({ navigation }) {
       } catch (e) {
         // Corrupt draft — start fresh.
       } finally {
-        if (alive && !finished) {
-          finished = true;
+        readSettled = true;
+        if (alive) {
           clearTimeout(timer);
           setDraftLoaded(true);
         }
@@ -214,6 +214,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   }, []);
 
   const goNext = async (ans) => {
+    draftInteractionRef.current = true;
     clearTimeout(autoTimer.current);
     // Reset before changing `idx`: child effects run before the parent's step
     // effect, so a new Typewriter must never mount carrying `instant=true` from
@@ -288,6 +289,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   };
 
   const goBack = () => {
+    draftInteractionRef.current = true;
     clearTimeout(autoTimer.current);
     setInstant(false);
     let i = idx - 1;
@@ -333,6 +335,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   };
 
   const pickOption = (o) => {
+    draftInteractionRef.current = true;
     clearTimeout(autoTimer.current);
     setSelected(o.key);
     if (o.custom) {
@@ -344,6 +347,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   };
 
   const openModal = () => {
+    draftInteractionRef.current = true;
     // Fresh fields on every open so nothing leaks between kids/people entries.
     setMName('');
     setMExtra('');
@@ -351,6 +355,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   };
 
   const addItem = () => {
+    draftInteractionRef.current = true;
     if (!mName.trim()) return;
     setItems((arr) => [...arr, { name: mName.trim(), extra: mExtra.trim() }]);
     setMName('');
@@ -567,7 +572,10 @@ export default function ChatOnboardingScreen({ navigation }) {
                       {it.extra ? <Text style={{ fontSize: 13, color: ONB.surfaceSoft, marginTop: 2 }}>{it.extra}</Text> : null}
                     </View>
                     <Pressable
-                      onPress={() => setItems((arr) => arr.filter((_, j) => j !== i))}
+                      onPress={() => {
+                        draftInteractionRef.current = true;
+                        setItems((arr) => arr.filter((_, j) => j !== i));
+                      }}
                       hitSlop={10}
                       accessibilityRole="button"
                       accessibilityLabel={`${txt({ en: 'Remove', pt: 'Remover' }, lang)} ${it.name}`}
@@ -620,7 +628,10 @@ export default function ChatOnboardingScreen({ navigation }) {
               <TextInput
                 key={step.id}
                 value={value}
-                onChangeText={setValue}
+                onChangeText={(nextValue) => {
+                  draftInteractionRef.current = true;
+                  setValue(nextValue);
+                }}
                 placeholder={fill(txt(customChoiceActive ? step.customPlaceholder : step.placeholder, lang), answers, APP_NAME)}
                 placeholderTextColor={ONB.surfaceFaint}
                 keyboardType={step.keyboard}
@@ -680,7 +691,10 @@ export default function ChatOnboardingScreen({ navigation }) {
             </View>
             <TextInput
               value={mName}
-              onChangeText={setMName}
+              onChangeText={(nextValue) => {
+                draftInteractionRef.current = true;
+                setMName(nextValue);
+              }}
               placeholder={T.namePh}
               placeholderTextColor="#B9AEB5"
               style={[
@@ -690,7 +704,10 @@ export default function ChatOnboardingScreen({ navigation }) {
             />
             <TextInput
               value={mExtra}
-              onChangeText={setMExtra}
+              onChangeText={(nextValue) => {
+                draftInteractionRef.current = true;
+                setMExtra(nextValue);
+              }}
               placeholder={txt(step.extraPlaceholder, lang)}
               placeholderTextColor="#B9AEB5"
               keyboardType={step.extraKeyboard}

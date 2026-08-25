@@ -10,6 +10,7 @@ struct AffirmationSchedulePayload: Record {
   @Field var title: String = "Celeste"
   @Field var affirmation: String = ""
   @Field var locale: String = "pt-BR"
+  @Field var stopLabel: String = "Parar"
   @Field var voiceIdentifier: String?
   @Field var soundFileName: String?
   @Field var requestAuthorization: Bool = true
@@ -20,6 +21,7 @@ struct AffirmationTestPayload: Record {
   @Field var title: String = "Celeste"
   @Field var affirmation: String = ""
   @Field var locale: String = "pt-BR"
+  @Field var stopLabel: String = "Parar"
   @Field var voiceIdentifier: String?
   @Field var soundFileName: String?
   @Field var delaySeconds: Int = 60

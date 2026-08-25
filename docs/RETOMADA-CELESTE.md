@@ -195,3 +195,55 @@ Correção aplicada:
 O worktree já contém muitas mudanças anteriores e arquivos do usuário. Não
 reverter nem limpar alterações fora desses pontos. Trabalhar sempre em
 `D:\Projetos\TaskFlow` e manter artefatos grandes no drive D:.
+
+## Auditoria Zeus e publicacao de 25/08/2026
+
+- Producao publicada em `https://celeste-jet-two.vercel.app` pelo deployment
+  `dpl_EFcnmxMWxe92j3RiGg5eS4bQ7upj`.
+- O relato de sonho abre em um toque, persiste e revela a afirmacao inteira em
+  `320x480`; o campo nao recupera mais o foco por cima do resultado.
+- A Comunidade fica visivel na Jornada, rola corretamente e protege recibos
+  locais contra toque duplo, reset concorrente e exclusao remota repetida.
+- Falha ao trocar o audio do despertador preserva o ultimo alarme confirmado e
+  oferece nova tentativa; uma operacao antiga nunca cancela uma escolha nova.
+- Reset, importacao e reparo de armazenamento bloqueiam interacoes ate a
+  confirmacao real e nao anunciam sucesso antes da gravacao.
+- Varredura de codigo: 51/51 modulos runtime alcancaveis, 87/87 arquivos JS
+  compilando, nenhum import sem uso e Expo Doctor 18/18.
+- Codigo morto removido: exports internos sem consumidores, dependencia raiz
+  redundante `expo-constants`, script antigo de splash e tres capturas orfas.
+- Pipeline local e em producao aprovado: contratos Gemini/traducao, PT/EN em 47
+  arquivos, icones, recuperacao, QA responsivo e E2E completo.
+- Medicao de producao em 4G com CPU 4x: primeiro pixel 524 ms, 652 KB baixados e
+  resultado dentro do limite definido pelo projeto.
+
+### Pendente fora deste computador
+
+- Validar o AlarmKit em um aparelho com iOS 26; o bridge e os contratos JS/iOS
+  passaram, mas Windows nao executa o framework nativo da Apple.
+- Aplicar `supabase/migrations/003_community_delete_idempotent.sql` no projeto
+  Supabase conectado. A migration esta validada no repositorio, mas esta maquina
+  nao possui Supabase CLI, projeto vinculado ou credencial de banco para aplica-la.
+
+## Protecao da cota Gemini em 25/08/2026
+
+- Producao publicada em `https://celeste-jet-two.vercel.app` pelo deployment
+  `dpl_HX2Knze3Z69cwzQdotCBjbwvfsPe`.
+- `api/gerar-cena.js` e `api/traduzir-cena.js` agora rejeitam `Origin` ausente ou
+  fora da lista antes de qualquer validacao ou chamada ao Gemini.
+- As duas rotas exigem BotID Basic. Bot detectado retorna
+  `automated_request_blocked`; falha no verificador retorna
+  `bot_verification_unavailable`. Os dois casos fecham antes do Gemini.
+- O `Map()` por instancia foi removido. A protecao distribuida esta no Vercel
+  WAF, regra `rule_celeste_gemini_api_rate_limit_o1N0Tn`: uma unica regra Hobby
+  para os dois POSTs, 5 requisicoes por 60 segundos, chaves IP + JA4, HTTP 429.
+- A configuracao versionada esta em
+  `ops/vercel-firewall-gemini-rate-limit.json`; o gate
+  `scripts/verificar-protecao-gemini.js` impede regressao de Origin, BotID,
+  rewrites e WAF.
+- Validacao real aprovada: cliente sem prova foi bloqueado; Chrome normal gerou
+  e traduziu com `gemini-3.7-flash`; Chrome headless foi bloqueado e o app usou
+  o fallback local; E2E, PT/EN, QA e performance passaram.
+- Antes de distribuir binarios iOS/Android, substituir a ausencia natural de
+  `Origin` do fetch nativo por sessao/atestacao verificavel. Nunca reabrir
+  requisicoes sem Origin anonimas usando um segredo embutido no aplicativo.

@@ -33,9 +33,6 @@ export const categoryMeta = (key) =>
     label: { en: 'Wealth', pt: 'Prosperidade' },
   };
 
-// Atalho para exibir o nome da categoria já traduzido: categoryLabel('Love', lang)
-export const categoryLabel = (key, lang) => txt(categoryMeta(key).label, lang);
-
 export const FOR_YOU = [
   {
     id: 'fy-1',
@@ -534,9 +531,6 @@ export function localized(item, lang) {
   return out;
 }
 
-// Açúcar para listas: localizedList(VISIONS, lang).map(...)
-export const localizedList = (list, lang) => (list || []).map((it) => localized(it, lang));
-
 // Every new user starts with a truly empty account — screens show their EmptyState.
 export const initialState = () => ({
   name: '',
@@ -549,6 +543,7 @@ export const initialState = () => ({
   morningRitual: {
     alarmStatus: 'native_integration_required',
     reminderEnabled: false,
+    alarmSyncError: false,
     reminderTime: '07:00',
     wakeAffirmationId: null,
     wakeAffirmationText: '',

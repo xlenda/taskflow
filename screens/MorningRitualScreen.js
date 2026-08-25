@@ -76,6 +76,10 @@ const S = {
     pt: 'O despertador não foi ativado. Tente novamente no app instalado.',
     en: 'The alarm was not activated. Try again in the installed app.',
   },
+  alarmSyncFailed: {
+    pt: 'A frase do despertador não pôde ser confirmada. Desative-o ou escolha a frase novamente antes de confiar nele.',
+    en: 'The alarm affirmation could not be confirmed. Turn it off or choose the affirmation again before relying on it.',
+  },
   alarmBusy: { pt: 'Ativando o despertador…', en: 'Turning the alarm on…' },
   audioUnavailable: {
     pt: 'A voz privada não está disponível neste aparelho. A frase continua salva para leitura.',
@@ -186,6 +190,7 @@ export default function MorningRitualScreen({ route }) {
   const ritual = state.morningRitual || {
     alarmStatus: 'native_integration_required',
     reminderEnabled: false,
+    alarmSyncError: false,
     reminderTime: '07:00',
     wakeAffirmationId: null,
     wakeAffirmationText: '',
@@ -222,6 +227,7 @@ export default function MorningRitualScreen({ route }) {
   const dreamSettleFrameRef = useRef(null);
   const dreamScrollTimerRef = useRef(null);
   const dreamResultTimerRef = useRef(null);
+  const alarmOperationRef = useRef(false);
   const practiceProgress = useRef(new Animated.Value(0)).current;
   const practiceTimers = useRef([]);
   const mountedRef = useRef(true);
@@ -308,6 +314,26 @@ export default function MorningRitualScreen({ route }) {
   }, [settleDreamSection]);
 
   const scrollToDreamResult = useCallback(() => {
+    Keyboard.dismiss();
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const target =
+        document.querySelector('[data-testid="dream-personalized-affirmation"]') ||
+        document.querySelector('[data-testid="dream-result-panel"]');
+      if (target && typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        return;
+      }
+      const scroller = document.querySelector('[data-testid="morning-ritual-scroll"]');
+      if (target && scroller) {
+        const targetTop = target.getBoundingClientRect().top;
+        const scrollerTop = scroller.getBoundingClientRect().top;
+        scroller.scrollTo({
+          top: Math.max(0, scroller.scrollTop + targetTop - scrollerTop - 12),
+          behavior: 'smooth',
+        });
+        return;
+      }
+    }
     const panel = dreamResultPanelRef.current;
     if (panel && typeof panel.measureInWindow === 'function') {
       panel.measureInWindow((_x, windowY) => {
@@ -381,7 +407,10 @@ export default function MorningRitualScreen({ route }) {
         if (Array.isArray(capability.scheduledAlarmIds)) {
           const scheduled = capability.scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
           if (scheduled !== ritual.reminderEnabled) {
-            saveMorningRitualPreferences({ reminderEnabled: scheduled });
+            saveMorningRitualPreferences({
+              reminderEnabled: scheduled,
+              ...(!scheduled ? { alarmSyncError: false } : {}),
+            });
           }
         }
       })
@@ -416,7 +445,9 @@ export default function MorningRitualScreen({ route }) {
     task.catch(() => {});
   }, []);
 
-  const scheduleRealAlarm = useCallback(async ({ text, itemLang, time }) => {
+  const scheduleRealAlarm = useCallback(async ({ id, text, itemLang, time }) => {
+    if (alarmOperationRef.current) return false;
+    alarmOperationRef.current = true;
     setAlarmBusy(true);
     setAlarmFeedback(null);
     try {
@@ -430,7 +461,14 @@ export default function MorningRitualScreen({ route }) {
       // bridge was working. UI-only state remains protected by mountedRef.
       let resolvedCapability = response.capability;
       if (response.ok === true) {
-        saveMorningRitualPreferences({ reminderEnabled: true });
+        saveMorningRitualPreferences({
+          reminderEnabled: true,
+          alarmSyncError: false,
+          reminderTime: time,
+          wakeAffirmationId: id,
+          wakeAffirmationText: text,
+          wakeAffirmationLang: itemLang || lang,
+        });
       } else {
         let scheduledAlarmIds = Array.isArray(response.scheduledAlarmIds)
           ? response.scheduledAlarmIds
@@ -446,7 +484,10 @@ export default function MorningRitualScreen({ route }) {
         const stillScheduled =
           Array.isArray(scheduledAlarmIds) &&
           scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
-        saveMorningRitualPreferences({ reminderEnabled: stillScheduled });
+        saveMorningRitualPreferences({
+          reminderEnabled: stillScheduled,
+          alarmSyncError: stillScheduled,
+        });
       }
       if (mountedRef.current) {
         if (resolvedCapability) setAlarmCapability(resolvedCapability);
@@ -466,30 +507,36 @@ export default function MorningRitualScreen({ route }) {
         const stillScheduled =
           Array.isArray(capability.scheduledAlarmIds) &&
           capability.scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
-        saveMorningRitualPreferences({ reminderEnabled: stillScheduled });
+        saveMorningRitualPreferences({
+          reminderEnabled: stillScheduled,
+          alarmSyncError: stillScheduled,
+        });
         if (mountedRef.current) setAlarmCapability(capability);
       } catch (_capabilityError) {
-        saveMorningRitualPreferences({ reminderEnabled: false });
+        saveMorningRitualPreferences({ reminderEnabled: false, alarmSyncError: false });
       }
       if (mountedRef.current) {
         setAlarmFeedback('failed');
       }
       return false;
     } finally {
+      alarmOperationRef.current = false;
       if (mountedRef.current) setAlarmBusy(false);
     }
   }, [lang, saveMorningRitualPreferences, haptic]);
 
   const setAlarmEnabled = useCallback(async (enabled) => {
-    if (alarmBusy || (enabled && !selectedWake)) return;
+    if (alarmBusy || alarmOperationRef.current || (enabled && !selectedWake)) return;
     if (enabled) {
       await scheduleRealAlarm({
+        id: selectedWake.id,
         text: selectedWake.text,
         itemLang: selectedWake.lang,
         time: ritual.reminderTime,
       });
       return;
     }
+    alarmOperationRef.current = true;
     setAlarmBusy(true);
     setAlarmFeedback(null);
     try {
@@ -497,7 +544,7 @@ export default function MorningRitualScreen({ route }) {
       // The native alarm is already gone even if this screen was popped while
       // the bridge was working. Keep provider state aligned with that result.
       if (response.ok === true) {
-        saveMorningRitualPreferences({ reminderEnabled: false });
+        saveMorningRitualPreferences({ reminderEnabled: false, alarmSyncError: false });
       }
       if (mountedRef.current) {
         if (response.capability) setAlarmCapability(response.capability);
@@ -511,6 +558,7 @@ export default function MorningRitualScreen({ route }) {
     } catch (error) {
       if (mountedRef.current) setAlarmFeedback('failed');
     } finally {
+      alarmOperationRef.current = false;
       if (mountedRef.current) setAlarmBusy(false);
     }
   }, [alarmBusy, selectedWake, ritual.reminderTime, scheduleRealAlarm, saveMorningRitualPreferences, haptic]);
@@ -520,6 +568,7 @@ export default function MorningRitualScreen({ route }) {
     setSpeaking(false);
     if (ritual.reminderEnabled) {
       const scheduled = await scheduleRealAlarm({
+        id: item.id,
         text: item.text,
         itemLang: item.lang,
         time: ritual.reminderTime,
@@ -538,6 +587,7 @@ export default function MorningRitualScreen({ route }) {
   const selectAlarmTime = useCallback(async (time) => {
     if (ritual.reminderEnabled && selectedWake) {
       const scheduled = await scheduleRealAlarm({
+        id: selectedWake.id,
         text: selectedWake.text,
         itemLang: selectedWake.lang,
         time,
@@ -629,6 +679,14 @@ export default function MorningRitualScreen({ route }) {
   const transformDream = useCallback(() => {
     if (clean(dream).length < 4) return;
     clearPractice();
+    if (dreamScrollTimerRef.current) {
+      clearTimeout(dreamScrollTimerRef.current);
+      dreamScrollTimerRef.current = null;
+    }
+    if (dreamSettleFrameRef.current) {
+      cancelAnimationFrame(dreamSettleFrameRef.current);
+      dreamSettleFrameRef.current = null;
+    }
     const generated = createDreamAffirmation({ dream, feeling, theme: meaning, lang });
     const id = saveDreamRitual({ ...generated, lang });
     if (!id) return;
@@ -695,6 +753,7 @@ export default function MorningRitualScreen({ route }) {
     if (!result || !entryId) return;
     if (ritual.reminderEnabled) {
       const scheduled = await scheduleRealAlarm({
+        id: `ritual:${entryId}`,
         text: result.affirmation,
         itemLang: result.lang || lang,
         time: ritual.reminderTime,
@@ -721,15 +780,25 @@ export default function MorningRitualScreen({ route }) {
     });
     if (!allowed) return;
 
-    const usedByActiveAlarm =
-      ritual.reminderEnabled && ritual.wakeAffirmationId === `ritual:${entryId}`;
-    if (usedByActiveAlarm) {
-      if (mountedRef.current) setAlarmBusy(true);
-      const cancelled = await cancelAffirmationAlarm().catch(() => null);
-      if (mountedRef.current) setAlarmBusy(false);
-      if (!cancelled || cancelled.ok !== true) {
+    const usedByAlarm = ritual.wakeAffirmationId === `ritual:${entryId}`;
+    if (usedByAlarm && Platform.OS === 'ios') {
+      if (!alarmCapability) {
         if (mountedRef.current) setAlarmFeedback('failed');
         return;
+      }
+      const canHaveNativeAlarm =
+        alarmCapability.supported === true || alarmCapability.nativeModuleAvailable === true;
+      if (canHaveNativeAlarm) {
+        if (alarmOperationRef.current) return;
+        alarmOperationRef.current = true;
+        if (mountedRef.current) setAlarmBusy(true);
+        const cancelled = await cancelAffirmationAlarm().catch(() => null);
+        alarmOperationRef.current = false;
+        if (mountedRef.current) setAlarmBusy(false);
+        if (!cancelled || cancelled.ok !== true) {
+          if (mountedRef.current) setAlarmFeedback('failed');
+          return;
+        }
       }
     }
 
@@ -743,7 +812,7 @@ export default function MorningRitualScreen({ route }) {
     setEntryId(null);
     setPracticeState('idle');
     haptic(true);
-  }, [entryId, lang, ritual.reminderEnabled, ritual.wakeAffirmationId, t, clearPractice, removeDreamRitual, haptic]);
+  }, [entryId, lang, ritual.wakeAffirmationId, alarmCapability, t, clearPractice, removeDreamRitual, haptic]);
 
   const renderOption = useCallback(({ item }) => {
     const selected = ritual.wakeAffirmationId === item.id;
@@ -751,14 +820,15 @@ export default function MorningRitualScreen({ route }) {
     return (
       <Pressable
         onPress={() => selectWake(item)}
+        disabled={alarmBusy}
         accessibilityRole="radio"
-        accessibilityState={{ selected }}
+        accessibilityState={{ selected, disabled: alarmBusy }}
         style={({ pressed }) => [
           styles.pickerRow,
           {
             borderColor: selected ? theme.accent : theme.border,
             backgroundColor: selected ? alpha(theme.accent, 0.08) : theme.surface,
-            opacity: pressed ? 0.75 : 1,
+            opacity: alarmBusy ? 0.5 : pressed ? 0.75 : 1,
           },
         ]}
       >
@@ -769,7 +839,7 @@ export default function MorningRitualScreen({ route }) {
         <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={selected ? theme.accent : theme.textMuted} />
       </Pressable>
     );
-  }, [ritual.wakeAffirmationId, selectWake, theme, t]);
+  }, [ritual.wakeAffirmationId, selectWake, theme, t, alarmBusy]);
 
   const practiceCopy = practiceState === 'complete'
     ? t(S.completed)
@@ -786,6 +856,8 @@ export default function MorningRitualScreen({ route }) {
   );
   const alarmNote = alarmBusy
     ? t(S.alarmBusy)
+    : ritual.alarmSyncError
+    ? t(S.alarmSyncFailed)
     : alarmFeedback === 'scheduled' || ritual.reminderEnabled
     ? t(S.alarmScheduled, { time: ritual.reminderTime })
     : alarmFeedback === 'denied' || (alarmCapability && alarmCapability.authorization === 'denied')
@@ -918,14 +990,15 @@ export default function MorningRitualScreen({ route }) {
                     key={time}
                     testID={`alarm-time-${time.replace(':', '')}`}
                     onPress={() => selectAlarmTime(time)}
+                    disabled={alarmBusy}
                     accessibilityRole="radio"
-                    accessibilityState={{ selected }}
+                    accessibilityState={{ selected, disabled: alarmBusy }}
                     style={({ pressed }) => [
                       styles.timeChip,
                       {
                         backgroundColor: selected ? theme.accent : theme.surface,
                         borderColor: selected ? theme.accent : theme.border,
-                        opacity: pressed ? 0.8 : 1,
+                        opacity: alarmBusy ? 0.5 : pressed ? 0.8 : 1,
                       },
                     ]}
                   >
@@ -964,7 +1037,7 @@ export default function MorningRitualScreen({ route }) {
             <View
               onLayout={({ nativeEvent }) => {
                 dreamSectionYRef.current = nativeEvent.layout.y;
-                if (bonusOpen) scheduleDreamSettle(60);
+                if (bonusOpen && !result) scheduleDreamSettle(60);
               }}
             >
             <View style={styles.bonusHeader}>
@@ -1122,6 +1195,7 @@ export default function MorningRitualScreen({ route }) {
                 {result ? (
                   <View
                     ref={dreamResultPanelRef}
+                    testID="dream-result-panel"
                     style={[styles.resultPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}
                     onLayout={({ nativeEvent }) => {
                       dreamResultYRef.current = nativeEvent.layout.y;

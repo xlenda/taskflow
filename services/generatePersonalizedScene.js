@@ -204,11 +204,3 @@ export async function generatePersonalizedScene({ desire, category, lang, profil
     if (timer) clearTimeout(timer);
   }
 }
-
-export const __test = {
-  cleanText,
-  validateScene,
-  apiEndpoint,
-  redactThirdPartyNames,
-  thirdPartyNames,
-};

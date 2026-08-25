@@ -56,7 +56,7 @@ export function snapshotManifestationContent(item) {
   return out;
 }
 
-export function manifestationContentFingerprint(value) {
+function manifestationContentFingerprint(value) {
   const variant = snapshotManifestationContent(value);
   return JSON.stringify({
     title: variant.title || '',

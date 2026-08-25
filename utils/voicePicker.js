@@ -108,20 +108,6 @@ export function getVoiceAsync(lang = 'pt', timeoutMs = 1500, options = {}) {
   });
 }
 
-// Diagnóstico: usado pelo script que lista o que existe no aparelho.
-export function listarVozes(lang = 'pt') {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return [];
-  const escolhida = pickVoice(lang);
-  return (window.speechSynthesis.getVoices() || []).map((v) => ({
-    name: v.name,
-    lang: v.lang,
-    uri: v.voiceURI,
-    remota: v.localService === false,
-    masculina: ehMasculina(v),
-    escolhida: !!escolhida && v.voiceURI === escolhida.voiceURI,
-  }));
-}
-
 // Tom mais grave e pausado: é o que separa "robô lendo" de "alguém afirmando".
 export const TOM = {
   pt: { rate: 0.88, pitch: 0.85 },

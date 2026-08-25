@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -12,7 +12,9 @@ import { ThemeProvider, useSetTheme, useTheme } from './ui/theme';
 import { AppProvider, useApp } from './context/AppContext';
 import { useT } from './utils/useT';
 import { warmUpVoices } from './utils/speech';
+import { confirmAsync } from './utils/confirm';
 import { detectLang } from './constants/i18n';
+import { initCelesteBotProtection } from './utils/botProtection';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -33,11 +35,19 @@ import RevealScreen from './screens/onboarding/RevealScreen';
 import PaywallScreen from './screens/onboarding/PaywallScreen';
 
 import { APP_NAME, APP_URL } from './constants/brand';
+import { AFFIRMATIONS, localized } from './constants/content';
+import {
+  DEFAULT_AFFIRMATION_ALARM_ID,
+  cancelAffirmationAlarm,
+  getAffirmationAlarmCapability,
+  replaceScheduledAffirmationAlarm,
+} from './services/affirmationAlarm';
 
 // O Google Tradutor do Chrome reescreve os nós de texto do DOM e quebra o React
 // no meio da digitação (texto trocado/cortado, chips e inputs que nunca chegam
 // a aparecer). O app já é bilíngue nativo — tradução automática só destrói.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  initCelesteBotProtection();
   document.documentElement.setAttribute('translate', 'no');
   document.documentElement.classList.add('notranslate');
   const meta = document.createElement('meta');
@@ -68,11 +78,11 @@ const VisionStack = createStackNavigator();
 const Root = createStackNavigator();
 
 function PersistenceNotice() {
-  const { state, storageError, retryPersist } = useApp();
+  const { state, storageError, storageMutation, retryPersist } = useApp();
   const insets = useSafeAreaInsets();
   const [retrying, setRetrying] = React.useState(false);
 
-  if (!state || !storageError) return null;
+  if (!state || !storageError || storageMutation) return null;
   const pt = state.lang === 'pt';
   const retry = async () => {
     setRetrying(true);
@@ -90,6 +100,7 @@ function PersistenceNotice() {
             : 'We could not save your latest changes on this device.'}
         </Text>
         <Pressable
+          testID="celeste-storage-persist-retry"
           accessibilityRole="button"
           disabled={retrying}
           onPress={retry}
@@ -105,6 +116,69 @@ function PersistenceNotice() {
   );
 }
 
+function StorageMutationGuard() {
+  const { state, storageError, storageMutation, retryPersist } = useApp();
+  const [retrying, setRetrying] = React.useState(false);
+  if (!state || !storageMutation) return null;
+
+  const pt = state.lang === 'pt';
+  const isReset = storageMutation === 'reset';
+  const retry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    const completed = await retryPersist();
+    if (!completed) setRetrying(false);
+  };
+
+  return (
+    <View
+      testID="celeste-storage-mutation-guard"
+      accessibilityRole="alert"
+      accessibilityViewIsModal
+      style={styles.storageMutationLayer}
+    >
+      <View style={styles.storageMutationPanel}>
+        <ActivityIndicator size="small" color="#315F9E" />
+        <Text style={styles.storageMutationTitle}>
+          {isReset
+            ? pt
+              ? 'Finalizando seu recomeço'
+              : 'Finishing your reset'
+            : pt
+            ? 'Restaurando sua cópia'
+            : 'Restoring your backup'}
+        </Text>
+        <Text style={styles.storageMutationText}>
+          {storageError
+            ? pt
+              ? 'O aparelho ainda não confirmou a gravação. Mantenha o Celeste aberto e tente novamente.'
+              : 'The device has not confirmed the write yet. Keep Celeste open and try again.'
+            : pt
+            ? 'Aguarde a confirmação do aparelho antes de continuar.'
+            : 'Wait for the device to confirm before continuing.'}
+        </Text>
+        {storageError ? (
+          <Pressable
+            testID="celeste-storage-mutation-retry"
+            accessibilityRole="button"
+            disabled={retrying}
+            onPress={retry}
+            style={({ pressed }) => [
+              styles.storageMutationButton,
+              (pressed || retrying) && styles.persistencePressed,
+            ]}
+          >
+            <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            <Text style={styles.storageMutationButtonText}>
+              {retrying ? (pt ? 'Tentando…' : 'Retrying…') : pt ? 'Tentar novamente' : 'Try again'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function PersistedTheme() {
   const { state } = useApp();
   const setTheme = useSetTheme();
@@ -112,6 +186,201 @@ function PersistedTheme() {
   React.useEffect(() => {
     if (state && state.mood) setTheme(state.mood);
   }, [state && state.mood, setTheme]);
+
+  return null;
+}
+
+function alarmContentForState(state) {
+  const ritual = state && state.morningRitual;
+  const wakeId = ritual && ritual.wakeAffirmationId;
+  if (!ritual || !wakeId) return null;
+
+  if (wakeId.startsWith('manifestation:')) {
+    const manifestationId = wakeId.slice('manifestation:'.length);
+    const manifestation = (state.manifestations || []).find((item) => item.id === manifestationId);
+    const text = manifestation && typeof manifestation.affirmation === 'string'
+      ? manifestation.affirmation.trim()
+      : '';
+    if (!text) return null;
+    return {
+      id: wakeId,
+      text,
+      lang: manifestation.lang === 'en' ? 'en' : 'pt',
+    };
+  }
+
+  const fixed = AFFIRMATIONS.find((item) => item.id === wakeId);
+  if (!fixed) return null;
+  const lang = state.lang === 'en' ? 'en' : 'pt';
+  return { id: wakeId, text: localized(fixed, lang).text, lang };
+}
+
+function NativeAlarmContentSync() {
+  const { state, saveMorningRitualPreferences } = useApp();
+  const lastQueuedRef = React.useRef('');
+  const latestDesiredRef = React.useRef('');
+  const confirmedNativeRef = React.useRef('');
+  const failedDesiredRef = React.useRef('');
+  const pendingRef = React.useRef(0);
+  const stateRef = React.useRef(state);
+  const capabilityAttemptRef = React.useRef(0);
+  const [retryEpoch, setRetryEpoch] = React.useState(0);
+  stateRef.current = state;
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'ios' || !state) return undefined;
+    let alive = true;
+    const reconcile = async () => {
+      const attempt = capabilityAttemptRef.current + 1;
+      capabilityAttemptRef.current = attempt;
+      const capability = await getAffirmationAlarmCapability().catch(() => null);
+      if (!alive || capabilityAttemptRef.current !== attempt) return;
+      if (!Array.isArray(capability?.scheduledAlarmIds)) return;
+      const scheduled = capability.scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
+      const ritual = stateRef.current && stateRef.current.morningRitual;
+      if (!scheduled) {
+        confirmedNativeRef.current = '';
+        failedDesiredRef.current = '';
+        lastQueuedRef.current = '';
+      }
+      if (
+        ritual &&
+        (ritual.reminderEnabled !== scheduled || (!scheduled && ritual.alarmSyncError))
+      ) {
+        saveMorningRitualPreferences({
+          reminderEnabled: scheduled,
+          ...(!scheduled ? { alarmSyncError: false } : {}),
+        });
+      }
+    };
+    void reconcile();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        if (failedDesiredRef.current) {
+          lastQueuedRef.current = '';
+          setRetryEpoch((value) => value + 1);
+        }
+        void reconcile();
+      }
+    });
+    return () => {
+      alive = false;
+      capabilityAttemptRef.current += 1;
+      if (subscription && subscription.remove) subscription.remove();
+    };
+  }, [!!state, saveMorningRitualPreferences]);
+
+  React.useEffect(() => {
+    const ritual = state && state.morningRitual;
+    const desired = alarmContentForState(state);
+    if (Platform.OS !== 'ios' || !ritual?.reminderEnabled || !desired) {
+      latestDesiredRef.current = '';
+      return;
+    }
+    const signature = JSON.stringify([
+      desired.id,
+      desired.text,
+      desired.lang,
+      ritual.reminderTime,
+    ]);
+    latestDesiredRef.current = signature;
+    const cachedSignature = ritual.wakeAffirmationId && ritual.wakeAffirmationText
+      ? JSON.stringify([
+          ritual.wakeAffirmationId,
+          ritual.wakeAffirmationText,
+          ritual.wakeAffirmationLang,
+          ritual.reminderTime,
+        ])
+      : '';
+    if (!ritual.alarmSyncError && !confirmedNativeRef.current && cachedSignature) {
+      confirmedNativeRef.current = cachedSignature;
+    }
+    const localMatches =
+      ritual.wakeAffirmationText === desired.text &&
+      ritual.wakeAffirmationLang === desired.lang;
+    if (localMatches && !ritual.alarmSyncError && pendingRef.current === 0) {
+      confirmedNativeRef.current = signature;
+      failedDesiredRef.current = '';
+      return;
+    }
+    if (lastQueuedRef.current === signature) return;
+    lastQueuedRef.current = signature;
+    pendingRef.current += 1;
+
+    void replaceScheduledAffirmationAlarm({
+      time: ritual.reminderTime,
+      affirmation: desired.text,
+      locale: desired.lang === 'pt' ? 'pt-BR' : 'en-US',
+      requestAuthorization: true,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          // A newer replacement is already queued in the same native FIFO.
+          // Cleanup from this stale attempt must never run after it and win.
+          if (latestDesiredRef.current !== signature) return;
+          let scheduledIds = response.scheduledAlarmIds;
+          if (!Array.isArray(scheduledIds)) {
+            const capability = await getAffirmationAlarmCapability().catch(() => null);
+            if (latestDesiredRef.current !== signature) return;
+            scheduledIds = capability && capability.scheduledAlarmIds;
+          }
+          if (latestDesiredRef.current !== signature) return;
+          if (!Array.isArray(scheduledIds)) {
+            failedDesiredRef.current = signature;
+            saveMorningRitualPreferences({ alarmSyncError: true });
+            return;
+          }
+          const scheduled =
+            scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
+          if (!scheduled) {
+            confirmedNativeRef.current = '';
+            failedDesiredRef.current = '';
+            lastQueuedRef.current = '';
+            saveMorningRitualPreferences({
+              reminderEnabled: false,
+              alarmSyncError: false,
+            });
+            return;
+          }
+          if (
+            confirmedNativeRef.current &&
+            confirmedNativeRef.current === latestDesiredRef.current
+          ) {
+            failedDesiredRef.current = '';
+            if (latestDesiredRef.current === signature) {
+              saveMorningRitualPreferences({ alarmSyncError: false });
+            }
+            return;
+          }
+
+          // Keep the last confirmed alarm alive. An automatic cancellation can
+          // race with a newer replacement and leave the person with no alarm.
+          // The visible sync error offers a retry without an irreversible step.
+          failedDesiredRef.current = signature;
+          if (latestDesiredRef.current !== signature) return;
+          saveMorningRitualPreferences({ alarmSyncError: true });
+          return;
+        }
+        confirmedNativeRef.current = signature;
+        failedDesiredRef.current = '';
+        if (latestDesiredRef.current !== signature) return;
+        saveMorningRitualPreferences({
+          wakeAffirmationId: desired.id,
+          wakeAffirmationText: desired.text,
+          wakeAffirmationLang: desired.lang,
+          alarmSyncError: false,
+        });
+      })
+      .catch(() => {
+        if (latestDesiredRef.current === signature) {
+          failedDesiredRef.current = signature;
+          saveMorningRitualPreferences({ alarmSyncError: true });
+        }
+      })
+      .finally(() => {
+        pendingRef.current = Math.max(0, pendingRef.current - 1);
+      });
+  }, [state, retryEpoch, saveMorningRitualPreferences]);
 
   return null;
 }
@@ -173,8 +442,24 @@ function Tabs() {
   );
 }
 
-function AppBootState({ failed = false, onRetry }) {
+function AppBootState({ failed = false, corrupt = false, onRetry, onRepair }) {
   const pt = detectLang() === 'pt';
+  const [repairing, setRepairing] = React.useState(false);
+  const repair = async () => {
+    const confirmed = await confirmAsync({
+      title: pt ? 'Remover arquivo danificado?' : 'Remove damaged file?',
+      message: pt
+        ? 'As respostas desse arquivo não podem ser lidas e serão apagadas somente deste aparelho.'
+        : 'The answers in this file cannot be read and will be removed only from this device.',
+      confirmLabel: pt ? 'Remover e recomeçar' : 'Remove and restart',
+      cancelLabel: pt ? 'Cancelar' : 'Cancel',
+      lang: pt ? 'pt' : 'en',
+    });
+    if (!confirmed) return;
+    setRepairing(true);
+    const repaired = await onRepair();
+    if (!repaired) setRepairing(false);
+  };
   return (
     <View
       testID={failed ? 'celeste-storage-recovery' : 'celeste-storage-loading'}
@@ -188,7 +473,11 @@ function AppBootState({ failed = false, onRetry }) {
       {failed ? (
         <>
           <Text style={styles.bootMessage}>
-            {pt
+            {corrupt
+              ? pt
+                ? 'O arquivo local está danificado. Nada será removido sem sua confirmação.'
+                : 'The local file is damaged. Nothing will be removed without your confirmation.'
+              : pt
               ? 'Não conseguimos acessar seus dados agora. Nada foi apagado.'
               : 'We could not access your data right now. Nothing was deleted.'}
           </Text>
@@ -201,6 +490,29 @@ function AppBootState({ failed = false, onRetry }) {
             <Ionicons name="refresh" size={19} color="#FFFFFF" />
             <Text style={styles.bootButtonText}>{pt ? 'Tentar novamente' : 'Try again'}</Text>
           </Pressable>
+          {corrupt ? (
+            <Pressable
+              testID="celeste-storage-repair"
+              accessibilityRole="button"
+              disabled={repairing}
+              onPress={repair}
+              style={({ pressed }) => [
+                styles.bootRepairButton,
+                (pressed || repairing) && styles.persistencePressed,
+              ]}
+            >
+              <Ionicons name="trash-outline" size={18} color="#7E3548" />
+              <Text style={styles.bootRepairText}>
+                {repairing
+                  ? pt
+                    ? 'Removendo…'
+                    : 'Removing…'
+                  : pt
+                  ? 'Remover arquivo e recomeçar'
+                  : 'Remove file and restart'}
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       ) : (
         <>
@@ -215,7 +527,30 @@ function AppBootState({ failed = false, onRetry }) {
 // Portão de onboarding: enquanto a pessoa não termina o fluxo, o stack raiz
 // mostra o onboarding; concluir o paywall vira state.onboardingDone.
 function RootNav() {
-  const { state, loading, storageLoadError, retryLoad } = useApp();
+  const {
+    state,
+    loading,
+    storageLoadError,
+    storageCorrupt,
+    retryLoad,
+    repairCorruptedStorage,
+  } = useApp();
+  const repairStorageAndAlarm = React.useCallback(async () => {
+    if (Platform.OS === 'ios') {
+      const capability = await getAffirmationAlarmCapability().catch(() => null);
+      const scheduledIds = capability && capability.scheduledAlarmIds;
+      if (!Array.isArray(scheduledIds)) {
+        // iOS versions without AlarmKit cannot have created this alarm. Every
+        // other unknown capability state stays fail-closed so a real alarm is
+        // never orphaned when the corrupt local record is repaired.
+        if (capability?.reason !== 'ios_version_unsupported') return false;
+      } else if (scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID)) {
+        const cancelled = await cancelAffirmationAlarm();
+        if (!cancelled.ok) return false;
+      }
+    }
+    return repairCorruptedStorage();
+  }, [repairCorruptedStorage]);
   // O <html lang> vem "en" do export do Expo. Com o app em português isso faz
   // leitor de tela ler com fonética errada e o navegador oferecer tradução
   // (que quebra o React). Segue o idioma real do app.
@@ -228,7 +563,16 @@ function RootNav() {
     if (state && state.lang) warmUpVoices(state.lang, { localOnly: true });
   }, [state && state.lang]);
   if (loading) return <AppBootState />;
-  if (storageLoadError || !state) return <AppBootState failed onRetry={retryLoad} />;
+  if (storageLoadError || !state) {
+    return (
+      <AppBootState
+        failed
+        corrupt={storageCorrupt}
+        onRetry={retryLoad}
+        onRepair={repairStorageAndAlarm}
+      />
+    );
+  }
   const onboarded = state.onboardingDone === true;
   return (
     <Root.Navigator screenOptions={{ headerShown: false }}>
@@ -307,10 +651,12 @@ export default function App() {
         >
           <AppProvider>
             <PersistedTheme />
+            <NativeAlarmContentSync />
             <StatusBar style="dark" />
             <NavigationContainer linking={linking}>
               <RootNav />
             </NavigationContainer>
+            <StorageMutationGuard />
             <PersistenceNotice />
           </AppProvider>
         </ThemeProvider>
@@ -374,6 +720,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  bootRepairButton: {
+    minHeight: 46,
+    marginTop: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D7A8B4',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF7F9',
+  },
+  bootRepairText: {
+    marginLeft: 8,
+    color: '#7E3548',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   persistenceLayer: {
     position: 'absolute',
     left: 12,
@@ -420,5 +784,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     marginLeft: 5,
+  },
+  storageMutationLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 80,
+    elevation: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(220, 233, 248, 0.96)',
+  },
+  storageMutationPanel: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#20314F',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  storageMutationTitle: {
+    marginTop: 15,
+    color: '#20314F',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  storageMutationText: {
+    marginTop: 8,
+    color: '#526783',
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  storageMutationButton: {
+    minHeight: 44,
+    marginTop: 18,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#315F9E',
+  },
+  storageMutationButtonText: {
+    marginLeft: 7,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

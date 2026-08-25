@@ -273,4 +273,21 @@ assert.ok(oversized.affirmation.length <= 290, 'afirmacao pessoal precisa contin
 assert.ok(!oversized.affirmation.includes('fim_nao_deve_entrar'), 'afirmacao nao pode exceder o limite da ancora');
 assertPrivateFieldsAbsent(oversized, 'Perfil longo');
 
+const revealFile = path.join(__dirname, '..', 'screens', 'onboarding', 'RevealScreen.js');
+const revealSource = fs.readFileSync(revealFile, 'utf8');
+transformSync(revealSource, {
+  filename: revealFile,
+  presets: ['babel-preset-expo'],
+  sourceType: 'module',
+});
+assert.ok(
+  revealSource.includes('testID="missing-anchor-scene"') &&
+    revealSource.includes("navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] })"),
+  'deep link de cena inexistente nao pode ficar em branco'
+);
+assert.ok(
+  !revealSource.includes('setTimeout(returnToWelcome, 0)'),
+  'mensagem de cena inexistente precisa permanecer visivel ate a pessoa escolher voltar'
+);
+
 process.stdout.write(`Cena-Ancora: ${categories.length + 19} casos aprovados\n`);

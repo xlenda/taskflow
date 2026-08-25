@@ -1,6 +1,6 @@
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
-import { AUDIO_BANK, audioUrl } from './audioBank';
+import { audioUrl } from './audioBank';
 import { pickVoiceURI, getVoiceAsync, TOM } from './voicePicker';
 
 // Narração do app, em duas camadas:
@@ -137,5 +137,3 @@ export function splitScript(text) {
     .map((s) => s.trim())
     .filter(Boolean);
 }
-
-export { AUDIO_BANK };

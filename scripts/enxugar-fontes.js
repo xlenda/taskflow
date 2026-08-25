@@ -13,6 +13,7 @@
 // Uso: node scripts/enxugar-fontes.js  (roda dentro do deploy, depois do export)
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -20,7 +21,61 @@ const FONT_DIR = path.join(
   ROOT, 'dist', 'assets', 'node_modules', '@expo', 'vector-icons', 'build',
   'vendor', 'react-native-vector-icons', 'Fonts'
 );
-const FONTES_SRC = [path.join(ROOT, 'screens'), path.join(ROOT, 'components'), path.join(ROOT, 'ui'), path.join(ROOT, 'App.js')];
+const FONTES_SRC = [
+  path.join(ROOT, 'screens'),
+  path.join(ROOT, 'components'),
+  path.join(ROOT, 'ui'),
+  path.join(ROOT, 'constants'),
+  path.join(ROOT, 'App.js'),
+];
+
+function contentHash(file) {
+  return crypto.createHash('md5').update(fs.readFileSync(file)).digest('hex');
+}
+
+function textFiles(root, out = []) {
+  if (!fs.existsSync(root)) return out;
+  for (const name of fs.readdirSync(root)) {
+    const file = path.join(root, name);
+    if (fs.statSync(file).isDirectory()) textFiles(file, out);
+    else if (/\.(?:html|js|css|json|map)$/i.test(name)) out.push(file);
+  }
+  return out;
+}
+
+function replaceInTextFiles(oldValue, newValue) {
+  const changed = [];
+  for (const file of textFiles(path.join(ROOT, 'dist'))) {
+    const source = fs.readFileSync(file, 'utf8');
+    if (!source.includes(oldValue)) continue;
+    fs.writeFileSync(file, source.split(oldValue).join(newValue));
+    changed.push(file);
+  }
+  return changed;
+}
+
+function cacheBustSubset(fontFile) {
+  const oldFontName = path.basename(fontFile);
+  const newFontName = `Ionicons.${contentHash(fontFile)}.ttf`;
+  let changed = [];
+  if (oldFontName !== newFontName) {
+    const newFontPath = path.join(path.dirname(fontFile), newFontName);
+    fs.renameSync(fontFile, newFontPath);
+    changed = replaceInTextFiles(oldFontName, newFontName);
+    fontFile = newFontPath;
+  }
+
+  const bundle = changed.find((file) => /^AppEntry-[a-f0-9]+\.js$/i.test(path.basename(file)));
+  if (bundle) {
+    const oldBundleName = path.basename(bundle);
+    const newBundleName = `AppEntry-${contentHash(bundle)}.js`;
+    if (oldBundleName !== newBundleName) {
+      fs.renameSync(bundle, path.join(path.dirname(bundle), newBundleName));
+      replaceInTextFiles(oldBundleName, newBundleName);
+    }
+  }
+  return fontFile;
+}
 
 function arquivosJs(alvo, out = []) {
   if (!fs.existsSync(alvo)) return out;
@@ -107,7 +162,7 @@ if (usadas.includes('Ionicons')) {
     process.exit(0);
   }
 
-  const fonte = path.join(FONT_DIR, ionicons);
+  let fonte = path.join(FONT_DIR, ionicons);
   const antes = Math.round(fs.statSync(fonte).size / 1024);
   const unicodes = codepoints.map((c) => 'U+' + c.toString(16).toUpperCase()).join(',');
   try {
@@ -120,6 +175,8 @@ if (usadas.includes('Ionicons')) {
     const depois = Math.round(fs.statSync(fonte).size / 1024);
     console.log(`Ionicons: ${antes} KB → ${depois} KB (${codepoints.length} ícones preservados)`);
     if (depois >= antes) console.log('  (aviso: subset não reduziu — verifique fontTools)');
+    fonte = cacheBustSubset(fonte);
+    console.log(`cache bust da fonte: ${path.basename(fonte)}`);
   } catch (e) {
     console.log('subset falhou, fonte original mantida:', String(e.message).slice(0, 120));
   }

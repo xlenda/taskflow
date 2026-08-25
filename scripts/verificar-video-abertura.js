@@ -10,7 +10,6 @@ const brandPath = path.join(root, 'constants', 'brand.js');
 const welcomePath = path.join(root, 'screens', 'onboarding', 'WelcomeScreen.js');
 const onboardingUiPath = path.join(root, 'screens', 'onboarding', 'onboardingUI.js');
 const deployScriptPath = path.join(root, 'scripts', 'deploy-celeste.js');
-const deployPowerShellPath = path.join(root, 'scripts', 'deploy-celeste.ps1');
 const deployBashPath = path.join(root, 'scripts', 'deploy-web.sh');
 
 const video = fs.readFileSync(videoPath);
@@ -20,7 +19,6 @@ const brand = fs.readFileSync(brandPath, 'utf8');
 const welcome = fs.readFileSync(welcomePath, 'utf8');
 const onboardingUi = fs.readFileSync(onboardingUiPath, 'utf8');
 const deployScript = fs.readFileSync(deployScriptPath, 'utf8');
-const deployPowerShell = fs.readFileSync(deployPowerShellPath, 'utf8');
 const deployBash = fs.readFileSync(deployBashPath, 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const binary = video.toString('latin1');
@@ -66,8 +64,12 @@ assert.ok(welcome.includes("setPhase('welcome')"), 'transicao para o restante do
 assert.ok(welcome.includes('OPENING_FALLBACK_MS'), 'fallback da transicao de abertura ausente');
 assert.ok(onboardingUi.includes('colors = ONB.gradient'), 'OnbScreen perdeu o fundo padrao das outras telas');
 assert.ok(deployScript.includes('background:#759ACE'), 'deploy nao usa a cor do video no splash');
-assert.ok(deployPowerShell.includes('deploy-celeste.js'), 'wrapper PowerShell nao usa a esteira unica');
 assert.ok(deployBash.includes('deploy-celeste.js'), 'wrapper Bash nao usa a esteira unica');
+assert.strictEqual(
+  packageJson.scripts && packageJson.scripts['deploy:web'],
+  'node scripts/deploy-celeste.js',
+  'npm deploy:web nao usa a esteira JavaScript autoritativa'
+);
 
 console.log(
   `Abertura aprovada: ${(video.length / 1024).toFixed(0)} KB, H.264 + AAC faststart, poster ${(poster.length / 1024).toFixed(0)} KB`

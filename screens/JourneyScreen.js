@@ -22,7 +22,10 @@ import { lastNDays, todayISO, streakFrom, formatTime } from '../utils/date';
 import { audioDur } from '../utils/audioBank';
 import { confirmAsync } from '../utils/confirm';
 import { APP_NAME } from '../constants/brand';
-import { cancelAffirmationAlarm } from '../services/affirmationAlarm';
+import {
+  cancelAffirmationAlarm,
+  getAffirmationAlarmCapability,
+} from '../services/affirmationAlarm';
 
 import WeekChart from '../components/WeekChart';
 import SectionHeading from '../components/SectionHeading';
@@ -115,8 +118,8 @@ const S = {
     pt: 'Não foi possível desligar o despertador. Abra Meu despertador e tente novamente antes de recomeçar.',
   },
   resetStorageFailed: {
-    en: 'The reset was applied here, but the device has not confirmed every local deletion yet. Try again before closing the app.',
-    pt: 'O recomeço foi aplicado aqui, mas o aparelho ainda não confirmou toda a limpeza local. Tente novamente antes de fechar o app.',
+    en: 'The device is still confirming the reset. Keep Celeste open and try again.',
+    pt: 'O aparelho ainda está confirmando o recomeço. Mantenha o Celeste aberto e tente novamente.',
   },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
 
@@ -136,6 +139,10 @@ const S = {
   restoreFail: {
     en: 'That file is not a valid {app} copy.',
     pt: 'Esse arquivo não é uma cópia válida do {app}.',
+  },
+  restoreStorageFail: {
+    en: 'The device has not confirmed the restore yet. Keep Celeste open and try again.',
+    pt: 'O aparelho ainda não confirmou a restauração. Mantenha o Celeste aberto e tente novamente.',
   },
 
   footer: {
@@ -195,13 +202,13 @@ export default function JourneyScreen() {
       byDay[iso] = (byDay[iso] || 0) + 1;
     };
     state.manifestations.forEach((m) => m.sessions.forEach(add));
-    state.visionPlays.forEach((p) => add(p.date));
+    state.visionPlays.forEach((p) => add(p && p.date));
     state.affirmationDates.forEach(add);
     const days = Object.keys(byDay);
     // Tempo real de escuta: duração do MP3 de cada visão concluída. Id sem
     // áudio soma zero — nada de estimativa.
     const listenedSec = state.visionPlays.reduce(
-      (sum, p) => sum + (audioDur(p.visionId, lang) || 0),
+      (sum, p) => sum + (audioDur(p && p.visionId, lang) || 0),
       0
     );
     return {
@@ -303,7 +310,15 @@ export default function JourneyScreen() {
     if (!ok) return;
     setResetBusy(true);
     try {
-      if (state.morningRitual?.reminderEnabled) {
+      const alarmCapability = await getAffirmationAlarmCapability().catch(() => null);
+      if (Platform.OS === 'ios' && !alarmCapability) {
+        setResetError('alarm');
+        return;
+      }
+      if (
+        Platform.OS === 'ios' &&
+        (alarmCapability?.supported === true || alarmCapability?.nativeModuleAvailable === true)
+      ) {
         const cancelled = await cancelAffirmationAlarm();
         if (!cancelled.ok) {
           setResetError('alarm');
@@ -357,11 +372,11 @@ export default function JourneyScreen() {
           cancelLabel: t(S.cancel),
         });
         if (!ok) return;
-        const r = importStateJson(String(reader.result || ''));
+        const r = await importStateJson(String(reader.result || ''));
         if (r && r.ok) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         } else {
-          setBackupErro(true);
+          setBackupErro(r && r.erro === 'storage_unavailable' ? 'storage' : 'invalid');
         }
       };
       reader.readAsText(file);
@@ -681,7 +696,7 @@ export default function JourneyScreen() {
             />
             {backupErro ? (
               <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
-                {t(S.restoreFail, { app: APP_NAME })}
+                {t(backupErro === 'storage' ? S.restoreStorageFail : S.restoreFail, { app: APP_NAME })}
               </Text>
             ) : null}
           </>

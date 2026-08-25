@@ -120,5 +120,3 @@ export async function translateManifestationScene({
     if (timer) clearTimeout(timer);
   }
 }
-
-export const __test = { cleanScene, sceneForCloud, apiEndpoint };

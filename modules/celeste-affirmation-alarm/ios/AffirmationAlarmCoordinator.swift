@@ -118,6 +118,7 @@ actor AffirmationAlarmCoordinator {
         configuration: configuration(
           schedule: schedule,
           title: payload.title,
+          stopLabel: payload.stopLabel,
           soundFileName: preparedSound.fileName,
           kind: "weekly"
         )
@@ -192,6 +193,7 @@ actor AffirmationAlarmCoordinator {
         configuration: configuration(
           schedule: schedule,
           title: payload.title,
+          stopLabel: payload.stopLabel,
           soundFileName: preparedSound.fileName,
           kind: "test"
         )
@@ -246,6 +248,7 @@ actor AffirmationAlarmCoordinator {
   private func configuration(
     schedule: Alarm.Schedule,
     title: String,
+    stopLabel: String,
     soundFileName: String,
     kind: String
   ) -> AlarmConfiguration {
@@ -253,9 +256,13 @@ actor AffirmationAlarmCoordinator {
     let localizedTitle = LocalizedStringResource(
       stringLiteral: safeTitle.isEmpty ? "Celeste" : safeTitle
     )
+    let safeStopLabel = stopLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let localizedStopLabel = LocalizedStringResource(
+      stringLiteral: safeStopLabel.isEmpty ? "Parar" : safeStopLabel
+    )
     // The stop-button initializer keeps this source compatible with the first iOS 26 SDK.
     let stopButton = AlarmButton(
-      text: "Parar",
+      text: localizedStopLabel,
       textColor: .white,
       systemImageName: "stop.circle.fill"
     )
