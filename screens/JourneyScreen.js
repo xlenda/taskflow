@@ -18,8 +18,7 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
-import { lastNDays, todayISO, streakFrom, formatTime } from '../utils/date';
-import { audioDur } from '../utils/audioBank';
+import { lastNDays, todayISO, streakFrom } from '../utils/date';
 import { confirmAsync } from '../utils/confirm';
 import { APP_NAME } from '../constants/brand';
 import {
@@ -195,7 +194,7 @@ export default function JourneyScreen() {
   // o streak não — quem só ouvia visões via "0 dias com prática" logo acima de
   // barras cheias e de "Práticas: 5". Tudo aqui embaixo bebe deste mesmo poço.
   const practice = useMemo(() => {
-    if (!state) return { byDay: {}, days: [], total: 0, listenedSec: 0 };
+    if (!state) return { byDay: {}, days: [], total: 0 };
     const byDay = {};
     const add = (iso) => {
       if (!iso) return;
@@ -205,19 +204,12 @@ export default function JourneyScreen() {
     state.visionPlays.forEach((p) => add(p && p.date));
     state.affirmationDates.forEach(add);
     const days = Object.keys(byDay);
-    // Tempo real de escuta: duração do MP3 de cada visão concluída. Id sem
-    // áudio soma zero — nada de estimativa.
-    const listenedSec = state.visionPlays.reduce(
-      (sum, p) => sum + (audioDur(p && p.visionId, lang) || 0),
-      0
-    );
     return {
       byDay,
       days,
       total: days.reduce((n, d) => n + byDay[d], 0),
-      listenedSec,
     };
-  }, [state, lang]);
+  }, [state]);
 
   const chartData = useMemo(
     () => lastNDays(7).map((iso) => ({ label: weekdayKey(iso), value: practice.byDay[iso] || 0 })),
@@ -273,22 +265,9 @@ export default function JourneyScreen() {
     { icon: 'trophy', key: 'cycle', label: S.msCycle, target: 1, current: completed },
   ];
 
-  // O tile de tempo só existe quando há escuta com duração conhecida. Antes era
-  // "práticas × 3" — número inventado. Sem áudio ouvido, o tile some.
   const stats = [
     { icon: 'flame', key: 'streak', label: S.statStreak, value: `${streak}`, accent: 2 },
     { icon: 'headset', key: 'practices', label: S.statPractices, value: `${totalPractices}`, accent: 0 },
-    ...(practice.listenedSec > 0
-      ? [
-          {
-            icon: 'time',
-            key: 'listened',
-            label: S.statListened,
-            value: formatTime(practice.listenedSec),
-            accent: 3,
-          },
-        ]
-      : []),
     { icon: 'trophy', key: 'manifested', label: S.statManifested, value: `${completed}`, accent: 4 },
   ];
 

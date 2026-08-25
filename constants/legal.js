@@ -58,8 +58,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Voice and media', pt: 'Voz e mídia' },
     paragraphs: [
       {
-        en: 'Personal text is narrated only when Celeste can select a voice identified as local by the device. Otherwise, the personal content remains available as text. Fixed catalog audio may be downloaded from Celeste as an audio file.',
-        pt: 'Textos pessoais só são narrados quando o Celeste consegue selecionar uma voz identificada como local pelo aparelho. Caso contrário, o conteúdo pessoal continua disponível em texto. Áudios fixos do catálogo podem ser baixados do Celeste como arquivo de áudio.',
+        en: 'Celeste does not use a fixed narration catalog. Personal text is narrated only when Celeste can select a voice identified as local by the device. Otherwise, it remains available as text. The short voice-choice samples contain no questionnaire answers.',
+        pt: 'O Celeste não usa um catálogo fixo de narração. Textos pessoais só são narrados quando o Celeste consegue selecionar uma voz identificada como local pelo aparelho. Caso contrário, continuam disponíveis em texto. As amostras curtas para escolher a voz não contêm respostas do questionário.',
       },
       {
         en: 'If you choose to dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives the resulting transcript and transforms it locally; Celeste does not upload the recording itself.',
@@ -96,8 +96,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Future services', pt: 'Serviços futuros' },
     paragraphs: [
       {
-        en: 'Accounts, payments, cloud voice and community publishing are not active in this release. Before any of them is enabled, Celeste must show what data is collected, why it is needed, who receives it and how it can be deleted.',
-        pt: 'Contas, pagamentos, voz em nuvem e publicação na comunidade não estão ativos nesta versão. Antes de qualquer um deles ser habilitado, o Celeste deverá informar quais dados são coletados, por que são necessários, quem os recebe e como apagá-los.',
+        en: 'Accounts, payments, cloud generation of personal voice and community publishing are not active in this release. Before any of them is enabled, Celeste must show what data is collected, why it is needed, who receives it and how it can be deleted.',
+        pt: 'Contas, pagamentos, geração em nuvem de voz pessoal e publicação na comunidade não estão ativos nesta versão. Antes de qualquer um deles ser habilitado, o Celeste deverá informar quais dados são coletados, por que são necessários, quem os recebe e como apagá-los.',
       },
       {
         en: 'A community story created without an authenticated account and configured community service remains a private draft on this device; it is not a public testimonial.',

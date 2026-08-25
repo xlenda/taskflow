@@ -1,6 +1,5 @@
 const assert = require('assert');
 const fs = require('fs');
-const Module = require('module');
 const path = require('path');
 const { transformSync } = require('@babel/core');
 
@@ -17,65 +16,53 @@ const app = read('App.js');
 const home = read('screens/HomeScreen.js');
 const manifestation = read('screens/ManifestationScreen.js');
 
-for (const file of ['App.js', 'constants/content.js', 'screens/HomeScreen.js', 'screens/ManifestationScreen.js']) {
+for (const file of ['App.js', 'screens/HomeScreen.js', 'screens/ManifestationScreen.js']) {
   compile(file);
 }
 
-assert.match(app, /Manifestation:\s*'m\/:id\?'/, 'rota de sugestao deve aceitar ausencia de id salvo');
-assert.match(
-  home,
-  /navigate\('Manifestation',\s*\{\s*templateId:\s*card\.id\s*\}\)/,
-  'Home deve enviar somente o templateId escalar'
-);
-assert.doesNotMatch(home, /\{\s*template:\s*card\s*\}/, 'Home nao pode serializar o objeto inteiro na URL');
+assert.match(app, /Manifestation:\s*'m\/:id\??'/, 'rota deve transportar o id da manifestacao pessoal');
+
+// A Home nao oferece nem abre catalogo. Toda entrada no detalhe carrega somente
+// o id de uma manifestacao que ja existe no estado da propria pessoa.
+for (const token of ['TRENDING', 'FOR_YOU', 'templateId']) {
+  assert.doesNotMatch(home, new RegExp(`\\b${token}\\b`), `Home nao pode depender de ${token}`);
+  assert.doesNotMatch(
+    manifestation,
+    new RegExp(`\\b${token}\\b`),
+    `detalhe pessoal nao pode depender de ${token}`
+  );
+}
+assert.doesNotMatch(manifestation, /findForYouById|localized\(/, 'detalhe nao pode resolver conteudo de catalogo');
+assert.doesNotMatch(manifestation, /\baddManifestation\b/, 'detalhe nao pode criar sugestao pronta');
 assert.match(
   manifestation,
-  /findForYouById\(routeTemplateId\)/,
-  'destino deve validar o templateId no catalogo FOR_YOU'
-);
-assert.match(
-  manifestation,
-  /setParams\(templateId\s*\?\s*\{\s*id,\s*templateId\s*\}/,
-  'salvar deve preservar templateId ao acrescentar o id pessoal'
+  /const routeId = typeof route\.params\?\.id === 'string'[\s\S]*?state\.manifestations\.find\(\(m\) => m\.id === routeId\)/,
+  'detalhe deve resolver somente um id pessoal salvo no estado'
 );
 
+const detailNavigations = home.match(/navigation\.navigate\('Manifestation',\s*\{[^}]*\}\)/g) || [];
+assert.ok(detailNavigations.length >= 3, 'Home deve manter os caminhos para abrir manifestacoes pessoais');
+for (const call of detailNavigations) {
+  assert.match(call, /\{\s*id(?:\s*[:,}])/, `navegacao sem id pessoal: ${call}`);
+}
+
+// O ref e gravado antes de qualquer await: dois toques no mesmo desejo nao
+// conseguem abrir duas geracoes enquanto o consentimento ou o Gemini respondem.
+const submitStart = home.indexOf('const submit = async () =>');
 const addCall = home.indexOf('const id = await addManifestation');
 const homeNavigate = home.indexOf("navigation.navigate('Manifestation', { id })", addCall);
-assert.ok(addCall >= 0 && homeNavigate > addCall, 'fluxo de criacao da Home nao encontrado');
+assert.ok(submitStart >= 0 && addCall > submitStart && homeNavigate > addCall, 'fluxo pessoal da Home nao encontrado');
+const submitBeforeAdd = home.slice(submitStart, addCall);
+assert.match(
+  submitBeforeAdd,
+  /if \(!title \|\| generating \|\| sentRef\.current === title\) return;/,
+  'Home deve bloquear desejo vazio, geracao ativa e segundo envio do mesmo texto'
+);
+assert.match(submitBeforeAdd, /sentRef\.current = title;/, 'Home deve travar o desejo antes da geracao assincrona');
 assert.ok(
   home.slice(addCall, homeNavigate).includes('if (!id)'),
   'Home nao pode navegar quando uma geracao obsoleta retorna null'
 );
-assert.match(
-  manifestation,
-  /const id = await addManifestation\([\s\S]*?if \(!id\) return;\s*openSaved\(id\)/,
-  'sugestao nao pode abrir uma manifestacao quando a criacao retorna null'
-);
-
-// Carrega a funcao real do catalogo com Babel, sem envolver React Native.
-const originalLoader = Module._extensions['.js'];
-Module._extensions['.js'] = (module, filename) => {
-  const isProjectFile = filename.startsWith(`${root}${path.sep}`) && !filename.includes(`${path.sep}node_modules${path.sep}`);
-  if (!isProjectFile) return originalLoader(module, filename);
-  const output = transformSync(fs.readFileSync(filename, 'utf8'), {
-    filename,
-    presets: ['babel-preset-expo'],
-    sourceType: 'module',
-  }).code;
-  module._compile(output, filename);
-};
-
-let findForYouById;
-try {
-  ({ findForYouById } = require('../constants/content'));
-} finally {
-  Module._extensions['.js'] = originalLoader;
-}
-
-assert.strictEqual(findForYouById('fy-1').id, 'fy-1');
-assert.strictEqual(findForYouById('[object Object]'), null, 'objeto serializado nao pode virar sugestao');
-assert.strictEqual(findForYouById({ id: 'fy-1' }), null, 'somente id escalar pode resolver sugestao');
-assert.strictEqual(findForYouById('fy-inexistente'), null, 'id fora do FOR_YOU deve ser rejeitado');
 
 const getPathFromState = require('../node_modules/@react-navigation/core/lib/commonjs/getPathFromState.js').default;
 const getStateFromPath = require('../node_modules/@react-navigation/core/lib/commonjs/getStateFromPath.js').default;
@@ -120,24 +107,13 @@ const deepestRoute = (state) => {
   return route;
 };
 
-// Regressao original: abrir card gerava /m/undefined?template=[object Object]
-// e F5 perdia a sugestao. Agora a URL contem apenas fy-1 e o parser recupera o
-// mesmo item do catalogo ao reconstruir o estado de navegacao.
-const suggestionPath = getPathFromState(stateFor({ templateId: 'fy-1' }), config);
-assert.ok(!suggestionPath.includes('undefined'));
-assert.ok(!suggestionPath.includes('%5Bobject') && !suggestionPath.includes('[object'));
-assert.match(suggestionPath, /^\/m\/?\?templateId=fy-1$/);
-const suggestionReload = deepestRoute(getStateFromPath(suggestionPath, config));
-assert.strictEqual(suggestionReload.params.id, undefined);
-assert.strictEqual(suggestionReload.params.templateId, 'fy-1');
-assert.strictEqual(findForYouById(suggestionReload.params.templateId).id, 'fy-1');
-
-// Depois de comecar, o id pessoal ocupa o segmento e a origem do audio fica na
-// query. Um novo reload precisa recuperar os dois valores.
-const savedPath = getPathFromState(stateFor({ id: 'm-route-regression', templateId: 'fy-1' }), config);
-assert.match(savedPath, /^\/m\/m-route-regression\?templateId=fy-1$/);
+// O unico estado navegavel e o item pessoal salvo. O id ocupa o segmento e
+// sobrevive ao reload sem objeto, template ou query de catalogo.
+const savedPath = getPathFromState(stateFor({ id: 'm-personal-regression' }), config);
+assert.match(savedPath, /^\/m\/m-personal-regression$/);
+assert.ok(!savedPath.includes('?'), 'rota pessoal nao deve carregar query de catalogo');
 const savedReload = deepestRoute(getStateFromPath(savedPath, config));
-assert.strictEqual(savedReload.params.id, 'm-route-regression');
-assert.strictEqual(savedReload.params.templateId, 'fy-1');
+assert.strictEqual(savedReload.params.id, 'm-personal-regression');
+assert.strictEqual(Object.prototype.hasOwnProperty.call(savedReload.params, 'templateId'), false);
 
-console.log('OK: sugestao usa templateId escalar e sobrevive a URL, salvamento e reload');
+console.log('OK: Home e detalhe usam apenas manifestacoes pessoais salvas por id');

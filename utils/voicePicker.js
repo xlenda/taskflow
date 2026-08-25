@@ -1,4 +1,4 @@
-// Escolha da melhor voz MASCULINA disponível no aparelho.
+// Escolha da melhor voz local disponível para cada estilo de narrador.
 //
 // Duas armadilhas que já custaram caro aqui (10/08):
 //
@@ -6,9 +6,9 @@
 //    (node_modules/expo-speech/build/ExponentSpeech.web.js:42-45). Pior: quando
 //    não encontra, ele faz Math.max(0, -1) e cai na PRIMEIRA voz da lista — que
 //    costuma ser feminina. Por isso sempre devolvemos o voiceURI.
-// 2. Priorizar "qualidade" antes de "gênero" escolhia a Google português do
-//    Brasil, que é feminina. Afirmação pede voz masculina e firme (decisão do
-//    dono), então gênero é o primeiro filtro, não o segundo.
+// 2. Cada aparelho oferece um conjunto diferente de vozes. Aurora e Atlas
+//    tentam preservar o timbre escolhido; Rio prioriza clareza e neutralidade.
+//    Quando o timbre não existe, o idioma correto sempre vence.
 
 // Vozes masculinas conhecidas por plataforma, em ordem de qualidade.
 const MASC_PREFERIDAS = {
@@ -34,6 +34,23 @@ const MASC_PREFERIDAS = {
   ],
 };
 
+const FEM_PREFERIDAS = {
+  pt: [
+    'Microsoft Francisca Online (Natural) - Portuguese (Brazil)',
+    'Microsoft Francisca',
+    'Google português do Brasil',
+    'Luciana',
+    'Joana',
+  ],
+  en: [
+    'Microsoft Jenny Online (Natural) - English (United States)',
+    'Microsoft Aria Online (Natural) - English (United States)',
+    'Google US English',
+    'Samantha',
+    'Victoria',
+  ],
+};
+
 // Nomes próprios masculinos comuns em vozes de sistema (iOS/macOS/Android).
 const MASC = /\b(antonio|ant[oó]nio|daniel|david|guy|christopher|brian|eric|roger|steffan|alex|aaron|fred|thomas|ricardo|felipe|joaquim|rocko|reed|male|homem|masculino)\b/i;
 const FEM = /\b(maria|luciana|joana|francisca|zira|aria|jenny|michelle|ana|clara|samantha|karen|victoria|female|mulher|feminin[ao]|helena|camila|leila|ines|in[eê]s|catarina|fernanda|paulina|monica|m[oó]nica)\b/i;
@@ -48,8 +65,24 @@ function ehMasculina(v) {
   return MASC.test(n);
 }
 
+function ehFeminina(v) {
+  const n = v.name || '';
+  if (MASC.test(n)) return false;
+  return FEM.test(n);
+}
+
+function preferredByName(pool, names) {
+  for (const name of names || []) {
+    const exact = pool.find((voice) => voice.name === name);
+    if (exact) return exact;
+    const partial = pool.find((voice) => (voice.name || '').startsWith(name));
+    if (partial) return partial;
+  }
+  return null;
+}
+
 // Devolve o objeto SpeechSynthesisVoice escolhido (ou null).
-export function pickVoice(lang = 'pt', { localOnly = false } = {}) {
+export function pickVoice(lang = 'pt', { localOnly = false, narratorId = 'atlas' } = {}) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return null;
   const disponiveis = window.speechSynthesis.getVoices() || [];
   // Histórias pessoais só podem usar uma voz que o navegador marque
@@ -61,26 +94,22 @@ export function pickVoice(lang = 'pt', { localOnly = false } = {}) {
   const doIdioma = todas.filter((v) => String(v.lang || '').toLowerCase().startsWith(t));
   const pool = doIdioma.length ? doIdioma : todas;
 
-  // 1) nome exato da lista de masculinas preferidas (casamento parcial serve:
-  //    o Windows anexa sufixos como "(Natural) - Portuguese (Brazil)")
-  for (const nome of MASC_PREFERIDAS[t] || []) {
-    const achou = pool.find((v) => v.name === nome) || pool.find((v) => (v.name || '').startsWith(nome));
-    if (achou) return achou;
-  }
-  // 2) qualquer masculina do idioma — remota (neural) na frente
-  const masc = pool.filter(ehMasculina);
-  const mascRemota = masc.find((v) => v.localService === false);
-  if (mascRemota) return mascRemota;
-  if (masc.length) return masc[0];
-
-  // 3) sem masculina no idioma: tenta masculina em QUALQUER idioma antes de
-  //    aceitar uma feminina — o timbre pesa mais que o sotaque numa afirmação.
-  const mascQualquer = todas.filter(ehMasculina);
-  if (mascQualquer.length) {
-    return mascQualquer.find((v) => v.localService === false) || mascQualquer[0];
+  if (narratorId === 'aurora') {
+    const named = preferredByName(pool, FEM_PREFERIDAS[t]);
+    if (named) return named;
+    const feminine = pool.filter(ehFeminina);
+    if (feminine.length) return feminine.find((v) => v.localService === false) || feminine[0];
   }
 
-  // 4) nada masculino instalado: melhor voz do idioma, sem mentir para o usuário
+  if (narratorId === 'atlas') {
+    const named = preferredByName(pool, MASC_PREFERIDAS[t]);
+    if (named) return named;
+    const masculine = pool.filter(ehMasculina);
+    if (masculine.length) return masculine.find((v) => v.localService === false) || masculine[0];
+  }
+
+  // Rio intentionally follows the clearest voice installed for the language.
+  // If a requested timbre is unavailable, language correctness wins.
   return pool.find((v) => v.localService === false) || pool[0] || null;
 }
 

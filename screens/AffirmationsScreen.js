@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Screen, Header, Card, EmptyState } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
-import { AFFIRMATIONS, CATEGORIES, categoryMeta, localized } from '../constants/content';
+import { CATEGORIES, categoryMeta, localized } from '../constants/content';
 import { APP_NAME, APP_URL } from '../constants/brand';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
@@ -25,7 +25,6 @@ import {
   narrate,
   stopSpeaking,
   warmUpVoices,
-  hasNeuralAudio,
   isSpeechAvailable,
 } from '../utils/speech';
 
@@ -39,14 +38,15 @@ const S = {
   all: { en: 'All', pt: 'Todas' },
   fromDreams: { en: 'From your dreams', pt: 'Dos seus sonhos' },
   fromDream: { en: 'From your dream', pt: 'Do seu sonho' },
+  fromIntention: { en: 'From your intention', pt: 'Da sua intenção' },
   listen: { en: 'Listen to this affirmation', pt: 'Ouvir esta afirmação' },
   stopListen: { en: 'Stop the audio', pt: 'Parar o áudio' },
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
   copied: { en: 'Copied ✓', pt: 'Copiado ✓' },
   emptyTitle: { en: 'No affirmations here', pt: 'Nenhuma afirmação por aqui' },
   emptyBody: {
-    en: 'Choose another category to keep going.',
-    pt: 'Escolha outra categoria para continuar.',
+    en: 'Create a manifestation or share a dream to receive an affirmation made for you.',
+    pt: 'Crie uma manifestação ou conte um sonho para receber uma afirmação feita para você.',
   },
   readTitle: { en: 'Today’s affirmation received', pt: 'Afirmação de hoje recebida' },
   readPrompt: { en: 'Read one to keep your streak', pt: 'Leia uma para manter sua sequência' },
@@ -93,9 +93,9 @@ export default function AffirmationsScreen() {
   const theme = useTheme();
   const { t, lang } = useT();
   const { state, loading, toggleFavoriteAffirmation, markAffirmationRead } = useApp();
-  // `null` significa "a pessoa ainda não escolheu um filtro". Assim, depois do
-  // carregamento, quem tem sonhos começa no deck pessoal; uma conta vazia cai
-  // naturalmente no catálogo fixo.
+  const narratorId = state?.narration?.narratorId;
+  // `null` significa "a pessoa ainda não escolheu um filtro". Todo deck desta
+  // tela nasce das manifestações e dos sonhos salvos pela própria pessoa.
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [speaking, setSpeaking] = useState(false);
@@ -118,9 +118,8 @@ export default function AffirmationsScreen() {
   // A lista de vozes do navegador chega assíncrona; aquecer aqui garante que o
   // PRIMEIRO toque já saia com a voz escolhida, não com a padrão robótica.
   useEffect(() => {
-    warmUpVoices(lang);
-    warmUpVoices(lang, { localOnly: true });
-  }, [lang]);
+    warmUpVoices(lang, { localOnly: true, narratorId });
+  }, [lang, narratorId]);
 
   // A voz nunca sobrevive à tela: para ao perder o foco (troca de aba) e no
   // cleanup, que cobre também o desmonte.
@@ -138,10 +137,9 @@ export default function AffirmationsScreen() {
     };
   }, [isFocused]);
 
-  // Cada sonho já recebe uma afirmação quando é criado. A aba agora usa esse
-  // conteúdo salvo como experiência principal, em vez de esconder a frase no
-  // detalhe da manifestação e mostrar apenas o catálogo genérico.
-  const personalAffirmations = useMemo(
+  // A afirmação da intenção nasce no onboarding ou na criação de uma nova
+  // manifestação; os relatos do ritual entram logo abaixo no mesmo deck.
+  const manifestationAffirmations = useMemo(
     () =>
       ((state && state.manifestations) || [])
         .filter((m) => typeof m.affirmation === 'string' && m.affirmation.trim())
@@ -154,31 +152,49 @@ export default function AffirmationsScreen() {
           text: m.affirmation.trim(),
           speechLang: m.lang,
           personalized: true,
+          source: 'manifestation',
         })),
     [state && state.manifestations]
   );
 
-  const allAffirmations = useMemo(
-    () => [...personalAffirmations, ...AFFIRMATIONS],
-    [personalAffirmations]
+  const dreamAffirmations = useMemo(
+    () =>
+      (((state && state.morningRitual) || {}).entries || [])
+        .filter((entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim())
+        .map((entry) => ({
+          id: `ritual:${entry.id}`,
+          ritualEntryId: entry.id,
+          sourceTitle: entry.dreamAnchor || entry.dream,
+          accent: 1,
+          text: entry.affirmation.trim(),
+          speechLang: entry.lang,
+          personalized: true,
+          source: 'dream',
+        })),
+    [state && state.morningRitual]
   );
 
-  const activeFilter = filter || (personalAffirmations.length > 0 ? DREAMS_FILTER : 'All');
+  const allAffirmations = useMemo(
+    () => [...manifestationAffirmations, ...dreamAffirmations],
+    [manifestationAffirmations, dreamAffirmations]
+  );
+
+  const activeFilter = filter || 'All';
 
   const listFor = useCallback(
     (key) => {
-      if (key === DREAMS_FILTER) return personalAffirmations;
+      if (key === DREAMS_FILTER) return dreamAffirmations;
       if (key === 'All') return allAffirmations;
       return allAffirmations.filter((a) => a.category === key);
     },
-    [allAffirmations, personalAffirmations]
+    [allAffirmations, dreamAffirmations]
   );
 
   const list = useMemo(() => listFor(activeFilter), [activeFilter, listFor]);
 
   const chips = useMemo(
     () => [
-      ...(personalAffirmations.length > 0
+      ...(dreamAffirmations.length > 0
         ? [{ key: DREAMS_FILTER, label: t(S.fromDreams), accent: 3 }]
         : []),
       { key: 'All', label: t(S.all), accent: 0 },
@@ -188,7 +204,7 @@ export default function AffirmationsScreen() {
         accent: c.accent,
       })),
     ],
-    [personalAffirmations.length, t, lang]
+    [dreamAffirmations.length, t, lang]
   );
 
   const stopSpeech = useCallback(() => {
@@ -216,9 +232,9 @@ export default function AffirmationsScreen() {
 
   useEffect(() => {
     if (current && current.personalized) {
-      warmUpVoices(current.speechLang || lang, { localOnly: true });
+      warmUpVoices(current.speechLang || lang, { localOnly: true, narratorId });
     }
-  }, [current, lang]);
+  }, [current, lang, narratorId]);
 
   if (loading || !state) {
     return (
@@ -232,7 +248,9 @@ export default function AffirmationsScreen() {
   }
 
   const currentLoc = current ? loc(current, lang) : null;
-  const category = current ? categoryMeta(current.category) : { accent: 0 };
+  const category = current && current.source !== 'dream'
+    ? categoryMeta(current.category)
+    : { accent: current && typeof current.accent === 'number' ? current.accent : 1 };
   const meta = {
     ...category,
     accent:
@@ -242,20 +260,16 @@ export default function AffirmationsScreen() {
   const readToday = state.affirmationDates.includes(todayISO());
   const daysLogged = state.affirmationDates.length;
   const catLabel = (key) => loc(categoryMeta(key), lang).label || key;
-  const currentPersonal = !!(current && current.personalized);
-  const currentCategoryLabel = currentPersonal
-    ? `${t(S.fromDream)} · ${catLabel(current.category)}`
-    : current
-      ? catLabel(current.category)
-      : '';
+  const currentPersonal = !!current;
+  const currentCategoryLabel = current
+    ? current.source === 'dream'
+      ? t(S.fromDream)
+      : `${t(S.fromIntention)} · ${catLabel(current.category)}`
+    : '';
   // A ação principal da tela é OUVIR — botão grande com rótulo, não um ícone
   // cinza de 20px no canto do card. Texto pessoal só pode usar uma voz local
   // comprovável; no nativo, onde essa garantia não existe, permanece em texto.
-  const canHear = current
-    ? currentPersonal
-      ? Platform.OS === 'web' && isSpeechAvailable()
-      : hasNeuralAudio(current.id, lang) || isSpeechAvailable()
-    : false;
+  const canHear = current ? Platform.OS === 'web' && isSpeechAvailable() : false;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -309,11 +323,12 @@ export default function AffirmationsScreen() {
     abortedRef.current = false;
     const run = audioRunRef.current + 1;
     audioRunRef.current = run;
-    // Afirmação de sonho nunca recebe um id de MP3 nem passa por serviço de
-    // voz: apenas uma voz que o navegador declare explicitamente como local.
-    const ok = narrate(currentPersonal ? null : current.id, body, {
-      lang: currentPersonal ? current.speechLang || lang : lang,
-      localOnly: currentPersonal,
+    // Conteúdo pessoal nunca recebe um id do antigo catálogo de MP3. Enquanto
+    // a voz dinâmica não está ativa, usa apenas uma voz local do navegador.
+    const ok = narrate(null, body, {
+      lang: current.speechLang || lang,
+      narratorId,
+      localOnly: true,
       // Ouviu até o FIM = recebeu a afirmação de hoje. Parar no meio, trocar de
       // afirmação ou sair da aba liga a trava e não conta.
       onDone: () => {
@@ -539,16 +554,19 @@ export default function AffirmationsScreen() {
           />
         ) : (
           favorites.map((a) => {
-            const c = accentAt(theme, categoryMeta(a.category).accent);
+            const c = accentAt(
+              theme,
+              a.source === 'dream' ? a.accent : categoryMeta(a.category).accent
+            );
             return (
               <Card key={a.id} style={[styles.favRow, { backgroundColor: theme.surface }]}>
                 <View style={[styles.favBar, { backgroundColor: c }]} />
                 <View style={{ flex: 1, paddingLeft: 12 }}>
                   <Text style={[styles.favText, { color: theme.text }]}>{loc(a, lang).text}</Text>
                   <Text style={[styles.favCat, { color: c }]}>
-                    {(a.personalized
-                      ? `${t(S.fromDream)} · ${catLabel(a.category)}`
-                      : catLabel(a.category)
+                    {(a.source === 'dream'
+                      ? t(S.fromDream)
+                      : `${t(S.fromIntention)} · ${catLabel(a.category)}`
                     ).toUpperCase()}
                   </Text>
                 </View>

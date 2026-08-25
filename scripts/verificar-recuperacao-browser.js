@@ -124,8 +124,9 @@ const SHOT_DIR = path.join(__dirname, 'e2e-shots');
   await malformedPage.waitForFunction(
     (key) => {
       const saved = JSON.parse(localStorage.getItem(key) || '{}');
-      return saved.visionPlays?.length === 1 &&
-        saved.visionPlays[0]?.visionId === 'vision-1' &&
+      return saved.favoriteAffirmations?.length === 0 &&
+        saved.savedVisions?.length === 0 &&
+        saved.visionPlays?.length === 0 &&
         saved.affirmationDates?.length === 1;
     },
     { timeout: 15000, polling: 200 },

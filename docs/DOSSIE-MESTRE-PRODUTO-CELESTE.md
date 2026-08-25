@@ -13,9 +13,10 @@ defensável é:
 **Uma cena feita a partir de você, um passo possível hoje e um registro privado
 do que aconteceu, não aconteceu ou precisa de ajuste.**
 
-Na aba Afirmações, as frases já vinculadas às manifestações da própria pessoa
-aparecem antes do catálogo fixo. A prioridade vem do conteúdo salvo por ela, não
-de uma nova geração ao abrir a aba.
+Na aba Afirmações, aparecem exclusivamente as frases vinculadas às manifestações
+e aos sonhos da própria pessoa. O conteúdo é criado e salvo quando ela conclui o
+questionário, registra um sonho ou adiciona um desejo; abrir a aba não regenera
+nem consome créditos.
 
 O mecanismo recebe o nome **Cena-Âncora**. Seu ciclo é:
 
@@ -420,8 +421,8 @@ Princípios de RLS:
 - PT-BR e inglês com portões de paridade;
 - primeira manifestação criada com respostas reais;
 - recompensa antes da tela de acesso;
-- narração neural pré-gravada para o catálogo fixo na web e voz do sistema no
-  aplicativo nativo;
+- seis amostras curtas de narrador para a escolha de voz, sem catálogo de
+  afirmações ou histórias prontas;
 - histórias pessoais narradas somente quando o navegador oferece uma voz
   comprovadamente local; sem essa comprovação, a experiência permanece em texto;
 - prática de 21 dias com histórico;
@@ -576,12 +577,12 @@ Princípios de RLS:
 
 ### Afirmações da própria pessoa
 
-- a aba Afirmações começa pelas frases armazenadas em
-  `manifestations[].affirmation`;
-- o catálogo fixo permanece disponível depois delas;
+- a aba Afirmações usa somente frases armazenadas em
+  `manifestations[].affirmation` e afirmações derivadas dos sonhos salvos;
 - as frases pessoais são reutilizadas do estado local e não são regeneradas
   quando a aba abre;
-- sem manifestações salvas, a aba continua usando somente o catálogo fixo.
+- sem manifestações ou sonhos salvos, a aba mostra um estado vazio e orienta a
+  pessoa a criar o primeiro conteúdo pessoal.
 
 ### Privacidade do áudio
 
@@ -590,10 +591,11 @@ Princípios de RLS:
 - histórias pessoais usam somente voz comprovadamente local no navegador; se não
   houver uma voz local, ou no app nativo sem comprovação equivalente, a tela faz
   fallback textual e não inicia narração;
-- conteúdo fixo do catálogo usa MP3 neural apenas na web e voz do sistema no
-  aplicativo nativo;
+- os seis MP3 neurais restantes são apenas amostras do seletor de narrador e
+  nunca substituem uma afirmação, história ou visão pessoal;
 - voz pessoal em nuvem só poderá voltar com opt-in, POST autenticado, `no-store`
-  e política de retenção visível.
+  e política de retenção visível, além de plano ou contrato OEM elegível. Quando
+  voltar, deve ser gerada uma vez por texto, idioma e voz e reutilizada nos plays.
 
 ### Confiança
 

@@ -170,10 +170,10 @@ const ENGLISH_LEAKS = [
   // ---- botão de ouvir: precisa estar NA tela de Afirmações e VISÍVEL ----
   await tapText('Afirmações');
   await sleep(2500);
-  const personalDeck = await page.evaluate(() => {
+  const personalSet = await page.evaluate(() => {
     const text = document.body.innerText;
     return {
-      chip: text.includes('Dos seus sonhos'),
+      dreamChip: text.includes('Dos seus sonhos'),
       personalText:
         text.includes('Eu abro espaço para o meu trabalho ser visto.') ||
         text.includes('Eu escolho o que merece entrar no meu dia.'),
@@ -181,17 +181,15 @@ const ENGLISH_LEAKS = [
       objectLeak: text.includes('[object Object]'),
     };
   });
-  if (!personalDeck.chip) failures.push('chip "Dos seus sonhos" ausente');
-  if (!personalDeck.personalText) failures.push('aba não abriu com uma afirmação derivada dos sonhos');
-  if (!personalDeck.counter) failures.push('deck pessoal não contém as 2 afirmações do estado');
-  if (personalDeck.objectLeak) failures.push('deck pessoal renderizou [object Object]');
+  if (personalSet.dreamChip) failures.push('chip "Dos seus sonhos" apareceu sem relato de sonho');
+  if (!personalSet.personalText) failures.push('aba não abriu com uma afirmação pessoal da manifestação');
+  if (!personalSet.counter) failures.push('conjunto pessoal não contém as 2 afirmações do estado');
+  if (personalSet.objectLeak) failures.push('conjunto pessoal renderizou [object Object]');
 
   await tapText('Todas');
   await sleep(350);
-  const allCounter = await page.evaluate(() => /\b\d+\s*\/\s*14\b/.test(document.body.innerText));
-  if (!allCounter) failures.push('filtro Todas não reuniu 2 pessoais + 12 do catálogo');
-  await tapText('Dos seus sonhos');
-  await sleep(350);
+  const allCounter = await page.evaluate(() => /\b[12]\s*\/\s*2\b/.test(document.body.innerText));
+  if (!allCounter) failures.push('filtro Todas não reuniu as 2 manifestações pessoais');
 
   const audio = await page.evaluate(() => {
     const visible = [...document.querySelectorAll('[aria-label]')].filter((e) => e.offsetParent !== null);
@@ -273,8 +271,14 @@ const ENGLISH_LEAKS = [
   );
   if (desktopAffirmationsOverflow) failures.push('Afirmações tem rolagem horizontal no desktop');
   const desktopAffirmationsText = await page.evaluate(() => document.body.innerText);
-  if (!desktopAffirmationsText.includes('Dos seus sonhos')) {
-    failures.push('deck pessoal sumiu em Afirmações no desktop');
+  if (
+    !desktopAffirmationsText.includes('Eu abro espaço para o meu trabalho ser visto.') &&
+    !desktopAffirmationsText.includes('Eu escolho o que merece entrar no meu dia.')
+  ) {
+    failures.push('afirmação pessoal sumiu em Afirmações no desktop');
+  }
+  if (desktopAffirmationsText.includes('Dos seus sonhos')) {
+    failures.push('chip de sonhos apareceu no desktop sem relato de sonho');
   }
   await page.screenshot({ path: path.join(SHOT, 'qa-desktop-afirmacoes.png') });
   await tapText('Manifestar');

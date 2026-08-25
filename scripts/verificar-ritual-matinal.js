@@ -129,6 +129,9 @@ const languageSyncBlock = app.slice(
   app.indexOf('function NativeAlarmContentSync'),
   app.indexOf('function HomeStackNav')
 );
+const replacementBlock = languageSyncBlock.slice(
+  languageSyncBlock.indexOf('void replaceScheduledAffirmationAlarm')
+);
 assert.ok(
   app.includes('<NativeAlarmContentSync />') &&
     languageSyncBlock.includes('ritual.wakeAffirmationText === desired.text') &&
@@ -157,8 +160,15 @@ assert.ok(
 assert.ok(
   languageSyncBlock.includes('const capability = await getAffirmationAlarmCapability') &&
     languageSyncBlock.includes('if (latestDesiredRef.current !== signature) return;') &&
-    !languageSyncBlock.includes('cancelAffirmationAlarm('),
+    !replacementBlock.includes('cancelAffirmationAlarm('),
   'falha de sincronizacao nunca pode cancelar uma substituicao mais nova'
+);
+assert.ok(
+  languageSyncBlock.includes('scheduled && !desired') &&
+    languageSyncBlock.includes('cancelAffirmationAlarm()') &&
+    languageSyncBlock.includes('scheduleAffirmationAlarm({') &&
+    languageSyncBlock.includes('const latestDesired = alarmContentForState(stateRef.current)'),
+  'alarme legado orfao deve ser cancelado e restaurar conteudo pessoal que surgir durante a operacao'
 );
 assert.ok(
   languageSyncBlock.includes('replaceScheduledAffirmationAlarm'),
@@ -242,6 +252,17 @@ assert.ok(
 assert.ok(context.includes('markDreamRitualPracticed'), 'practice action missing');
 assert.ok(context.includes('dreamAnchor: shortText'), 'dream anchor must survive reload');
 assert.ok(context.includes("generatorVersion: shortText(entry.generatorVersion"), 'generator version must survive reload');
+assert.ok(
+  context.includes('personalAffirmationIds.has(id) || ritualIds.has(id)'),
+  'favorite dream affirmations must survive reload and import'
+);
+assert.ok(
+  context.includes('const fallbackManifestation') &&
+    context.includes('const fallbackDream') &&
+    context.includes('st.morningRitual.alarmSyncError = st.morningRitual.reminderEnabled') &&
+    context.includes('st.morningRitual.reminderEnabled = false'),
+  'legacy catalog alarms must force native personal-content replacement or be disabled'
+);
 
 const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -286,6 +307,7 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     'useApp',
     'alarmContentForState',
     'replaceScheduledAffirmationAlarm',
+    'scheduleAffirmationAlarm',
     'getAffirmationAlarmCapability',
     'cancelAffirmationAlarm',
     'DEFAULT_AFFIRMATION_ALARM_ID',
@@ -300,6 +322,7 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     }),
     (state) => state.desired,
     (payload) => new Promise((resolve) => replacements.push({ payload, resolve })),
+    async () => ({ ok: true }),
     () => new Promise((resolve) => capabilityRequests.push(resolve)),
     async () => {
       cancelCalls += 1;

@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
-import { hasNeuralAudio, isSpeechAvailable } from '../utils/speech';
+import { isSpeechAvailable } from '../utils/speech';
 import { accentAt, alpha } from '../utils/colors';
 
 const S = {
@@ -25,18 +25,12 @@ export default function AffirmationCard({
   onShare,
 }) {
   const theme = useTheme();
-  const { t, lang } = useT();
+  const { t } = useT();
   const color = accentAt(theme, accent);
-  const affId = affirmation && affirmation.id;
 
-  // Há duas fontes de áudio: o MP3 neural pré-gerado e a voz do aparelho. O
-  // botão só some quando NÃO existe nenhuma das duas — antes ele sumia em
-  // navegador sem Web Speech mesmo havendo MP3 pronto para esta afirmação.
-  const canHear = useMemo(
-    () => hasNeuralAudio(affId, lang) || isSpeechAvailable(),
-    [affId, lang]
-  );
-  const showSpeak = !!onToggleSpeak && canHear;
+  // Afirmações são pessoais; a reprodução só aparece quando o aparelho
+  // oferece uma voz local disponível.
+  const showSpeak = !!onToggleSpeak && isSpeechAvailable();
 
   return (
     <View

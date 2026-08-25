@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initialState } from '../constants/content';
 import { detectLang } from '../constants/i18n';
+import { isNarratorId } from '../constants/narrators';
 import { todayISO, streakFrom } from '../utils/date';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
 import {
@@ -115,6 +116,15 @@ function mergeDefensivo(parsed) {
   if (st.lang !== 'pt' && st.lang !== 'en') st.lang = detectLang();
   st.name = shortText(st.name, 80);
   st.mood = VISUAL_MOODS.includes(st.mood) ? st.mood : null;
+  const savedNarration =
+    st.narration && typeof st.narration === 'object' && !Array.isArray(st.narration)
+      ? st.narration
+      : {};
+  st.narration = {
+    narratorId: isNarratorId(savedNarration.narratorId)
+      ? savedNarration.narratorId
+      : base.narration.narratorId,
+  };
   st.profile = st.profile && typeof st.profile === 'object' && !Array.isArray(st.profile)
     ? { ...st.profile }
     : {};
@@ -138,6 +148,11 @@ function mergeDefensivo(parsed) {
       typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
     const title = textOr(m.title, titleFallback, 160);
     const generated = dreamToAffirmation(title, st.profile || {}, itemLang, category);
+    // Older releases could create a manifestation from an editorial card.
+    // Rebuild those entries from the person's own title and profile so the
+    // removed catalog cannot return after an update.
+    const cameFromCatalog = !!shortText(m.templateId, 120);
+    const { templateId: _legacyTemplateId, ...manifestationFields } = m;
     const evidence = (Array.isArray(m.evidence) ? m.evidence : [])
       .filter((entry) => entry && typeof entry === 'object' && typeof entry.text === 'string' && entry.text.trim())
       .map((entry, index) => ({
@@ -146,14 +161,14 @@ function mergeDefensivo(parsed) {
         text: entry.text.trim().slice(0, 280),
       }));
     const normalized = {
-      ...m,
+      ...manifestationFields,
       id: textOr(m.id, `m-legacy-${manifestationIndex}`, 120),
       title,
       category,
       lang: itemLang,
-      intention: textOr(m.intention, generated.intention, 600),
-      affirmation: textOr(m.affirmation, generated.affirmation, 1200),
-      story: textOr(m.story, generated.story, 12000),
+      intention: textOr(cameFromCatalog ? null : m.intention, generated.intention, 600),
+      affirmation: textOr(cameFromCatalog ? null : m.affirmation, generated.affirmation, 1200),
+      story: textOr(cameFromCatalog ? null : m.story, generated.story, 12000),
       sessions: Array.from(
         new Set(
           (Array.isArray(m.sessions) ? m.sessions : []).filter(
@@ -165,7 +180,9 @@ function mergeDefensivo(parsed) {
         )
       ),
       evidence,
-      personalizedWith: (Array.isArray(m.personalizedWith) ? m.personalizedWith : [])
+      personalizedWith: (Array.isArray(cameFromCatalog ? generated.usouDoPerfil : m.personalizedWith)
+        ? (cameFromCatalog ? generated.usouDoPerfil : m.personalizedWith)
+        : [])
         .filter((label) => typeof label === 'string' && label.trim())
         .map((label) => label.trim().slice(0, 80))
         .slice(0, 12),
@@ -173,8 +190,11 @@ function mergeDefensivo(parsed) {
         typeof m.anchorOpenedAt === 'string' && !Number.isNaN(Date.parse(m.anchorOpenedAt))
           ? m.anchorOpenedAt
           : undefined,
-      anchorIdentity: textOr(m.anchorIdentity, generated.anchorIdentity, 600),
-      anchorStep: textOr(m.anchorStep, generated.anchorStep, 280),
+      anchorIdentity: textOr(cameFromCatalog ? null : m.anchorIdentity, generated.anchorIdentity, 600),
+      anchorStep: textOr(cameFromCatalog ? null : m.anchorStep, generated.anchorStep, 280),
+      generation: cameFromCatalog
+        ? { source: 'local', promptVersion: 'personal-catalog-migration-v1' }
+        : m.generation,
       goalDays:
         Number.isInteger(m.goalDays) && m.goalDays > 0 && m.goalDays <= 365 ? m.goalDays : 21,
     };
@@ -229,6 +249,61 @@ function mergeDefensivo(parsed) {
       }))
       .slice(0, 90),
   };
+
+  // Fixed catalog IDs from older builds are no longer valid. Every collection
+  // below may point only to content created from this person's own answers.
+  const manifestationIds = new Set(st.manifestations.map((item) => item.id));
+  const personalAffirmationIds = new Set(
+    st.manifestations.map((item) => `manifestation:${item.id}`)
+  );
+  const ritualIds = new Set(
+    (st.morningRitual.entries || []).map((entry) => `ritual:${entry.id}`)
+  );
+  st.favoriteAffirmations = st.favoriteAffirmations.filter(
+    (id) => personalAffirmationIds.has(id) || ritualIds.has(id)
+  );
+  st.savedVisions = st.savedVisions.filter((id) => manifestationIds.has(id));
+  st.visionPlays = st.visionPlays.filter((play) => manifestationIds.has(play.visionId));
+
+  const wakeId = st.morningRitual.wakeAffirmationId;
+  const validWakeId =
+    !wakeId ||
+    wakeId === 'custom' ||
+    personalAffirmationIds.has(wakeId) ||
+    ritualIds.has(wakeId);
+  if (!validWakeId) {
+    const fallbackManifestation = st.manifestations.find(
+      (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
+    );
+    const fallbackDream = (st.morningRitual.entries || []).find(
+      (entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim()
+    );
+    const fallbackWake = fallbackManifestation
+      ? {
+          id: `manifestation:${fallbackManifestation.id}`,
+          text: fallbackManifestation.affirmation.trim(),
+          lang: fallbackManifestation.lang === 'en' ? 'en' : 'pt',
+        }
+      : fallbackDream
+        ? {
+            id: `ritual:${fallbackDream.id}`,
+            text: fallbackDream.affirmation.trim(),
+            lang: fallbackDream.lang === 'en' ? 'en' : 'pt',
+          }
+        : null;
+    st.morningRitual.wakeAffirmationId = fallbackWake ? fallbackWake.id : null;
+    st.morningRitual.wakeAffirmationText = fallbackWake ? fallbackWake.text : '';
+    st.morningRitual.wakeAffirmationLang = fallbackWake ? fallbackWake.lang : st.lang;
+    if (fallbackWake) {
+      // The native AlarmKit may still contain the removed catalog narration.
+      // Keep the alarm visible, but force NativeAlarmContentSync to replace it
+      // before treating the personal text as confirmed.
+      st.morningRitual.alarmSyncError = st.morningRitual.reminderEnabled;
+    } else {
+      st.morningRitual.reminderEnabled = false;
+      st.morningRitual.alarmSyncError = false;
+    }
+  }
   return st;
 }
 
@@ -543,15 +618,14 @@ export function AppProvider({ children }) {
     const local = dreamToAffirmation(data.title, profile, lang, data.category);
     let generated = local;
     let generation = {
-      source: data.story ? 'editorial' : 'local',
-      promptVersion: data.story ? 'catalog-v1' : 'local-v1',
+      source: 'local',
+      promptVersion: 'local-v1',
     };
 
     // The personal profile only leaves the device after explicit 18+ consent.
     // A network/configuration/safety failure falls back to the tested local
     // generator, so the reward screen never becomes a dead end.
     if (
-      !data.story &&
       !isKnownMinor(profile) &&
       profile.cloudPersonalization === true &&
       profile.cloudAdultConfirmed === true
@@ -580,22 +654,14 @@ export function AppProvider({ children }) {
       title: data.title,
       category: data.category || 'Wealth',
       accent: typeof data.accent === 'number' ? data.accent : 0,
-      // Origem: quando nasce de um card sugerido, guarda o id do template.
-      // É o que liga a locução gravada (fy-3.mp3) e o que impede criar uma
-      // segunda cópia ao reabrir o mesmo card.
-      templateId: data.templateId || null,
       lang, // variante visível; contentByLang preserva PT e EN sem perder edições
-      intention: data.intention || generated.intention,
-      affirmation: data.affirmation || generated.affirmation,
-      story: data.story || generated.story,
-      anchorIdentity: data.anchorIdentity || generated.anchorIdentity,
-      anchorStep: data.anchorStep || generated.anchorStep,
+      intention: generated.intention,
+      affirmation: generated.affirmation,
+      story: generated.story,
+      anchorIdentity: generated.anchorIdentity,
+      anchorStep: generated.anchorStep,
       // o que do perfil foi usado — a tela mostra isso como recibo honesto
-      personalizedWith: Array.isArray(data.personalizedWith)
-        ? data.personalizedWith
-        : data.story
-        ? []
-        : generated.usouDoPerfil || [],
+      personalizedWith: generated.usouDoPerfil || [],
       generation,
       goalDays: data.goalDays || 21,
       createdAt: todayISO(),
@@ -917,6 +983,11 @@ export function AppProvider({ children }) {
   const setMood = useCallback((m) => {
     if (!VISUAL_MOODS.includes(m)) return;
     setState((s) => ({ ...s, mood: m }));
+  }, []);
+
+  const setNarrator = useCallback((narratorId) => {
+    if (!isNarratorId(narratorId)) return;
+    setState((s) => ({ ...s, narration: { narratorId } }));
   }, []);
 
   const saveMorningRitualPreferences = useCallback((patch) => {
@@ -1291,6 +1362,7 @@ export function AppProvider({ children }) {
       logVisionPlay,
       setName,
       setMood,
+      setNarrator,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,
@@ -1329,6 +1401,7 @@ export function AppProvider({ children }) {
       logVisionPlay,
       setName,
       setMood,
+      setNarrator,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,

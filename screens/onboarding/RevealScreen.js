@@ -19,6 +19,7 @@ import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
 import { isSpeechAvailable, speak, stopSpeaking } from '../../utils/speech';
 import CelestialTrace from '../../components/CelestialTrace';
+import NarratorSelector from '../../components/NarratorSelector';
 
 // A recompensa do onboarding nasce antes de qualquer oferta. A Cena-Âncora une
 // quatro coisas verificáveis: detalhe pessoal, narrativa audível, identidade de
@@ -33,6 +34,11 @@ const S = {
   listen: { en: 'Listen to my scene', pt: 'Ouvir minha cena' },
   stop: { en: 'Stop narration', pt: 'Parar narração' },
   listening: { en: 'Your scene is playing', pt: 'Sua cena está tocando' },
+  voiceTitle: { en: 'Choose your narrator', pt: 'Escolha sua voz' },
+  voiceHint: {
+    en: 'This choice stays with your personal scenes.',
+    pt: 'Essa escolha acompanha suas cenas pessoais.',
+  },
   audioFail: {
     en: 'Audio is unavailable here. Read the scene slowly and keep one detail with you.',
     pt: 'O áudio não está disponível aqui. Leia a cena devagar e guarde um detalhe com você.',
@@ -68,7 +74,7 @@ const RECIBO = {
 };
 
 export default function RevealScreen({ navigation, route }) {
-  const { state, updateManifestation } = useApp();
+  const { state, setNarrator, updateManifestation } = useApp();
   const { t } = useT();
   const [playing, setPlaying] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
@@ -163,6 +169,7 @@ export default function RevealScreen({ navigation, route }) {
     // como local pode recebê-la. Sem essa prova, o fallback é o próprio texto.
     const mode = speak(m.story, {
       lang,
+      narratorId: state && state.narration && state.narration.narratorId,
       localOnly: true,
       onDone: () => {
         if (run === audioRun.current) setPlaying(false);
@@ -240,6 +247,17 @@ export default function RevealScreen({ navigation, route }) {
                 ],
               }}
             >
+              <View style={styles.voiceBlock}>
+                <Text style={styles.sectionLabel}>{t(S.voiceTitle)}</Text>
+                <Text style={styles.voiceHint}>{t(S.voiceHint)}</Text>
+                <NarratorSelector
+                  value={state && state.narration && state.narration.narratorId}
+                  onChange={setNarrator}
+                  lang={lang}
+                  variant="compact"
+                />
+              </View>
+
               {canAttemptPrivateAudio ? (
                 <Pressable
                   onPress={toggleAudio}
@@ -344,6 +362,8 @@ const styles = StyleSheet.create({
   },
   kicker: { color: ONB.inkSoft, fontSize: 12, fontWeight: '800', marginTop: 22, letterSpacing: 0 },
   title: { marginTop: 8, maxWidth: 520 },
+  voiceBlock: { marginTop: 22 },
+  voiceHint: { color: ONB.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 5, marginBottom: 10 },
   audioButton: {
     minHeight: 64,
     borderRadius: 18,

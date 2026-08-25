@@ -1,4 +1,3 @@
-import { findForYouById, localized } from '../constants/content';
 import { dreamToAffirmation } from './dreamToAffirmation';
 
 const LANGS = ['pt', 'en'];
@@ -50,8 +49,8 @@ export function snapshotManifestationContent(item) {
   });
   out.personalizedWith = cleanLabels(source.personalizedWith);
   out.generation = normalizeGeneration(source.generation, {
-    source: source.templateId ? 'editorial' : 'local',
-    promptVersion: source.templateId ? 'catalog-v1' : 'local-v1',
+    source: 'local',
+    promptVersion: 'local-v1',
   });
   return out;
 }
@@ -150,7 +149,7 @@ export function applyTranslatedManifestationVariant(item, {
 }
 
 export function shouldTranslateManifestationVariant(item, targetLang) {
-  if (!item || typeof item !== 'object' || item.templateId) return false;
+  if (!item || typeof item !== 'object') return false;
   const target = targetLang === 'en' ? 'en' : 'pt';
   if (item.originLang === target) return false;
   const source = item.contentByLang &&
@@ -160,10 +159,10 @@ export function shouldTranslateManifestationVariant(item, targetLang) {
   return source === 'local-language-fallback';
 }
 
-function generatedVariant(item, profile, lang, template, sourceLang) {
+function generatedVariant(item, profile, lang, sourceLang) {
   const category = item.category || 'Wealth';
   const title = cleanText(item.title, TEXT_LIMITS.title) || (lang === 'pt' ? 'Minha manifestacao' : 'My manifestation');
-  const isAlternatePersonalLanguage = !template && lang !== sourceLang;
+  const isAlternatePersonalLanguage = lang !== sourceLang;
   // Free-form answers cannot be translated reliably on-device. The alternate
   // local fallback therefore uses language-native neutral copy instead of
   // splicing Portuguese answers into English (or the reverse). With adult
@@ -175,26 +174,25 @@ function generatedVariant(item, profile, lang, template, sourceLang) {
     : title;
   const generationProfile = isAlternatePersonalLanguage ? {} : profile || {};
   const local = dreamToAffirmation(generationTitle, generationProfile, lang, category);
-  const catalog = template ? localized(template, lang) : null;
   const localSource = isAlternatePersonalLanguage ? 'local-language-fallback' : 'local';
   const localPromptVersion = isAlternatePersonalLanguage ? 'local-language-v1' : 'local-v1';
   return cleanVariant(
     {
-      title: catalog ? catalog.title : title,
-      intention: catalog ? catalog.intention : local.intention,
-      affirmation: catalog ? catalog.affirmation : local.affirmation,
-      story: catalog ? catalog.story : local.story,
+      title,
+      intention: local.intention,
+      affirmation: local.affirmation,
+      story: local.story,
       anchorIdentity: local.anchorIdentity,
       anchorStep: local.anchorStep,
-      personalizedWith: catalog || isAlternatePersonalLanguage ? [] : local.usouDoPerfil,
+      personalizedWith: isAlternatePersonalLanguage ? [] : local.usouDoPerfil,
       generation: {
-        source: catalog ? 'editorial' : localSource,
-        promptVersion: catalog ? 'catalog-v1' : localPromptVersion,
+        source: localSource,
+        promptVersion: localPromptVersion,
       },
     },
     {
-      source: catalog ? 'editorial' : localSource,
-      promptVersion: catalog ? 'catalog-v1' : localPromptVersion,
+      source: localSource,
+      promptVersion: localPromptVersion,
     }
   );
 }
@@ -203,20 +201,18 @@ export function localizeManifestation(item, profile, activeLang) {
   if (!item || typeof item !== 'object') return item;
   const targetLang = activeLang === 'en' ? 'en' : 'pt';
   const sourceLang = item.lang === 'en' ? 'en' : 'pt';
-  const template = item.templateId ? findForYouById(item.templateId) : null;
   const fallback = {
-    source: template ? 'editorial' : 'local',
-    promptVersion: template ? 'catalog-v1' : 'local-v1',
+    source: 'local',
+    promptVersion: 'local-v1',
   };
   const stored = item.contentByLang && typeof item.contentByLang === 'object' ? item.contentByLang : {};
   const variants = {};
 
   LANGS.forEach((lang) => {
-    const generated = generatedVariant(item, profile, lang, template, sourceLang);
+    const generated = generatedVariant(item, profile, lang, sourceLang);
     const storedVariant = stored[lang];
     variants[lang] = mergeVariant(generated, storedVariant, fallback);
     if (
-      !template &&
       hasStoredVariantContent(storedVariant) &&
       !(storedVariant.generation && typeof storedVariant.generation === 'object')
     ) {

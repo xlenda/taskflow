@@ -683,29 +683,49 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   });
   const templateUrl = new globalThis.URL('/m?templateId=fy-1', URL).toString();
   await duplicateTemplate.goto(templateUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-  await duplicateTemplate.waitForSelector('[data-testid="start-manifestation"]', {
-    visible: true,
-    timeout: 30000,
+  await waitForText(duplicateTemplate, 'Esta manifestação não está mais aqui.', 15000);
+  const stateAtMissingTemplate = await duplicateTemplate.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    return {
+      manifestations: Array.isArray(saved.manifestations) ? saved.manifestations.length : -1,
+      leakedStartButton: !!document.querySelector('[data-testid="start-manifestation"]'),
+    };
   });
-  await duplicateTemplate.$eval('[data-testid="start-manifestation"]', (button) => {
-    button.click();
-    button.click();
+  if (stateAtMissingTemplate.manifestations !== 0 || stateAtMissingTemplate.leakedStartButton) {
+    throw new Error('Deep link legado materializou uma sugestao generica');
+  }
+
+  await waitAndClick(duplicateTemplate, 'Voltar', 15000);
+  await duplicateTemplate.waitForSelector('[data-testid="celeste-mascot-home"]', {
+    visible: true,
+    timeout: 15000,
   });
   await duplicateTemplate.waitForFunction(
-    () => {
-      const items = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').manifestations || [];
-      return items.filter((item) => item.templateId === 'fy-1').length === 1;
-    },
-    { timeout: 15000, polling: 200 }
+    () => location.pathname === '/' || location.pathname === '',
+    { timeout: 15000, polling: 100 }
   );
-  await sleep(900);
-  const templateCopies = await duplicateTemplate.evaluate(() => {
-    const items = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').manifestations || [];
-    return items.filter((item) => item.templateId === 'fy-1').length;
+  const legacyTemplateResult = await duplicateTemplate.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    const manifestationCards = [...document.querySelectorAll('[role="button"], button')].filter((element) =>
+      /ainda não praticada hoje/i.test(element.getAttribute('aria-label') || '')
+    ).length;
+    return {
+      manifestations: Array.isArray(saved.manifestations) ? saved.manifestations.length : -1,
+      manifestationCards,
+      leakedTemplateId: document.body.innerText.includes('fy-1'),
+    };
   });
-  if (templateCopies !== 1) throw new Error(`Toque duplo criou ${templateCopies} sugestoes iguais`);
+  if (
+    legacyTemplateResult.manifestations !== 0 ||
+    legacyTemplateResult.manifestationCards !== 0 ||
+    legacyTemplateResult.leakedTemplateId
+  ) {
+    throw new Error(
+      `Template legado vazou: ${JSON.stringify(legacyTemplateResult)}`
+    );
+  }
   if (duplicateTemplateErrors.length) {
-    throw new Error(`Erro ao iniciar sugestao: ${duplicateTemplateErrors[0]}`);
+    throw new Error(`Erro no bloqueio do template legado: ${duplicateTemplateErrors[0]}`);
   }
   await duplicateTemplate.close();
 

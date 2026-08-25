@@ -19,6 +19,7 @@ const morning = read('screens/MorningRitualScreen.js');
 const community = read('screens/CommunityScreen.js');
 const profile = read('screens/ProfileScreen.js');
 const manifestation = read('screens/ManifestationScreen.js');
+const visionPlayer = read('screens/VisionPlayerScreen.js');
 const context = read('context/AppContext.js');
 const legal = read('constants/legal.js');
 const chat = read('screens/onboarding/ChatOnboardingScreen.js');
@@ -31,6 +32,7 @@ for (const file of [
   'screens/CommunityScreen.js',
   'screens/ProfileScreen.js',
   'screens/ManifestationScreen.js',
+  'screens/VisionPlayerScreen.js',
   'screens/onboarding/ChatOnboardingScreen.js',
   'services/affirmationAlarm.js',
   'services/communityStories.js',
@@ -53,10 +55,21 @@ assert.ok(
 );
 assert.ok(home.includes('testID="open-profile"'), 'Home precisa abrir o perfil');
 assert.ok(
-  manifestation.includes('startBusyRef.current') &&
-    manifestation.includes('testID="start-manifestation"') &&
-    manifestation.includes('disabled={starting}'),
-  'toque duplo nao pode criar duas copias da mesma sugestao'
+  home.includes('sentRef.current === title') &&
+    home.includes('sentRef.current = title') &&
+    home.indexOf('sentRef.current = title') < home.indexOf('const id = await addManifestation'),
+  'toque duplo nao pode iniciar duas geracoes do mesmo desejo pessoal'
+);
+assert.ok(
+  !/\b(?:TRENDING|FOR_YOU|templateId)\b/.test(home) &&
+    !/\b(?:TRENDING|FOR_YOU|templateId|findForYouById|addManifestation)\b/.test(manifestation) &&
+    manifestation.includes('state.manifestations.find((m) => m.id === routeId)'),
+  'Home e detalhe devem usar somente manifestacoes pessoais salvas por id'
+);
+assert.ok(
+  /<PersonalVisionPlayer[\s\S]*narratorId=\{narratorId\}/.test(visionPlayer) &&
+    /function PersonalVisionPlayer\(\{[\s\S]*narratorId,/.test(visionPlayer),
+  'player de visao pessoal precisa receber a voz escolhida sem depender de variavel global'
 );
 assert.ok(
   manifestation.includes('await getAffirmationAlarmCapability()') &&

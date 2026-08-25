@@ -35,12 +35,12 @@ import RevealScreen from './screens/onboarding/RevealScreen';
 import PaywallScreen from './screens/onboarding/PaywallScreen';
 
 import { APP_NAME, APP_URL } from './constants/brand';
-import { AFFIRMATIONS, localized } from './constants/content';
 import {
   DEFAULT_AFFIRMATION_ALARM_ID,
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
   replaceScheduledAffirmationAlarm,
+  scheduleAffirmationAlarm,
 } from './services/affirmationAlarm';
 
 // O Google Tradutor do Chrome reescreve os nós de texto do DOM e quebra o React
@@ -201,18 +201,63 @@ function alarmContentForState(state) {
     const text = manifestation && typeof manifestation.affirmation === 'string'
       ? manifestation.affirmation.trim()
       : '';
-    if (!text) return null;
+    if (text) {
+      return {
+        id: wakeId,
+        text,
+        lang: manifestation.lang === 'en' ? 'en' : 'pt',
+      };
+    }
+  }
+
+  if (wakeId.startsWith('ritual:')) {
+    const entryId = wakeId.slice('ritual:'.length);
+    const entry = ((ritual && ritual.entries) || []).find((item) => item.id === entryId);
+    const text = entry && typeof entry.affirmation === 'string'
+      ? entry.affirmation.trim()
+      : '';
+    if (text) {
+      return {
+        id: wakeId,
+        text,
+        lang: entry.lang === 'en' ? 'en' : 'pt',
+      };
+    }
+  }
+
+  if (wakeId === 'custom') {
+    const text = typeof ritual.wakeAffirmationText === 'string'
+      ? ritual.wakeAffirmationText.trim()
+      : '';
+    if (text) {
+      return {
+        id: 'custom',
+        text,
+        lang: ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt',
+      };
+    }
+  }
+
+  const firstManifestation = (state.manifestations || []).find(
+    (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
+  );
+  if (firstManifestation) {
     return {
-      id: wakeId,
-      text,
-      lang: manifestation.lang === 'en' ? 'en' : 'pt',
+      id: `manifestation:${firstManifestation.id}`,
+      text: firstManifestation.affirmation.trim(),
+      lang: firstManifestation.lang === 'en' ? 'en' : 'pt',
     };
   }
 
-  const fixed = AFFIRMATIONS.find((item) => item.id === wakeId);
-  if (!fixed) return null;
-  const lang = state.lang === 'en' ? 'en' : 'pt';
-  return { id: wakeId, text: localized(fixed, lang).text, lang };
+  const firstDream = ((ritual && ritual.entries) || []).find(
+    (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
+  );
+  if (!firstDream) return null;
+  return {
+    id: `ritual:${firstDream.id}`,
+    text: firstDream.affirmation.trim(),
+    lang: firstDream.lang === 'en' ? 'en' : 'pt',
+  };
 }
 
 function NativeAlarmContentSync() {
@@ -236,8 +281,54 @@ function NativeAlarmContentSync() {
       const capability = await getAffirmationAlarmCapability().catch(() => null);
       if (!alive || capabilityAttemptRef.current !== attempt) return;
       if (!Array.isArray(capability?.scheduledAlarmIds)) return;
-      const scheduled = capability.scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
-      const ritual = stateRef.current && stateRef.current.morningRitual;
+      let scheduled = capability.scheduledAlarmIds.includes(DEFAULT_AFFIRMATION_ALARM_ID);
+      const currentState = stateRef.current;
+      const ritual = currentState && currentState.morningRitual;
+      const desired = alarmContentForState(currentState);
+
+      // A legacy catalog alarm can outlive the local card that created it.
+      // Never resurrect that orphan from native state: cancel it, or surface a
+      // sync error honestly if iOS refuses the cancellation.
+      if (scheduled && !desired) {
+        const cancelled = await cancelAffirmationAlarm().catch(() => null);
+        if (!alive || capabilityAttemptRef.current !== attempt) return;
+        const latestDesired = alarmContentForState(stateRef.current);
+        if (latestDesired) {
+          const latestRitual = stateRef.current && stateRef.current.morningRitual;
+          const restored = await scheduleAffirmationAlarm({
+            time: latestRitual && latestRitual.reminderTime,
+            affirmation: latestDesired.text,
+            locale: latestDesired.lang === 'pt' ? 'pt-BR' : 'en-US',
+            requestAuthorization: true,
+          }).catch(() => null);
+          if (!alive || capabilityAttemptRef.current !== attempt) return;
+          if (!restored || !restored.ok) {
+            saveMorningRitualPreferences({ alarmSyncError: true });
+            return;
+          }
+          confirmedNativeRef.current = JSON.stringify([
+            latestDesired.id,
+            latestDesired.text,
+            latestDesired.lang,
+            latestRitual && latestRitual.reminderTime,
+          ]);
+          failedDesiredRef.current = '';
+          lastQueuedRef.current = '';
+          saveMorningRitualPreferences({
+            wakeAffirmationId: latestDesired.id,
+            wakeAffirmationText: latestDesired.text,
+            wakeAffirmationLang: latestDesired.lang,
+            reminderEnabled: true,
+            alarmSyncError: false,
+          });
+          return;
+        }
+        if (!cancelled || !cancelled.ok) {
+          saveMorningRitualPreferences({ reminderEnabled: true, alarmSyncError: true });
+          return;
+        }
+        scheduled = false;
+      }
       if (!scheduled) {
         confirmedNativeRef.current = '';
         failedDesiredRef.current = '';

@@ -21,7 +21,6 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import { useApp } from '../context/AppContext';
-import { AFFIRMATIONS, localized } from '../constants/content';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
@@ -126,8 +125,12 @@ const S = {
   lastDream: { pt: 'Praticar a última frase', en: 'Practice the latest phrase' },
   pickerTitle: { pt: 'Afirmação para despertar', en: 'Wake-up affirmation' },
   pickerBody: {
-    pt: 'Escolha uma frase do Celeste ou escreva exatamente o que quer ouvir.',
-    en: 'Choose a Celeste affirmation or write exactly what you want to hear.',
+    pt: 'Escolha uma frase criada a partir da sua manifestação ou de um sonho.',
+    en: 'Choose a phrase created from your manifestation or one of your dreams.',
+  },
+  noPersonalOptions: {
+    pt: 'Crie uma manifestação ou conte um sonho para receber sua primeira afirmação.',
+    en: 'Create a manifestation or share a dream to receive your first affirmation.',
   },
   customLabel: { pt: 'Minha própria afirmação', en: 'My own affirmation' },
   customPlaceholder: {
@@ -186,6 +189,7 @@ export default function MorningRitualScreen({ route }) {
     markDreamRitualPracticed,
     removeDreamRitual,
   } = useApp();
+  const narratorId = state?.narration?.narratorId;
 
   const ritual = state.morningRitual || {
     alarmStatus: 'native_integration_required',
@@ -234,34 +238,39 @@ export default function MorningRitualScreen({ route }) {
   const voiceAvailable = useMemo(() => !!recognitionClass(), []);
 
   const wakeOptions = useMemo(() => {
-    const personal = (state.manifestations || [])
+    const manifestations = (state.manifestations || [])
       .filter((item) => typeof item.affirmation === 'string' && item.affirmation.trim())
       .map((item) => ({
         id: `manifestation:${item.id}`,
         text: item.affirmation.trim(),
         lang: item.lang === 'en' ? 'en' : 'pt',
         personal: true,
+        source: 'manifestation',
       }));
-    const fixed = AFFIRMATIONS.map((item) => ({
-      id: item.id,
-      text: localized(item, lang).text,
-      lang,
-      personal: false,
-    }));
-    return [...personal, ...fixed];
-  }, [state.manifestations, lang]);
+    const dreams = ((ritual && ritual.entries) || [])
+      .filter((entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim())
+      .map((entry) => ({
+        id: `ritual:${entry.id}`,
+        text: entry.affirmation.trim(),
+        lang: entry.lang === 'en' ? 'en' : 'pt',
+        personal: true,
+        source: 'dream',
+      }));
+    return [...manifestations, ...dreams];
+  }, [state.manifestations, ritual && ritual.entries]);
 
   const selectedWake = useMemo(() => {
     const active = wakeOptions.find((item) => item.id === ritual.wakeAffirmationId);
     if (active) return active;
-    if (!ritual.wakeAffirmationText) return null;
+    if (ritual.wakeAffirmationId !== 'custom' || !clean(ritual.wakeAffirmationText)) return null;
     return {
-      id: ritual.wakeAffirmationId,
-      text: ritual.wakeAffirmationText,
-      lang: ritual.wakeAffirmationLang || lang,
+      id: 'custom',
+      text: clean(ritual.wakeAffirmationText),
+      lang: ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt',
       personal: true,
+      source: 'custom',
     };
-  }, [wakeOptions, ritual.wakeAffirmationId, ritual.wakeAffirmationText, ritual.wakeAffirmationLang, lang]);
+  }, [wakeOptions, ritual.wakeAffirmationId, ritual.wakeAffirmationText, ritual.wakeAffirmationLang]);
 
   const lastEntry = ritual.entries && ritual.entries[0];
   const usingResultForWake = !!result && ritual.wakeAffirmationId === `ritual:${entryId}`;
@@ -376,8 +385,7 @@ export default function MorningRitualScreen({ route }) {
 
   useEffect(() => {
     mountedRef.current = true;
-    warmUpVoices(lang);
-    warmUpVoices(lang, { localOnly: true });
+    warmUpVoices(lang, { localOnly: true, narratorId });
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => {
@@ -389,7 +397,7 @@ export default function MorningRitualScreen({ route }) {
       stopRecognition();
       if (subscription && subscription.remove) subscription.remove();
     };
-  }, [lang, stopRecognition]);
+  }, [lang, narratorId, stopRecognition]);
 
   useEffect(() => {
     if (!focused) return undefined;
@@ -602,7 +610,7 @@ export default function MorningRitualScreen({ route }) {
   const saveCustomWake = useCallback(() => {
     const text = clean(customWake).slice(0, 280);
     if (text.length < 4) return;
-    selectWake({ id: 'custom', text, lang, personal: true });
+    selectWake({ id: 'custom', text, lang, personal: true, source: 'custom' });
   }, [customWake, lang, selectWake]);
 
   const playText = useCallback((item) => {
@@ -613,9 +621,10 @@ export default function MorningRitualScreen({ route }) {
       return;
     }
     setAudioFailed(false);
-    const played = narrate(item.personal ? null : item.id, item.text, {
+    const played = narrate(null, item.text, {
       lang: item.lang || lang,
-      localOnly: !!item.personal,
+      narratorId,
+      localOnly: true,
       onDone: () => mountedRef.current && setSpeaking(false),
       onError: () => {
         if (mountedRef.current) {
@@ -626,7 +635,7 @@ export default function MorningRitualScreen({ route }) {
     });
     setSpeaking(!!played);
     if (!played) setAudioFailed(true);
-  }, [speaking, lang]);
+  }, [speaking, lang, narratorId]);
 
   const startVoice = useCallback(() => {
     const Recognition = recognitionClass();
@@ -1331,6 +1340,11 @@ export default function MorningRitualScreen({ route }) {
                   </View>
                 </View>
               )}
+              ListEmptyComponent={(
+                <Text style={[styles.emptyPickerText, { color: theme.textMuted }]}>
+                  {t(S.noPersonalOptions)}
+                </Text>
+              )}
               showsVerticalScrollIndicator={false}
             />
           </View>
@@ -1449,6 +1463,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
+  emptyPickerText: { fontSize: 14, lineHeight: 21, textAlign: 'center', padding: 24 },
   pickerRow: { minHeight: 88, borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center' },
   sourceTag: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, marginRight: 10 },
   sourceText: { fontSize: 9, lineHeight: 13, fontWeight: '800', letterSpacing: 0 },

@@ -3,6 +3,36 @@
 Atualizado em 25/08/2026. Este arquivo registra a investigação e a correção
 publicada para que o problema não precise ser redescoberto.
 
+## Conteúdo pessoal e narradores
+
+Produção validada: `https://celeste-jet-two.vercel.app`
+
+Deployment: `dpl_DmQVkysrRN9hMgCU9WRXKXtf5bGV`
+
+- Não existe mais catálogo de afirmações, visões ou práticas prontas. A fonte
+  canônica das telas é a manifestação criada com as respostas da própria pessoa
+  e os relatos pessoais salvos no diário de sonhos.
+- Ao terminar o questionário ou criar um novo desejo, o Celeste gera e salva a
+  cena, a afirmação, a história e a ponte prática. Com consentimento adulto, o
+  Gemini pode enriquecer essa criação; sem consentimento ou sem rede, a criação
+  local continua pessoal e utilizável.
+- `Aurora`, `Rio` e `Atlas` são escolhas de apresentação persistidas no aparelho.
+  Os únicos MP3 incluídos no app são seis amostras curtas, uma por voz e idioma,
+  usadas somente no seletor. Elas nunca substituem o conteúdo pessoal.
+- A narração do conteúdo pessoal usa uma voz local do aparelho e respeita o
+  narrador escolhido como preferência de timbre, ritmo e altura quando o sistema
+  disponibiliza uma voz compatível. Se não houver voz local, o texto permanece
+  acessível; o app nunca toca um MP3 genérico ou em outro idioma.
+- A chave `ELEVENLABS_API_KEY` continua somente como segredo da Vercel e nunca
+  entra no bundle, GitHub, URL ou log. A geração dinâmica para clientes permanece
+  desativada enquanto a conta não tiver plano/contrato OEM elegível.
+- Quando a geração dinâmica for habilitada, o servidor deve gerar o áudio uma
+  única vez por texto pessoal, idioma e narrador, armazená-lo de forma privada e
+  reutilizá-lo em todas as reproduções. Novo gasto só ocorre ao criar ou alterar
+  conteúdo pessoal, trocar a voz ou pedir nova versão; nunca a cada play.
+- Referências: `https://elevenlabs.io/docs/api-reference/authentication` e
+  `https://elevenlabs.io/oem-terms`.
+
 ## Revisão Zeus final — publicada
 
 Produção atual: `https://celeste-jet-two.vercel.app`
@@ -38,8 +68,8 @@ Portões desta publicação:
 Uma auditoria dirigida, seguida de correção e reauditoria adversarial, fechou
 os seguintes bugs confirmados:
 
-- sugestões agora usam somente `templateId`, sobrevivem ao reload e nunca mais
-  geram `/m/undefined?template=[object Object]`;
+- links antigos de sugestões prontas não criam mais cards genéricos nem abrem
+  conteúdo de outra pessoa; somente ids pessoais persistidos são aceitos;
 - respostas Gemini que chegam depois de reset/importação são descartadas;
 - o reset limpa as chaves auxiliares, aplica o mesmo estado em memória antes de
   um ACK tardio e mostra erro quando o armazenamento não confirma a operação;

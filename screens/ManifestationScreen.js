@@ -16,20 +16,17 @@ import { Screen, Header, Card, pct } from '../ui/kit';
 import { confirmAsync } from '../utils/confirm';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
-import { categoryMeta, localized, FOR_YOU, findForYouById } from '../constants/content';
+import { categoryMeta } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
-import { todayISO, formatTime, lastNDays } from '../utils/date';
+import { todayISO, lastNDays } from '../utils/date';
 import {
   speak,
-  narrate,
   stopSpeaking,
   isSpeechAvailable,
-  hasNeuralAudio,
   splitScript,
 } from '../utils/speech';
-import { audioDur } from '../utils/audioBank';
 import {
   DEFAULT_AFFIRMATION_ALARM_ID,
   cancelAffirmationAlarm,
@@ -51,11 +48,6 @@ const S = {
     en: 'Started {date} · day {day} of {goal}',
     pt: 'Começou em {date} · dia {day} de {goal}',
   },
-  suggested: {
-    en: 'Suggested for you · {goal} day practice',
-    pt: 'Escolhida para você · prática de {goal} dias',
-  },
-
   progressTitle: { en: 'Practice progress', pt: 'Sua constância' },
   daysDone: { en: '{done} of {goal} days', pt: '{done} de {goal} dias' },
 
@@ -66,14 +58,12 @@ const S = {
     pt: 'Ao chegar ao fim da narrativa, o dia entra na sua prática.',
   },
   nowPlaying: { en: 'Sentence {i} of {n}', pt: 'Frase {i} de {n}' },
-  playingAll: { en: 'Playing the recorded narrative', pt: 'Tocando a narrativa gravada' },
   noVoice: {
     en: 'Your device has no voice available — read the story slowly, out loud.',
     pt: 'Seu aparelho não tem voz disponível — leia a história devagar, em voz alta.',
   },
   listen: { en: 'Listen to the narrative', pt: 'Ouvir a narrativa' },
   pause: { en: 'Pause the narrative', pt: 'Pausar a narrativa' },
-  stop: { en: 'Stop the narrative', pt: 'Parar a narrativa' },
   audioFail: {
     en: 'The narration did not play here — read the story below at your own pace.',
     pt: 'A narração não tocou aqui — leia a história abaixo no seu ritmo.',
@@ -91,7 +81,6 @@ const S = {
 
   practiceDone: { en: 'Today’s practice complete', pt: 'Prática de hoje concluída' },
   markPractice: { en: 'Mark today’s practice', pt: 'Marcar a prática de hoje' },
-  startThis: { en: 'Start this manifestation', pt: 'Começar esta manifestação' },
 
   undoTitle: { en: 'Undo today’s practice?', pt: 'Desfazer a prática de hoje?' },
   undoBody: {
@@ -197,10 +186,6 @@ const estimateSeconds = (text) => {
 
 const categoryLabel = (key, lang) => txt(CAT[key], lang) || String(key || '');
 
-// Comparação de texto para reconhecer a mesma sugestão (caixa e espaço nas
-// pontas não contam).
-const norm = (s) => String(s || '').trim().toLowerCase();
-
 const prettyDateIn = (iso, lang) => {
   const d = new Date(`${iso}T00:00:00`);
   if (isNaN(d.getTime())) return '';
@@ -223,101 +208,43 @@ export default function ManifestationScreen() {
   // do contexto (mesmo caminho da Home) — quem confirma é quem chama.
   const {
     state,
-    addManifestation,
     togglePractice,
     updateManifestation,
     addEvidence,
     removeManifestation,
     saveMorningRitualPreferences,
   } = useApp();
+  const narratorId = state?.narration?.narratorId;
 
-  // Vindo da aba Jornada, o React Navigation REAPROVEITA esta tela (mesma key,
-  // sem remontar) e só troca os params — sem isto, tocar num segundo card abria
-  // a manifestação anterior.
+  // Esta tela aceita somente manifestações pessoais que já existem no estado.
+  // Se o navigator reaproveitar a instância, routeId muda e o item acompanha no
+  // mesmo render, sem deixar conteúdo da manifestação anterior na tela.
   const routeId = typeof route.params?.id === 'string' && route.params.id ? route.params.id : null;
-  const routeTemplateId =
-    typeof route.params?.templateId === 'string' && route.params.templateId ? route.params.templateId : null;
-  const template = useMemo(() => findForYouById(routeTemplateId), [routeTemplateId]);
-  const [localId, setLocalId] = useState(routeId);
-  useEffect(() => {
-    // Trocar de uma manifestação salva para uma sugestão remove imediatamente
-    // o id local anterior; nenhum conteúdo pessoal pode atravessar de rota.
-    setLocalId((current) => (current === routeId ? current : routeId));
-  }, [routeId, routeTemplateId]);
-
-  // routeId ganha imediatamente. Assim, quando o navigator reutiliza a tela,
-  // nem um único frame continua apontando para a manifestação anterior.
-  const effectiveId = routeId || (routeTemplateId ? null : localId);
   const saved = useMemo(
-    () => (state ? state.manifestations.find((m) => m.id === effectiveId) : null),
-    [state, effectiveId]
+    () => (state ? state.manifestations.find((m) => m.id === routeId) : null),
+    [state, routeId]
   );
-  // Um id salvo sempre exige item salvo. Sem id, um template só é exibido se o
-  // templateId existir de verdade em FOR_YOU; valores inventados mostram "gone".
-  const data = routeId ? saved : routeTemplateId ? template : saved;
 
-  // Sugestões usam o catálogo bilíngue. Cenas pessoais já chegam do contexto na
-  // variante ativa; o título livre continua exatamente como a pessoa escreveu.
+  // Cenas pessoais já chegam geradas no idioma ativo. txt() mantém compatibilidade
+  // com manifestações antigas que tenham algum campo salvo como objeto bilíngue.
   const item = useMemo(() => {
-    if (!data) return null;
-    const base = typeof localized === 'function' ? localized(data, lang) : data;
+    if (!saved) return null;
     return {
-      ...base,
-      title: txt(base.title, lang),
-      intention: txt(base.intention, lang),
-      affirmation: txt(base.affirmation, lang),
-      story: txt(base.story, lang),
+      ...saved,
+      title: txt(saved.title, lang),
+      intention: txt(saved.intention, lang),
+      affirmation: txt(saved.affirmation, lang),
+      story: txt(saved.story, lang),
     };
-  }, [data, lang]);
+  }, [saved, lang]);
 
   const speechOn = useMemo(() => isSpeechAvailable(), []);
   const lines = useMemo(() => (item ? splitScript(item.story) : []), [item]);
-
-  // Id do áudio: só a história das SUGESTÕES tem MP3 (fy-N). Manifestação escrita
-  // a partir do desejo da pessoa não tem gravação — ali a voz do aparelho, frase
-  // a frase, é o caminho certo. Para as sugestões começadas antes de existir o
-  // campo templateId, o vínculo volta pelo texto idêntico ao do card.
-  const templateId = useMemo(() => {
-    if (!saved) return template ? template.id : null;
-    const savedTemplate = findForYouById(saved.templateId);
-    if (savedTemplate) return savedTemplate.id;
-    const alvo = norm(saved.story);
-    if (!alvo) return null;
-    const achado = FOR_YOU.find(
-      (f) => norm(txt(f.story, 'pt')) === alvo || norm(txt(f.story, 'en')) === alvo
-    );
-    return achado ? achado.id : null;
-  }, [template, saved]);
-
-  // O MP3 é a locução daquele texto naquele idioma: só toca quando o que está na
-  // tela é exatamente o que o arquivo diz (manifestação criada em outra língua
-  // continua na voz do aparelho, lendo o texto que a pessoa está vendo).
-  const neural = useMemo(() => {
-    if (!templateId || !item) return false;
-    if (Platform.OS !== 'web' || typeof Audio === 'undefined') return false;
-    const fonte = findForYouById(templateId);
-    if (!fonte || norm(txt(fonte.story, lang)) !== norm(item.story)) return false;
-    return hasNeuralAudio(templateId, lang);
-  }, [templateId, item, lang]);
-
-  // Só o texto idêntico ao catálogo é público. Qualquer história criada ou
-  // alterada pela pessoa exige uma voz comprovadamente local.
-  const personalNarration = useMemo(() => {
-    if (!item || !templateId) return true;
-    const fonte = findForYouById(templateId);
-    if (!fonte) return true;
-    return !['pt', 'en'].some((code) => norm(txt(fonte.story, code)) === norm(item.story));
-  }, [item, templateId]);
-
-  // Duração de verdade só existe quando existe arquivo; senão é estimativa e o
-  // mostrador de tempo total some (número inventado na tela, não).
-  const realDuration = neural ? audioDur(templateId, lang) : null;
   const estimated = useMemo(() => (item ? estimateSeconds(item.story) : FALLBACK_SECONDS), [item]);
-  const duration = realDuration != null ? realDuration : estimated;
-  // Catálogo usa arquivo gravado. Texto pessoal usa somente a voz do aparelho:
-  // a história pode conter nomes, local e desejo e não deve entrar numa URL.
-  const audioOn =
-    neural || (speechOn && lines.length > 0 && (!personalNarration || Platform.OS === 'web'));
+  const duration = estimated;
+  // História pessoal nunca consulta o banco de MP3. No navegador, ela usa
+  // apenas uma voz comprovadamente local; se não houver, o texto continua visível.
+  const audioOn = speechOn && lines.length > 0 && Platform.OS === 'web';
 
   const [playing, setPlaying] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
@@ -325,9 +252,7 @@ export default function ManifestationScreen() {
   const [lineIndex, setLineIndex] = useState(0);
   const timer = useRef(null);
   const lineRef = useRef(0);
-  // Id da manifestação salva lido no MOMENTO de finalizar: quem aperta "Começar
-  // esta manifestação" no meio da narração já tem prática para marcar, e a
-  // variável capturada no closure ainda estava null.
+  // Id lido no momento de finalizar, sem depender do closure de uma rota antiga.
   const savedIdRef = useRef(saved ? saved.id : null);
   // Prática de hoje no MOMENTO de finalizar a narrativa: togglePractice é
   // toggle — sem este espelho, terminar a narração com o dia já feito DESFARIA.
@@ -339,8 +264,6 @@ export default function ManifestationScreen() {
   const [draftAnchorStep, setDraftAnchorStep] = useState('');
   const [evidenceDraft, setEvidenceDraft] = useState('');
   const [evidenceSaved, setEvidenceSaved] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const startBusyRef = useRef(false);
   const [releaseBusy, setReleaseBusy] = useState(false);
   const [releaseError, setReleaseError] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
@@ -352,13 +275,14 @@ export default function ManifestationScreen() {
   const focusRef = useRef(isFocused);
   focusRef.current = isFocused;
 
-  const contentKey = routeId || (template && template.id) || effectiveId || null;
+  const contentKey = routeId;
   useEffect(() => {
     // React Navigation pode manter esta instância e apenas trocar os params.
     // Nenhum rascunho, recibo ou áudio de A pode atravessar para B.
     runRef.current += 1;
     stopSpeaking();
     setPlaying(false);
+    setAudioFailed(false);
     setPosition(0);
     setLineIndex(0);
     setEditing(false);
@@ -380,10 +304,8 @@ export default function ManifestationScreen() {
   useEffect(() => {
     if (!playing) return undefined;
     timer.current = setInterval(() => {
-      // Aba escondida: o navegador segura a FALA, então o tempo também espera.
-      // O MP3, ao contrário, continua tocando em aba oculta — congelar a barra
-      // nesse caso deixaria o número atrasado em relação ao que se ouve.
-      if (!neural && Platform.OS === 'web' && typeof document !== 'undefined' && document.hidden) return;
+      // Aba escondida: o navegador segura a voz local, então a barra espera.
+      if (Platform.OS === 'web' && typeof document !== 'undefined' && document.hidden) return;
       setPosition((p) => Math.min(duration, p + 1));
     }, 1000);
     return () => {
@@ -443,7 +365,8 @@ export default function ManifestationScreen() {
     setPosition((p) => Math.max(p, mark));
     speak(lines[index], {
       lang,
-      localOnly: personalNarration,
+      narratorId,
+      localOnly: true,
       onDone: () => playFrom(index + 1, run),
       // Só reage ao erro da fala ATUAL: parar uma fala dispara o evento de erro
       // da anterior, e incrementar o token aqui matava a narração que acabou de
@@ -451,6 +374,7 @@ export default function ManifestationScreen() {
       onError: () => {
         if (run !== runRef.current) return;
         setPlaying(false);
+        setAudioFailed(true);
       },
     });
   };
@@ -462,7 +386,11 @@ export default function ManifestationScreen() {
         <View style={styles.center}>
           <Ionicons name="cloud-outline" size={42} color={th.textMuted} />
           <Text style={{ color: th.textMuted, marginTop: 10 }}>{t(S.gone)}</Text>
-          <PrimaryButton label={t(S.goBack)} onPress={() => navigation.goBack()} style={{ marginTop: 20 }} />
+          <PrimaryButton
+            label={t(S.goBack)}
+            onPress={() => navigation.replace('HomeMain')}
+            style={{ marginTop: 20 }}
+          />
         </View>
       </Screen>
     );
@@ -483,97 +411,16 @@ export default function ManifestationScreen() {
     hit: saved ? saved.sessions.includes(iso) : false,
   }));
 
-  // A mesma sugestão aberta duas vezes não pode virar duas manifestações. O
-  // vínculo é somente o id escalar do catálogo; título editável não é identidade.
-  const findExisting = () => {
-    const list = (state && state.manifestations) || [];
-    return templateId ? list.find((m) => m.templateId === templateId) : null;
-  };
-
-  // O templateId permanece na rota depois de salvar: é dele que sai o id do
-  // áudio gravado (fy-N) e F5 retoma a mesma origem sem serializar o card inteiro.
-  const openSaved = (id) => {
-    if (!id) return;
-    savedIdRef.current = id;
-    setLocalId(id);
-    navigation.setParams(templateId ? { id, templateId } : { id });
-  };
-
-  const start = async () => {
-    if (startBusyRef.current) return;
-    startBusyRef.current = true;
-    setStarting(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    try {
-      const existing = findExisting();
-      if (existing) {
-        openSaved(existing.id);
-        return;
-      }
-      const id = await addManifestation({
-        title: item.title,
-        category: item.category,
-        lang,
-        accent: item.accent,
-        intention: item.intention,
-        affirmation: item.affirmation,
-        story: item.story,
-        goalDays: item.goalDays,
-        // marca de origem: é ela que evita a segunda cópia no próximo toque
-        templateId,
-      });
-      if (!id) return;
-      openSaved(id);
-    } finally {
-      startBusyRef.current = false;
-      setStarting(false);
-    }
-  };
-
-  // Safari só deixa falar dentro do gesto: narrate()/speak() saem daqui, do
-  // próprio onPress.
+  // Safari só deixa falar dentro do gesto: speak() sai daqui, do próprio onPress.
   const togglePlay = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (playing) {
       runRef.current += 1;
       stopSpeaking();
       setPlaying(false);
-      // O MP3 não tem pausa aqui: parar volta ao começo, e a barra mostra isso em
-      // vez de fingir que guardou o ponto.
-      if (neural) setPosition(0);
       return;
     }
-    if (neural) {
-      // Arquivo único com a história inteira: toca de uma vez e o fim dele vale
-      // como fim da narrativa (marca a prática do dia, quando já é sua).
-      const run = runRef.current + 1;
-      runRef.current = run;
-      lineRef.current = 0;
-      setLineIndex(0);
-      setPosition(0);
-      setPlaying(true);
-      narrate(templateId, item.story, {
-        lang,
-        onDone: () => {
-          if (run !== runRef.current) return;
-          finishNarrative();
-        },
-        // Se o arquivo falhar (404, autoplay barrado, celular no silencioso),
-        // narra com a voz do aparelho em vez de deixar um botão que não faz
-        // nada — mesmo caminho da tela de visões.
-        onError: () => {
-          if (run !== runRef.current) return;
-          if (lines.length && isSpeechAvailable()) {
-            playFrom(0, run);
-            return;
-          }
-          setPlaying(false);
-          setPosition(0);
-          setAudioFailed(true);
-        },
-      });
-      return;
-    }
+    setAudioFailed(false);
     const restart = position >= duration || lineRef.current >= lines.length;
     const startAt = restart ? 0 : lineRef.current;
     if (restart) {
@@ -765,9 +612,7 @@ export default function ManifestationScreen() {
   ];
 
   const audioHint = playing
-    ? neural
-      ? t(S.playingAll)
-      : t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
+    ? t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
     : t(S.hintEyes);
 
   return (
@@ -795,19 +640,17 @@ export default function ManifestationScreen() {
       <Header
         title={item.title}
         subtitle={item.intention}
-        right={
-          saved ? (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={startEdit}
-              accessibilityRole="button"
-              accessibilityLabel={t(S.edit)}
-              style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
-            >
-              <Ionicons name="pencil" size={17} color={color} />
-            </TouchableOpacity>
-          ) : null
-        }
+        right={(
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={startEdit}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.edit)}
+            style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
+          >
+            <Ionicons name="pencil" size={17} color={color} />
+          </TouchableOpacity>
+        )}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -887,17 +730,13 @@ export default function ManifestationScreen() {
                 <Text style={styles.badgeText}>{categoryLabel(item.category, lang)}</Text>
               </View>
               <Text style={styles.heroQuote}>{item.affirmation}</Text>
-              {saved ? (
-                <Text style={styles.heroMeta}>
-                  {t(S.startedOn, {
-                    date: prettyDateIn(saved.createdAt, lang),
-                    day: Math.min(done, goal),
-                    goal,
-                  })}
-                </Text>
-              ) : (
-                <Text style={styles.heroMeta}>{t(S.suggested, { goal })}</Text>
-              )}
+              <Text style={styles.heroMeta}>
+                {t(S.startedOn, {
+                  date: prettyDateIn(saved.createdAt, lang),
+                  day: Math.min(done, goal),
+                  goal,
+                })}
+              </Text>
             </View>
           </GradientCover>
         )}
@@ -930,54 +769,37 @@ export default function ManifestationScreen() {
               <View style={[styles.playerTrack, { backgroundColor: alpha(color, 0.15) }]}>
                 <View style={[styles.playerFill, { width: `${playPct}%`, backgroundColor: color }]} />
               </View>
-              {/* Relógio só quando a duração é medida do arquivo. Na voz do aparelho
-                  o tempo é chute — aí a barra e o "frase X de Y" contam o progresso,
-                  sem número inventado na tela. */}
-              {realDuration != null ? (
-                <View style={styles.rowBetween}>
-                  <Text style={[styles.time, { color: th.textMuted }]}>{formatTime(position)}</Text>
-                  <Text style={[styles.time, { color: th.textMuted }]}>{formatTime(realDuration)}</Text>
-                </View>
-              ) : null}
-
-              <View style={[styles.playerRow, realDuration == null && styles.playerRowNoTime]}>
-                {/* Áudio gravado é um arquivo só: frase anterior/próxima não teriam
-                    o que fazer, então nem aparecem. */}
-                {neural ? null : (
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => jumpLine(-1)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t(S.prevLine)}
-                    style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
-                  >
-                    <Ionicons name="play-back" size={18} color={color} />
-                  </TouchableOpacity>
-                )}
+              {/* A barra acompanha as frases; não mostra uma duração inventada. */}
+              <View style={[styles.playerRow, styles.playerRowNoTime]}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => jumpLine(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.prevLine)}
+                  style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
+                >
+                  <Ionicons name="play-back" size={18} color={color} />
+                </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={togglePlay}
                   accessibilityRole="button"
-                  accessibilityLabel={playing ? (neural ? t(S.stop) : t(S.pause)) : t(S.listen)}
+                  accessibilityLabel={playing ? t(S.pause) : t(S.listen)}
                   style={[styles.playBtn, { backgroundColor: color }]}
                 >
-                  {/* No modo gravado não existe pausa: parar volta ao início,
-                      então o botão diz "parar" em vez de prometer pausa. */}
-                  <Ionicons name={playing ? (neural ? 'stop' : 'pause') : 'play'} size={26} color="#FFFFFF" />
+                  <Ionicons name={playing ? 'pause' : 'play'} size={26} color="#FFFFFF" />
                 </TouchableOpacity>
 
-                {neural ? null : (
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => jumpLine(1)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t(S.nextLine)}
-                    style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
-                  >
-                    <Ionicons name="play-forward" size={18} color={color} />
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => jumpLine(1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.nextLine)}
+                  style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
+                >
+                  <Ionicons name="play-forward" size={18} color={color} />
+                </TouchableOpacity>
               </View>
               <Text style={[styles.hint, { color: th.textMuted }]}>
                 {audioFailed ? t(S.audioFail) : audioHint}
@@ -996,32 +818,20 @@ export default function ManifestationScreen() {
           )}
         </Card>
 
-        {saved ? (
-          completed ? (
-            // Ciclo fechado: celebração no lugar do botão — sem cobrar check-in
-            // de quem já chegou lá. Desfazer um dia segue pelas bolinhas abaixo.
-            <View style={[styles.doneBanner, { backgroundColor: alpha(color, 0.14) }]}>
-              <Ionicons name="checkmark-circle" size={20} color={color} />
-              <Text style={[styles.doneBannerText, { color }]}>{t(S.completedBanner, { goal })}</Text>
-            </View>
-          ) : (
-            <PrimaryButton
-              label={doneToday ? t(S.practiceDone) : t(S.markPractice)}
-              icon={doneToday ? 'checkmark-circle' : 'sparkles'}
-              accent={item.accent}
-              variant={doneToday ? 'soft' : 'solid'}
-              onPress={onTogglePractice}
-              style={{ marginTop: 16 }}
-            />
-          )
+        {completed ? (
+          // Ciclo fechado: celebração no lugar do botão — sem cobrar check-in
+          // de quem já chegou lá. Desfazer um dia segue pelas bolinhas abaixo.
+          <View style={[styles.doneBanner, { backgroundColor: alpha(color, 0.14) }]}>
+            <Ionicons name="checkmark-circle" size={20} color={color} />
+            <Text style={[styles.doneBannerText, { color }]}>{t(S.completedBanner, { goal })}</Text>
+          </View>
         ) : (
           <PrimaryButton
-            testID="start-manifestation"
-            label={t(S.startThis)}
-            icon="add-circle-outline"
+            label={doneToday ? t(S.practiceDone) : t(S.markPractice)}
+            icon={doneToday ? 'checkmark-circle' : 'sparkles'}
             accent={item.accent}
-            onPress={start}
-            disabled={starting}
+            variant={doneToday ? 'soft' : 'solid'}
+            onPress={onTogglePractice}
             style={{ marginTop: 16 }}
           />
         )}
@@ -1218,7 +1028,6 @@ const styles = StyleSheet.create({
   story: { fontSize: 15, lineHeight: 24 },
   playerTrack: { height: 5, borderRadius: 3, overflow: 'hidden' },
   playerFill: { height: 5, borderRadius: 3 },
-  time: { fontSize: 11.5, marginTop: 6, fontWeight: '600' },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',

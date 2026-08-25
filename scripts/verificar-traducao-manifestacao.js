@@ -24,8 +24,6 @@ let localizeManifestation;
 let applyTranslatedManifestationVariant;
 let manifestationVariantFromScene;
 let shouldTranslateManifestationVariant;
-let findForYouById;
-let localized;
 try {
   ({
     localizeManifestation,
@@ -33,7 +31,6 @@ try {
     manifestationVariantFromScene,
     shouldTranslateManifestationVariant,
   } = require(path.join(root, 'utils', 'manifestationLanguage.js')));
-  ({ findForYouById, localized } = require(path.join(root, 'constants', 'content.js')));
 } finally {
   Module._extensions['.js'] = originalLoader;
 }
@@ -69,6 +66,26 @@ assert.ok(preparedPt.contentByLang.pt, 'variante PT nao foi salva');
 assert.ok(preparedPt.contentByLang.en, 'variante EN nao foi criada');
 assert.strictEqual(preparedPt.affirmation, personalPt.affirmation, 'conteudo original PT foi alterado');
 assert.strictEqual(preparedPt.title, personalPt.title, 'texto livre do titulo foi alterado');
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(preparedPt, 'templateId'),
+  false,
+  'manifestacao pessoal ganhou identificador de template editorial'
+);
+assert.doesNotMatch(
+  JSON.stringify(preparedPt),
+  /(?:editorial|catalog-v1)/i,
+  'manifestacao pessoal herdou proveniencia de catalogo'
+);
+assert.strictEqual(
+  preparedPt.contentByLang.pt.generation.source,
+  'gemini',
+  'variante original perdeu a geracao pessoal'
+);
+assert.strictEqual(
+  preparedPt.contentByLang.en.generation.source,
+  'local-language-fallback',
+  'variante alternativa nao recebeu fallback pessoal seguro'
+);
 
 const translatedEn = localizeManifestation(preparedPt, profile, 'en');
 assert.strictEqual(translatedEn.lang, 'en');
@@ -150,6 +167,16 @@ assert.strictEqual(withExactRemote.story, exactRemoteEn.story, 'traducao remota 
 assert.match(withExactRemote.story, /blue mug/i, 'detalhe unico da cena original foi perdido');
 assert.strictEqual(withExactRemote.contentByLang.pt.story, personalPt.story, 'traducao apagou a origem PT');
 assert.strictEqual(
+  withExactRemote.contentByLang.en.generation.source,
+  'gemini-translation',
+  'traducao pessoal nao preservou sua proveniencia'
+);
+assert.doesNotMatch(
+  JSON.stringify(withExactRemote),
+  /(?:editorial|catalog-v1|"templateId")/i,
+  'traducao pessoal reintroduziu template ou catalogo'
+);
+assert.strictEqual(
   shouldTranslateManifestationVariant(withExactRemote, 'pt'),
   false,
   'voltar ao idioma original tentaria retraduzir e apagar a origem'
@@ -210,24 +237,28 @@ assert.strictEqual(
   legacyEn.story,
   'migracao apagou a historia original em ingles'
 );
-
-const template = findForYouById('fy-1');
-const templateEn = localized(template, 'en');
-const catalogItem = {
-  ...templateEn,
-  id: 'm-template',
-  templateId: template.id,
-  lang: 'en',
-  anchorIdentity: 'I practise reciprocity, clarity and respect.',
-  anchorStep: 'Write one reciprocal gesture for today.',
-  generation: { source: 'editorial', promptVersion: 'catalog-v1' },
-};
-const catalogPt = localizeManifestation(catalogItem, profile, 'pt');
-assert.strictEqual(catalogPt.title, localized(template, 'pt').title, 'titulo editorial PT incorreto');
-assert.strictEqual(catalogPt.story, localized(template, 'pt').story, 'historia editorial PT incorreta');
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(migratedPt, 'templateId'),
+  false,
+  'item pessoal legado ganhou template durante a migracao'
+);
+assert.doesNotMatch(
+  JSON.stringify(migratedPt),
+  /(?:editorial|catalog-v1)/i,
+  'item pessoal legado caiu em conteudo editorial'
+);
 
 const contextSource = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
 const chatSource = fs.readFileSync(path.join(root, 'screens', 'onboarding', 'ChatOnboardingScreen.js'), 'utf8');
+const addManifestationSource = contextSource.match(
+  /const addManifestation = useCallback\(async \(data\) => \{[\s\S]*?\n  \}, \[translateAndStoreVariant\]\);/
+);
+assert.ok(addManifestationSource, 'nao foi possivel localizar addManifestation');
+assert.doesNotMatch(
+  addManifestationSource[0],
+  /(?:findForYouById|templateId\s*:|source\s*:\s*['"]editorial['"]|catalog-v1)/,
+  'nova manifestacao ainda aceita template ou fallback editorial'
+);
 assert.ok(contextSource.includes('contentByLang'), 'contexto nao preserva variantes bilingues');
 assert.ok(contextSource.includes('translateManifestationScene'), 'contexto nao aciona traducao privada');
 assert.ok(contextSource.includes('generationEpoch'), 'traducao tardia nao respeita reset/import');
@@ -262,4 +293,4 @@ assert.ok(
   'onboarding nao fixa explicitamente o idioma da cena'
 );
 
-process.stdout.write('Traducao de manifestacoes: PT/EN, legado e edicoes preservadas\n');
+process.stdout.write('Manifestacoes pessoais: PT/EN, traducao e edicoes preservadas sem catalogo\n');

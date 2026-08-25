@@ -26,6 +26,7 @@ const STATIC_GATES = [
   ['scripts/verificar-video-abertura.js', 'Teste do video de abertura falhou'],
   ['scripts/verificar-recuperacao-travamentos.js', 'Recuperacao de travamentos falhou'],
   ['scripts/verificar-privacidade-voz.js', 'Privacidade da voz pessoal falhou'],
+  ['scripts/verificar-narradores.js', 'Selecao de narradores falhou'],
   ['scripts/verificar-haptica-digitacao.js', 'Teste de haptica/digitacao falhou'],
   ['scripts/verificar-perguntas-stella.js', 'Roteiro completo da Stella falhou'],
   ['scripts/verificar-cena-ancora.js', 'Personalizacao local da Cena-Ancora falhou'],
@@ -378,8 +379,20 @@ async function liveGeminiChecks() {
         try { payload = JSON.parse(text); } catch (_error) { payload = { invalidJson: text.slice(0, 180) }; }
         return { status: response.status, payload };
       };
+      const postGeneration = async () => {
+        let result;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          result = await post('/api/gerar-cena', generationInput);
+          const transientInvalid =
+            result.status === 502 &&
+            ['invalid_generation', 'upstream_error'].includes(result.payload?.error);
+          if (!transientInvalid) return result;
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+        return result;
+      };
       return {
-        generation: await post('/api/gerar-cena', generationInput),
+        generation: await postGeneration(),
         translation: await post('/api/traduzir-cena', translationInput),
       };
     }, { generationBody, translationBody });
@@ -401,6 +414,21 @@ async function liveGeminiChecks() {
   console.log(`BotID bloqueou cliente nu; Gemini ${generation.generation.model} e traducao ${translation.generation.model} passaram no navegador real`);
 }
 
+async function productionChecks() {
+  await liveAssetChecks();
+  await liveGeminiChecks();
+
+  const prodEnv = { ...process.env, TARGET_URL: PROD };
+  await runNode('scripts/verificar-paywall.js', { env: prodEnv, failure: 'Entrada do app falhou em tela pequena' });
+  await runNode('scripts/verificar-mascote.js', { env: prodEnv, failure: 'Mascote ausente ou quebrado' });
+  await runNode('scripts/verificar-recuperacao-browser.js', { env: prodEnv, failure: 'Recuperacao de armazenamento falhou no navegador' });
+  await runNode('scripts/e2e-prod.js', { env: { ...prodEnv, E2E_GEMINI: '1' }, failure: 'Portao E2E/Gemini falhou' });
+  await runNode('scripts/verify-app-pt.js', { env: prodEnv, failure: 'Portao do app interno falhou' });
+  await runNode('scripts/auditoria-idiomas.js', { env: prodEnv, failure: 'Vazamento de idioma detectado' });
+  await runNode('scripts/qa-novos-recursos.js', { env: prodEnv, failure: 'Telas novas falharam em producao' });
+  await runNode('scripts/medir-performance.js', { env: prodEnv, failure: 'Performance 4G ficou abaixo do portao' });
+}
+
 async function main() {
   const currentNodeOptions = String(process.env.NODE_OPTIONS || '');
   if (process.platform === 'win32' && !/(^|\s)--use-system-ca(\s|$)/.test(currentNodeOptions)) {
@@ -415,6 +443,12 @@ async function main() {
   }
   assert(path.dirname(DIST) === ROOT && path.basename(DIST) === 'dist', `Caminho dist inseguro: ${DIST}`);
   process.chdir(ROOT);
+
+  if (process.argv.includes('--validate-production')) {
+    await productionChecks();
+    console.log(`Producao revalidada sem nova publicacao: ${PROD}`);
+    return;
+  }
 
   for (const [script, failure] of STATIC_GATES) await runNode(script, { failure });
   await run(NODE, [EXPO_CLI, 'export', '--platform', 'web', '--output-dir', DIST], { failure: 'Export web do Expo falhou' });
@@ -434,18 +468,7 @@ async function main() {
   validateVercelLink();
   await run(NODE, [vercelCli, 'deploy', '--prod', '--yes', '--scope', VERCEL_SCOPE], { cwd: DIST, env: deployEnv, failure: 'Vercel deploy falhou' });
   productionPublished = true;
-  await liveAssetChecks();
-  await liveGeminiChecks();
-
-  const prodEnv = { ...process.env, TARGET_URL: PROD };
-  await runNode('scripts/verificar-paywall.js', { env: prodEnv, failure: 'Entrada do app falhou em tela pequena' });
-  await runNode('scripts/verificar-mascote.js', { env: prodEnv, failure: 'Mascote ausente ou quebrado' });
-  await runNode('scripts/verificar-recuperacao-browser.js', { env: prodEnv, failure: 'Recuperacao de armazenamento falhou no navegador' });
-  await runNode('scripts/e2e-prod.js', { env: { ...prodEnv, E2E_GEMINI: '1' }, failure: 'Portao E2E/Gemini falhou' });
-  await runNode('scripts/verify-app-pt.js', { env: prodEnv, failure: 'Portao do app interno falhou' });
-  await runNode('scripts/auditoria-idiomas.js', { env: prodEnv, failure: 'Vazamento de idioma detectado' });
-  await runNode('scripts/qa-novos-recursos.js', { env: prodEnv, failure: 'Telas novas falharam em producao' });
-  await runNode('scripts/medir-performance.js', { env: prodEnv, failure: 'Performance 4G ficou abaixo do portao' });
+  await productionChecks();
   console.log(`Deploy concluido e todos os portoes foram aprovados: ${PROD}`);
 }
 

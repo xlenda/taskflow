@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Screen, Header, Card, EmptyState, Button } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
-import { TRENDING, FOR_YOU, CATEGORIES, categoryMeta, localized } from '../constants/content';
+import { CATEGORIES, categoryMeta } from '../constants/content';
 import { APP_NAME } from '../constants/brand';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
@@ -85,9 +85,6 @@ const S = {
   },
   undoConfirm: { en: 'Undo', pt: 'Desfazer' },
   keep: { en: 'Keep it', pt: 'Manter' },
-  // Não é ranking nem prova social: é uma lista fixa de partida escrita por nós.
-  starters: { en: 'To get you started', pt: 'Para começar' },
-  forYou: { en: 'For you', pt: 'Para você' },
   yours: { en: 'Your manifestations', pt: 'Suas manifestações' },
   emptyTitle: { en: 'Nothing in motion yet', pt: 'Nada em movimento ainda' },
   emptyBody: {
@@ -151,16 +148,6 @@ export default function HomeScreen() {
     const day = todayISO();
     return state.manifestations.filter((m) => m.sessions.includes(day)).length;
   }, [state]);
-
-  // TRENDING / FOR_YOU chegam bilíngues de constants/content.js: localized()
-  // resolve tanto um campo solto { en, pt } quanto o objeto de conteúdo inteiro.
-  const asItem = (item) => localized(item, lang);
-  const asText = (item) => {
-    const v = asItem(item);
-    if (!v) return '';
-    if (typeof v === 'string') return v;
-    return txt(v.label || v.title || v.text || '', lang);
-  };
 
   if (loading || !state) {
     // Ainda não temos state.lang — cai no idioma do aparelho para não piscar em inglês.
@@ -550,8 +537,7 @@ export default function HomeScreen() {
               />
             )}
 
-            {/* ---- Suas manifestações: a lista dela vem ANTES das sugestões;
-                 pendentes de hoje primeiro, concluídas por último ---- */}
+            {/* Pendentes de hoje primeiro, concluídas por último. */}
             <SectionHeading title={t(S.yours)} />
             {sorted.map((m) => (
               <ManifestCard
@@ -603,93 +589,7 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* ---- Ideias de partida (lista fixa nossa, não é o que "outras
-             pessoas" estão manifestando) ---- */}
-        <SectionHeading title={t(S.starters)} />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.chipScroll}
-        >
-          {TRENDING.map((item, i) => {
-            const label = asText(item);
-            return (
-              <TouchableOpacity
-                key={`${i}-${label}`}
-                activeOpacity={0.8}
-                onPress={() => {
-                  writeDesire(label);
-                  Haptics.selectionAsync().catch(() => {});
-                  focusDesire();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={label}
-                style={[
-                  styles.trendChip,
-                  {
-                    backgroundColor: alpha(accentAt(th, i), 0.14),
-                    borderColor: alpha(accentAt(th, i), 0.3),
-                  },
-                ]}
-              >
-                <Ionicons name="sparkles" size={13} color={accentAt(th, i)} />
-                <Text style={[styles.trendText, { color: accentAt(th, i) }]}>{label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* ---- For you ---- */}
-        <SectionHeading title={t(S.forYou)} />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.forYouScroll}
-        >
-          {FOR_YOU.map((item) => {
-            const card = asItem(item);
-            const title = txt(card.title, lang);
-            const tagline = txt(card.tagline, lang);
-            return (
-              <TouchableOpacity
-                key={card.id}
-                activeOpacity={0.88}
-                onPress={() => navigation.navigate('Manifestation', { templateId: card.id })}
-                accessibilityRole="button"
-                accessibilityLabel={`${title}. ${tagline}`}
-                style={[
-                  styles.forYouCard,
-                  {
-                    backgroundColor: th.surface,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                    elevation: 3,
-                  },
-                ]}
-              >
-                <GradientCover
-                  accent={card.accent}
-                  radius={14}
-                  style={styles.forYouCover}
-                  icon={categoryMeta(card.category).icon}
-                />
-                <Text numberOfLines={1} style={[styles.forYouTitle, { color: th.text }]}>
-                  {title}
-                </Text>
-                <Text numberOfLines={2} style={[styles.forYouTag, { color: th.textMuted }]}>
-                  {tagline}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* ---- Lista vazia: aqui só o estado vazio (com itens, a lista dela
-             já apareceu lá em cima, antes das sugestões) ---- */}
+        {/* Com itens, a lista pessoal já apareceu acima. */}
         {!hasItems ? (
           <>
             <SectionHeading title={t(S.yours)} />
@@ -801,20 +701,4 @@ const styles = StyleSheet.create({
   bridgeMiniLabel: { fontSize: 11.5, fontWeight: '800' },
   bridgeMiniText: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', marginTop: 3 },
   inviteClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  chipScroll: { paddingRight: 8, paddingVertical: 2 },
-  trendChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 18,
-    marginRight: 8,
-    borderWidth: 1,
-  },
-  trendText: { fontSize: 13, fontWeight: '700', marginLeft: 6 },
-  forYouScroll: { paddingRight: 8, paddingVertical: 2 },
-  forYouCard: { width: 172, borderRadius: 18, padding: 10, marginRight: 12 },
-  forYouCover: { height: 120, width: '100%', marginBottom: 10 },
-  forYouTitle: { fontSize: 14.5, fontWeight: '700', paddingHorizontal: 2 },
-  forYouTag: { fontSize: 12, lineHeight: 17, marginTop: 4, paddingHorizontal: 2, marginBottom: 4 },
 });

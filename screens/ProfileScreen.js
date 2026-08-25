@@ -22,6 +22,7 @@ import { accentAt, alpha } from '../utils/colors';
 import { confirmAsync } from '../utils/confirm';
 import { APP_NAME } from '../constants/brand';
 import { LEGAL_UPDATED, PRIVACY_SECTIONS, TERMS_SECTIONS } from '../constants/legal';
+import NarratorSelector from '../components/NarratorSelector';
 import { isUnder18Age } from './onboarding/flow';
 
 const S = {
@@ -39,6 +40,11 @@ const S = {
   languageHint: { en: 'Changes menus and your saved scenes', pt: 'Altera menus e suas cenas salvas' },
   portuguese: { en: 'Portuguese', pt: 'Português' },
   english: { en: 'English', pt: 'Inglês' },
+  narrator: { en: 'Narration voice', pt: 'Voz da narração' },
+  narratorHint: {
+    en: 'Choose how your personal scenes should sound',
+    pt: 'Escolha como suas cenas pessoais devem soar',
+  },
   mood: { en: 'Visual mood', pt: 'Clima visual' },
   moodHint: { en: 'Choose the atmosphere that feels like you', pt: 'Escolha a atmosfera que combina com você' },
   themeBlossom: { en: 'Blossom', pt: 'Florada' },
@@ -249,7 +255,7 @@ export default function ProfileScreen({ navigation }) {
   const theme = useTheme();
   const setTheme = useSetTheme();
   const { t, lang } = useT();
-  const { state, loading, setName, setLang, setMood, saveProfile } = useApp();
+  const { state, loading, setName, setLang, setMood, setNarrator, saveProfile } = useApp();
   const [nameDraft, setNameDraft] = useState('');
   const [savedName, setSavedName] = useState(false);
   const [document, setDocument] = useState(null);
@@ -481,6 +487,25 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
+                <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.narrator)}</Text>
+                <Text style={[styles.preferenceNote, { color: theme.textMuted }]}>
+                  {t(S.narratorHint)}
+                </Text>
+                <View style={styles.narratorSelector}>
+                  <NarratorSelector
+                    value={state.narration?.narratorId}
+                    onChange={(narratorId) => {
+                      setNarrator(narratorId);
+                      tap();
+                    }}
+                    lang={lang}
+                    theme={theme}
+                    variant="compact"
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
                 <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.mood)}</Text>
                 <Text style={[styles.preferenceNote, { color: theme.textMuted }]}>{t(S.moodHint)}</Text>
                 <View style={styles.themeGrid}>
@@ -694,6 +719,7 @@ const styles = StyleSheet.create({
   preferenceBlock: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 14 },
   preferenceLabel: { fontSize: 14.5, lineHeight: 20, fontWeight: '700' },
   preferenceNote: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  narratorSelector: { marginTop: 10 },
   themeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 10 },
   themeChoice: {
     flexBasis: '46%',

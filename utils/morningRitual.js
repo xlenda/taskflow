@@ -132,7 +132,9 @@ export function extractDreamAnchor(dream, lang = 'pt') {
   return { text: atWordBoundary(firstImage || source, 88), redacted: false };
 }
 
-const AFFIRMATIONS = {
+// Fallback deterministico para transformar o relato da propria pessoa quando
+// a personalizacao remota nao estiver disponivel. Nao e um deck publico.
+const THEME_AFFIRMATIONS = {
   pt: {
     clarity: [
       'Eu escuto o que sinto com calma e escolho o próximo passo que faz sentido para mim.',
@@ -220,7 +222,7 @@ export function createDreamAffirmation({ dream, feeling, theme = 'auto', lang = 
   const themeWasChosen = THEMES.includes(theme);
   const selectedTheme = themeWasChosen ? theme : inferDreamTheme(cleanDream, cleanFeeling);
   const dreamAnchor = extractDreamAnchor(cleanDream, language);
-  const options = AFFIRMATIONS[language][selectedTheme];
+  const options = THEME_AFFIRMATIONS[language][selectedTheme];
   const affirmation = dreamAnchor.text
     ? ANCHORED_AFFIRMATIONS[language][selectedTheme](dreamAnchor.text)
     : options[hash(`${cleanDream}|${cleanFeeling}|${selectedTheme}`) % options.length];
