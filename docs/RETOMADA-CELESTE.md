@@ -7,7 +7,33 @@ publicada para que o problema não precise ser redescoberto.
 
 Produção atual: `https://celeste-jet-two.vercel.app`
 
-Deployment: `dpl_32afqTMmBrQcmowaXAhcvU618BsN`
+Deployment: `dpl_Ac4gFaCQqsn7iuYaXYHtj8wKrhvb`
+
+### Correção mais recente: tradução e diário de sonhos
+
+- Ao trocar o app entre português e inglês, a manifestação criada ao fim do
+  questionário agora acompanha o idioma escolhido e volta ao texto original sem
+  perder detalhes nem edições da pessoa.
+- A tradução remota só ocorre depois do consentimento adulto explícito e envia
+  apenas a cena salva e minimizada; sem consentimento, o app usa conteúdo local
+  no idioma escolhido.
+- A página inicial ganhou o atalho visível `Conte seu sonho`. Um toque abre o
+  campo do diário, posiciona o teclado e permite transformar e salvar o relato
+  como afirmação personalizada.
+- O fluxo foi validado em `320x480`, `390x844` e desktop, inclusive após reload.
+- A publicação foi vinculada e validada contra a equipe `xlendas-projects` e o
+  projeto `celeste` antes do envio para impedir deploy no projeto errado.
+
+Portões desta publicação:
+
+- tradução local PT/EN, legado e edições preservadas;
+- API privada de tradução: `6/6`;
+- Gemini ao vivo: `gemini-3.7-flash` com `celeste-knowledge-v1`;
+- tradução ao vivo preservando o detalhe sentinela `blue mug 27`;
+- E2E completo local e em produção;
+- QA responsivo local e em produção: sonho em um toque, manifestação PT/EN
+  persistente e Comunidade rolável;
+- auditoria bilíngue sem vazamentos entre português e inglês.
 
 Uma auditoria dirigida, seguida de correção e reauditoria adversarial, fechou
 os seguintes bugs confirmados:
