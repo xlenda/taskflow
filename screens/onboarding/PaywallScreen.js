@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { OnbScreen } from './onboardingUI';
 import { APP_NAME, ONB, SERIF } from '../../constants/brand';
@@ -7,9 +7,8 @@ import { UI } from '../../constants/i18n';
 import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
 
-// Paywall placeholder — ligar react-native-purchases (RevenueCat) aqui depois.
-// Sem billing ligado: o CTA destrava o app; "Restaurar" só avisa que assinatura
-// entra em breve (fingir restauração de compra seria mentira).
+// Tela de acesso enquanto o billing não está ligado. Ela não promete trial nem
+// mostra preço fictício: o CTA apenas conclui o onboarding, sem cobrança.
 
 const S = {
   // Chamada aponta pra manifestação REAL criada no onboarding — nada de
@@ -18,10 +17,8 @@ const S = {
     en: 'Your first manifestation is ready — continue with it.',
     pt: 'Sua primeira manifestação está pronta — continue com ela.',
   },
-  // Preço legível COLADO no CTA, mesmo peso visual da palavra "grátis".
-  price: { en: 'Free for 7 days, then R$ 49,90/week', pt: 'Grátis por 7 dias, depois R$ 49,90/semana' },
-  // 49,90 × 52 semanas ÷ 12 meses = 216,23 — aritmética, não estimativa.
-  priceMonth: { en: 'that works out to R$ 216,23 per month', pt: 'isso dá R$ 216,23 por mês' },
+  access: { en: 'Open access in this version', pt: 'Acesso aberto nesta versão' },
+  accessNote: { en: 'No trial starts and no charge is made.', pt: 'Nenhum teste começa e nenhuma cobrança é feita.' },
   restoreNote: {
     en: 'Subscriptions are coming soon — there is nothing to restore yet.',
     pt: 'Assinatura entra em breve — ainda não há nada para restaurar.',
@@ -33,15 +30,28 @@ export default function PaywallScreen() {
   const { t } = useT();
   const T = UI[(state && state.lang) || 'en'];
   const [restoreMsg, setRestoreMsg] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const enteringRef = useRef(false);
 
   const p = (s) => s.replace(/\{app\}/g, APP_NAME);
   const primeira = state && state.manifestations && state.manifestations[0];
+  const enterApp = async () => {
+    if (enteringRef.current) return;
+    enteringRef.current = true;
+    setEntering(true);
+    const entered = await completeOnboarding();
+    if (!entered) {
+      enteringRef.current = false;
+      setEntering(false);
+    }
+  };
 
   return (
-    <OnbScreen>
+    <OnbScreen style={styles.screen} outerStyle={styles.screenFrame}>
       <ScrollView
+        style={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 24 }}
+        contentContainerStyle={styles.contentContainer}
       >
         <View
           style={{
@@ -81,35 +91,7 @@ export default function PaywallScreen() {
           <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk, marginBottom: 16 }}>{p(T.pwP2)}</Text>
           <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk, marginBottom: 24 }}>{p(T.pwP3)}</Text>
 
-          <Pressable
-            onPress={completeOnboarding}
-            style={({ pressed }) => [
-              {
-                backgroundColor: ONB.cta,
-                borderRadius: 999,
-                paddingVertical: 19,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 19, color: ONB.ctaInk, fontWeight: '600' }}>{p(T.pwCta)}</Text>
-            <Ionicons name="arrow-forward" size={20} color={ONB.ctaInk} style={{ marginLeft: 10 }} />
-          </Pressable>
-
-          {/* Preço no mesmo peso visual do "grátis" do botão — ninguém assina sem ver */}
-          <Text style={{ fontSize: 17, fontWeight: '600', color: ONB.surfaceInk, textAlign: 'center', marginTop: 12 }}>
-            {t(S.price)}
-          </Text>
-          <Text style={{ fontSize: 15, color: ONB.surfaceSoft, textAlign: 'center', marginTop: 4 }}>
-            {t(S.priceMonth)}
-          </Text>
-
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 28, marginTop: 22 }}>
-            <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwPrivacy}</Text>
-            <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwTerms}</Text>
+          <View style={{ alignItems: 'center' }}>
             <Pressable
               onPress={() => setRestoreMsg(true)}
               accessibilityRole="button"
@@ -127,6 +109,75 @@ export default function PaywallScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      {/* A entrada fica fora da rolagem para nunca nascer escondida em telas baixas. */}
+      <View style={styles.footer}>
+        <View style={styles.footerInner}>
+          <Pressable
+            onPress={enterApp}
+            disabled={entering}
+            accessibilityRole="button"
+            accessibilityLabel={p(T.pwCta)}
+            accessibilityState={{ disabled: entering }}
+            style={({ pressed }) => [styles.cta, (pressed || entering) && styles.ctaPressed]}
+          >
+            <Text style={styles.ctaText}>{p(T.pwCta)}</Text>
+            <Ionicons name="arrow-forward" size={20} color={ONB.ctaInk} style={styles.ctaIcon} />
+          </Pressable>
+
+          {/* Recibo exato do que o CTA faz hoje: liberar, sem iniciar cobrança. */}
+          <Text style={styles.access}>{t(S.access)}</Text>
+          <Text style={styles.accessNote}>{t(S.accessNote)}</Text>
+        </View>
+      </View>
     </OnbScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  screenFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  screen: { minHeight: 0, overflow: 'hidden' },
+  content: { flex: 1, minHeight: 0 },
+  contentContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  footerInner: { width: '100%', maxWidth: 720, alignSelf: 'center' },
+  cta: {
+    width: '100%',
+    minHeight: 58,
+    backgroundColor: ONB.cta,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaPressed: { opacity: 0.82 },
+  ctaText: { flexShrink: 1, fontSize: 19, color: ONB.ctaInk, fontWeight: '600', textAlign: 'center' },
+  ctaIcon: { marginLeft: 10 },
+  access: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: ONB.surfaceInk,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  accessNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: ONB.surfaceSoft,
+    textAlign: 'center',
+    marginTop: 1,
+  },
+});

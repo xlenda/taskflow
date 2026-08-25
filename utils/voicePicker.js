@@ -49,9 +49,12 @@ function ehMasculina(v) {
 }
 
 // Devolve o objeto SpeechSynthesisVoice escolhido (ou null).
-export function pickVoice(lang = 'pt') {
+export function pickVoice(lang = 'pt', { localOnly = false } = {}) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  const todas = window.speechSynthesis.getVoices() || [];
+  const disponiveis = window.speechSynthesis.getVoices() || [];
+  // Histórias pessoais só podem usar uma voz que o navegador marque
+  // explicitamente como local. `undefined` não é prova de processamento local.
+  const todas = localOnly ? disponiveis.filter((v) => v.localService === true) : disponiveis;
   if (!todas.length) return null;
 
   const t = tag(lang);
@@ -82,15 +85,15 @@ export function pickVoice(lang = 'pt') {
 }
 
 // É ISSO que deve ir para expo-speech (voice: <voiceURI>).
-export function pickVoiceURI(lang = 'pt') {
-  const v = pickVoice(lang);
+export function pickVoiceURI(lang = 'pt', options = {}) {
+  const v = pickVoice(lang, options);
   return v && v.voiceURI ? v.voiceURI : null;
 }
 
 // O Chrome popula as vozes de forma assíncrona; resolve assim que existirem.
-export function getVoiceAsync(lang = 'pt', timeoutMs = 1500) {
+export function getVoiceAsync(lang = 'pt', timeoutMs = 1500, options = {}) {
   return new Promise((resolve) => {
-    const agora = pickVoice(lang);
+    const agora = pickVoice(lang, options);
     if (agora) return resolve(agora);
     if (typeof window === 'undefined' || !window.speechSynthesis) return resolve(null);
     let done = false;
@@ -98,7 +101,7 @@ export function getVoiceAsync(lang = 'pt', timeoutMs = 1500) {
       if (done) return;
       done = true;
       window.speechSynthesis.removeEventListener('voiceschanged', finish);
-      resolve(pickVoice(lang));
+      resolve(pickVoice(lang, options));
     };
     window.speechSynthesis.addEventListener('voiceschanged', finish);
     setTimeout(finish, timeoutMs);

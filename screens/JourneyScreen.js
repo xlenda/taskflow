@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import { Screen, Header, Card, pct } from '../ui/kit';
-import { useTheme, useSetTheme } from '../ui/theme';
+import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -22,6 +22,7 @@ import { lastNDays, todayISO, streakFrom, formatTime } from '../utils/date';
 import { audioDur } from '../utils/audioBank';
 import { confirmAsync } from '../utils/confirm';
 import { APP_NAME } from '../constants/brand';
+import { cancelAffirmationAlarm } from '../services/affirmationAlarm';
 
 import WeekChart from '../components/WeekChart';
 import SectionHeading from '../components/SectionHeading';
@@ -46,7 +47,7 @@ const S = {
   // O dado é a duração das narrações concluídas, não o tempo que a pessoa
   // realmente ouviu (dá para concluir uma visão sem tocar o áudio).
   statListened: { en: 'Narration time', pt: 'Tempo de narração' },
-  statManifested: { en: 'Manifested', pt: 'Manifestadas' },
+  statManifested: { en: 'Cycles complete', pt: 'Ciclos concluídos' },
 
   thisWeek: { en: 'This week', pt: 'Esta semana' },
   perDay: { en: 'Practices completed per day', pt: 'Práticas concluídas por dia' },
@@ -67,37 +68,62 @@ const S = {
   practisedToday: { en: 'practised today', pt: 'praticado hoje' },
   notPractisedToday: { en: 'not practised today', pt: 'ainda não praticado hoje' },
 
+  traces: { en: 'Traces of change', pt: 'Rastros de mudança' },
+  tracesEmpty: {
+    en: 'Your honest observations will appear here whenever you choose to record one.',
+    pt: 'Suas observações honestas aparecem aqui quando você escolher registrar uma.',
+  },
+  editTrace: { en: 'Edit this trace', pt: 'Editar este rastro' },
+  deleteTrace: { en: 'Delete this trace', pt: 'Excluir este rastro' },
+  deleteTraceTitle: { en: 'Delete this trace?', pt: 'Excluir este rastro?' },
+  deleteTraceBody: {
+    en: 'This private observation will be permanently removed.',
+    pt: 'Esta observação privada será removida de forma permanente.',
+  },
+  deleteTraceConfirm: { en: 'Delete', pt: 'Excluir' },
+  saveTrace: { en: 'Save trace', pt: 'Salvar rastro' },
+
   milestones: { en: 'Milestones', pt: 'Marcos' },
   msFirst: { en: 'First manifestation set', pt: 'Primeira manifestação criada' },
   msStreak: { en: '7 day streak', pt: '7 dias seguidos' },
   msPractices: { en: '25 guided practices', pt: '25 práticas guiadas' },
   msCycle: { en: 'Complete a 21-day cycle', pt: 'Completar um ciclo de 21 dias' },
 
-  profile: { en: 'Your profile', pt: 'Seu perfil' },
-  save: { en: 'Save', pt: 'Salvar' },
-  edit: { en: 'Edit', pt: 'Editar' },
-  language: { en: 'Language', pt: 'Idioma' },
-
-  mood: { en: 'Mood of the app', pt: 'Clima do app' },
-  themeBlossom: { en: 'Blossom', pt: 'Florada' },
-  themePaper: { en: 'Paper', pt: 'Papel' },
-  themeCloud: { en: 'Cloud', pt: 'Nuvem' },
-  themeViolet: { en: 'Midnight rose', pt: 'Rosa de meia-noite' },
+  yourSpace: { en: 'Your space', pt: 'Seu espaço' },
+  profileSettings: { en: 'Profile and settings', pt: 'Perfil e configurações' },
+  profileSettingsBody: {
+    en: 'Name, language, appearance, Gemini and privacy',
+    pt: 'Nome, idioma, aparência, Gemini e privacidade',
+  },
+  community: { en: 'Community', pt: 'Comunidade' },
+  communityBody: {
+    en: 'Real stories, reviewed before they appear',
+    pt: 'Relatos reais, analisados antes de aparecer',
+  },
 
   resetCta: { en: 'Reset my journey', pt: 'Recomeçar minha jornada' },
   resetTitle: { en: 'Reset your journey?', pt: 'Recomeçar sua jornada?' },
   // A conta real do que some — nada de aviso genérico.
   resetMessage: {
-    en: 'Your {n} manifestations and your {m} days of practice will be gone, and you redo the questionnaire. Your language stays. There is no way back.',
-    pt: 'Suas {n} manifestações e seus {m} dias de prática somem, e você refaz o questionário. O idioma fica. Isso não tem volta.',
+    en: 'Your {n} manifestations, {r} private traces and {m} days of practice will be gone, and you redo the questionnaire. Your language stays. There is no way back.',
+    pt: 'Suas {n} manifestações, {r} Rastros privados e seus {m} dias de prática somem, e você refaz o questionário. O idioma fica. Isso não tem volta.',
   },
   resetConfirm: { en: 'Reset', pt: 'Recomeçar' },
+  resetStoppingAlarm: { en: 'Resetting...', pt: 'Recomeçando...' },
+  resetAlarmFailed: {
+    en: 'The alarm could not be turned off. Open My alarm and try again before resetting.',
+    pt: 'Não foi possível desligar o despertador. Abra Meu despertador e tente novamente antes de recomeçar.',
+  },
+  resetStorageFailed: {
+    en: 'The reset was applied here, but the device has not confirmed every local deletion yet. Try again before closing the app.',
+    pt: 'O recomeço foi aplicado aqui, mas o aparelho ainda não confirmou toda a limpeza local. Tente novamente antes de fechar o app.',
+  },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
 
   backupTitle: { en: 'Backup', pt: 'Cópia de segurança' },
   backupNote: {
-    en: 'Your practice lives only in this browser — keep a copy.',
-    pt: 'Sua prática fica só neste navegador — guarde uma cópia.',
+    en: 'Your saved practice is stored in this browser. Download a copy to keep your own backup.',
+    pt: 'Sua prática salva fica neste navegador. Baixe uma cópia para manter seu próprio backup.',
   },
   saveCopy: { en: 'Save a copy', pt: 'Salvar uma cópia' },
   restoreCopy: { en: 'Restore from a file', pt: 'Restaurar de um arquivo' },
@@ -113,26 +139,30 @@ const S = {
   },
 
   footer: {
-    en: '{app} · your practice is stored privately on this device',
-    pt: '{app} · sua prática fica guardada só neste aparelho',
+    en: '{app} · saved locally; Gemini is used only when you allow it',
+    pt: '{app} · salvo localmente; o Gemini só é usado com sua permissão',
   },
 };
-
-const THEMES = [
-  { key: 'blossom', label: S.themeBlossom },
-  { key: 'paper', label: S.themePaper },
-  { key: 'cloud', label: S.themeCloud },
-  { key: 'violet', label: S.themeViolet },
-];
 
 // Chave canônica em inglês do dia da semana — o WeekChart traduz pelo dicionário
 // dele. Local de propósito: utils/date.weekdayLetter é usado por outra tela.
 const WEEKDAY_KEYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const weekdayKey = (iso) => WEEKDAY_KEYS[new Date(`${iso}T00:00:00`).getDay()];
+const traceDate = (iso, lang) => {
+  try {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(lang === 'pt' ? 'pt-BR' : 'en-US', {
+      day: '2-digit',
+      month: 'short',
+    }).format(date);
+  } catch (e) {
+    return '';
+  }
+};
 
 export default function JourneyScreen() {
   const theme = useTheme();
-  const setTheme = useSetTheme();
   const navigation = useNavigation();
   const { t, lang } = useT();
   // setMood/exportStateJson/importStateJson vêm do contrato novo do AppContext.
@@ -141,23 +171,17 @@ export default function JourneyScreen() {
     loading,
     derived,
     resetAll,
-    setName,
-    setLang,
-    setMood,
+    updateEvidence,
+    removeEvidence,
     exportStateJson,
     importStateJson,
   } = useApp();
 
-  // O clima salvo precisa virar tema aplicado já no load — sem isto o chip
-  // marca o clima guardado com a tela ainda renderizando o tema padrão.
-  useEffect(() => {
-    if (state && state.mood && state.mood !== theme.name) setTheme(state.mood);
-    // roda uma vez no load; depois quem sincroniza é o toque no chip
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [nameDraft, setNameDraft] = useState('');
-  const [editing, setEditing] = useState(false);
   const [backupErro, setBackupErro] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState(null);
+  const [editingTrace, setEditingTrace] = useState(null);
+  const [traceDraft, setTraceDraft] = useState('');
 
   // UMA definição de prática para a tela inteira: sessão de manifestação, visão
   // ouvida até o fim ou afirmação recebida. Antes o gráfico contava as visões e
@@ -191,6 +215,25 @@ export default function JourneyScreen() {
   const chartData = useMemo(
     () => lastNDays(7).map((iso) => ({ label: weekdayKey(iso), value: practice.byDay[iso] || 0 })),
     [practice]
+  );
+
+  const traces = useMemo(() => {
+    if (!state) return [];
+    return state.manifestations
+      .flatMap((m) =>
+        (Array.isArray(m.evidence) ? m.evidence : []).map((entry) => ({
+          ...entry,
+          manifestationId: m.id,
+          manifestationTitle: m.title,
+          accent: m.accent,
+        }))
+      )
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  }, [state]);
+
+  const activeManifestations = useMemo(
+    () => (state ? state.manifestations.filter((m) => m.sessions.length < m.goalDays) : []),
+    [state]
   );
 
   if (loading || !state) {
@@ -242,30 +285,40 @@ export default function JourneyScreen() {
     { icon: 'trophy', key: 'manifested', label: S.statManifested, value: `${completed}`, accent: 4 },
   ];
 
-  const saveName = () => {
-    const v = nameDraft.trim();
-    if (!v) {
-      setEditing(false);
-      return;
-    }
-    setName(v);
-    setNameDraft('');
-    setEditing(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  };
-
   const confirmReset = async () => {
+    if (resetBusy) return;
+    setResetError(null);
     const ok = await confirmAsync({
       title: t(S.resetTitle),
       // A conta real: N manifestações e M dias de prática (a mesma definição
       // de prática do resto da tela).
-      message: t(S.resetMessage, { n: state.manifestations.length, m: practice.days.length }),
+      message: t(S.resetMessage, {
+        n: state.manifestations.length,
+        r: traces.length,
+        m: practice.days.length,
+      }),
       confirmLabel: t(S.resetConfirm),
       cancelLabel: t(S.cancel),
     });
     if (!ok) return;
-    resetAll();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    setResetBusy(true);
+    try {
+      if (state.morningRitual?.reminderEnabled) {
+        const cancelled = await cancelAffirmationAlarm();
+        if (!cancelled.ok) {
+          setResetError('alarm');
+          return;
+        }
+      }
+      const reset = await resetAll();
+      if (!reset) {
+        setResetError('storage');
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    } finally {
+      setResetBusy(false);
+    }
   };
 
   // Web-only de propósito: no export estático a prática vive no navegador.
@@ -316,10 +369,59 @@ export default function JourneyScreen() {
     input.click();
   };
 
+  const saveTraceEdit = () => {
+    if (!editingTrace || !traceDraft.trim()) return;
+    const ok = updateEvidence(editingTrace.manifestationId, editingTrace.id, traceDraft);
+    if (!ok) return;
+    setEditingTrace(null);
+    setTraceDraft('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  };
+
+  const confirmDeleteTrace = async (entry) => {
+    const ok = await confirmAsync({
+      title: t(S.deleteTraceTitle),
+      message: t(S.deleteTraceBody),
+      confirmLabel: t(S.deleteTraceConfirm),
+      cancelLabel: t(S.cancel),
+      destructive: true,
+    });
+    if (!ok) return;
+    removeEvidence(entry.manifestationId, entry.id);
+    if (editingTrace && editingTrace.id === entry.id) {
+      setEditingTrace(null);
+      setTraceDraft('');
+    }
+  };
+
   return (
-    <Screen>
+    <Screen scroll={false} testID="journey-screen">
       <Header title={t(S.title)} subtitle={t(S.subtitle, { name: state.name })} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        testID="journey-scroll"
+        style={styles.scrollView}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
+        <Card
+          testID="journey-open-community"
+          onPress={() => navigation.navigate('Community')}
+          accessibilityRole="button"
+          accessibilityLabel={t(S.community)}
+          accessibilityHint={t(S.communityBody)}
+          style={[styles.communityAccess, { backgroundColor: theme.surface }]}
+        >
+          <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 2), 0.14) }]}>
+            <Ionicons name="people-outline" size={20} color={accentAt(theme, 2)} />
+          </View>
+          <View style={styles.spaceCopy}>
+            <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.community)}</Text>
+            <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.communityBody)}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+        </Card>
+
         <GradientCover accent={4} radius={22} style={styles.hero}>
           <Text style={styles.heroLabel}>{t(S.heroLabel)}</Text>
           <Text style={styles.heroValue}>{consistency}%</Text>
@@ -345,118 +447,118 @@ export default function JourneyScreen() {
           ))}
         </View>
 
-        {/* Perfil e clima moram logo abaixo das placas de número — antes
-            ficavam a 2,6 telas de rolagem, afundando a cada manifestação. */}
-        <SectionHeading title={t(S.profile)} />
-        <Card style={[styles.card, { backgroundColor: theme.surface }]}>
-          <View style={styles.profileRow}>
-            <View style={[styles.avatar, { backgroundColor: alpha(accentAt(theme, 1), 0.18) }]}>
-              <Ionicons name="person" size={20} color={accentAt(theme, 1)} />
+        <SectionHeading title={t(S.yourSpace)} />
+        <Card style={[styles.spaceCard, { backgroundColor: theme.surface }]}>
+          <TouchableOpacity
+            testID="journey-open-profile"
+            activeOpacity={0.76}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.profileSettings)}
+            onPress={() => navigation.navigate('Profile')}
+            style={styles.spaceRow}
+          >
+            <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}>
+              <Ionicons name="person-outline" size={20} color={accentAt(theme, 1)} />
             </View>
-            {editing ? (
-              <TextInput
-                value={nameDraft}
-                onChangeText={setNameDraft}
-                autoFocus
-                // Abre PREENCHIDO com o nome atual e já selecionado — antes
-                // abria vazio, com um placeholder que parecia texto digitado.
-                selectTextOnFocus
-                style={[
-                  styles.nameInput,
-                  { color: theme.text, borderColor: alpha(theme.textMuted, 0.3) },
-                ]}
-                onSubmitEditing={saveName}
-                returnKeyType="done"
-              />
-            ) : (
-              <Text style={[styles.name, { color: theme.text }]}>{state.name}</Text>
-            )}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                if (editing) {
-                  saveName();
-                } else {
-                  setNameDraft(state.name);
-                  setEditing(true);
-                }
-              }}
-              style={[styles.editBtn, { backgroundColor: alpha(accentAt(theme, 0), 0.14) }]}
-            >
-              <Text style={[styles.editText, { color: accentAt(theme, 0) }]}>
-                {editing ? t(S.save) : t(S.edit)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Pílulas EN/PT — mesmo padrão do onboarding, chamando setLang.
-              Trocar de idioma não exige mais apagar tudo. */}
-          <View style={styles.langRow}>
-            <Text style={[styles.langLabel, { color: theme.textMuted }]}>{t(S.language)}</Text>
-            {['en', 'pt'].map((l) => {
-              const on = lang === l;
-              const c = accentAt(theme, 0);
-              return (
-                <TouchableOpacity
-                  key={l}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setLang(l);
-                    Haptics.selectionAsync().catch(() => {});
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  style={[styles.langPill, { backgroundColor: on ? c : alpha(c, 0.12) }]}
-                >
-                  <Text style={[styles.langPillText, { color: on ? '#FFFFFF' : c }]}>
-                    {l.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+            <View style={styles.spaceCopy}>
+              <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.profileSettings)}</Text>
+              <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.profileSettingsBody)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+          </TouchableOpacity>
         </Card>
 
-        <SectionHeading title={t(S.mood)} />
-        <View style={styles.themeRow}>
-          {THEMES.map((th, i) => {
-            // state.mood é o clima persistido no contexto; theme.name cobre o
-            // primeiro load, antes de qualquer escolha.
-            const on = (state.mood || theme.name) === th.key;
-            const c = accentAt(theme, i);
-            const onText = theme.dark ? '#0B0E14' : '#FFFFFF';
-            return (
-              <TouchableOpacity
-                key={th.key}
-                activeOpacity={0.85}
-                onPress={() => {
-                  // O clima persiste via contexto (state.mood); setTheme mantém
-                  // a troca visual imediata.
-                  setMood(th.key);
-                  setTheme(th.key);
-                  Haptics.selectionAsync().catch(() => {});
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={t(th.label)}
-                accessibilityState={{ selected: on }}
-                style={[
-                  styles.themeChip,
-                  {
-                    backgroundColor: on ? c : alpha(c, 0.14),
-                    borderColor: on ? c : alpha(c, 0.35),
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={on ? 'checkmark-circle' : 'color-palette-outline'}
-                  size={14}
-                  color={on ? onText : c}
-                />
-                <Text style={[styles.themeText, { color: on ? onText : c }]}>{t(th.label)}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <SectionHeading title={t(S.traces)} />
+        {traces.length === 0 ? (
+          <Card style={[styles.card, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t(S.tracesEmpty)}</Text>
+          </Card>
+        ) : (
+          <Card style={[styles.card, { backgroundColor: theme.surface }]}>
+            {traces.map((entry, index) => {
+              const activeEdit = editingTrace && editingTrace.id === entry.id;
+              const c = accentAt(theme, entry.accent);
+              return (
+                <View
+                  key={entry.id}
+                  style={[styles.traceItem, index > 0 && [styles.traceDivider, { borderTopColor: theme.border }]]}
+                >
+                  <View style={styles.traceHead}>
+                    <View style={[styles.traceMark, { backgroundColor: alpha(c, 0.14) }]}>
+                      <Ionicons name="reader-outline" size={16} color={c} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text numberOfLines={1} style={[styles.traceTitle, { color: theme.text }]}>
+                        {entry.manifestationTitle}
+                      </Text>
+                      <Text style={[styles.traceDate, { color: theme.textMuted }]}>
+                        {traceDate(entry.createdAt, lang)}
+                      </Text>
+                    </View>
+                    {!activeEdit ? (
+                      <View style={styles.traceActions}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditingTrace(entry);
+                            setTraceDraft(entry.text);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={t(S.editTrace)}
+                          style={styles.traceAction}
+                        >
+                          <Ionicons name="pencil-outline" size={17} color={theme.textMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => confirmDeleteTrace(entry)}
+                          accessibilityRole="button"
+                          accessibilityLabel={t(S.deleteTrace)}
+                          style={styles.traceAction}
+                        >
+                          <Ionicons name="trash-outline" size={17} color={theme.textMuted} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                  {activeEdit ? (
+                    <>
+                      <TextInput
+                        value={traceDraft}
+                        onChangeText={setTraceDraft}
+                        multiline
+                        autoFocus
+                        maxLength={280}
+                        style={[
+                          styles.traceInput,
+                          { color: theme.text, borderColor: theme.border, backgroundColor: alpha(theme.textMuted, 0.06) },
+                        ]}
+                      />
+                      <View style={styles.traceEditActions}>
+                        <PrimaryButton
+                          label={t(S.cancel)}
+                          variant="ghost"
+                          onPress={() => {
+                            setEditingTrace(null);
+                            setTraceDraft('');
+                          }}
+                          style={{ flex: 1, marginRight: 8 }}
+                        />
+                        <PrimaryButton
+                          label={t(S.saveTrace)}
+                          icon="checkmark"
+                          disabled={!traceDraft.trim()}
+                          onPress={saveTraceEdit}
+                          style={{ flex: 1 }}
+                        />
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={[styles.traceText, { color: theme.textMuted }]}>{entry.text}</Text>
+                  )}
+                </View>
+              );
+            })}
+          </Card>
+        )}
 
         <SectionHeading title={t(S.thisWeek)} />
         <Card style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -468,14 +570,14 @@ export default function JourneyScreen() {
         </Card>
 
         <SectionHeading title={t(S.activeManifestations)} />
-        {state.manifestations.length === 0 ? (
+        {activeManifestations.length === 0 ? (
           <Card style={[styles.card, { backgroundColor: theme.surface }]}>
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>
               {t(S.noManifestations)}
             </Text>
           </Card>
         ) : null}
-        {state.manifestations.map((m) => {
+        {activeManifestations.map((m) => {
           const c = accentAt(theme, m.accent);
           const p = pct(m.sessions.length, m.goalDays);
           return (
@@ -586,13 +688,19 @@ export default function JourneyScreen() {
         ) : null}
 
         <PrimaryButton
-          label={t(S.resetCta)}
+          label={t(resetBusy ? S.resetStoppingAlarm : S.resetCta)}
           icon="refresh"
           accent={1}
           variant="ghost"
           onPress={confirmReset}
+          disabled={resetBusy}
           style={{ marginTop: 24 }}
         />
+        {resetError ? (
+          <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
+            {t(resetError === 'alarm' ? S.resetAlarmFailed : S.resetStorageFailed)}
+          </Text>
+        ) : null}
         <Text style={[styles.footer, { color: theme.textMuted }]}>
           {t(S.footer, { app: APP_NAME })}
         </Text>
@@ -603,8 +711,19 @@ export default function JourneyScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  scrollView: { flex: 1, minHeight: 0 },
+  scroll: { paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  communityAccess: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: 4,
+    marginBottom: 14,
+  },
   hero: { padding: 22, marginTop: 4 },
   heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
   heroValue: { color: '#FFFFFF', fontSize: 44, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
@@ -632,36 +751,33 @@ const styles = StyleSheet.create({
   msIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   msLabel: { fontSize: 14, fontWeight: '700' },
   msSub: { fontSize: 12, marginTop: 2 },
-  profileRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  name: { flex: 1, fontSize: 16, fontWeight: '700', marginLeft: 14 },
-  nameInput: {
-    flex: 1,
-    marginLeft: 14,
-    borderBottomWidth: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    paddingVertical: 6,
-  },
-  editBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 16, marginLeft: 10 },
-  editText: { fontSize: 13, fontWeight: '700' },
-  themeRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  themeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+  spaceCard: { padding: 0, borderRadius: 8, overflow: 'hidden' },
+  spaceRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11 },
+  spaceIcon: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  spaceCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
+  spaceTitle: { fontSize: 14.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0 },
+  spaceBody: { fontSize: 12, lineHeight: 17, marginTop: 2, letterSpacing: 0 },
+  traceItem: { paddingVertical: 4 },
+  traceDivider: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, marginTop: 12 },
+  traceHead: { flexDirection: 'row', alignItems: 'center' },
+  traceMark: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  traceTitle: { fontSize: 13.5, fontWeight: '700' },
+  traceDate: { fontSize: 11.5, marginTop: 2 },
+  traceActions: { flexDirection: 'row', marginLeft: 6 },
+  traceAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  traceText: { fontSize: 14, lineHeight: 21, marginTop: 9 },
+  traceInput: {
+    minHeight: 82,
     borderWidth: 1,
-    marginRight: 8,
-    marginBottom: 8,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+    textAlignVertical: 'top',
   },
-  themeText: { fontSize: 13, fontWeight: '700', marginLeft: 6 },
-  langRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-  langLabel: { flex: 1, fontSize: 13, fontWeight: '600' },
-  // 32px de altura real — hitSlop não aumenta área nenhuma no react-native-web.
-  langPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, marginLeft: 8 },
-  langPillText: { fontSize: 13, fontWeight: '700' },
+  traceEditActions: { flexDirection: 'row', marginTop: 8 },
   backupNote: { fontSize: 12.5, lineHeight: 18, marginBottom: 12 },
   backupErro: { fontSize: 12.5, fontWeight: '600', marginTop: 10 },
   footer: { fontSize: 11.5, textAlign: 'center', marginTop: 18 },

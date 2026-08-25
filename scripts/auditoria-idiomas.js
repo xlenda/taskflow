@@ -102,9 +102,13 @@ const DESEJO = { pt: 'um apartamento na praia', en: 'a beach apartment' };
   for (const lang of ['pt', 'en']) {
     const page = await browser.newPage();
     await page.setViewport({ width: 390, height: 780, isMobile: true, hasTouch: true });
-    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.evaluate((s) => localStorage.setItem('@stella_state_v2', JSON.stringify(s)), SEED(lang));
-    await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    // Semeie antes do bundle executar. Fazer isso depois de DOMContentLoaded
+    // disputa com a hidratação do AsyncStorage e pode ser sobrescrito pelo
+    // estado inicial, produzindo um falso "aba não encontrada".
+    await page.evaluateOnNewDocument((s) => {
+      localStorage.setItem('@stella_state_v2', JSON.stringify(s));
+    }, SEED(lang));
+    await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
     await sleep(3500);
 
     const tap = async (texto) => {

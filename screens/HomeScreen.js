@@ -25,8 +25,10 @@ import { todayISO } from '../utils/date';
 import { confirmAsync } from '../utils/confirm';
 import { useT } from '../utils/useT';
 import { txt, tr, detectLang } from '../constants/i18n';
+import { isUnder18Age } from './onboarding/flow';
 
 import GradientCover from '../components/GradientCover';
+import CelesteMascot from '../components/CelesteMascot';
 import ManifestCard from '../components/ManifestCard';
 import SectionHeading from '../components/SectionHeading';
 
@@ -46,6 +48,14 @@ const S = {
     pt: 'um amor de verdade, 10 mil por mês…',
   },
   sendDesire: { en: 'Send your desire', pt: 'Enviar seu desejo' },
+  creating: { en: 'Creating your scene…', pt: 'Criando sua cena…' },
+  consentTitle: { en: 'Create with Gemini?', pt: 'Criar com o Gemini?' },
+  consentBody: {
+    en: 'If you are 18 or older, Celeste can send only the answers needed for this scene to Google Gemini. Choose local to keep the generation on this device.',
+    pt: 'Se você tem 18 anos ou mais, o Celeste pode enviar ao Google Gemini apenas as respostas necessárias para esta cena. Escolha local para manter a geração neste aparelho.',
+  },
+  consentAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
+  consentLocal: { en: 'Use local', pt: 'Usar local' },
   inviteTitle: { en: 'Start a 21-day practice', pt: 'Comece uma prática de 21 dias' },
   // Só o que a pessoa escreve AQUI nasce com 21 dias; os cards sugeridos têm
   // metas próprias (14, 21 ou 30). O texto fala apenas do que ele faz.
@@ -62,8 +72,9 @@ const S = {
   todayPending: { en: 'today pending', pt: 'hoje pendente' },
   activeOne: { en: '1 active', pt: '1 ativa' },
   activeMany: { en: '{n} active', pt: '{n} ativas' },
-  allDone: { en: 'all manifested ✨', pt: 'todas realizadas ✨' },
+  allDone: { en: 'all cycles complete', pt: 'todos os ciclos concluídos' },
   todaysPractice: { en: 'Today’s practice', pt: 'Prática de hoje' },
+  bridgeToday: { en: 'Bridge to today', pt: 'Ponte para hoje' },
   practiceBtn: { en: 'Practice', pt: 'Praticar' },
   newManifest: { en: 'New manifestation', pt: 'Nova manifestação' },
   // Mesmo texto da tela interna: desfazer pede confirmação, marcar não.
@@ -83,6 +94,15 @@ const S = {
     en: 'Type a desire above and {app} will build your practice around it.',
     pt: 'Escreva um desejo aí em cima e o {app} monta sua prática em volta dele.',
   },
+  morningTitle: { en: 'Share your dream', pt: 'Conte seu sonho' },
+  morningEmpty: {
+    en: 'Turn what stayed with you into a personal affirmation',
+    pt: 'Transforme o que ficou dele numa afirmação só sua',
+  },
+  morningPrepared: { en: 'Affirmation chosen for {time}', pt: 'Afirmação escolhida para {time}' },
+  morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
+  openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
+  openProfile: { en: 'Open profile and settings', pt: 'Abrir perfil e configurações' },
 };
 
 // Dispensar o convite é preferência de interface, não dado de conta: guardamos
@@ -92,7 +112,7 @@ const INVITE_KEY = '@celeste_home_invite_dismissed_v1';
 export default function HomeScreen() {
   const th = useTheme();
   const navigation = useNavigation();
-  const { state, loading, derived, addManifestation, togglePractice } = useApp();
+  const { state, loading, derived, addManifestation, togglePractice, saveProfile } = useApp();
   const { t, lang } = useT();
   const [desire, setDesire] = useState('');
   const [category, setCategory] = useState('Wealth');
@@ -104,6 +124,7 @@ export default function HomeScreen() {
   const [inviteDismissed, setInviteDismissed] = useState(null);
   // Só com o campo focado o envio precisa sair na descida do dedo (ver o botão).
   const [inputFocused, setInputFocused] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -178,19 +199,59 @@ export default function HomeScreen() {
   // Chamado no onPressIn do botão: com o teclado aberto, o toque que fecha o
   // teclado engolia o clique e obrigava a tocar duas vezes. Disparando na
   // descida do dedo, o primeiro toque já envia.
-  const submit = () => {
+  const submit = async () => {
     const title = desire.trim();
-    if (!title || sentRef.current === title) return;
+    if (!title || generating || sentRef.current === title) return;
     sentRef.current = title;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const meta = categoryMeta(category);
-    // A categoria escolhida no chip vai junto e fica gravada no item: o card
-    // nasce com o rótulo, o ícone e o acento dela.
-    const id = addManifestation({ title, category, accent: meta.accent, goalDays: 21 });
-    setDesire('');
-    setComposerOpen(false);
-    Keyboard.dismiss();
-    navigation.navigate('Manifestation', { id });
+    const currentProfile = state.profile || {};
+    const knownMinor = isUnder18Age(currentProfile.age);
+    let cloudPersonalization = !knownMinor && currentProfile.cloudPersonalization === true;
+    let cloudAdultConfirmed = cloudPersonalization && currentProfile.cloudAdultConfirmed === true;
+    if (!knownMinor && currentProfile.cloudPersonalization !== true && currentProfile.cloudPersonalization !== false) {
+      cloudPersonalization = await confirmAsync({
+        title: t(S.consentTitle),
+        message: t(S.consentBody),
+        confirmLabel: t(S.consentAllow),
+        cancelLabel: t(S.consentLocal),
+        destructive: false,
+        lang,
+      });
+      cloudAdultConfirmed = cloudPersonalization;
+      saveProfile({ cloudPersonalization, cloudAdultConfirmed });
+    } else if (!cloudPersonalization || !cloudAdultConfirmed) {
+      cloudPersonalization = false;
+      cloudAdultConfirmed = false;
+    }
+
+    setGenerating(true);
+    try {
+      // A categoria escolhida no chip vai junto e fica gravada no item: o card
+      // nasce com o rótulo, o ícone e o acento dela.
+      const id = await addManifestation({
+        title,
+        category,
+        lang,
+        accent: meta.accent,
+        goalDays: 21,
+        profile: { ...currentProfile, cloudPersonalization, cloudAdultConfirmed },
+      });
+      if (!id) {
+        // Reset/import pode invalidar uma geração remota ainda em voo. Nesse
+        // caso o texto continua no campo para a pessoa tentar novamente.
+        sentRef.current = '';
+        return;
+      }
+      setDesire('');
+      setComposerOpen(false);
+      Keyboard.dismiss();
+      navigation.navigate('Manifestation', { id });
+    } catch (e) {
+      sentRef.current = '';
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const dismissInvite = () => {
@@ -215,12 +276,15 @@ export default function HomeScreen() {
     togglePractice(m.id);
   };
 
-  // Concluída (completedAt gravado ou meta batida) sai das pendências: ela não
-  // conta mais como "falta praticar hoje".
-  const isComplete = (m) => !!m.completedAt || m.sessions.length >= m.goalDays;
+  // completedAt preserva o marco histórico da primeira conclusão. O estado
+  // atual do ciclo, porém, vem sempre da contagem atual e pode voltar a ativo
+  // quando a pessoa desfaz um dia.
+  const isComplete = (m) => m.sessions.length >= m.goalDays;
   const activeOnes = state.manifestations.filter((m) => !isComplete(m));
   const pendingToday = activeOnes.filter((m) => !m.sessions.includes(todayISO()));
   const firstPending = pendingToday[0] || null;
+  const morningRitual = state.morningRitual || {};
+  const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
   const hasItems = state.manifestations.length > 0;
   // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
   // concluídas por último (sort estável preserva a ordem de criação).
@@ -269,6 +333,7 @@ export default function HomeScreen() {
                 key={c.key}
                 activeOpacity={0.8}
                 onPress={() => setCategory(c.key)}
+                disabled={generating}
                 accessibilityRole="button"
                 accessibilityLabel={label}
                 accessibilityState={{ selected: active }}
@@ -309,6 +374,7 @@ export default function HomeScreen() {
             ref={inputRef}
             value={desire}
             onChangeText={writeDesire}
+            editable={!generating}
             placeholder={t(S.placeholder)}
             placeholderTextColor={alpha(th.text, 0.4)}
             style={[styles.input, { color: th.text }]}
@@ -327,6 +393,7 @@ export default function HomeScreen() {
               if (inputFocused) submit();
             }}
             onPress={submit}
+            disabled={generating || !desire.trim()}
             accessibilityRole="button"
             accessibilityLabel={t(S.sendDesire)}
             style={[
@@ -334,9 +401,14 @@ export default function HomeScreen() {
               { backgroundColor: desire.trim() ? accentAt(th, 0) : alpha(th.text, 0.2) },
             ]}
           >
-            <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+            {generating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+            )}
           </TouchableOpacity>
         </Pressable>
+        {generating ? <Text style={styles.generatingText}>{t(S.creating)}</Text> : null}
       </View>
     </GradientCover>
   );
@@ -357,8 +429,48 @@ export default function HomeScreen() {
         {/* O Screen já afasta 16 das bordas; o cabeçalho desconta o recuo
             extra do conteúdo para ficar onde sempre esteve. */}
         <View style={styles.headerHold}>
-          <Header title={APP_NAME} subtitle={t(S.subtitle, { name: state.name })} />
+          <Header
+            title={APP_NAME}
+            subtitle={t(S.subtitle, { name: state.name })}
+            right={(
+              <Pressable
+                testID="open-profile"
+                accessibilityRole="button"
+                accessibilityLabel={t(S.openProfile)}
+                onPress={() => navigation.navigate('Profile')}
+                style={({ pressed }) => [styles.mascotProfile, pressed && styles.actionPressed]}
+              >
+                <CelesteMascot size={46} testID="celeste-mascot-home" />
+                <View style={[styles.profileBadge, { backgroundColor: th.surface, borderColor: th.border }]}>
+                  <Ionicons name="person" size={11} color={th.text} />
+                </View>
+              </Pressable>
+            )}
+          />
         </View>
+
+        <Card
+          testID="open-dream-journal"
+          onPress={() => navigation.navigate('MorningRitual', { focus: 'dream' })}
+          accessibilityRole="button"
+          accessibilityLabel={t(S.openMorning)}
+          style={[styles.morningCard, { backgroundColor: th.surface }]}
+        >
+          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 3), 0.14) }]}>
+            <Ionicons name="moon-outline" size={22} color={accentAt(th, 3)} />
+          </View>
+          <View style={styles.morningCopy}>
+            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.morningTitle)}</Text>
+            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+              {morningRitual.reminderEnabled
+                ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
+                : hasWakeAffirmation
+                ? t(S.morningPrepared, { time: morningRitual.reminderTime || '07:00' })
+                : t(S.morningEmpty)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+        </Card>
 
         {hasItems ? (
           <>
@@ -403,6 +515,19 @@ export default function HomeScreen() {
                 >
                   {txt(firstPending.title, lang)}
                 </Text>
+                {firstPending.anchorStep ? (
+                  <View style={[styles.bridgeMini, { backgroundColor: alpha(accentAt(th, firstPending.accent), 0.1) }]}>
+                    <Ionicons name="footsteps-outline" size={16} color={accentAt(th, firstPending.accent)} />
+                    <View style={{ flex: 1, marginLeft: 9 }}>
+                      <Text style={[styles.bridgeMiniLabel, { color: accentAt(th, firstPending.accent) }]}>
+                        {t(S.bridgeToday)}
+                      </Text>
+                      <Text numberOfLines={2} style={[styles.bridgeMiniText, { color: th.text }]}>
+                        {firstPending.anchorStep}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
                 <Button
                   icon="play"
                   label={t(S.practiceBtn)}
@@ -531,7 +656,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 key={card.id}
                 activeOpacity={0.88}
-                onPress={() => navigation.navigate('Manifestation', { template: card })}
+                onPress={() => navigation.navigate('Manifestation', { templateId: card.id })}
                 accessibilityRole="button"
                 accessibilityLabel={`${title}. ${tagline}`}
                 style={[
@@ -585,9 +710,35 @@ const styles = StyleSheet.create({
   scroller: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingBottom: 96 },
   headerHold: { marginHorizontal: -16 },
+  mascotProfile: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
+  profileBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionPressed: { opacity: 0.72 },
+  morningCard: {
+    minHeight: 72,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  morningIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  morningCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
+  morningTitle: { fontSize: 15.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0 },
+  morningSub: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hero: { paddingVertical: 22, paddingHorizontal: 18, marginTop: 4 },
   heroInner: { alignItems: 'center' },
+  generatingText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginTop: 10 },
   avatar: {
     width: 56,
     height: 56,
@@ -646,6 +797,9 @@ const styles = StyleSheet.create({
   todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   todayTitle: { fontSize: 16, fontWeight: '700' },
   todaySub: { fontSize: 12.5, marginTop: 2 },
+  bridgeMini: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, padding: 11, marginTop: 10 },
+  bridgeMiniLabel: { fontSize: 11.5, fontWeight: '800' },
+  bridgeMiniText: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', marginTop: 3 },
   inviteClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   chipScroll: { paddingRight: 8, paddingVertical: 2 },
   trendChip: {

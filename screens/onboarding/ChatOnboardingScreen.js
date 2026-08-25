@@ -8,26 +8,57 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  ActivityIndicator,
+  AccessibilityInfo,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import Typewriter from '../../components/Typewriter';
 import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
 import { UI, txt, tr } from '../../constants/i18n';
-import { FLOW, fill, stepLines, inferCategory } from './flow';
+import { FLOW, ageConfirmsAdult, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
-// v: 2 = fluxo enxuto de 20/08 — rascunho de versão antiga é descartado
-// (o idx apontaria pra outra pergunta e as respostas cortadas virariam órfãs).
+// v: 4 = roteiro completo com respostas rápidas. Rascunhos anteriores podem
+// apontar para um campo de texto que agora é uma escolha e são descartados.
 const DRAFT_KEY = '@celeste_onb_draft';
-const DRAFT_V = 2;
+const DRAFT_V = 4;
+const DRAFT_READ_TIMEOUT_MS = 1500;
+const CUSTOM_OPTION = '__custom__';
+const initialReduceMotion = () =>
+  Platform.OS === 'web' &&
+  typeof window !== 'undefined' &&
+  !!window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Strings locais da tela (padrão do app: {en,pt} + tr()).
 const S = {
   counter: { en: '{n} of {total}', pt: '{n} de {total}' },
+  creating: {
+    en: 'Turning your answers into a scene made for you…',
+    pt: 'Transformando suas respostas em uma cena feita para você…',
+  },
+  creationFailed: {
+    en: 'Your answers are safe. We could not finish the scene this time.',
+    pt: 'Suas respostas estão salvas. Não conseguimos terminar a cena desta vez.',
+  },
+  retryCreation: { en: 'Try again', pt: 'Tentar novamente' },
+  restoringDraft: { en: 'Restoring your conversation…', pt: 'Retomando sua conversa…' },
+  other: { en: 'Something else', pt: 'Outra resposta' },
 };
+
+function normalizeCloudConsent(profile) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  const allowed = ageConfirmsAdult(source.age) && source.cloudPersonalization === true;
+  return {
+    ...source,
+    cloudPersonalization: allowed,
+    cloudAdultConfirmed: allowed,
+  };
+}
 
 export default function ChatOnboardingScreen({ navigation }) {
   const { saveProfile, addManifestation, state } = useApp();
@@ -38,55 +69,122 @@ export default function ChatOnboardingScreen({ navigation }) {
   const [answers, setAnswers] = useState({});
   const [typing, setTyping] = useState(true);
   const [instant, setInstant] = useState(false);
-  // Depois do 1º toque pra pular a digitação, TODAS as próximas perguntas já
-  // nascem reveladas (a preferência é lembrada — ninguém pula duas vezes à toa).
-  const [fastMode, setFastMode] = useState(false);
   const [value, setValue] = useState('');
   const [selected, setSelected] = useState(null);
   const [items, setItems] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [mName, setMName] = useState('');
   const [mExtra, setMExtra] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [creationError, setCreationError] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(initialReduceMotion);
   const autoTimer = useRef(null);
+  const finishingRef = useRef(false);
+  const finalAnswersRef = useRef(null);
+  const lastTypingPulse = useRef(0);
 
   const step = FLOW[idx];
   const lines = useMemo(() => stepLines(step, answers, APP_NAME, lang), [idx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Options resolved for the active language; `key` is the canonical stored value.
+  // Labels follow the active language. Keys stay stable for selection state,
+  // while scene-facing answers can be stored in the reader's language.
+  const storedOptionValue = (option) =>
+    step.storeLocalized ? txt(option.answer || option, lang) : option.en;
   const opts =
     step.type === 'boolean'
       ? [
-          { key: true, label: T.yes },
-          { key: false, label: T.no },
+          { key: true, value: true, label: step.yesLabel ? txt(step.yesLabel, lang) : T.yes },
+          { key: false, value: false, label: step.noLabel ? txt(step.noLabel, lang) : T.no },
         ]
       : step.type === 'chips'
-      ? step.options.map((o) => ({ key: o.en, label: txt(o, lang) }))
+      ? [
+          ...step.options.map((o) => ({ key: o.en, label: txt(o, lang), value: storedOptionValue(o) })),
+          ...(step.allowCustom ? [{ key: CUSTOM_OPTION, label: tr(S.other, lang), custom: true }] : []),
+        ]
       : [];
 
   // Reset per-step UI state, prefilling previous answers when going back.
   useEffect(() => {
     setTyping(step.type !== 'intro'); // telas de valor não digitam — botão na hora
-    // fastMode: o Typewriter recebe instant e dispara onDone na hora, então a
-    // lógica de statements/auto-avanço continua a mesma, só sem a espera.
-    setInstant(fastMode);
+    // Um toque conclui somente a frase atual. A pergunta seguinte volta a ser
+    // digitada e mantém o ritmo sensorial letra por letra.
+    setInstant(false);
     const prev = answers[step.key];
-    setValue(step.type === 'text' && typeof prev === 'string' ? prev : '');
-    setSelected(step.type === 'chips' || step.type === 'boolean' ? (prev !== undefined ? prev : null) : null);
+    const matchedOption =
+      step.type === 'chips' &&
+      step.options.find((option) => option.en === prev || storedOptionValue(option) === prev);
+    const customAnswer =
+      step.type === 'chips' && step.allowCustom && typeof prev === 'string' && !matchedOption;
+    setValue((step.type === 'text' || customAnswer) && typeof prev === 'string' ? prev : '');
+    setSelected(
+      step.type === 'chips' || step.type === 'boolean'
+        ? customAnswer
+          ? CUSTOM_OPTION
+          : matchedOption
+          ? matchedOption.en
+          : prev !== undefined
+          ? prev
+          : null
+        : null
+    );
     setItems(step.type === 'list' && Array.isArray(prev) ? prev : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
   useEffect(() => () => clearTimeout(autoTimer.current), []);
 
+  useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        if (alive) setReduceMotion(enabled);
+      })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      alive = false;
+      if (subscription && subscription.remove) subscription.remove();
+    };
+  }, []);
+
+  const pulseForCharacter = (character) => {
+    // Letters and numbers get a tiny pulse; spaces and punctuation stay quiet.
+    // The 18 ms guard only suppresses timer catch-up bursts after a background
+    // tab or stalled frame. At the normal 26 ms typing cadence every letter fires.
+    if (!character || !/[0-9A-Za-zÀ-ÖØ-öø-ÿ]/.test(character) || reduceMotion) return;
+    const now = Date.now();
+    if (now - lastTypingPulse.current < 18) return;
+    lastTypingPulse.current = now;
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(8);
+      }
+      return;
+    }
+    if (Platform.OS === 'android') {
+      Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Keyboard_Tap).catch(() => {});
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+  };
+
   // Restore a saved draft (reload / tab killed mid-chat resumes where the user stopped).
   useEffect(() => {
     let alive = true;
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (!alive || finished) return;
+      finished = true;
+      setDraftLoaded(true);
+    }, DRAFT_READ_TIMEOUT_MS);
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(DRAFT_KEY);
         const draft = raw ? JSON.parse(raw) : null;
         if (
           alive &&
+          !finished &&
           draft &&
           typeof draft === 'object' &&
           draft.v === DRAFT_V &&
@@ -96,37 +194,81 @@ export default function ChatOnboardingScreen({ navigation }) {
           draft.answers &&
           typeof draft.answers === 'object'
         ) {
-          setAnswers(draft.answers);
+          setAnswers(normalizeCloudConsent(draft.answers));
           setIdx(draft.idx);
         }
       } catch (e) {
         // Corrupt draft — start fresh.
+      } finally {
+        if (alive && !finished) {
+          finished = true;
+          clearTimeout(timer);
+          setDraftLoaded(true);
+        }
       }
     })();
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
   }, []);
 
-  const goNext = (ans) => {
+  const goNext = async (ans) => {
     clearTimeout(autoTimer.current);
+    // Reset before changing `idx`: child effects run before the parent's step
+    // effect, so a new Typewriter must never mount carrying `instant=true` from
+    // a tap that completed the previous sentence.
+    setInstant(false);
     let i = idx + 1;
     while (i < FLOW.length && FLOW[i].when && !FLOW[i].when(ans)) i += 1;
     if (i >= FLOW.length) {
-      AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
-      saveProfile(ans);
+      if (finishingRef.current) return;
+      finishingRef.current = true;
+      setCreationError(false);
+      setCreating(true);
+      const finalAnswers = normalizeCloudConsent(ans);
+      finalAnswersRef.current = finalAnswers;
+      // Keep the final answer recoverable until the scene exists. Reloading
+      // during a provider or device failure must not erase the questionnaire.
+      AsyncStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ v: DRAFT_V, idx, answers: finalAnswers })
+      ).catch(() => {});
+      saveProfile(finalAnswers);
       // Recompensa antes da cobrança: o desejo dela vira a 1ª manifestação e a
       // tela Reveal mostra o resultado ANTES do paywall. Os setState do contexto
       // são funcionais e em ordem — o addManifestation já enxerga o profile.
-      const id = addManifestation({
-        title: String(ans.hopedChange || '').trim(),
-        category: inferCategory(ans.hopedChange),
-      });
-      navigation.replace('Reveal', { id });
+      try {
+        const id = await addManifestation({
+          title: String(ans.hopedChange || '').trim(),
+          category: inferCategory(ans.hopedChange),
+          lang,
+          profile: finalAnswers,
+        });
+        if (!id) throw new Error('scene_not_created');
+        AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+        navigation.replace('Reveal', { id });
+      } catch (_error) {
+        // No answer or exception is logged: questionnaire content can be
+        // intimate. The retry reuses the in-memory and persisted final draft.
+        finishingRef.current = false;
+        setCreating(false);
+        setCreationError(true);
+      }
     } else {
       AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ v: DRAFT_V, idx: i, answers: ans })).catch(() => {});
       setIdx(i);
     }
+  };
+
+  const retryCreation = () => {
+    const finalAnswers = finalAnswersRef.current;
+    if (!finalAnswers) {
+      setCreationError(false);
+      return;
+    }
+    finishingRef.current = false;
+    goNext(finalAnswers);
   };
 
   // Pular pergunta não essencial: some a resposta anterior (se houver) e avança.
@@ -134,6 +276,10 @@ export default function ChatOnboardingScreen({ navigation }) {
     clearTimeout(autoTimer.current);
     const next = { ...answers };
     if (step.key) delete next[step.key];
+    if (step.key === 'age' || step.key === 'cloudPersonalization') {
+      next.cloudPersonalization = false;
+      next.cloudAdultConfirmed = false;
+    }
     for (const s of FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
     }
@@ -143,6 +289,7 @@ export default function ChatOnboardingScreen({ navigation }) {
 
   const goBack = () => {
     clearTimeout(autoTimer.current);
+    setInstant(false);
     let i = idx - 1;
     // Skip statements and gated-off steps so back never lands on an auto-advancing screen.
     while (i >= 0 && (FLOW[i].type === 'statement' || (FLOW[i].when && !FLOW[i].when(answers)))) i -= 1;
@@ -152,6 +299,15 @@ export default function ChatOnboardingScreen({ navigation }) {
 
   const commit = (val) => {
     const next = { ...answers, [step.key]: val };
+    if (step.key === 'age' && !ageConfirmsAdult(val)) {
+      next.cloudPersonalization = false;
+      next.cloudAdultConfirmed = false;
+    }
+    if (step.key === 'cloudPersonalization') {
+      const allowed = val === true && ageConfirmsAdult(next.age);
+      next.cloudPersonalization = allowed;
+      next.cloudAdultConfirmed = allowed;
+    }
     // Drop answers from gated steps that became unreachable (e.g. kids after hasKids -> No).
     for (const s of FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
@@ -167,7 +323,10 @@ export default function ChatOnboardingScreen({ navigation }) {
     }
   };
 
-  const canSend = step.type === 'text' && (!!value.trim() || step.optional);
+  const customChoiceActive = step.type === 'chips' && selected === CUSTOM_OPTION;
+  const canSend =
+    (step.type === 'text' && (!!value.trim() || step.optional)) ||
+    (customChoiceActive && !!value.trim());
   const submitText = () => {
     if (!canSend) return;
     commit(value.trim());
@@ -176,8 +335,12 @@ export default function ChatOnboardingScreen({ navigation }) {
   const pickOption = (o) => {
     clearTimeout(autoTimer.current);
     setSelected(o.key);
+    if (o.custom) {
+      setValue('');
+      return;
+    }
     if (step.needsContinue) return;
-    autoTimer.current = setTimeout(() => commit(o.key), 220);
+    autoTimer.current = setTimeout(() => commit(o.value), 220);
   };
 
   const openModal = () => {
@@ -195,11 +358,76 @@ export default function ChatOnboardingScreen({ navigation }) {
     setModalOpen(false);
   };
 
+  if (!draftLoaded) {
+    return (
+      <OnbScreen>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}>
+          <ActivityIndicator size="small" color={ONB.heart} />
+          <Text style={[serifStyle(20), { textAlign: 'center', marginTop: 18 }]}>
+            {tr(S.restoringDraft, lang)}
+          </Text>
+        </View>
+      </OnbScreen>
+    );
+  }
+
+  if (creating || creationError) {
+    return (
+      <OnbScreen>
+        <View
+          accessibilityRole={creationError ? 'alert' : undefined}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 }}
+        >
+          {creationError ? (
+            <>
+              <Ionicons name="cloud-offline-outline" size={42} color={ONB.heart} />
+              <Text style={[serifStyle(25), { textAlign: 'center', marginTop: 22 }]}>
+                {tr(S.creationFailed, lang)}
+              </Text>
+              <Pressable
+                testID="retry-scene-creation"
+                accessibilityRole="button"
+                onPress={retryCreation}
+                style={({ pressed }) => ({
+                  minWidth: 210,
+                  minHeight: 52,
+                  marginTop: 26,
+                  borderRadius: 8,
+                  paddingHorizontal: 20,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: ONB.cta,
+                  opacity: pressed ? 0.82 : 1,
+                })}
+              >
+                <Ionicons name="refresh" size={19} color={ONB.ctaInk} />
+                <Text style={{ marginLeft: 8, color: ONB.ctaInk, fontSize: 16, fontWeight: '700' }}>
+                  {tr(S.retryCreation, lang)}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <ActivityIndicator size="large" color={ONB.heart} />
+              <Text style={[serifStyle(26), { textAlign: 'center', marginTop: 24 }]}>
+                {tr(S.creating, lang)}
+              </Text>
+            </>
+          )}
+        </View>
+      </OnbScreen>
+    );
+  }
+
   const centered = step.type === 'statement' || step.type === 'text';
 
   return (
     <OnbScreen>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, minHeight: 0 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         {/* Top bar: back + progress */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 }}>
           <Pressable
@@ -240,19 +468,18 @@ export default function ChatOnboardingScreen({ navigation }) {
 
         {/* Question area — tap anywhere to finish typing instantly */}
         <Pressable
-          style={{ flex: 1 }}
-          onPress={() => {
-            setInstant(true);
-            setFastMode(true); // 1º toque desliga a máquina de escrever pro resto do fluxo
-          }}
+          testID="onboarding-question-area"
+          style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+          onPress={() => setInstant(true)}
         >
           <View
             style={{
               flex: 1,
+              minHeight: 0,
               paddingHorizontal: 26,
               justifyContent: centered ? 'center' : 'flex-start',
-              paddingTop: centered ? 0 : 100,
-              paddingBottom: centered ? 60 : 0,
+              paddingTop: centered ? 0 : step.compact ? 32 : 100,
+              paddingBottom: centered ? 60 : step.compact ? 16 : 0,
             }}
           >
             {step.type === 'intro' ? (
@@ -283,26 +510,45 @@ export default function ChatOnboardingScreen({ navigation }) {
                 ) : null}
               </View>
             ) : (
-              <Typewriter key={`${step.id}-${lang}`} lines={lines} instant={instant} textStyle={serifStyle(29)} onDone={onTyped} />
+              <Typewriter
+                key={`${step.id}-${lang}`}
+                lines={lines}
+                instant={instant}
+                textStyle={serifStyle(step.textSize || 29)}
+                onCharacter={pulseForCharacter}
+                characterMotion={!reduceMotion}
+                onDone={onTyped}
+              />
             )}
 
             {/* Chips / boolean options */}
             {!typing && opts.length ? (
-              <View
-                style={[
-                  { marginTop: 28 },
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ marginTop: step.compact ? 18 : 28, flex: 1, minHeight: 0 }}
+                contentContainerStyle={[
+                  { paddingBottom: 8 },
                   step.wrap && { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10 },
                 ]}
               >
                 {opts.map((o) => (
-                  <OptionPill key={String(o.key)} label={o.label} active={selected === o.key} onPress={() => pickOption(o)} />
+                  <OptionPill
+                    key={String(o.key)}
+                    label={o.label}
+                    active={selected === o.key}
+                    onPress={() => pickOption(o)}
+                    style={step.compact ? { paddingVertical: 11, marginBottom: 8 } : null}
+                  />
                 ))}
-              </View>
+              </ScrollView>
             ) : null}
 
             {/* List (kids / people) */}
             {!typing && step.type === 'list' ? (
-              <ScrollView style={{ marginTop: 24 }} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={{ marginTop: 24, flex: 1, minHeight: 0 }}
+                showsVerticalScrollIndicator={false}
+              >
                 {items.map((it, i) => (
                   <View
                     key={`${it.name}-${i}`}
@@ -358,7 +604,7 @@ export default function ChatOnboardingScreen({ navigation }) {
         </Pressable>
 
         {/* Bottom action area */}
-        {!typing && step.type === 'text' ? (
+        {!typing && (step.type === 'text' || customChoiceActive) ? (
           <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
             <View
               style={{
@@ -375,7 +621,7 @@ export default function ChatOnboardingScreen({ navigation }) {
                 key={step.id}
                 value={value}
                 onChangeText={setValue}
-                placeholder={fill(txt(step.placeholder, lang), answers, APP_NAME)}
+                placeholder={fill(txt(customChoiceActive ? step.customPlaceholder : step.placeholder, lang), answers, APP_NAME)}
                 placeholderTextColor={ONB.surfaceFaint}
                 keyboardType={step.keyboard}
                 autoFocus
@@ -397,7 +643,9 @@ export default function ChatOnboardingScreen({ navigation }) {
 
         {step.type === 'intro' ||
         (!typing &&
-          ((step.type === 'statement' && step.needsContinue) || (step.type === 'chips' && step.needsContinue) || step.type === 'list')) ? (
+          ((step.type === 'statement' && step.needsContinue) ||
+            (step.type === 'chips' && step.needsContinue && !customChoiceActive) ||
+            step.type === 'list')) ? (
           <View style={{ paddingHorizontal: 20, paddingBottom: 28 }}>
             <ContinueButton
               label={T.continue}

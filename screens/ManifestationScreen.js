@@ -16,7 +16,7 @@ import { Screen, Header, Card, pct } from '../ui/kit';
 import { confirmAsync } from '../utils/confirm';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
-import { categoryMeta, localized, FOR_YOU } from '../constants/content';
+import { categoryMeta, localized, FOR_YOU, findForYouById } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -24,7 +24,6 @@ import { todayISO, formatTime, lastNDays } from '../utils/date';
 import {
   speak,
   narrate,
-  playText,
   stopSpeaking,
   isSpeechAvailable,
   hasNeuralAudio,
@@ -98,8 +97,8 @@ const S = {
 
   releaseTitle: { en: 'Release this manifestation?', pt: 'Deixar esta manifestação ir?' },
   releaseBody: {
-    en: 'Your practice history for it will be cleared.',
-    pt: 'Todo o histórico de prática dela será apagado.',
+    en: 'Its practice history and {n} private traces will be permanently removed.',
+    pt: 'O histórico de prática e {n} Rastros privados serão apagados para sempre.',
   },
   releaseConfirm: { en: 'Release', pt: 'Deixar ir' },
   releaseAction: { en: 'Release this manifestation', pt: 'Deixar esta manifestação ir' },
@@ -115,15 +114,32 @@ const S = {
     en: 'Your first practice opens your constancy record here.',
     pt: 'Sua primeira prática abre aqui o seu registro de constância.',
   },
-  completedBanner: { en: '{goal} of {goal} — realized ✨', pt: '{goal} de {goal} — realizada ✨' },
+  completedBanner: { en: '{goal} of {goal} — cycle complete', pt: '{goal} de {goal} — ciclo concluído' },
 
   markDayTitle: { en: 'Mark the practice for {date}?', pt: 'Marcar a prática de {date}?' },
   unmarkDayTitle: { en: 'Undo the practice for {date}?', pt: 'Desfazer a prática de {date}?' },
   markConfirm: { en: 'Mark', pt: 'Marcar' },
 
-  edit: { en: 'Edit title and affirmation', pt: 'Editar título e afirmação' },
+  edit: { en: 'Edit title, affirmation and bridge', pt: 'Editar título, afirmação e ponte' },
   editTitle: { en: 'Title', pt: 'Título' },
   editAffirmation: { en: 'Affirmation', pt: 'Afirmação' },
+  editStep: { en: 'Bridge to today', pt: 'Ponte para hoje' },
+  anchorTitle: { en: 'Your bridge to today', pt: 'Sua ponte para hoje' },
+  anchorNote: {
+    en: 'A small action you control. You can edit it with the pencil above.',
+    pt: 'Uma ação pequena que está nas suas mãos. Você pode editá-la no lápis acima.',
+  },
+  evidenceTitle: { en: 'Traces of change', pt: 'Rastros de mudança' },
+  evidencePrompt: {
+    en: 'What happened, did not happen, or would you like to adjust?',
+    pt: 'O que aconteceu, não aconteceu ou você quer ajustar?',
+  },
+  evidencePlaceholder: {
+    en: 'Write an honest observation, including when nothing changed…',
+    pt: 'Registre uma observação honesta, inclusive quando nada mudou…',
+  },
+  evidenceSave: { en: 'Save this trace', pt: 'Guardar este rastro' },
+  evidenceSaved: { en: 'Saved in your private journey.', pt: 'Guardado na sua jornada privada.' },
   save: { en: 'Save', pt: 'Salvar' },
   cancel: { en: 'Cancel', pt: 'Cancelar' },
 };
@@ -171,14 +187,6 @@ const categoryLabel = (key, lang) => txt(CAT[key], lang) || String(key || '');
 // pontas não contam).
 const norm = (s) => String(s || '').trim().toLowerCase();
 
-// Títulos da sugestão nos DOIS idiomas: a manifestação pode ter sido criada em
-// português e a pessoa estar navegando em inglês — mesmo card, mesmo item.
-const templateTitles = (templateId) => {
-  const src = FOR_YOU.find((f) => f.id === templateId);
-  if (!src) return [];
-  return [txt(src.title, 'pt'), txt(src.title, 'en')].filter(Boolean);
-};
-
 const prettyDateIn = (iso, lang) => {
   const d = new Date(`${iso}T00:00:00`);
   if (isNaN(d.getTime())) return '';
@@ -199,29 +207,35 @@ export default function ManifestationScreen() {
   const route = useRoute();
   // Regra única: toda marcação/desmarcação de prática passa pelo togglePractice
   // do contexto (mesmo caminho da Home) — quem confirma é quem chama.
-  const { state, addManifestation, togglePractice, updateManifestation, removeManifestation } = useApp();
-
-  const [localId, setLocalId] = useState(route.params?.id || null);
+  const { state, addManifestation, togglePractice, updateManifestation, addEvidence, removeManifestation } = useApp();
 
   // Vindo da aba Jornada, o React Navigation REAPROVEITA esta tela (mesma key,
   // sem remontar) e só troca os params — sem isto, tocar num segundo card abria
   // a manifestação anterior.
-  const routeId = route.params?.id || null;
+  const routeId = typeof route.params?.id === 'string' && route.params.id ? route.params.id : null;
+  const routeTemplateId =
+    typeof route.params?.templateId === 'string' && route.params.templateId ? route.params.templateId : null;
+  const template = useMemo(() => findForYouById(routeTemplateId), [routeTemplateId]);
+  const [localId, setLocalId] = useState(routeId);
   useEffect(() => {
-    if (routeId && routeId !== localId) setLocalId(routeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId]);
-  // Via URL (/m/undefined?template=...) o linking entrega template como STRING — só objeto vale.
-  const template = route.params?.template && typeof route.params.template === 'object' ? route.params.template : null;
+    // Trocar de uma manifestação salva para uma sugestão remove imediatamente
+    // o id local anterior; nenhum conteúdo pessoal pode atravessar de rota.
+    setLocalId((current) => (current === routeId ? current : routeId));
+  }, [routeId, routeTemplateId]);
 
+  // routeId ganha imediatamente. Assim, quando o navigator reutiliza a tela,
+  // nem um único frame continua apontando para a manifestação anterior.
+  const effectiveId = routeId || (routeTemplateId ? null : localId);
   const saved = useMemo(
-    () => (state ? state.manifestations.find((m) => m.id === localId) : null),
-    [state, localId]
+    () => (state ? state.manifestations.find((m) => m.id === effectiveId) : null),
+    [state, effectiveId]
   );
-  const data = saved || template;
+  // Um id salvo sempre exige item salvo. Sem id, um template só é exibido se o
+  // templateId existir de verdade em FOR_YOU; valores inventados mostram "gone".
+  const data = routeId ? saved : routeTemplateId ? template : saved;
 
-  // Conteúdo sugerido vem bilíngue de constants/content.js; o que o usuário
-  // digitou é string pura e atravessa txt() sem alteração — texto dele é dele.
+  // Sugestões usam o catálogo bilíngue. Cenas pessoais já chegam do contexto na
+  // variante ativa; o título livre continua exatamente como a pessoa escreveu.
   const item = useMemo(() => {
     if (!data) return null;
     const base = typeof localized === 'function' ? localized(data, lang) : data;
@@ -242,9 +256,9 @@ export default function ManifestationScreen() {
   // a frase, é o caminho certo. Para as sugestões começadas antes de existir o
   // campo templateId, o vínculo volta pelo texto idêntico ao do card.
   const templateId = useMemo(() => {
-    if (template && template.id) return template.id;
-    if (!saved) return null;
-    if (saved.templateId) return saved.templateId;
+    if (!saved) return template ? template.id : null;
+    const savedTemplate = findForYouById(saved.templateId);
+    if (savedTemplate) return savedTemplate.id;
     const alvo = norm(saved.story);
     if (!alvo) return null;
     const achado = FOR_YOU.find(
@@ -259,28 +273,29 @@ export default function ManifestationScreen() {
   const neural = useMemo(() => {
     if (!templateId || !item) return false;
     if (Platform.OS !== 'web' || typeof Audio === 'undefined') return false;
-    const fonte = FOR_YOU.find((f) => f.id === templateId);
+    const fonte = findForYouById(templateId);
     if (!fonte || norm(txt(fonte.story, lang)) !== norm(item.story)) return false;
     return hasNeuralAudio(templateId, lang);
   }, [templateId, item, lang]);
 
-  // Texto fora do catálogo (o que a pessoa escreveu) pode ser narrado pela
-  // função /api/voz com a mesma voz. Limite igual ao do servidor.
-  const podeGerarVoz = useMemo(() => {
-    if (neural || !item) return false;
-    if (Platform.OS !== 'web' || typeof Audio === 'undefined') return false;
-    const n = String(item.story || '').trim().length;
-    return n > 0 && n <= 600;
-  }, [neural, item]);
+  // Só o texto idêntico ao catálogo é público. Qualquer história criada ou
+  // alterada pela pessoa exige uma voz comprovadamente local.
+  const personalNarration = useMemo(() => {
+    if (!item || !templateId) return true;
+    const fonte = findForYouById(templateId);
+    if (!fonte) return true;
+    return !['pt', 'en'].some((code) => norm(txt(fonte.story, code)) === norm(item.story));
+  }, [item, templateId]);
 
   // Duração de verdade só existe quando existe arquivo; senão é estimativa e o
   // mostrador de tempo total some (número inventado na tela, não).
   const realDuration = neural ? audioDur(templateId, lang) : null;
   const estimated = useMemo(() => (item ? estimateSeconds(item.story) : FALLBACK_SECONDS), [item]);
   const duration = realDuration != null ? realDuration : estimated;
-  // Há narração se existe arquivo do catálogo, se dá para gerar sob demanda,
-  // ou se o aparelho tem voz. Sem nenhum dos três, os controles somem.
-  const audioOn = neural || podeGerarVoz || (speechOn && lines.length > 0);
+  // Catálogo usa arquivo gravado. Texto pessoal usa somente a voz do aparelho:
+  // a história pode conter nomes, local e desejo e não deve entrar numa URL.
+  const audioOn =
+    neural || (speechOn && lines.length > 0 && (!personalNarration || Platform.OS === 'web'));
 
   const [playing, setPlaying] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
@@ -299,10 +314,30 @@ export default function ManifestationScreen() {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftAffirmation, setDraftAffirmation] = useState('');
+  const [draftAnchorStep, setDraftAnchorStep] = useState('');
+  const [evidenceDraft, setEvidenceDraft] = useState('');
+  const [evidenceSaved, setEvidenceSaved] = useState(false);
   // Token da reprodução atual: qualquer onDone de uma sessão antiga é ignorado
   // (evita duas vozes ou um "fim" fantasma depois de pausar).
   const runRef = useRef(0);
   const isFocused = useIsFocused();
+
+  const contentKey = routeId || (template && template.id) || effectiveId || null;
+  useEffect(() => {
+    // React Navigation pode manter esta instância e apenas trocar os params.
+    // Nenhum rascunho, recibo ou áudio de A pode atravessar para B.
+    runRef.current += 1;
+    stopSpeaking();
+    setPlaying(false);
+    setPosition(0);
+    setLineIndex(0);
+    setEditing(false);
+    setDraftTitle('');
+    setDraftAffirmation('');
+    setDraftAnchorStep('');
+    setEvidenceDraft('');
+    setEvidenceSaved(false);
+  }, [contentKey]);
 
   useEffect(() => {
     savedIdRef.current = saved ? saved.id : null;
@@ -378,6 +413,7 @@ export default function ManifestationScreen() {
     setPosition((p) => Math.max(p, mark));
     speak(lines[index], {
       lang,
+      localOnly: personalNarration,
       onDone: () => playFrom(index + 1, run),
       // Só reage ao erro da fala ATUAL: parar uma fala dispara o evento de erro
       // da anterior, e incrementar o token aqui matava a narração que acabou de
@@ -417,37 +453,33 @@ export default function ManifestationScreen() {
     hit: saved ? saved.sessions.includes(iso) : false,
   }));
 
-  // A mesma sugestão aberta duas vezes não pode virar duas manifestações: se já
-  // existe uma vinda deste card (mesmo templateId ou mesmo título, em qualquer
-  // idioma), a tela passa a ser a que já existe.
+  // A mesma sugestão aberta duas vezes não pode virar duas manifestações. O
+  // vínculo é somente o id escalar do catálogo; título editável não é identidade.
   const findExisting = () => {
     const list = (state && state.manifestations) || [];
-    const titles = [item.title, ...templateTitles(templateId)].filter(Boolean).map(norm);
-    return list.find(
-      (m) =>
-        (templateId && m.templateId === templateId) || (m.title && titles.indexOf(norm(m.title)) !== -1)
-    );
+    return templateId ? list.find((m) => m.templateId === templateId) : null;
   };
 
-  // O parâmetro `template` continua na rota de propósito: é dele que sai o id do
-  // áudio gravado (fy-N), então a narração segue sendo a locução depois de
-  // começar a prática. Quem manda no que aparece é `saved`, que vem antes.
+  // O templateId permanece na rota depois de salvar: é dele que sai o id do
+  // áudio gravado (fy-N) e F5 retoma a mesma origem sem serializar o card inteiro.
   const openSaved = (id) => {
+    if (!id) return;
     savedIdRef.current = id;
     setLocalId(id);
-    navigation.setParams({ id });
+    navigation.setParams(templateId ? { id, templateId } : { id });
   };
 
-  const start = () => {
+  const start = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const existing = findExisting();
     if (existing) {
       openSaved(existing.id);
       return;
     }
-    const id = addManifestation({
+    const id = await addManifestation({
       title: item.title,
       category: item.category,
+      lang,
       accent: item.accent,
       intention: item.intention,
       affirmation: item.affirmation,
@@ -456,6 +488,7 @@ export default function ManifestationScreen() {
       // marca de origem: é ela que evita a segunda cópia no próximo toque
       templateId,
     });
+    if (!id) return;
     openSaved(id);
   };
 
@@ -471,41 +504,6 @@ export default function ManifestationScreen() {
       // vez de fingir que guardou o ponto.
       if (neural) setPosition(0);
       return;
-    }
-    // A manifestação que a PESSOA escreveu não está no catálogo: o texto é
-    // único dela. Nesse caso a locução é gerada sob demanda em /api/voz, com a
-    // MESMA voz dos arquivos gravados — e só cai na voz do aparelho se isso
-    // falhar. É o que impede a parte mais pessoal do app de soar pior que o
-    // conteúdo de catálogo.
-    if (!neural && podeGerarVoz) {
-      const run = runRef.current + 1;
-      runRef.current = run;
-      lineRef.current = 0;
-      setLineIndex(0);
-      setPosition(0);
-      setPlaying(true);
-      setAudioFailed(false);
-      const foi = playText(item.story, {
-        lang,
-        onDone: () => {
-          if (run !== runRef.current) return;
-          finishNarrative();
-        },
-        onError: () => {
-          if (run !== runRef.current) return;
-          if (lines.length && isSpeechAvailable()) {
-            playFrom(0, run);
-            return;
-          }
-          setPlaying(false);
-          setPosition(0);
-          setAudioFailed(true);
-        },
-      });
-      if (foi) return;
-      // Não deu para pedir à API: segue para a narração por frases abaixo.
-      runRef.current = run - 1;
-      setPlaying(false);
     }
     if (neural) {
       // Arquivo único com a história inteira: toca de uma vez e o fim dele vale
@@ -604,25 +602,34 @@ export default function ManifestationScreen() {
     if (!saved) return;
     setDraftTitle(item.title || '');
     setDraftAffirmation(item.affirmation || '');
+    setDraftAnchorStep(item.anchorStep || '');
     setEditing(true);
   };
 
   const saveEdit = () => {
     const titulo = draftTitle.trim();
     const afirmacao = draftAffirmation.trim();
-    // Só o que sobrou preenchido entra no patch; campo apagado não zera nada.
-    const patch = {};
-    if (titulo) patch.title = titulo;
-    if (afirmacao) patch.affirmation = afirmacao;
-    if (saved && Object.keys(patch).length) updateManifestation(saved.id, patch);
+    const ponte = draftAnchorStep.trim();
+    if (!titulo || !afirmacao || !ponte) return;
+    const patch = { title: titulo, affirmation: afirmacao, anchorStep: ponte };
+    if (saved) updateManifestation(saved.id, patch);
     setEditing(false);
+  };
+
+  const saveEvidence = () => {
+    if (!saved || !evidenceDraft.trim()) return;
+    const ok = addEvidence(saved.id, evidenceDraft);
+    if (!ok) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEvidenceDraft('');
+    setEvidenceSaved(true);
   };
 
   const confirmDelete = async () => {
     if (!saved) return;
     const ok = await confirmAsync({
       title: t(S.releaseTitle),
-      message: t(S.releaseBody),
+      message: t(S.releaseBody, { n: (saved.evidence || []).length }),
       confirmLabel: t(S.releaseConfirm),
       cancelLabel: t(S.keep),
     });
@@ -691,6 +698,7 @@ export default function ManifestationScreen() {
             <TextInput
               value={draftTitle}
               onChangeText={setDraftTitle}
+              accessibilityLabel={t(S.editTitle)}
               style={[
                 styles.input,
                 { color: th.text, borderColor: th.border, backgroundColor: alpha(th.textMuted, 0.06) },
@@ -700,7 +708,21 @@ export default function ManifestationScreen() {
             <TextInput
               value={draftAffirmation}
               onChangeText={setDraftAffirmation}
+              accessibilityLabel={t(S.editAffirmation)}
               multiline
+              style={[
+                styles.input,
+                styles.inputMulti,
+                { color: th.text, borderColor: th.border, backgroundColor: alpha(th.textMuted, 0.06) },
+              ]}
+            />
+            <Text style={[styles.inputLabel, { color: th.textMuted }]}>{t(S.editStep)}</Text>
+            <TextInput
+              value={draftAnchorStep}
+              onChangeText={setDraftAnchorStep}
+              accessibilityLabel={t(S.editStep)}
+              multiline
+              maxLength={280}
               style={[
                 styles.input,
                 styles.inputMulti,
@@ -720,6 +742,7 @@ export default function ManifestationScreen() {
                 icon="checkmark"
                 accent={item.accent}
                 onPress={saveEdit}
+                disabled={!draftTitle.trim() || !draftAffirmation.trim() || !draftAnchorStep.trim()}
                 style={{ flex: 1 }}
               />
             </View>
@@ -746,6 +769,24 @@ export default function ManifestationScreen() {
             </View>
           </GradientCover>
         )}
+
+        {item.anchorStep ? (
+          <>
+            <SectionHeading title={t(S.anchorTitle)} />
+            <Card style={[styles.card, { backgroundColor: th.surface }]}>
+              <View style={styles.anchorRow}>
+                <View style={[styles.anchorIcon, { backgroundColor: alpha(color, 0.14) }]}>
+                  <Ionicons name="footsteps-outline" size={20} color={color} />
+                </View>
+                <View style={styles.anchorCopy}>
+                  <Text style={[styles.anchorIdentity, { color }]}>{item.anchorIdentity}</Text>
+                  <Text style={[styles.anchorStep, { color: th.text }]}>{item.anchorStep}</Text>
+                </View>
+              </View>
+              <Text style={[styles.anchorNote, { color: th.textMuted }]}>{t(S.anchorNote)}</Text>
+            </Card>
+          </>
+        ) : null}
 
         {/* Player logo depois da afirmação: é a ação principal da tela e fica
             antes da dobra — não atrás de um boletim de números. A história em
@@ -774,6 +815,7 @@ export default function ManifestationScreen() {
                   <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={() => jumpLine(-1)}
+                    accessibilityRole="button"
                     accessibilityLabel={t(S.prevLine)}
                     style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
                   >
@@ -784,6 +826,7 @@ export default function ManifestationScreen() {
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={togglePlay}
+                  accessibilityRole="button"
                   accessibilityLabel={playing ? (neural ? t(S.stop) : t(S.pause)) : t(S.listen)}
                   style={[styles.playBtn, { backgroundColor: color }]}
                 >
@@ -796,6 +839,7 @@ export default function ManifestationScreen() {
                   <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={() => jumpLine(1)}
+                    accessibilityRole="button"
                     accessibilityLabel={t(S.nextLine)}
                     style={[styles.smallBtn, { backgroundColor: alpha(color, 0.12) }]}
                   >
@@ -897,6 +941,47 @@ export default function ManifestationScreen() {
               ))}
             </View>
           </Card>
+        ) : null}
+
+        {saved ? (
+          <>
+            <SectionHeading title={t(S.evidenceTitle)} />
+            <Card style={[styles.card, { backgroundColor: th.surface }]}>
+              <Text style={[styles.evidencePrompt, { color: th.text }]}>{t(S.evidencePrompt)}</Text>
+              <TextInput
+                value={evidenceDraft}
+                onChangeText={(value) => {
+                  setEvidenceDraft(value);
+                  setEvidenceSaved(false);
+                }}
+                placeholder={t(S.evidencePlaceholder)}
+                accessibilityLabel={t(S.evidencePrompt)}
+                placeholderTextColor={alpha(th.textMuted, 0.7)}
+                multiline
+                maxLength={280}
+                style={[
+                  styles.evidenceInput,
+                  { color: th.text, borderColor: th.border, backgroundColor: alpha(th.textMuted, 0.06) },
+                ]}
+              />
+              <PrimaryButton
+                label={t(S.evidenceSave)}
+                icon="bookmark-outline"
+                accent={item.accent}
+                variant="soft"
+                disabled={!evidenceDraft.trim()}
+                onPress={saveEvidence}
+                style={{ marginTop: 10 }}
+              />
+              {evidenceSaved ? <Text style={[styles.evidenceSaved, { color }]}>{t(S.evidenceSaved)}</Text> : null}
+              {(saved.evidence || []).slice(0, 3).map((entry) => (
+                <View key={entry.id} style={[styles.evidenceEntry, { borderTopColor: th.border }]}>
+                  <Ionicons name="reader-outline" size={15} color={color} />
+                  <Text style={[styles.evidenceText, { color: th.textMuted }]}>{entry.text}</Text>
+                </View>
+              ))}
+            </Card>
+          </>
         ) : null}
 
         <SectionHeading title={t(S.ritual)} />
@@ -1028,6 +1113,27 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 12, fontWeight: '700', marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginTop: 6 },
   inputMulti: { minHeight: 84, textAlignVertical: 'top' },
+  anchorRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  anchorIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  anchorCopy: { flex: 1, marginLeft: 13 },
+  anchorIdentity: { fontSize: 12.5, lineHeight: 18, fontWeight: '700' },
+  anchorStep: { fontSize: 16, lineHeight: 23, fontWeight: '600', marginTop: 5 },
+  anchorNote: { fontSize: 12.5, lineHeight: 18, marginTop: 13 },
+  evidencePrompt: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  evidenceInput: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: 10,
+    textAlignVertical: 'top',
+  },
+  evidenceSaved: { fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 },
+  evidenceEntry: { flexDirection: 'row', alignItems: 'flex-start', borderTopWidth: 1, paddingTop: 12, marginTop: 12 },
+  evidenceText: { flex: 1, fontSize: 13.5, lineHeight: 20, marginLeft: 9 },
   editRow: { flexDirection: 'row', marginTop: 18 },
   // Lixeira discreta do fim da tela — altura mínima real para o toque.
   releaseRow: {

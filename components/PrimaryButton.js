@@ -17,6 +17,7 @@ export default function PrimaryButton({
   style,
   disabled = false,
   accessibilityLabel,
+  testID,
 }) {
   const th = useTheme();
   const { lang } = useT();
@@ -28,6 +29,7 @@ export default function PrimaryButton({
   if (variant === 'soft' || variant === 'ghost') {
     return (
       <TouchableOpacity
+        testID={testID}
         activeOpacity={0.75}
         onPress={onPress}
         disabled={disabled}
@@ -55,6 +57,7 @@ export default function PrimaryButton({
 
   return (
     <TouchableOpacity
+      testID={testID}
       activeOpacity={0.85}
       onPress={onPress}
       disabled={disabled}

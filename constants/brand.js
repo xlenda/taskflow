@@ -25,6 +25,7 @@ export const SERIF = Platform.select({
 // artifact — swap this object to re-skin the whole flow.
 export const ONB = {
   gradient: ['#AFC8E7', '#C9DBEF', '#E6EFF8'],
+  welcomeBackground: '#759ACE',
   ink: '#1C2E4F',
   inkSoft: 'rgba(28,46,79,0.55)',
   inkFaint: 'rgba(28,46,79,0.35)',

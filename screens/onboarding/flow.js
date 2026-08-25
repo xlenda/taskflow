@@ -1,18 +1,31 @@
 import { txt } from '../../constants/i18n';
 
+const ADULT_AGE_RANGES = new Set(['18–24', '25–34', '35–44', '45–54', '55+']);
+
+function normalizedAge(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\u2014\u2212-]/g, '–')
+    .replace(/\s+/g, '');
+}
+
+export function isUnder18Age(value) {
+  const normalized = normalizedAge(value).toLocaleLowerCase();
+  return normalized === 'under18' || normalized === 'menosde18';
+}
+
+export function ageConfirmsAdult(value) {
+  return ADULT_AGE_RANGES.has(normalizedAge(value));
+}
+
 // O roteiro do chat de onboarding, em EN + PT-BR.
 // Todo campo de texto é { en, pt }. {app} → nome do app, {name} → nome respondido.
-// `when(answers)` liga passos condicionais (lista de filhos).
+// `when(answers)` liga passos condicionais (filhos e pessoa especifica).
 // Chips gravam o valor canônico em inglês (option `en`).
 //
-// Enxugado em 20/08: a primeira pergunta é a que importa (o desejo, que vira a
-// 1ª manifestação na tela Reveal) e SÓ ficam perguntas cujo campo alguém lê
-// (utils/dreamToAffirmation lê hopedChange, whyMatters, obstacle, name, city,
-// dreamLocation, dreamHome, kids, people — nada além disso é lido no app).
-// Cortados por ninguém ler: age, gender, sexuality, work, workFeeling,
-// relationshipStatus, pastInfluence, aboutYou, partnerDesire, manifestingSomeone,
-// manifestingName. `skippable: true` mostra "Pular" no canto (pergunta que
-// enriquece a personalização mas não é essencial).
+// A pergunta do desejo continua cedo porque cria a primeira Cena-Ancora. O
+// restante recompõe o roteiro completo documentado no clone da Stella.
+// `skippable: true` mantém controle explícito nas perguntas íntimas.
 
 export const FLOW = [
   {
@@ -28,13 +41,25 @@ export const FLOW = [
   },
   {
     id: 'hope',
-    type: 'text',
+    type: 'chips',
     key: 'hopedChange',
+    compact: true,
     question: {
       en: 'What do you want to change in your life right now?',
       pt: 'O que você quer que mude na sua vida agora?',
     },
-    placeholder: { en: 'Love, confidence, peace…', pt: 'Amor, confiança, paz…' },
+    options: [
+      { en: 'Find love or strengthen a relationship', pt: 'Viver um amor ou fortalecer uma relação' },
+      { en: 'Have more money and financial freedom', pt: 'Ter mais dinheiro e liberdade financeira' },
+      { en: 'Grow my career or business', pt: 'Crescer na carreira ou nos negócios' },
+      { en: 'Improve my health and well-being', pt: 'Melhorar minha saúde e meu bem-estar' },
+      { en: 'Feel more confident and love myself', pt: 'Ter mais confiança e amor-próprio' },
+      { en: 'Have more peace and balance', pt: 'Ter mais paz e equilíbrio' },
+      { en: 'Travel or move somewhere new', pt: 'Viajar ou morar em um lugar novo' },
+    ],
+    storeLocalized: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'Tell me what you want to change', pt: 'Conte o que você quer mudar' },
   },
   {
     id: 'why',
@@ -49,14 +74,27 @@ export const FLOW = [
   },
   {
     id: 'obstacle',
-    type: 'text',
+    type: 'chips',
     key: 'obstacle',
     skippable: true,
+    compact: true,
     question: {
       en: 'What feels like the biggest thing standing in your way right now?',
       pt: 'O que parece ser o maior obstáculo no seu caminho agora?',
     },
-    placeholder: { en: 'Doubt, timing, money, fear…', pt: 'Dúvida, timing, dinheiro, medo…' },
+    options: [
+      { en: 'Fear or self-doubt', pt: 'Medo ou insegurança' },
+      { en: 'Lack of clarity', pt: 'Falta de clareza' },
+      { en: 'Money or resources', pt: 'Dinheiro ou recursos' },
+      { en: 'Time or energy', pt: 'Tempo ou energia' },
+      { en: 'Lack of consistency', pt: 'Falta de constância' },
+      { en: "Other people's opinions or lack of support", pt: 'Opinião dos outros ou falta de apoio' },
+      { en: 'External circumstances', pt: 'Circunstâncias externas' },
+      { en: 'Nothing specific', pt: 'Nada específico' },
+    ],
+    storeLocalized: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'Describe it in your own words', pt: 'Descreva com suas palavras' },
   },
   {
     id: 'name',
@@ -77,6 +115,58 @@ export const FLOW = [
     skippable: true,
     question: { en: 'Where do you live?', pt: 'Onde você mora?' },
     placeholder: { en: 'Your city', pt: 'Sua cidade' },
+  },
+  {
+    id: 'age',
+    type: 'chips',
+    key: 'age',
+    skippable: true,
+    compact: true,
+    question: { en: 'How old are you?', pt: 'Quantos anos você tem?' },
+    options: [
+      { en: 'Under 18', pt: 'Menos de 18' },
+      { en: '18–24', pt: '18–24' },
+      { en: '25–34', pt: '25–34' },
+      { en: '35–44', pt: '35–44' },
+      { en: '45–54', pt: '45–54' },
+      { en: '55+', pt: '55+' },
+      { en: 'Prefer not to say', pt: 'Prefiro não responder' },
+    ],
+  },
+  {
+    id: 'gender',
+    type: 'chips',
+    key: 'gender',
+    skippable: true,
+    compact: true,
+    question: { en: "What's your gender?", pt: 'Qual é o seu gênero?' },
+    options: [
+      { en: 'Female', pt: 'Feminino' },
+      { en: 'Male', pt: 'Masculino' },
+      { en: 'Non-binary', pt: 'Não-binário' },
+      { en: 'Prefer not to say', pt: 'Prefiro não dizer' },
+    ],
+    allowCustom: true,
+    customPlaceholder: { en: 'How do you describe yourself?', pt: 'Como você se descreve?' },
+  },
+  {
+    id: 'sexuality',
+    type: 'chips',
+    key: 'sexuality',
+    skippable: true,
+    compact: true,
+    question: { en: 'What is your sexuality?', pt: 'Qual é a sua sexualidade?' },
+    options: [
+      { en: 'Straight', pt: 'Heterossexual' },
+      { en: 'Gay or lesbian', pt: 'Gay ou lésbica' },
+      { en: 'Bisexual', pt: 'Bissexual' },
+      { en: 'Pansexual', pt: 'Pansexual' },
+      { en: 'Asexual', pt: 'Assexual' },
+      { en: 'Questioning', pt: 'Em descoberta' },
+      { en: 'Prefer not to say', pt: 'Prefiro não responder' },
+    ],
+    allowCustom: true,
+    customPlaceholder: { en: 'How do you describe yourself?', pt: 'Como você se descreve?' },
   },
   {
     id: 'hasKids',
@@ -109,6 +199,101 @@ export const FLOW = [
     extraPlaceholder: { en: 'Relationship (mom, partner, friend…)', pt: 'Relação (mãe, parceiro, amigo…)' },
   },
   {
+    id: 'work',
+    type: 'chips',
+    key: 'work',
+    skippable: true,
+    compact: true,
+    question: { en: 'What do you do for work?', pt: 'O que você faz da vida?' },
+    options: [
+      {
+        en: 'Employed',
+        pt: 'Trabalho para uma empresa',
+        answer: { en: 'a job at a company', pt: 'um emprego em uma empresa' },
+      },
+      {
+        en: 'Self-employed or freelancer',
+        pt: 'Sou autônomo(a) ou freelancer',
+        answer: { en: 'freelance or self-employed work', pt: 'trabalho autônomo ou freelancer' },
+      },
+      {
+        en: 'Building a business',
+        pt: 'Estou empreendendo',
+        answer: { en: 'building a business', pt: 'a construção do meu próprio negócio' },
+      },
+      { en: 'Student', pt: 'Sou estudante', answer: { en: 'studying', pt: 'meus estudos' } },
+      {
+        en: 'Caregiver or homemaker',
+        pt: 'Cuido da casa ou da família',
+        answer: { en: 'caring for my home or family', pt: 'o cuidado da casa ou da família' },
+      },
+      {
+        en: 'Between jobs',
+        pt: 'Estou entre trabalhos',
+        answer: { en: 'a career transition', pt: 'uma transição de carreira' },
+      },
+      { en: 'Retired', pt: 'Sou aposentado(a)', answer: { en: 'retirement', pt: 'a aposentadoria' } },
+    ],
+    storeLocalized: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'What do you do?', pt: 'Conte o que você faz' },
+  },
+  {
+    id: 'workFeel',
+    type: 'chips',
+    key: 'workFeeling',
+    skippable: true,
+    compact: true,
+    question: { en: 'How do you feel about your work?', pt: 'Como você se sente em relação ao seu trabalho?' },
+    options: [
+      { en: 'Love it', pt: 'Amo' },
+      { en: "It's fine for now", pt: 'Está bom por enquanto' },
+      { en: "I'm ready for something new", pt: 'Estou pronto para algo novo' },
+      { en: "I'm building something on the side", pt: 'Estou construindo algo em paralelo' },
+    ],
+  },
+  {
+    id: 'rel',
+    type: 'chips',
+    key: 'relationshipStatus',
+    skippable: true,
+    compact: true,
+    question: { en: "What's your relationship status?", pt: 'Qual é o seu estado civil?' },
+    options: [
+      { en: 'Single', pt: 'Solteiro(a)' },
+      { en: 'Dating', pt: 'Conhecendo alguém' },
+      { en: 'In a relationship', pt: 'Em um relacionamento' },
+      { en: 'Married', pt: 'Casado(a)' },
+      { en: 'Separated or divorced', pt: 'Separado(a) ou divorciado(a)' },
+      { en: 'Widowed', pt: 'Viúvo(a)' },
+      { en: "It's complicated", pt: 'É complicado' },
+      { en: 'Not looking right now', pt: 'Não estou buscando agora' },
+    ],
+  },
+  {
+    id: 'past',
+    type: 'text',
+    key: 'pastInfluence',
+    skippable: true,
+    optional: true,
+    question: {
+      en: 'Is there anything from your past that still shapes what you want today?',
+      pt: 'Existe algo do seu passado que ainda molda o que você quer hoje?',
+    },
+    placeholder: { en: 'Only share what feels relevant...', pt: 'Compartilhe só o que fizer sentido...' },
+  },
+  {
+    id: 'about',
+    type: 'text',
+    key: 'aboutYou',
+    skippable: true,
+    question: {
+      en: "Since we've never met, {name}, what should I know about you to understand you better?",
+      pt: 'Como nunca nos vimos, {name}, o que eu deveria saber para te entender melhor?',
+    },
+    placeholder: { en: 'How would you describe yourself?', pt: 'Como você se descreveria?' },
+  },
+  {
     id: 'intro-visualize',
     type: 'intro',
     icon: 'sparkles',
@@ -130,20 +315,33 @@ export const FLOW = [
   },
   {
     id: 'dreamPlace',
-    type: 'text',
+    type: 'chips',
     key: 'dreamLocation',
     skippable: true,
+    compact: true,
     question: {
       en: 'When you imagine your dream life, where are you living?',
       pt: 'Quando você imagina a vida dos seus sonhos, onde você está morando?',
     },
-    placeholder: { en: 'Anywhere in the world…', pt: 'Em qualquer lugar do mundo…' },
+    options: [
+      { en: 'Where I live now, but better', pt: 'Onde moro hoje, mas do meu jeito' },
+      { en: 'In a big city', pt: 'Em uma cidade grande' },
+      { en: 'By the beach or coast', pt: 'Na praia ou no litoral' },
+      { en: 'In the countryside or mountains', pt: 'No campo ou nas montanhas' },
+      { en: 'In another country', pt: 'Em outro país' },
+      { en: 'Traveling with no fixed base', pt: 'Viajando, sem lugar fixo' },
+      { en: "I'm not sure yet", pt: 'Ainda não sei' },
+    ],
+    storeLocalized: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'Which place do you picture?', pt: 'Qual lugar você imagina?' },
   },
   {
     id: 'dreamHome',
     type: 'chips',
     key: 'dreamHome',
     skippable: true,
+    compact: true,
     question: { en: 'What kind of home would you want to live in?', pt: 'Em que tipo de casa você gostaria de morar?' },
     options: [
       { en: 'Luxury Penthouse', pt: 'Cobertura de Luxo' },
@@ -157,6 +355,78 @@ export const FLOW = [
     ],
     wrap: true,
     needsContinue: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'Describe your dream home', pt: 'Descreva a casa dos seus sonhos' },
+  },
+  {
+    id: 'intro-future',
+    type: 'intro',
+    icon: 'planet',
+    title: { en: 'Meet your future self.', pt: 'Conheça o seu futuro eu.' },
+    sub: {
+      en: 'Step into the life you are calling in - one visualization at a time.',
+      pt: 'Entre na vida que você está atraindo - uma visualização por vez.',
+    },
+  },
+  {
+    id: 'partner',
+    type: 'chips',
+    key: 'partnerDesire',
+    skippable: true,
+    compact: true,
+    question: {
+      en: '{name}, what kind of partner do you want to call in?',
+      pt: '{name}, que tipo de parceiro(a) você quer atrair?',
+    },
+    options: [
+      { en: 'Loving and affectionate', pt: 'Amoroso(a) e carinhoso(a)' },
+      { en: 'Loyal and trustworthy', pt: 'Leal e confiável' },
+      { en: 'Emotionally mature', pt: 'Emocionalmente maduro(a)' },
+      { en: 'Communicative', pt: 'Comunicativo(a)' },
+      { en: 'Supportive of my dreams', pt: 'Apoia os meus sonhos' },
+      { en: 'Fun and adventurous', pt: 'Divertido(a) e aventureiro(a)' },
+      { en: 'Calm and grounded', pt: 'Calmo(a) e equilibrado(a)' },
+      { en: 'Family-oriented', pt: 'Valoriza a família' },
+    ],
+    storeLocalized: true,
+    allowCustom: true,
+    customPlaceholder: { en: 'What matters most to you?', pt: 'O que mais importa para você?' },
+  },
+  {
+    id: 'specific',
+    type: 'boolean',
+    key: 'manifestingSomeone',
+    skippable: true,
+    question: {
+      en: "Is there a specific person you're manifesting?",
+      pt: 'Existe uma pessoa específica que você está manifestando?',
+    },
+  },
+  {
+    id: 'personName',
+    type: 'text',
+    key: 'manifestingName',
+    skippable: true,
+    question: {
+      en: "What's the name of the person you're manifesting?",
+      pt: 'Qual é o nome da pessoa que você está manifestando?',
+    },
+    placeholder: { en: 'Their name', pt: 'O nome da pessoa' },
+    when: (answers) => answers.manifestingSomeone === true,
+  },
+  {
+    id: 'cloudPersonalization',
+    type: 'boolean',
+    key: 'cloudPersonalization',
+    textSize: 23,
+    compact: true,
+    question: {
+      en: 'Are you 18 or older, and do you allow Celeste to send Gemini your desire and selected answers to create your scene? Other people\'s names stay on this device.',
+      pt: 'Você tem 18 anos ou mais e permite enviar ao Gemini seu desejo e algumas respostas para criar sua cena? Nomes de outras pessoas ficam neste aparelho.',
+    },
+    yesLabel: { en: 'Allow', pt: 'Permitir' },
+    noLabel: { en: 'Create on device', pt: 'Criar no aparelho' },
+    when: (answers) => ageConfirmsAdult(answers.age),
   },
   {
     id: 'thanks',

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Share,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -36,6 +37,8 @@ const S = {
   title: { en: 'Affirmations', pt: 'Afirmações' },
   subtitle: { en: 'Come back once daily', pt: 'Volte aqui uma vez por dia' },
   all: { en: 'All', pt: 'Todas' },
+  fromDreams: { en: 'From your dreams', pt: 'Dos seus sonhos' },
+  fromDream: { en: 'From your dream', pt: 'Do seu sonho' },
   listen: { en: 'Listen to this affirmation', pt: 'Ouvir esta afirmação' },
   stopListen: { en: 'Stop the audio', pt: 'Parar o áudio' },
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
@@ -62,15 +65,18 @@ const S = {
     en: 'Tap the heart on an affirmation to keep it in your pocket.',
     pt: 'Toque no coração de uma afirmação para guardá-la com você.',
   },
+  privateAudioUnavailable: {
+    en: 'Private audio is unavailable on this device. Your affirmation remains here in text.',
+    pt: 'A voz privada não está disponível neste aparelho. Sua afirmação continua aqui em texto.',
+  },
 };
+
+const DREAMS_FILTER = 'Dreams';
 
 // O conteúdo (afirmações e categorias) guarda os campos como { en, pt } e
 // `localized` devolve o item já resolvido no idioma da pessoa. O guard mantém a
 // tela de pé caso um ambiente ainda esteja com o conteúdo antigo em string.
 const loc = (item, lang) => (typeof localized === 'function' ? localized(item, lang) : item);
-
-const listFor = (key) =>
-  key === 'All' ? AFFIRMATIONS : AFFIRMATIONS.filter((a) => a.category === key);
 
 // "Afirmação do dia" de verdade: o índice inicial nasce da DATA, não de zero.
 // Todo dia abre numa afirmação diferente, a mesma o dia inteiro e em qualquer
@@ -87,9 +93,13 @@ export default function AffirmationsScreen() {
   const theme = useTheme();
   const { t, lang } = useT();
   const { state, loading, toggleFavoriteAffirmation, markAffirmationRead } = useApp();
-  const [filter, setFilter] = useState('All');
-  const [index, setIndex] = useState(() => seedIndex(AFFIRMATIONS.length));
+  // `null` significa "a pessoa ainda não escolheu um filtro". Assim, depois do
+  // carregamento, quem tem sonhos começa no deck pessoal; uma conta vazia cai
+  // naturalmente no catálogo fixo.
+  const [filter, setFilter] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [speaking, setSpeaking] = useState(false);
+  const [audioFailed, setAudioFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(null);
   const isFocused = useIsFocused();
@@ -103,31 +113,74 @@ export default function AffirmationsScreen() {
   // "onend" do fim natural. Sem isto, parar no meio contaria como ouvido até o
   // fim. Todo caminho que interrompe a voz de propósito liga a trava.
   const abortedRef = useRef(false);
+  const audioRunRef = useRef(0);
 
   // A lista de vozes do navegador chega assíncrona; aquecer aqui garante que o
   // PRIMEIRO toque já saia com a voz escolhida, não com a padrão robótica.
   useEffect(() => {
     warmUpVoices(lang);
+    warmUpVoices(lang, { localOnly: true });
   }, [lang]);
 
   // A voz nunca sobrevive à tela: para ao perder o foco (troca de aba) e no
   // cleanup, que cobre também o desmonte.
   useEffect(() => {
     if (!isFocused) {
+      audioRunRef.current += 1;
       abortedRef.current = true;
       stopSpeaking();
       setSpeaking(false);
     }
     return () => {
+      audioRunRef.current += 1;
       abortedRef.current = true;
       stopSpeaking();
     };
   }, [isFocused]);
 
-  const list = useMemo(() => listFor(filter), [filter]);
+  // Cada sonho já recebe uma afirmação quando é criado. A aba agora usa esse
+  // conteúdo salvo como experiência principal, em vez de esconder a frase no
+  // detalhe da manifestação e mostrar apenas o catálogo genérico.
+  const personalAffirmations = useMemo(
+    () =>
+      ((state && state.manifestations) || [])
+        .filter((m) => typeof m.affirmation === 'string' && m.affirmation.trim())
+        .map((m) => ({
+          id: `manifestation:${m.id}`,
+          manifestationId: m.id,
+          sourceTitle: m.title,
+          category: m.category,
+          accent: m.accent,
+          text: m.affirmation.trim(),
+          speechLang: m.lang,
+          personalized: true,
+        })),
+    [state && state.manifestations]
+  );
+
+  const allAffirmations = useMemo(
+    () => [...personalAffirmations, ...AFFIRMATIONS],
+    [personalAffirmations]
+  );
+
+  const activeFilter = filter || (personalAffirmations.length > 0 ? DREAMS_FILTER : 'All');
+
+  const listFor = useCallback(
+    (key) => {
+      if (key === DREAMS_FILTER) return personalAffirmations;
+      if (key === 'All') return allAffirmations;
+      return allAffirmations.filter((a) => a.category === key);
+    },
+    [allAffirmations, personalAffirmations]
+  );
+
+  const list = useMemo(() => listFor(activeFilter), [activeFilter, listFor]);
 
   const chips = useMemo(
     () => [
+      ...(personalAffirmations.length > 0
+        ? [{ key: DREAMS_FILTER, label: t(S.fromDreams), accent: 3 }]
+        : []),
       { key: 'All', label: t(S.all), accent: 0 },
       ...CATEGORIES.map((c) => ({
         key: c.key,
@@ -135,14 +188,37 @@ export default function AffirmationsScreen() {
         accent: c.accent,
       })),
     ],
-    [t, lang]
+    [personalAffirmations.length, t, lang]
   );
 
   const stopSpeech = useCallback(() => {
+    audioRunRef.current += 1;
     abortedRef.current = true;
     stopSpeaking();
     setSpeaking(false);
   }, []);
+
+  const seededIndex = list.length > 0 ? seedIndex(list.length) : 0;
+  const selectedIndex = selectedId ? list.findIndex((item) => item.id === selectedId) : -1;
+  const safeIndex = selectedIndex >= 0 ? selectedIndex : seededIndex;
+  const current = list[safeIndex];
+  const currentId = current && current.id;
+
+  // Se uma manifestação for criada, removida ou reordenada enquanto a aba
+  // continua montada, a frase visível não pode trocar por baixo de um áudio ou
+  // fallback antigo. A identidade estável também evita índices fora da lista.
+  useEffect(() => {
+    stopSpeech();
+    setAudioFailed(false);
+    setManual(null);
+    setCopied(false);
+  }, [currentId, stopSpeech]);
+
+  useEffect(() => {
+    if (current && current.personalized) {
+      warmUpVoices(current.speechLang || lang, { localOnly: true });
+    }
+  }, [current, lang]);
 
   if (loading || !state) {
     return (
@@ -155,17 +231,31 @@ export default function AffirmationsScreen() {
     );
   }
 
-  const safeIndex = list.length > 0 ? index % list.length : 0;
-  const current = list[safeIndex];
   const currentLoc = current ? loc(current, lang) : null;
-  const meta = current ? categoryMeta(current.category) : { accent: 0 };
-  const favorites = AFFIRMATIONS.filter((a) => state.favoriteAffirmations.includes(a.id));
+  const category = current ? categoryMeta(current.category) : { accent: 0 };
+  const meta = {
+    ...category,
+    accent:
+      current && typeof current.accent === 'number' ? current.accent : category.accent,
+  };
+  const favorites = allAffirmations.filter((a) => state.favoriteAffirmations.includes(a.id));
   const readToday = state.affirmationDates.includes(todayISO());
   const daysLogged = state.affirmationDates.length;
   const catLabel = (key) => loc(categoryMeta(key), lang).label || key;
+  const currentPersonal = !!(current && current.personalized);
+  const currentCategoryLabel = currentPersonal
+    ? `${t(S.fromDream)} · ${catLabel(current.category)}`
+    : current
+      ? catLabel(current.category)
+      : '';
   // A ação principal da tela é OUVIR — botão grande com rótulo, não um ícone
-  // cinza de 20px no canto do card. Só existe quando o aparelho tem MP3 ou voz.
-  const canHear = current ? hasNeuralAudio(current.id, lang) || isSpeechAvailable() : false;
+  // cinza de 20px no canto do card. Texto pessoal só pode usar uma voz local
+  // comprovável; no nativo, onde essa garantia não existe, permanece em texto.
+  const canHear = current
+    ? currentPersonal
+      ? Platform.OS === 'web' && isSpeechAvailable()
+      : hasNeuralAudio(current.id, lang) || isSpeechAvailable()
+    : false;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -214,21 +304,33 @@ export default function AffirmationsScreen() {
     }
     const body = currentLoc && currentLoc.text;
     if (!body) return;
+    setAudioFailed(false);
     setSpeaking(true);
     abortedRef.current = false;
-    // narrate usa o áudio neural pré-gerado quando existe para esta afirmação
-    // e cai na voz do aparelho quando não existe — nunca fica mudo.
-    const ok = narrate(current.id, body, {
-      lang,
+    const run = audioRunRef.current + 1;
+    audioRunRef.current = run;
+    // Afirmação de sonho nunca recebe um id de MP3 nem passa por serviço de
+    // voz: apenas uma voz que o navegador declare explicitamente como local.
+    const ok = narrate(currentPersonal ? null : current.id, body, {
+      lang: currentPersonal ? current.speechLang || lang : lang,
+      localOnly: currentPersonal,
       // Ouviu até o FIM = recebeu a afirmação de hoje. Parar no meio, trocar de
       // afirmação ou sair da aba liga a trava e não conta.
       onDone: () => {
+        if (run !== audioRunRef.current) return;
         setSpeaking(false);
         if (!abortedRef.current) markAffirmationRead();
       },
-      onError: () => setSpeaking(false),
+      onError: () => {
+        if (run !== audioRunRef.current) return;
+        setSpeaking(false);
+        if (currentPersonal) setAudioFailed(true);
+      },
     });
-    if (!ok) setSpeaking(false);
+    if (!ok) {
+      setSpeaking(false);
+      if (currentPersonal) setAudioFailed(true);
+    }
   };
 
   const next = (step) => {
@@ -239,7 +341,9 @@ export default function AffirmationsScreen() {
     // que é a que está vendo.
     setManual(null);
     Haptics.selectionAsync().catch(() => {});
-    setIndex((i) => (i + step + list.length * 10) % list.length);
+    setAudioFailed(false);
+    const nextIndex = (safeIndex + step + list.length * 10) % list.length;
+    setSelectedId(list[nextIndex].id);
   };
 
   return (
@@ -252,7 +356,7 @@ export default function AffirmationsScreen() {
           contentContainerStyle={styles.chips}
         >
           {chips.map((chip) => {
-            const active = chip.key === filter;
+            const active = chip.key === activeFilter;
             const c = accentAt(theme, chip.accent);
             return (
               <TouchableOpacity
@@ -260,9 +364,11 @@ export default function AffirmationsScreen() {
                 activeOpacity={0.8}
                 onPress={() => {
                   stopSpeech();
+                  setAudioFailed(false);
                   setManual(null);
                   setFilter(chip.key);
-                  setIndex(seedIndex(listFor(chip.key).length));
+                  const nextList = listFor(chip.key);
+                  setSelectedId(nextList[seedIndex(nextList.length)]?.id || null);
                   Haptics.selectionAsync().catch(() => {});
                 }}
                 style={[
@@ -285,7 +391,7 @@ export default function AffirmationsScreen() {
           <>
             <AffirmationCard
               affirmation={currentLoc}
-              categoryLabel={catLabel(current.category)}
+              categoryLabel={currentCategoryLabel}
               accent={meta.accent}
               favorite={state.favoriteAffirmations.includes(current.id)}
               onToggleFavorite={() => {
@@ -336,6 +442,11 @@ export default function AffirmationsScreen() {
                 onPress={toggleSpeak}
                 style={{ marginTop: 16 }}
               />
+            ) : null}
+            {currentPersonal && (!canHear || audioFailed) ? (
+              <Text style={[styles.privateAudioNote, { color: theme.textMuted }]}>
+                {t(S.privateAudioUnavailable)}
+              </Text>
             ) : null}
           </>
         ) : (
@@ -435,7 +546,10 @@ export default function AffirmationsScreen() {
                 <View style={{ flex: 1, paddingLeft: 12 }}>
                   <Text style={[styles.favText, { color: theme.text }]}>{loc(a, lang).text}</Text>
                   <Text style={[styles.favCat, { color: c }]}>
-                    {catLabel(a.category).toUpperCase()}
+                    {(a.personalized
+                      ? `${t(S.fromDream)} · ${catLabel(a.category)}`
+                      : catLabel(a.category)
+                    ).toUpperCase()}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -477,6 +591,7 @@ const styles = StyleSheet.create({
   },
   navBtn: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   counter: { fontSize: 13, fontWeight: '700', marginHorizontal: 20 },
+  privateAudioNote: { fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 10 },
   todayCard: {
     flexDirection: 'row',
     alignItems: 'center',

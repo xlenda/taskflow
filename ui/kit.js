@@ -50,7 +50,11 @@ export function Screen(props) {
         contentContainerStyle: [{ paddingHorizontal: pad, paddingBottom: 96 }, props.style],
         showsVerticalScrollIndicator: false,
       }, props.children);
-  return React.createElement(SafeAreaView, { style: { flex: 1, backgroundColor: t.bg }, edges: ['top'] }, inner);
+  return React.createElement(SafeAreaView, {
+    testID: props.testID,
+    style: { flex: 1, backgroundColor: t.bg },
+    edges: ['top'],
+  }, inner);
 }
 
 export function Header(props) {
@@ -82,9 +86,12 @@ export function Card(props) {
   ];
   if (props.onPress) {
     return React.createElement(Pressable, {
+      testID: props.testID,
       onPress: props.onPress,
       accessibilityRole: props.accessibilityRole,
       accessibilityLabel: props.accessibilityLabel,
+      accessibilityHint: props.accessibilityHint,
+      accessibilityState: props.accessibilityState,
       style: function (s) { return [style, s.pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]; },
     }, props.children);
   }

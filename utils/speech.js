@@ -8,10 +8,10 @@ import { pickVoiceURI, getVoiceAsync, TOM } from './voicePicker';
 // 1. ÁUDIO NEURAL PRÉ-GERADO (voz Grady, escolhida pelo dono em 09/08). O texto
 //    do conteúdo fixo — afirmações e visões — tem MP3 pronto em /audio/<lang>/.
 //    Toca instantâneo, soa como locução de verdade e não custa nada por play.
-// 2. VOZ DO APARELHO (Web Speech / expo-speech) para o que é do usuário e não
-//    pode ser pré-gerado (a afirmação criada a partir do sonho dele). Aqui o
-//    utils/voicePicker escolhe a melhor voz instalada em vez da padrão, que é
-//    justamente a que soa robótica.
+// 2. VOZ DO SISTEMA (Web Speech / expo-speech) para conteúdo fixo sem MP3.
+//    Histórias pessoais usam `localOnly`: no navegador, só uma voz marcada
+//    explicitamente como local; no app nativo, onde essa prova não existe,
+//    mantemos o texto e recusamos a narração.
 //
 // Contratos:
 // - speak/playId SEMPRE param o que estiver tocando antes de começar.
@@ -75,44 +75,17 @@ export function hasNeuralAudio(id, lang = 'pt') {
   return !!audioUrl(id, lang);
 }
 
-// Locução do texto que a PESSOA criou (não está no catálogo). A função
-// /api/voz gera com a mesma voz dos arquivos gravados e a resposta é cacheada
-// pelo endereço, então a mesma frase só é gerada uma vez. Se a rede ou o
-// servidor falharem, quem chama cai na voz do aparelho — nunca fica mudo.
-const MAX_TEXTO_API = 600;
-
-export function playText(texto, { lang = 'pt', onDone, onError } = {}) {
-  const body = String(texto || '').trim();
-  if (Platform.OS !== 'web' || typeof Audio === 'undefined') return false;
-  if (!body || body.length > MAX_TEXTO_API) return false;
-  stopSpeaking();
-  try {
-    const url = `/api/voz?lang=${encodeURIComponent(lang)}&t=${encodeURIComponent(body)}`;
-    const el = new Audio(url);
-    el.preload = 'auto';
-    el.onended = () => {
-      currentAudio = null;
-      onDone && onDone();
-    };
-    el.onerror = () => {
-      currentAudio = null;
-      onError && onError(new Error('api-voz-falhou'));
-    };
-    currentAudio = el;
-    const p = el.play();
-    if (p && p.catch) p.catch(() => onError && onError(new Error('autoplay-bloqueado')));
-    return true;
-  } catch (e) {
-    currentAudio = null;
-    return false;
-  }
-}
-
-export function speak(text, { lang = 'pt', rate, pitch, onDone, onError } = {}) {
+export function speak(text, { lang = 'pt', rate, pitch, localOnly = false, onDone, onError } = {}) {
   const body = String(text || '').trim();
   if (!body) return false;
   if (!isSpeechAvailable()) {
     onError && onError(new Error('speech-unavailable'));
+    return false;
+  }
+  // expo-speech não informa se uma voz nativa processa o texto offline. Sem
+  // essa evidência, não enviamos uma história pessoal para o sintetizador.
+  if (localOnly && Platform.OS !== 'web') {
+    onError && onError(new Error('local-speech-unverified'));
     return false;
   }
   stopSpeaking();
@@ -128,7 +101,11 @@ export function speak(text, { lang = 'pt', rate, pitch, onDone, onError } = {}) 
   // silenciosamente na PRIMEIRA voz do sistema — geralmente feminina. Passar o
   // URI é o que garante a voz masculina escolhida.
   if (Platform.OS === 'web') {
-    const uri = pickVoiceURI(lang);
+    const uri = pickVoiceURI(lang, { localOnly });
+    if (localOnly && !uri) {
+      onError && onError(new Error('local-speech-unavailable'));
+      return false;
+    }
     if (uri) opts.voice = uri;
   }
   try {
@@ -140,21 +117,16 @@ export function speak(text, { lang = 'pt', rate, pitch, onDone, onError } = {}) 
   }
 }
 
-// Escada da narração, do melhor para o que sempre funciona:
-//   1. arquivo gravado do catálogo (instantâneo, mesmo para todo mundo)
-//   2. /api/voz — mesma voz neural, para o texto que a pessoa criou
-//   3. voz do aparelho (varia por celular, mas nunca deixa a tela muda)
-// O passo 2 só entra quando o texto NÃO é do catálogo; se ele falhar, o
-// onError de quem chama deve cair no passo 3.
+// Catálogo fixo usa arquivo gravado. Chamadores com texto pessoal precisam
+// passar `localOnly: true`; nada entra em endpoint, URL ou cache da Celeste.
 export function narrate(id, text, opts = {}) {
   if (id && playId(id, opts)) return 'neural';
-  if (playText(text, opts)) return 'api';
   return speak(text, opts) ? 'device' : false;
 }
 
 // Aquece a lista de vozes cedo, para o primeiro toque já sair com a voz certa.
-export function warmUpVoices(lang = 'pt') {
-  if (Platform.OS === 'web') getVoiceAsync(lang).catch(() => {});
+export function warmUpVoices(lang = 'pt', options = {}) {
+  if (Platform.OS === 'web') getVoiceAsync(lang, 1500, options).catch(() => {});
 }
 
 // Quebra um roteiro longo em falas curtas para o player acompanhar o progresso

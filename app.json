@@ -12,13 +12,19 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.lenda.celeste"
+      "bundleIdentifier": "com.lenda.celeste",
+      "infoPlist": {
+        "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com a afirmação que você escolheu."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#AFC8E7"
       },
       "package": "com.lenda.celeste"
-    }
+    },
+    "plugins": [
+      "expo-video"
+    ]
   }
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ONB, SERIF } from '../../constants/brand';
@@ -7,10 +7,20 @@ import { ONB, SERIF } from '../../constants/brand';
 // Shared building blocks for the onboarding flow so every screen matches.
 // All colors come from ONB tokens — no hardcoded hex here.
 
-export function OnbScreen({ children, style }) {
+export function OnbScreen({ children, style, outerStyle, colors = ONB.gradient }) {
+  const { height } = useWindowDimensions();
+  const viewportStyle =
+    Platform.OS === 'web'
+      ? { width: '100%', height, maxHeight: height, minHeight: 0, overflow: 'hidden' }
+      : { flex: 1 };
   return (
-    <LinearGradient colors={ONB.gradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ flex: 1 }}>
-      <SafeAreaView style={[{ flex: 1 }, style]}>{children}</SafeAreaView>
+    <LinearGradient
+      colors={colors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={[viewportStyle, outerStyle]}
+    >
+      <SafeAreaView style={[{ flex: 1, minHeight: 0, overflow: 'hidden' }, style]}>{children}</SafeAreaView>
     </LinearGradient>
   );
 }

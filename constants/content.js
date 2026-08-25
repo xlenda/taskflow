@@ -315,6 +315,11 @@ export const FOR_YOU = [
   },
 ];
 
+// Parâmetros de rota não são conteúdo confiável. Uma sugestão só existe quando
+// o identificador escalar recebido corresponde exatamente a um item do catálogo.
+export const findForYouById = (id) =>
+  typeof id === 'string' ? FOR_YOU.find((item) => item.id === id) || null : null;
+
 export const VISIONS = [
   {
     id: 'v-1',
@@ -535,9 +540,19 @@ export const localizedList = (list, lang) => (list || []).map((it) => localized(
 // Every new user starts with a truly empty account — screens show their EmptyState.
 export const initialState = () => ({
   name: '',
+  onboardingDone: false,
   manifestations: [],
   favoriteAffirmations: [],
   savedVisions: [],
   visionPlays: [],
   affirmationDates: [],
+  morningRitual: {
+    alarmStatus: 'native_integration_required',
+    reminderEnabled: false,
+    reminderTime: '07:00',
+    wakeAffirmationId: null,
+    wakeAffirmationText: '',
+    wakeAffirmationLang: 'pt',
+    entries: [],
+  },
 });

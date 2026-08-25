@@ -37,13 +37,7 @@ export default function ManifestCard({ item, onPress, onToggleToday }) {
   const title = txt(item.title, lang);
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}. ${subtitle}. ${
-        doneToday ? t(S.practised) : t(S.notPractised)
-      }`}
+    <View
       style={[
         styles.card,
         {
@@ -57,57 +51,64 @@ export default function ManifestCard({ item, onPress, onToggleToday }) {
         },
       ]}
     >
-      <GradientCover accent={item.accent} radius={14} style={styles.cover} icon={meta.icon} />
-      <View style={styles.body}>
-        <View style={styles.topRow}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}. ${subtitle}. ${
+          doneToday ? t(S.practised) : t(S.notPractised)
+        }`}
+        style={styles.openArea}
+      >
+        <GradientCover accent={item.accent} radius={14} style={styles.cover} icon={meta.icon} />
+        <View style={styles.body}>
           <Text numberOfLines={2} style={[styles.title, { color: th.text }]}>
             {title}
           </Text>
-          {/* Antes era um ícone morto com cara de checkbox. Agora é o controle
-              de verdade da prática de hoje; sem handler, vira só status.
-              hitSlop não aumenta área de toque no RN-web — o alvo de 44 é
-              real, via minWidth/minHeight no estilo. */}
-          {onToggleToday ? (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={onToggleToday}
-              accessibilityRole="button"
-              accessibilityState={{ selected: doneToday }}
-              accessibilityLabel={doneToday ? t(S.undoToday) : t(S.markToday)}
-              style={[
-                styles.toggle,
-                {
-                  backgroundColor: doneToday ? alpha(color, 0.16) : alpha(th.textMuted, 0.1),
-                },
-              ]}
-            >
-              <Ionicons
-                name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
-                size={20}
-                color={doneToday ? color : th.textMuted}
-              />
-            </TouchableOpacity>
-          ) : (
-            <Ionicons
-              name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
-              size={18}
-              color={doneToday ? color : th.textMuted}
+          <View style={styles.subRow}>
+            <Ionicons name={meta.icon} size={12} color={color} style={styles.subIcon} />
+            <Text numberOfLines={1} style={[styles.sub, { color: th.textMuted }]}>
+              {subtitle}
+            </Text>
+          </View>
+          <View style={[styles.track, { backgroundColor: alpha(color, 0.16) }]}>
+            <View
+              style={[styles.fill, { width: `${Math.min(100, percent)}%`, backgroundColor: color }]}
             />
-          )}
+          </View>
         </View>
-        <View style={styles.subRow}>
-          <Ionicons name={meta.icon} size={12} color={color} style={styles.subIcon} />
-          <Text numberOfLines={1} style={[styles.sub, { color: th.textMuted }]}>
-            {subtitle}
-          </Text>
-        </View>
-        <View style={[styles.track, { backgroundColor: alpha(color, 0.16) }]}>
-          <View
-            style={[styles.fill, { width: `${Math.min(100, percent)}%`, backgroundColor: color }]}
+      </TouchableOpacity>
+
+      {/* Abrir e marcar são botões irmãos. Isso evita <button> dentro de
+          <button> no React Native Web e mantém cada ação inequívoca. */}
+      {onToggleToday ? (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={onToggleToday}
+          accessibilityRole="button"
+          accessibilityState={{ selected: doneToday }}
+          accessibilityLabel={doneToday ? t(S.undoToday) : t(S.markToday)}
+          style={[
+            styles.toggle,
+            {
+              backgroundColor: doneToday ? alpha(color, 0.16) : alpha(th.textMuted, 0.1),
+            },
+          ]}
+        >
+          <Ionicons
+            name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
+            size={20}
+            color={doneToday ? color : th.textMuted}
           />
-        </View>
-      </View>
-    </TouchableOpacity>
+        </TouchableOpacity>
+      ) : (
+        <Ionicons
+          name={doneToday ? 'checkmark-circle' : 'ellipse-outline'}
+          size={18}
+          color={doneToday ? color : th.textMuted}
+        />
+      )}
+    </View>
   );
 }
 
@@ -118,11 +119,11 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
   },
+  openArea: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
   cover: { width: 62, height: 62 },
   body: { flex: 1, marginLeft: 14 },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 15.5, fontWeight: '700', flex: 1, marginRight: 8 },
-  toggle: { minWidth: 44, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 15.5, fontWeight: '700' },
+  toggle: { minWidth: 44, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   subRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3, marginBottom: 10 },
   subIcon: { marginRight: 5 },
   sub: { fontSize: 12.5, flex: 1 },

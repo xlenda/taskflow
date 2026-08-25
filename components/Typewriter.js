@@ -1,5 +1,50 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Animated, Easing, Text, View } from 'react-native';
+
+function TypeLine({ value, textStyle, marginTop, characterMotion }) {
+  const entrance = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!value || !characterMotion) {
+      entrance.setValue(1);
+      return undefined;
+    }
+
+    entrance.stopAnimation();
+    entrance.setValue(0);
+    const animation = Animated.timing(entrance, {
+      toValue: 1,
+      duration: 90,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [characterMotion, entrance, value]);
+
+  if (!value) return null;
+  if (!characterMotion) {
+    return <Text style={[textStyle, marginTop && { marginTop }]}>{value}</Text>;
+  }
+
+  return (
+    <Text style={[textStyle, marginTop && { marginTop }]}>
+      {value.slice(0, -1)}
+      <Animated.Text
+        testID="typing-character-pulse"
+        style={{
+          opacity: entrance.interpolate({ inputRange: [0, 1], outputRange: [0.58, 1] }),
+          transform: [
+            { translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [2, 0] }) },
+            { scale: entrance.interpolate({ inputRange: [0, 1], outputRange: [1.12, 1] }) },
+          ],
+        }}
+      >
+        {value.slice(-1)}
+      </Animated.Text>
+    </Text>
+  );
+}
 
 // Types out an array of lines, pausing between lines. Progress is computed from
 // ELAPSED TIME, not one-char-per-timer — browsers throttle timers in background
@@ -16,15 +61,24 @@ export default function Typewriter({
   linePause = 550,
   startDelay = 250,
   instant = false,
+  onCharacter,
+  characterMotion = false,
   onDone,
 }) {
   const [shown, setShown] = useState(() => lines.map(() => ''));
   const doneRef = useRef(false);
   const timer = useRef(null);
   const hardStop = useRef(null);
+  const notifiedChars = useRef(0);
+  const onCharacterRef = useRef(onCharacter);
+
+  useEffect(() => {
+    onCharacterRef.current = onCharacter;
+  }, [onCharacter]);
 
   useEffect(() => {
     doneRef.current = false;
+    notifiedChars.current = 0;
     setShown(lines.map(() => ''));
     const t0 = Date.now() + startDelay;
 
@@ -57,6 +111,14 @@ export default function Typewriter({
           break;
         }
       }
+      const visibleCount = next.reduce((total, line) => total + line.length, 0);
+      if (visibleCount > notifiedChars.current && onCharacterRef.current) {
+        const fullText = lines.join('');
+        for (let index = notifiedChars.current; index < visibleCount; index += 1) {
+          onCharacterRef.current(fullText[index], index);
+        }
+      }
+      notifiedChars.current = visibleCount;
       setShown(next);
       if (complete) {
         finish();
@@ -91,13 +153,15 @@ export default function Typewriter({
 
   return (
     <View>
-      {shown.map((s, i) =>
-        s ? (
-          <Text key={i} style={[textStyle, i > 0 && { marginTop: lineGap }]}>
-            {s}
-          </Text>
-        ) : null
-      )}
+      {shown.map((line, index) => (
+        <TypeLine
+          key={index}
+          value={line}
+          textStyle={textStyle}
+          marginTop={index > 0 ? lineGap : 0}
+          characterMotion={characterMotion}
+        />
+      ))}
     </View>
   );
 }

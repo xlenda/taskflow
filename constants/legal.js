@@ -1,0 +1,178 @@
+// Textos locais da versao atual. Eles descrevem apenas o que o produto faz
+// hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
+// serem ativados.
+export const LEGAL_UPDATED = {
+  en: 'Updated August 25, 2026',
+  pt: 'Atualizado em 25 de agosto de 2026',
+};
+
+export const PRIVACY_SECTIONS = [
+  {
+    title: { en: 'In short', pt: 'Em resumo' },
+    paragraphs: [
+      {
+        en: 'Celeste stores your practice on this device. There is no account, active subscription or public community in this version.',
+        pt: 'O Celeste guarda sua prática neste aparelho. Não há conta, assinatura ativa nem comunidade pública nesta versão.',
+      },
+      {
+        en: 'Your onboarding answers personalize the experience. Selected answers are sent to Google Gemini only when an adult explicitly enables Gemini personalization. Profiles marked Under 18 always use the on-device generator.',
+        pt: 'Suas respostas do questionário personalizam a experiência. Algumas respostas só são enviadas ao Google Gemini quando uma pessoa adulta permite expressamente essa personalização. Perfis marcados como Menos de 18 sempre usam o gerador no aparelho.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Data stored on your device', pt: 'Dados guardados no seu aparelho' },
+    bullets: [
+      {
+        en: 'Your name, language, visual preference and onboarding answers.',
+        pt: 'Seu nome, idioma, preferência visual e respostas do questionário.',
+      },
+      {
+        en: 'Manifestations, personal scenes, affirmations, private traces and daily bridges.',
+        pt: 'Manifestações, cenas pessoais, afirmações, rastros privados e pontes diárias.',
+      },
+      {
+        en: 'Favorites and practice history used to calculate your journey and streak.',
+        pt: 'Favoritos e histórico de práticas usados para calcular sua jornada e sequência.',
+      },
+      {
+        en: 'Your chosen alarm time and affirmation, plus any dream notes and locally generated affirmations you decide to save.',
+        pt: 'O horário e a afirmação escolhidos para o despertador, além dos sonhos e afirmações geradas localmente que você decidir guardar.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Gemini personalization', pt: 'Personalização com Gemini' },
+    paragraphs: [
+      {
+        en: 'When enabled by an adult, Celeste may send Gemini the desire, category, language, your name, desired location or home, work context, relationship context, self-description, partnership preference, past influence, obstacle and why the desire matters. Only fields that contain an answer are included. Saved scenes do not change when you turn this preference off.',
+        pt: 'Quando ativado por uma pessoa adulta, o Celeste pode enviar ao Gemini o desejo, a categoria, o idioma, seu nome, lugar ou casa desejada, contexto de trabalho e relacionamento, sua autodescrição, preferência de parceria, influência do passado, obstáculo e por que o desejo importa. Só entram os campos que têm resposta. As cenas já salvas não mudam quando você desativa essa preferência.',
+      },
+      {
+        en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If Gemini is unavailable or consent is incomplete, Celeste uses its local generator.',
+        pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Se o Gemini estiver indisponível ou o consentimento estiver incompleto, o Celeste usa o gerador local.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Voice and media', pt: 'Voz e mídia' },
+    paragraphs: [
+      {
+        en: 'Personal text is narrated only when Celeste can select a voice identified as local by the device. Otherwise, the personal content remains available as text. Fixed catalog audio may be downloaded from Celeste as an audio file.',
+        pt: 'Textos pessoais só são narrados quando o Celeste consegue selecionar uma voz identificada como local pelo aparelho. Caso contrário, o conteúdo pessoal continua disponível em texto. Áudios fixos do catálogo podem ser baixados do Celeste como arquivo de áudio.',
+      },
+      {
+        en: 'If you choose to dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives the resulting transcript and transforms it locally; Celeste does not upload the recording itself.',
+        pt: 'Se você escolher ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe a transcrição resultante e faz a transformação localmente; o Celeste não envia a gravação por conta própria.',
+      },
+      {
+        en: 'In a compatible installed iPhone app, Celeste may request Alarm access and create an on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
+        pt: 'No app instalado em um iPhone compatível, o Celeste pode pedir acesso aos Alarmes e criar um áudio no aparelho para usar a afirmação escolhida como som do despertador. O site não consegue agendar esse alarme do sistema.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Your controls', pt: 'Seus controles' },
+    bullets: [
+      {
+        en: 'Turn Gemini personalization off at any time in your profile. Turning it off also clears the saved adult confirmation for cloud generation.',
+        pt: 'Desative a personalização com Gemini a qualquer momento no seu perfil. Ao desligar, a confirmação adulta salva para geração em nuvem também é removida.',
+      },
+      {
+        en: 'Edit or delete private traces and manifestations from the app.',
+        pt: 'Edite ou exclua rastros privados e manifestações dentro do app.',
+      },
+      {
+        en: 'Delete an individual dream and its generated affirmation from the alarm screen, or use Reset my journey to remove all locally saved entries.',
+        pt: 'Apague um sonho e sua afirmação gerada na tela do despertador, ou use Recomeçar minha jornada para remover todos os registros salvos localmente.',
+      },
+      {
+        en: 'Use Reset my journey to remove the saved practice and redo onboarding. Clearing this site or app data from the device also removes the local copy.',
+        pt: 'Use Recomeçar minha jornada para apagar a prática salva e refazer o questionário. Limpar os dados deste site ou app no aparelho também remove a cópia local.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Future services', pt: 'Serviços futuros' },
+    paragraphs: [
+      {
+        en: 'Accounts, payments, cloud voice and community publishing are not active in this release. Before any of them is enabled, Celeste must show what data is collected, why it is needed, who receives it and how it can be deleted.',
+        pt: 'Contas, pagamentos, voz em nuvem e publicação na comunidade não estão ativos nesta versão. Antes de qualquer um deles ser habilitado, o Celeste deverá informar quais dados são coletados, por que são necessários, quem os recebe e como apagá-los.',
+      },
+      {
+        en: 'A community story created without an authenticated account and configured community service remains a private draft on this device; it is not a public testimonial.',
+        pt: 'Um relato de comunidade criado sem conta autenticada e serviço de comunidade configurado continua como rascunho privado neste aparelho; ele não é um depoimento público.',
+      },
+    ],
+  },
+];
+
+export const TERMS_SECTIONS = [
+  {
+    title: { en: 'Using Celeste', pt: 'Uso do Celeste' },
+    paragraphs: [
+      {
+        en: 'Celeste is a tool for personal reflection, visualization and building a consistent practice. By using this version, you agree to use it lawfully and without harming other people.',
+        pt: 'O Celeste é uma ferramenta de reflexão pessoal, visualização e construção de uma prática consistente. Ao usar esta versão, você concorda em utilizá-la de forma legal e sem prejudicar outras pessoas.',
+      },
+    ],
+  },
+  {
+    title: { en: 'No guaranteed outcome', pt: 'Sem promessa de resultado' },
+    paragraphs: [
+      {
+        en: 'Affirmations, stories and suggested actions do not guarantee money, relationships, health, contact from another person or any result within a deadline. Your choices and actions remain your responsibility.',
+        pt: 'Afirmações, histórias e ações sugeridas não garantem dinheiro, relacionamentos, saúde, contato de outra pessoa nem qualquer resultado dentro de um prazo. Suas escolhas e ações continuam sendo sua responsabilidade.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Well-being notice', pt: 'Aviso de bem-estar' },
+    paragraphs: [
+      {
+        en: 'Celeste does not provide medical, psychological, legal or financial advice and is not a substitute for qualified professional support. Seek appropriate help when a situation involves health, safety, crisis or important financial and legal decisions.',
+        pt: 'O Celeste não oferece aconselhamento médico, psicológico, jurídico ou financeiro e não substitui apoio profissional qualificado. Procure ajuda adequada quando uma situação envolver saúde, segurança, crise ou decisões financeiras e jurídicas importantes.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Your content', pt: 'Seu conteúdo' },
+    paragraphs: [
+      {
+        en: 'You remain responsible for the information you enter. Do not include passwords, financial credentials, document numbers, another person\'s name in free-text answers, or information you are not comfortable keeping on this device or, when enabled, using for Gemini personalization.',
+        pt: 'Você continua responsável pelas informações que insere. Não inclua senhas, credenciais financeiras, números de documentos, o nome de outra pessoa em respostas livres nem informações que não queira manter neste aparelho ou, quando ativado, usar na personalização com Gemini.',
+      },
+      {
+        en: 'Community drafts are private by default. Sending a story requires explicit publication consent, and it can become visible to other people only after moderation. Without an authenticated account and configured community service, it remains only on this device.',
+        pt: 'Rascunhos da comunidade são privados por padrão. Enviar um relato exige autorização expressa de publicação, e ele só pode ficar visível para outras pessoas depois da moderação. Sem conta autenticada e serviço de comunidade configurado, ele permanece apenas neste aparelho.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Third-party services', pt: 'Serviços de terceiros' },
+    paragraphs: [
+      {
+        en: 'Optional Gemini personalization is subject to Google service availability and applicable terms. Celeste may fall back to local generation when the service fails or a response cannot be used safely.',
+        pt: 'A personalização opcional com Gemini depende da disponibilidade do serviço e dos termos aplicáveis do Google. O Celeste pode voltar à geração local quando o serviço falhar ou uma resposta não puder ser usada com segurança.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Current access and payments', pt: 'Acesso atual e pagamentos' },
+    paragraphs: [
+      {
+        en: 'This version does not create a paid subscription. Before any purchase is offered, Celeste must show the exact price, billing period, renewal conditions and cancellation path.',
+        pt: 'Esta versão não cria uma assinatura paga. Antes de qualquer compra ser oferecida, o Celeste deverá mostrar o preço exato, o período de cobrança, as condições de renovação e o caminho de cancelamento.',
+      },
+    ],
+  },
+  {
+    title: { en: 'Availability and changes', pt: 'Disponibilidade e mudanças' },
+    paragraphs: [
+      {
+        en: 'Features may change while Celeste is being developed, and uninterrupted availability cannot be guaranteed. Material changes to data use, payments or community features must be presented before they take effect.',
+        pt: 'Os recursos podem mudar enquanto o Celeste está em desenvolvimento, e não é possível garantir disponibilidade sem interrupções. Mudanças relevantes no uso de dados, pagamentos ou comunidade deverão ser apresentadas antes de entrarem em vigor.',
+      },
+    ],
+  },
+];
