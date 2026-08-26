@@ -96,6 +96,12 @@ const S = {
     en: 'Turn what stayed with you into a personal affirmation',
     pt: 'Transforme o que ficou dele numa afirmação só sua',
   },
+  morningSaved: { en: '{n} dream affirmations saved', pt: '{n} afirmações de sonhos salvas' },
+  alarmTitle: { en: 'Affirmation alarm', pt: 'Despertador com afirmação' },
+  alarmEmpty: {
+    en: 'Choose your phrase, time, and days of the week',
+    pt: 'Escolha sua frase, horário e dias da semana',
+  },
   morningPrepared: { en: 'Affirmation chosen for {time}', pt: 'Afirmação escolhida para {time}' },
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
   openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
@@ -272,6 +278,7 @@ export default function HomeScreen() {
   const firstPending = pendingToday[0] || null;
   const morningRitual = state.morningRitual || {};
   const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
+  const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const hasItems = state.manifestations.length > 0;
   // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
   // concluídas por último (sort estável preserva a ordem de criação).
@@ -449,11 +456,30 @@ export default function HomeScreen() {
           <View style={styles.morningCopy}>
             <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.morningTitle)}</Text>
             <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+              {dreamCount > 0 ? t(S.morningSaved, { n: dreamCount }) : t(S.morningEmpty)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+        </Card>
+
+        <Card
+          testID="open-affirmation-alarm"
+          onPress={() => navigation.navigate('AffirmationAlarm')}
+          accessibilityRole="button"
+          accessibilityLabel={t(S.alarmTitle)}
+          style={[styles.morningCard, { backgroundColor: th.surface }]}
+        >
+          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 2), 0.14) }]}>
+            <Ionicons name="alarm-outline" size={22} color={accentAt(th, 2)} />
+          </View>
+          <View style={styles.morningCopy}>
+            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.alarmTitle)}</Text>
+            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
               {morningRitual.reminderEnabled
                 ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
                 : hasWakeAffirmation
                 ? t(S.morningPrepared, { time: morningRitual.reminderTime || '07:00' })
-                : t(S.morningEmpty)}
+                : t(S.alarmEmpty)}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={th.textMuted} />

@@ -17,9 +17,11 @@ import { OnbScreen, ContinueButton, serifStyle } from './onboardingUI';
 import { ONB, SERIF } from '../../constants/brand';
 import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
-import { isSpeechAvailable, speak, stopSpeaking } from '../../utils/speech';
+import { usePersonalNarration } from '../../utils/usePersonalNarration';
 import CelestialTrace from '../../components/CelestialTrace';
 import NarratorSelector from '../../components/NarratorSelector';
+
+const BRIDGE_MIN_HEIGHT = 118;
 
 // A recompensa do onboarding nasce antes de qualquer oferta. A Cena-Âncora une
 // quatro coisas verificáveis: detalhe pessoal, narrativa audível, identidade de
@@ -75,14 +77,14 @@ const RECIBO = {
 
 export default function RevealScreen({ navigation, route }) {
   const { state, setNarrator, updateManifestation } = useApp();
+  const narration = usePersonalNarration();
   const { t } = useT();
-  const [playing, setPlaying] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
   const [bridgeDraft, setBridgeDraft] = useState('');
+  const [bridgeInputHeight, setBridgeInputHeight] = useState(BRIDGE_MIN_HEIGHT);
   const [unlocked, setUnlocked] = useState(false);
   const reveal = useRef(new Animated.Value(0)).current;
   const sceneReveal = useRef(new Animated.Value(0)).current;
-  const audioRun = useRef(0);
 
   const id = route.params && route.params.id;
   const list = (state && state.manifestations) || [];
@@ -95,18 +97,17 @@ export default function RevealScreen({ navigation, route }) {
   };
 
   useEffect(() => {
-    audioRun.current += 1;
-    stopSpeaking();
-    setPlaying(false);
+    narration.stop();
     setAudioFailed(false);
     const alreadyOpened = !!(m && m.anchorOpenedAt);
     setUnlocked(alreadyOpened);
     sceneReveal.setValue(alreadyOpened ? 1 : 0);
+    setBridgeInputHeight(BRIDGE_MIN_HEIGHT);
     if (m) setBridgeDraft(m.anchorStep || '');
     // O conteúdo só deve ser reposto quando muda a manifestação, não enquanto
     // a pessoa edita o campo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m && m.id, sceneReveal]);
+  }, [m && m.id, narration.stop, sceneReveal]);
 
   useEffect(() => {
     let alive = true;
@@ -127,10 +128,9 @@ export default function RevealScreen({ navigation, route }) {
       .catch(() => reveal.setValue(1));
     return () => {
       alive = false;
-      audioRun.current += 1;
-      stopSpeaking();
+      narration.stop();
     };
-  }, [reveal]);
+  }, [narration.stop, reveal]);
 
   if (!m) {
     return (
@@ -152,44 +152,28 @@ export default function RevealScreen({ navigation, route }) {
     personalizedWith.map((label) => (RECIBO[label] ? t(RECIBO[label]) : label))
   );
   const lang = m.lang || (state && state.lang) || 'pt';
-  const canAttemptPrivateAudio = Platform.OS === 'web' && isSpeechAvailable();
+  const playbackId = `reveal:${m.id}`;
+  const playing =
+    narration.activePlaybackId === playbackId &&
+    (narration.isLoading || narration.isPlaying || narration.isPaused);
 
-  const toggleAudio = () => {
+  const toggleAudio = async () => {
     if (playing) {
-      audioRun.current += 1;
-      stopSpeaking();
-      setPlaying(false);
+      narration.stop();
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const run = ++audioRun.current;
     setAudioFailed(false);
-    setPlaying(true);
-    // A história contém dados pessoais: só uma voz que o navegador confirme
-    // como local pode recebê-la. Sem essa prova, o fallback é o próprio texto.
-    const mode = speak(m.story, {
+    const result = await narration.playPersonal({
+      text: m.story,
       lang,
-      narratorId: state && state.narration && state.narration.narratorId,
-      localOnly: true,
-      onDone: () => {
-        if (run === audioRun.current) setPlaying(false);
-      },
-      onError: () => {
-        if (run !== audioRun.current) return;
-        setPlaying(false);
-        setAudioFailed(true);
-      },
+      playbackId,
     });
-    if (!mode) {
-      setPlaying(false);
-      setAudioFailed(true);
-    }
+    if (!result.ok && result.error !== 'audio_cancelled') setAudioFailed(true);
   };
 
   const continueFlow = () => {
-    audioRun.current += 1;
-    stopSpeaking();
-    setPlaying(false);
+    narration.stop();
     const bridge = bridgeDraft.trim();
     if (bridge !== m.anchorStep) updateManifestation(m.id, { anchorStep: bridge });
     navigation.replace('Paywall');
@@ -213,6 +197,8 @@ export default function RevealScreen({ navigation, route }) {
     <OnbScreen>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scroll}
       >
@@ -258,25 +244,24 @@ export default function RevealScreen({ navigation, route }) {
                 />
               </View>
 
-              {canAttemptPrivateAudio ? (
-                <Pressable
-                  onPress={toggleAudio}
-                  accessibilityRole="button"
-                  accessibilityLabel={playing ? t(S.stop) : t(S.listen)}
-                  style={({ pressed }) => [styles.audioButton, pressed && styles.pressed]}
-                >
-                  <View style={styles.audioIcon}>
-                    <Ionicons name={playing ? 'stop' : 'play'} size={20} color={ONB.ctaInk} />
-                  </View>
-                  <View style={styles.audioCopy}>
-                    <Text style={styles.audioLabel}>{playing ? t(S.stop) : t(S.listen)}</Text>
-                    <Text style={styles.audioState}>{playing ? t(S.listening) : m.title}</Text>
-                  </View>
-                  <Ionicons name="headset-outline" size={21} color={ONB.surfaceSoft} />
-                </Pressable>
-              ) : (
-                <Text style={styles.audioFail}>{t(S.audioFail)}</Text>
-              )}
+              <Pressable
+                onPress={toggleAudio}
+                accessibilityRole="button"
+                accessibilityLabel={playing ? t(S.stop) : t(S.listen)}
+                accessibilityState={{
+                  busy: narration.activePlaybackId === playbackId && narration.isLoading,
+                }}
+                style={({ pressed }) => [styles.audioButton, pressed && styles.pressed]}
+              >
+                <View style={styles.audioIcon}>
+                  <Ionicons name={playing ? 'stop' : 'play'} size={20} color={ONB.ctaInk} />
+                </View>
+                <View style={styles.audioCopy}>
+                  <Text style={styles.audioLabel}>{playing ? t(S.stop) : t(S.listen)}</Text>
+                  <Text style={styles.audioState}>{playing ? t(S.listening) : m.title}</Text>
+                </View>
+                <Ionicons name="headset-outline" size={21} color={ONB.surfaceSoft} />
+              </Pressable>
               {audioFailed ? <Text style={styles.audioFail}>{t(S.audioFail)}</Text> : null}
 
               <View style={styles.scene}>
@@ -298,12 +283,18 @@ export default function RevealScreen({ navigation, route }) {
                   </View>
                 </View>
                 <TextInput
+                  testID="anchor-bridge-input"
                   value={bridgeDraft}
                   onChangeText={setBridgeDraft}
+                  onContentSizeChange={(event) => {
+                    const measured = Math.ceil(event.nativeEvent.contentSize.height || 0);
+                    if (measured > 0) setBridgeInputHeight(Math.max(BRIDGE_MIN_HEIGHT, measured));
+                  }}
                   multiline
+                  scrollEnabled={false}
                   maxLength={280}
                   accessibilityLabel={t(S.bridge)}
-                  style={styles.bridgeInput}
+                  style={[styles.bridgeInput, { height: bridgeInputHeight }]}
                 />
                 <Text style={styles.bridgeEdit}>{t(S.bridgeEdit)}</Text>
                 <Text style={styles.bridgeNote}>{t(S.bridgeNote)}</Text>
@@ -438,6 +429,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     marginTop: 12,
     textAlignVertical: 'top',
+    overflow: 'hidden',
   },
   bridgeEdit: { color: ONB.inkSoft, fontSize: 12.5, lineHeight: 18, marginTop: 8 },
   bridgeNote: { color: ONB.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 12 },

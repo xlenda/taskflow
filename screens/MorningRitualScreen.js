@@ -26,7 +26,8 @@ import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { createDreamAffirmation } from '../utils/morningRitual';
-import { narrate, stopSpeaking, warmUpVoices } from '../utils/speech';
+import { transformDreamWithKnowledge } from '../services/transformDream';
+import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { confirmAsync } from '../utils/confirm';
 import {
   DEFAULT_AFFIRMATION_ALARM_ID,
@@ -36,10 +37,10 @@ import {
 } from '../services/affirmationAlarm';
 
 const S = {
-  title: { pt: 'Meu despertar', en: 'My wake-up' },
+  title: { pt: 'Meus sonhos', en: 'My dreams' },
   subtitle: {
-    pt: 'Seus sonhos e a afirmação que vai acordar você.',
-    en: 'Your dreams and the affirmation that will wake you.',
+    pt: 'Transforme o que ficou da noite numa afirmação só sua.',
+    en: 'Turn what stayed from the night into an affirmation of your own.',
   },
   wakeTitle: { pt: 'A afirmação será o alarme', en: 'Your affirmation is the alarm' },
   wakeBody: {
@@ -112,7 +113,17 @@ const S = {
     pt: 'A transcrição é fornecida pelo navegador. A transformação da frase acontece localmente.',
     en: 'Transcription is provided by your browser. The affirmation is transformed locally.',
   },
+  voicePrivacyCloud: {
+    pt: 'A transcrição é fornecida pelo navegador. Com sua permissão ativa, o relato é enviado ao Gemini para criar a frase personalizada.',
+    en: 'Transcription is provided by your browser. With your active permission, the report is sent to Gemini to create the personalized affirmation.',
+  },
+  cloudLocalNotice: {
+    pt: 'Por enquanto, esta frase será criada neste aparelho. Você pode ativar a personalização com Gemini no Perfil.',
+    en: 'For now, this affirmation will be created on this device. You can enable Gemini personalization in Profile.',
+  },
+  openProfile: { pt: 'Abrir Perfil', en: 'Open Profile' },
   transform: { pt: 'Transformar em afirmação', en: 'Turn into an affirmation' },
+  transforming: { pt: 'Transformando seu sonho…', en: 'Transforming your dream…' },
   meaningResult: { pt: 'Um significado possível', en: 'One possible meaning' },
   affirmationResult: { pt: 'Sua frase desta manhã', en: 'Your phrase this morning' },
   listenResult: { pt: 'Ouvir', en: 'Listen' },
@@ -145,6 +156,10 @@ const S = {
     en: 'The dream and the affirmation created from it will be deleted from this device.',
   },
   deleteDreamConfirm: { pt: 'Apagar', en: 'Delete' },
+  deleteAlarmFailed: {
+    pt: 'Este sonho ainda está ligado a um despertador ativo. Não foi possível apagá-lo com segurança.',
+    en: 'This dream is still linked to an active alarm. It could not be deleted safely.',
+  },
   cancel: { pt: 'Cancelar', en: 'Cancel' },
   close: { pt: 'Fechar', en: 'Close' },
   personal: { pt: 'Sua', en: 'Yours' },
@@ -177,7 +192,7 @@ function recognitionClass() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-export default function MorningRitualScreen({ route }) {
+export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const theme = useTheme();
   const navigation = useNavigation();
   const focused = useIsFocused();
@@ -189,7 +204,12 @@ export default function MorningRitualScreen({ route }) {
     markDreamRitualPracticed,
     removeDreamRitual,
   } = useApp();
-  const narratorId = state?.narration?.narratorId;
+  const narration = usePersonalNarration();
+  const alarmVisible = mode === 'combined';
+  const cloudDreamEnabled =
+    state.profile?.cloudPersonalization === true &&
+    state.profile?.cloudAdultConfirmed === true &&
+    state.profile?.cloudNarrationConsent === true;
 
   const ritual = state.morningRitual || {
     alarmStatus: 'native_integration_required',
@@ -210,10 +230,11 @@ export default function MorningRitualScreen({ route }) {
   const [meaning, setMeaning] = useState('auto');
   const [result, setResult] = useState(null);
   const [entryId, setEntryId] = useState(null);
-  const [speaking, setSpeaking] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceFailed, setVoiceFailed] = useState(false);
+  const [transformingDream, setTransformingDream] = useState(false);
+  const [dreamDeleteError, setDreamDeleteError] = useState(false);
   const [practiceState, setPracticeState] = useState('idle');
   const [reduceMotion, setReduceMotion] = useState(false);
   const [alarmCapability, setAlarmCapability] = useState(null);
@@ -232,6 +253,7 @@ export default function MorningRitualScreen({ route }) {
   const dreamScrollTimerRef = useRef(null);
   const dreamResultTimerRef = useRef(null);
   const alarmOperationRef = useRef(false);
+  const dreamTransformRef = useRef(false);
   const practiceProgress = useRef(new Animated.Value(0)).current;
   const practiceTimers = useRef([]);
   const mountedRef = useRef(true);
@@ -385,7 +407,6 @@ export default function MorningRitualScreen({ route }) {
 
   useEffect(() => {
     mountedRef.current = true;
-    warmUpVoices(lang, { localOnly: true, narratorId });
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => {
@@ -395,12 +416,13 @@ export default function MorningRitualScreen({ route }) {
       if (dreamScrollTimerRef.current) clearTimeout(dreamScrollTimerRef.current);
       if (dreamResultTimerRef.current) clearTimeout(dreamResultTimerRef.current);
       stopRecognition();
+      narration.stop();
       if (subscription && subscription.remove) subscription.remove();
     };
-  }, [lang, narratorId, stopRecognition]);
+  }, [narration.stop, stopRecognition]);
 
   useEffect(() => {
-    if (!focused) return undefined;
+    if (!focused || !alarmVisible) return undefined;
     let active = true;
     getAffirmationAlarmCapability()
       .then((capability) => {
@@ -428,22 +450,21 @@ export default function MorningRitualScreen({ route }) {
     return () => {
       active = false;
     };
-  }, [focused, ritual.reminderEnabled, saveMorningRitualPreferences]);
+  }, [alarmVisible, focused, ritual.reminderEnabled, saveMorningRitualPreferences]);
 
   useEffect(() => {
     if (!focused) {
-      stopSpeaking();
-      setSpeaking(false);
+      narration.stop();
       stopRecognition();
       clearPractice();
       setPracticeState('idle');
     }
     return () => {
-      stopSpeaking();
+      narration.stop();
       stopRecognition();
       clearPractice();
     };
-  }, [focused, clearPractice, stopRecognition]);
+  }, [focused, clearPractice, narration.stop, stopRecognition]);
 
   const haptic = useCallback((success = false) => {
     if (Platform.OS === 'web') return;
@@ -572,8 +593,7 @@ export default function MorningRitualScreen({ route }) {
   }, [alarmBusy, selectedWake, ritual.reminderTime, scheduleRealAlarm, saveMorningRitualPreferences, haptic]);
 
   const selectWake = useCallback(async (item) => {
-    stopSpeaking();
-    setSpeaking(false);
+    narration.stop();
     if (ritual.reminderEnabled) {
       const scheduled = await scheduleRealAlarm({
         id: item.id,
@@ -590,7 +610,7 @@ export default function MorningRitualScreen({ route }) {
     });
     if (mountedRef.current) setPickerOpen(false);
     if (!ritual.reminderEnabled) haptic();
-  }, [ritual.reminderEnabled, ritual.reminderTime, saveMorningRitualPreferences, scheduleRealAlarm, haptic]);
+  }, [haptic, narration.stop, ritual.reminderEnabled, ritual.reminderTime, saveMorningRitualPreferences, scheduleRealAlarm]);
 
   const selectAlarmTime = useCallback(async (time) => {
     if (ritual.reminderEnabled && selectedWake) {
@@ -613,29 +633,35 @@ export default function MorningRitualScreen({ route }) {
     selectWake({ id: 'custom', text, lang, personal: true, source: 'custom' });
   }, [customWake, lang, selectWake]);
 
-  const playText = useCallback((item) => {
+  const playbackIdFor = useCallback(
+    (item) => `dream:${item?.id || clean(item?.text).slice(0, 72) || 'affirmation'}`,
+    []
+  );
+
+  const isTextPlaying = useCallback(
+    (item) =>
+      narration.activePlaybackId === playbackIdFor(item) &&
+      (narration.isLoading || narration.isPlaying || narration.isPaused),
+    [narration.activePlaybackId, narration.isLoading, narration.isPaused, narration.isPlaying, playbackIdFor]
+  );
+
+  const playText = useCallback(async (item) => {
     if (!item) return;
-    if (speaking) {
-      stopSpeaking();
-      setSpeaking(false);
+    const playbackId = playbackIdFor(item);
+    if (isTextPlaying(item)) {
+      narration.stop();
       return;
     }
     setAudioFailed(false);
-    const played = narrate(null, item.text, {
+    const played = await narration.playPersonal({
+      text: item.text,
       lang: item.lang || lang,
-      narratorId,
-      localOnly: true,
-      onDone: () => mountedRef.current && setSpeaking(false),
-      onError: () => {
-        if (mountedRef.current) {
-          setSpeaking(false);
-          setAudioFailed(true);
-        }
-      },
+      playbackId,
     });
-    setSpeaking(!!played);
-    if (!played) setAudioFailed(true);
-  }, [speaking, lang, narratorId]);
+    if (!played.ok && played.error !== 'audio_cancelled' && mountedRef.current) {
+      setAudioFailed(true);
+    }
+  }, [isTextPlaying, lang, narration, playbackIdFor]);
 
   const startVoice = useCallback(() => {
     const Recognition = recognitionClass();
@@ -685,8 +711,10 @@ export default function MorningRitualScreen({ route }) {
     }
   }, [dream, lang, listening, clearPractice]);
 
-  const transformDream = useCallback(() => {
-    if (clean(dream).length < 4) return;
+  const transformDream = useCallback(async () => {
+    if (clean(dream).length < 4 || dreamTransformRef.current) return;
+    dreamTransformRef.current = true;
+    setTransformingDream(true);
     clearPractice();
     if (dreamScrollTimerRef.current) {
       clearTimeout(dreamScrollTimerRef.current);
@@ -696,21 +724,40 @@ export default function MorningRitualScreen({ route }) {
       cancelAnimationFrame(dreamSettleFrameRef.current);
       dreamSettleFrameRef.current = null;
     }
-    const generated = createDreamAffirmation({ dream, feeling, theme: meaning, lang });
-    const id = saveDreamRitual({ ...generated, lang });
-    if (!id) return;
-    Keyboard.dismiss();
-    setResult({ ...generated, lang });
-    setEntryId(id);
-    setPracticeState('idle');
-    practiceProgress.setValue(0);
-    haptic(true);
-    if (dreamResultTimerRef.current) clearTimeout(dreamResultTimerRef.current);
-    dreamResultTimerRef.current = setTimeout(() => {
-      dreamResultTimerRef.current = null;
-      if (mountedRef.current) scrollToDreamResult();
-    }, 180);
-  }, [dream, feeling, meaning, lang, saveDreamRitual, practiceProgress, clearPractice, haptic, scrollToDreamResult]);
+    let generated = createDreamAffirmation({ dream, feeling, theme: meaning, lang });
+    if (cloudDreamEnabled) {
+      try {
+        generated = await transformDreamWithKnowledge({
+          dream,
+          feeling,
+          theme: meaning,
+          lang,
+          profile: state.profile,
+        });
+      } catch (_error) {
+        // The local result remains private and usable when cloud generation fails.
+      }
+    }
+    try {
+      if (!mountedRef.current) return;
+      const id = saveDreamRitual({ ...generated, lang });
+      if (!id) return;
+      Keyboard.dismiss();
+      setResult({ ...generated, lang });
+      setEntryId(id);
+      setPracticeState('idle');
+      practiceProgress.setValue(0);
+      haptic(true);
+      if (dreamResultTimerRef.current) clearTimeout(dreamResultTimerRef.current);
+      dreamResultTimerRef.current = setTimeout(() => {
+        dreamResultTimerRef.current = null;
+        if (mountedRef.current) scrollToDreamResult();
+      }, 180);
+    } finally {
+      dreamTransformRef.current = false;
+      if (mountedRef.current) setTransformingDream(false);
+    }
+  }, [cloudDreamEnabled, dream, feeling, meaning, lang, state.profile, saveDreamRitual, practiceProgress, clearPractice, haptic, scrollToDreamResult]);
 
   const openLastEntry = useCallback(() => {
     if (!lastEntry) return;
@@ -758,27 +805,15 @@ export default function MorningRitualScreen({ route }) {
     ];
   }, [entryId, practiceState, clearPractice, practiceProgress, reduceMotion, markDreamRitualPracticed, haptic]);
 
-  const useResultAsWake = useCallback(async () => {
+  const useResultAsWake = useCallback(() => {
     if (!result || !entryId) return;
-    if (ritual.reminderEnabled) {
-      const scheduled = await scheduleRealAlarm({
-        id: `ritual:${entryId}`,
-        text: result.affirmation,
-        itemLang: result.lang || lang,
-        time: ritual.reminderTime,
-      });
-      if (!scheduled) return;
-    }
-    saveMorningRitualPreferences({
-      wakeAffirmationId: `ritual:${entryId}`,
-      wakeAffirmationText: result.affirmation,
-      wakeAffirmationLang: result.lang || lang,
-    });
-    if (!ritual.reminderEnabled) haptic(true);
-  }, [result, entryId, lang, ritual.reminderEnabled, ritual.reminderTime, scheduleRealAlarm, saveMorningRitualPreferences, haptic]);
+    haptic();
+    navigation.navigate('AffirmationAlarm', { preselectId: `ritual:${entryId}` });
+  }, [entryId, haptic, navigation, result]);
 
   const deleteCurrentDream = useCallback(async () => {
     if (!entryId) return;
+    setDreamDeleteError(false);
     const allowed = await confirmAsync({
       title: t(S.deleteDreamTitle),
       message: t(S.deleteDreamBody),
@@ -791,22 +826,32 @@ export default function MorningRitualScreen({ route }) {
 
     const usedByAlarm = ritual.wakeAffirmationId === `ritual:${entryId}`;
     if (usedByAlarm && Platform.OS === 'ios') {
-      if (!alarmCapability) {
-        if (mountedRef.current) setAlarmFeedback('failed');
+      const currentCapability = await getAffirmationAlarmCapability().catch(() => null);
+      if (!currentCapability) {
+        if (mountedRef.current) setDreamDeleteError(true);
         return;
       }
       const canHaveNativeAlarm =
-        alarmCapability.supported === true || alarmCapability.nativeModuleAvailable === true;
+        currentCapability.supported === true || currentCapability.nativeModuleAvailable === true;
       if (canHaveNativeAlarm) {
-        if (alarmOperationRef.current) return;
-        alarmOperationRef.current = true;
-        if (mountedRef.current) setAlarmBusy(true);
-        const cancelled = await cancelAffirmationAlarm().catch(() => null);
-        alarmOperationRef.current = false;
-        if (mountedRef.current) setAlarmBusy(false);
-        if (!cancelled || cancelled.ok !== true) {
-          if (mountedRef.current) setAlarmFeedback('failed');
+        if (!Array.isArray(currentCapability.scheduledAlarmIds)) {
+          if (mountedRef.current) setDreamDeleteError(true);
           return;
+        }
+        const alarmIsScheduled = currentCapability.scheduledAlarmIds.includes(
+          DEFAULT_AFFIRMATION_ALARM_ID
+        );
+        if (alarmIsScheduled) {
+          if (alarmOperationRef.current) return;
+          alarmOperationRef.current = true;
+          if (mountedRef.current) setAlarmBusy(true);
+          const cancelled = await cancelAffirmationAlarm().catch(() => null);
+          alarmOperationRef.current = false;
+          if (mountedRef.current) setAlarmBusy(false);
+          if (!cancelled || cancelled.ok !== true) {
+            if (mountedRef.current) setDreamDeleteError(true);
+            return;
+          }
         }
       }
     }
@@ -820,8 +865,9 @@ export default function MorningRitualScreen({ route }) {
     setResult(null);
     setEntryId(null);
     setPracticeState('idle');
+    setDreamDeleteError(false);
     haptic(true);
-  }, [entryId, lang, ritual.wakeAffirmationId, alarmCapability, t, clearPractice, removeDreamRitual, haptic]);
+  }, [entryId, lang, ritual.wakeAffirmationId, t, clearPractice, removeDreamRitual, haptic]);
 
   const renderOption = useCallback(({ item }) => {
     const selected = ritual.wakeAffirmationId === item.id;
@@ -891,14 +937,14 @@ export default function MorningRitualScreen({ route }) {
 
   return (
     <SafeAreaView
-      testID="affirmation-alarm-screen"
+      testID="morning-ritual-screen"
       style={[styles.safe, Platform.OS === 'web' && styles.webViewport, { backgroundColor: theme.bg }]}
       edges={['top']}
     >
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <Pressable
-            testID="affirmation-alarm-back"
+            testID="morning-ritual-back"
             accessibilityRole="button"
             accessibilityLabel={lang === 'pt' ? 'Voltar' : 'Back'}
             disabled={alarmBusy}
@@ -949,6 +995,8 @@ export default function MorningRitualScreen({ route }) {
               <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
             </Pressable>
 
+            {alarmVisible ? (
+              <>
             <View style={styles.introRow}>
               <View style={[styles.featureIcon, { backgroundColor: alpha(accentAt(theme, 3), 0.13) }]}>
                 <Ionicons name="alarm-outline" size={23} color={accentAt(theme, 3)} />
@@ -982,8 +1030,8 @@ export default function MorningRitualScreen({ route }) {
                     onPress={() => playText(selectedWake)}
                     style={({ pressed }) => [styles.smallButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
                   >
-                    <Ionicons name={speaking ? 'stop' : 'play'} size={17} color={theme.accent} />
-                    <Text style={[styles.smallButtonText, { color: theme.accent }]}>{speaking ? t(S.stop) : t(S.preview)}</Text>
+                    <Ionicons name={isTextPlaying(selectedWake) ? 'stop' : 'play'} size={17} color={theme.accent} />
+                    <Text style={[styles.smallButtonText, { color: theme.accent }]}>{isTextPlaying(selectedWake) ? t(S.stop) : t(S.preview)}</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -1042,6 +1090,8 @@ export default function MorningRitualScreen({ route }) {
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              </>
+            ) : null}
 
             <View
               onLayout={({ nativeEvent }) => {
@@ -1125,7 +1175,11 @@ export default function MorningRitualScreen({ route }) {
                     <Text style={[styles.counter, { color: theme.textMuted }]}>{dream.length}/1600</Text>
                   </View>
                 </View>
-                {voiceAvailable ? <Text style={[styles.privacyText, { color: theme.textMuted }]}>{t(S.voicePrivacy)}</Text> : null}
+                {voiceAvailable ? (
+                  <Text style={[styles.privacyText, { color: theme.textMuted }]}>
+                    {t(cloudDreamEnabled ? S.voicePrivacyCloud : S.voicePrivacy)}
+                  </Text>
+                ) : null}
                 {voiceFailed ? <Text style={[styles.warningText, { color: theme.warning }]}>{t(S.voiceUnavailable)}</Text> : null}
 
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>{t(S.feelingLabel)}</Text>
@@ -1192,12 +1246,28 @@ export default function MorningRitualScreen({ route }) {
                   })}
                 </ScrollView>
 
+                {!cloudDreamEnabled ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate('Profile')}
+                    style={({ pressed }) => [
+                      styles.cloudNotice,
+                      { backgroundColor: alpha(theme.warning, 0.1) },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="lock-closed-outline" size={18} color={theme.warning} />
+                    <Text style={[styles.cloudNoticeText, { color: theme.textMuted }]}>{t(S.cloudLocalNotice)}</Text>
+                    <Text style={[styles.cloudNoticeAction, { color: theme.accent }]}>{t(S.openProfile)}</Text>
+                  </Pressable>
+                ) : null}
+
                 <PrimaryButton
                   testID="transform-dream"
-                  label={t(S.transform)}
+                  label={transformingDream ? t(S.transforming) : t(S.transform)}
                   icon="sparkles"
                   onPress={transformDream}
-                  disabled={clean(dream).length < 4}
+                  disabled={transformingDream || clean(dream).length < 4}
                   style={styles.transformButton}
                 />
 
@@ -1227,8 +1297,8 @@ export default function MorningRitualScreen({ route }) {
                         onPress={() => playText({ text: result.affirmation, lang: result.lang || lang, personal: true })}
                         style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
                       >
-                        <Ionicons name={speaking ? 'stop' : 'volume-high-outline'} size={18} color={theme.accent} />
-                        <Text style={[styles.resultButtonText, { color: theme.accent }]}>{speaking ? t(S.stop) : t(S.listenResult)}</Text>
+                        <Ionicons name={isTextPlaying({ text: result.affirmation }) ? 'stop' : 'volume-high-outline'} size={18} color={theme.accent} />
+                        <Text style={[styles.resultButtonText, { color: theme.accent }]}>{isTextPlaying({ text: result.affirmation }) ? t(S.stop) : t(S.listenResult)}</Text>
                       </Pressable>
                       <Pressable
                         onPress={useResultAsWake}
@@ -1257,6 +1327,11 @@ export default function MorningRitualScreen({ route }) {
                       <Ionicons name="trash-outline" size={17} color={theme.danger} />
                       <Text style={[styles.deleteDreamText, { color: theme.danger }]}>{t(S.deleteDream)}</Text>
                     </Pressable>
+                    {dreamDeleteError ? (
+                      <Text accessibilityLiveRegion="polite" style={[styles.warningText, { color: theme.danger }]}>
+                        {t(S.deleteAlarmFailed)}
+                      </Text>
+                    ) : null}
                     <View style={[styles.progressTrack, { backgroundColor: theme.surfaceAlt }]}>
                       <Animated.View
                         style={[
@@ -1277,7 +1352,7 @@ export default function MorningRitualScreen({ route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+      <Modal visible={alarmVisible && pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.modalBackdrop, { backgroundColor: alpha('#101827', 0.48) }]}
@@ -1418,6 +1493,9 @@ const styles = StyleSheet.create({
   voiceUnavailable: { flex: 1, fontSize: 11, lineHeight: 16, letterSpacing: 0 },
   counter: { marginLeft: 'auto', fontSize: 11, letterSpacing: 0 },
   privacyText: { fontSize: 11, lineHeight: 17, marginTop: 6, letterSpacing: 0 },
+  cloudNotice: { minHeight: 52, borderRadius: 8, flexDirection: 'row', alignItems: 'center', padding: 11, marginTop: 16 },
+  cloudNoticeText: { flex: 1, fontSize: 11, lineHeight: 17, marginHorizontal: 8, letterSpacing: 0 },
+  cloudNoticeAction: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0 },
   choiceRow: { paddingRight: 4 },
   choiceChip: { height: 39, borderWidth: 1, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 12, marginRight: 7 },
   choiceText: { fontSize: 12, fontWeight: '700', letterSpacing: 0 },

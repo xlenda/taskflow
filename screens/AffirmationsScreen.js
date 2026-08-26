@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Share,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -21,12 +20,7 @@ import { APP_NAME, APP_URL } from '../constants/brand';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { useT } from '../utils/useT';
-import {
-  narrate,
-  stopSpeaking,
-  warmUpVoices,
-  isSpeechAvailable,
-} from '../utils/speech';
+import { usePersonalNarration } from '../utils/usePersonalNarration';
 
 import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
@@ -72,6 +66,7 @@ const S = {
 };
 
 const DREAMS_FILTER = 'Dreams';
+const PLAYBACK_PREFIX = 'affirmations:';
 
 // O conteúdo (afirmações e categorias) guarda os campos como { en, pt } e
 // `localized` devolve o item já resolvido no idioma da pessoa. O guard mantém a
@@ -93,49 +88,69 @@ export default function AffirmationsScreen() {
   const theme = useTheme();
   const { t, lang } = useT();
   const { state, loading, toggleFavoriteAffirmation, markAffirmationRead } = useApp();
-  const narratorId = state?.narration?.narratorId;
+  const {
+    activePlaybackId,
+    lastCompletedPlaybackId,
+    phase: narrationPhase,
+    playPersonal,
+    stop: stopNarration,
+  } = usePersonalNarration();
   // `null` significa "a pessoa ainda não escolheu um filtro". Todo deck desta
   // tela nasce das manifestações e dos sonhos salvos pela própria pessoa.
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [speaking, setSpeaking] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(null);
   const isFocused = useIsFocused();
 
-  // O dia SÓ é registrado por ação real: ouvir a afirmação até o fim, guardar
-  // nas favoritas ou tocar em "Recebi esta afirmação". Antes bastava ENTRAR na
-  // aba — um efeito de montagem marcava o dia e a sequência do app inteiro
-  // subia sozinha, dizendo que a pessoa fez algo que ela não fez.
-  //
-  // Trava necessária: na web, cancelar a fala do aparelho dispara o mesmo
-  // "onend" do fim natural. Sem isto, parar no meio contaria como ouvido até o
-  // fim. Todo caminho que interrompe a voz de propósito liga a trava.
-  const abortedRef = useRef(false);
   const audioRunRef = useRef(0);
+  const activePlaybackIdRef = useRef(activePlaybackId);
+  const handledCompletionRef = useRef(null);
+  const attemptedPlaybackRef = useRef(null);
 
-  // A lista de vozes do navegador chega assíncrona; aquecer aqui garante que o
-  // PRIMEIRO toque já saia com a voz escolhida, não com a padrão robótica.
   useEffect(() => {
-    warmUpVoices(lang, { localOnly: true, narratorId });
-  }, [lang, narratorId]);
+    activePlaybackIdRef.current = activePlaybackId;
+  }, [activePlaybackId]);
 
-  // A voz nunca sobrevive à tela: para ao perder o foco (troca de aba) e no
-  // cleanup, que cobre também o desmonte.
+  // Só o término natural conta como uma escuta concluída. O provider distingue
+  // esse caso de pausa, troca de card, saída da aba e toque em "parar".
+  useEffect(() => {
+    if (
+      !lastCompletedPlaybackId ||
+      !lastCompletedPlaybackId.startsWith(PLAYBACK_PREFIX) ||
+      attemptedPlaybackRef.current !== lastCompletedPlaybackId ||
+      handledCompletionRef.current === lastCompletedPlaybackId
+    ) {
+      return;
+    }
+    handledCompletionRef.current = lastCompletedPlaybackId;
+    attemptedPlaybackRef.current = null;
+    markAffirmationRead();
+  }, [lastCompletedPlaybackId, markAffirmationRead]);
+
+  useEffect(() => {
+    if (narrationPhase !== 'error' || !attemptedPlaybackRef.current) return;
+    setAudioFailed(true);
+    attemptedPlaybackRef.current = null;
+  }, [narrationPhase]);
+
+  const stopSpeech = useCallback(() => {
+    audioRunRef.current += 1;
+    attemptedPlaybackRef.current = null;
+    if (String(activePlaybackIdRef.current || '').startsWith(PLAYBACK_PREFIX)) {
+      stopNarration();
+    }
+  }, [stopNarration]);
+
+  // A narração desta tela nunca sobrevive à troca de aba ou ao desmonte.
   useEffect(() => {
     if (!isFocused) {
-      audioRunRef.current += 1;
-      abortedRef.current = true;
-      stopSpeaking();
-      setSpeaking(false);
+      stopSpeech();
     }
-    return () => {
-      audioRunRef.current += 1;
-      abortedRef.current = true;
-      stopSpeaking();
-    };
-  }, [isFocused]);
+  }, [isFocused, stopSpeech]);
+
+  useEffect(() => () => stopSpeech(), [stopSpeech]);
 
   // A afirmação da intenção nasce no onboarding ou na criação de uma nova
   // manifestação; os relatos do ritual entram logo abaixo no mesmo deck.
@@ -179,7 +194,16 @@ export default function AffirmationsScreen() {
     [manifestationAffirmations, dreamAffirmations]
   );
 
-  const activeFilter = filter || 'All';
+  const populatedCategories = useMemo(() => {
+    const present = new Set(manifestationAffirmations.map((item) => item.category).filter(Boolean));
+    return CATEGORIES.filter((category) => present.has(category.key));
+  }, [manifestationAffirmations]);
+
+  const filterStillExists =
+    filter === 'All' ||
+    (filter === DREAMS_FILTER && dreamAffirmations.length > 0) ||
+    populatedCategories.some((category) => category.key === filter);
+  const activeFilter = filter && filterStillExists ? filter : 'All';
 
   const listFor = useCallback(
     (key) => {
@@ -198,21 +222,14 @@ export default function AffirmationsScreen() {
         ? [{ key: DREAMS_FILTER, label: t(S.fromDreams), accent: 3 }]
         : []),
       { key: 'All', label: t(S.all), accent: 0 },
-      ...CATEGORIES.map((c) => ({
+      ...populatedCategories.map((c) => ({
         key: c.key,
         label: loc(c, lang).label || c.key,
         accent: c.accent,
       })),
     ],
-    [dreamAffirmations.length, t, lang]
+    [dreamAffirmations.length, populatedCategories, t, lang]
   );
-
-  const stopSpeech = useCallback(() => {
-    audioRunRef.current += 1;
-    abortedRef.current = true;
-    stopSpeaking();
-    setSpeaking(false);
-  }, []);
 
   const seededIndex = list.length > 0 ? seedIndex(list.length) : 0;
   const selectedIndex = selectedId ? list.findIndex((item) => item.id === selectedId) : -1;
@@ -229,12 +246,6 @@ export default function AffirmationsScreen() {
     setManual(null);
     setCopied(false);
   }, [currentId, stopSpeech]);
-
-  useEffect(() => {
-    if (current && current.personalized) {
-      warmUpVoices(current.speechLang || lang, { localOnly: true, narratorId });
-    }
-  }, [current, lang, narratorId]);
 
   if (loading || !state) {
     return (
@@ -266,10 +277,13 @@ export default function AffirmationsScreen() {
       ? t(S.fromDream)
       : `${t(S.fromIntention)} · ${catLabel(current.category)}`
     : '';
-  // A ação principal da tela é OUVIR — botão grande com rótulo, não um ícone
-  // cinza de 20px no canto do card. Texto pessoal só pode usar uma voz local
-  // comprovável; no nativo, onde essa garantia não existe, permanece em texto.
-  const canHear = current ? Platform.OS === 'web' && isSpeechAvailable() : false;
+  const playbackId = current ? `${PLAYBACK_PREFIX}${current.id}` : null;
+  const speaking =
+    playbackId === activePlaybackId &&
+    (narrationPhase === 'loading' ||
+      narrationPhase === 'playing' ||
+      narrationPhase === 'paused');
+  const canHear = !!current;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -309,9 +323,7 @@ export default function AffirmationsScreen() {
     setManual(texto);
   };
 
-  // No Safari a fala só nasce dentro do gesto: speak() é chamado direto aqui,
-  // nunca por efeito ou timeout.
-  const toggleSpeak = () => {
+  const toggleSpeak = async () => {
     if (speaking) {
       stopSpeech();
       return;
@@ -319,32 +331,23 @@ export default function AffirmationsScreen() {
     const body = currentLoc && currentLoc.text;
     if (!body) return;
     setAudioFailed(false);
-    setSpeaking(true);
-    abortedRef.current = false;
     const run = audioRunRef.current + 1;
     audioRunRef.current = run;
-    // Conteúdo pessoal nunca recebe um id do antigo catálogo de MP3. Enquanto
-    // a voz dinâmica não está ativa, usa apenas uma voz local do navegador.
-    const ok = narrate(null, body, {
+    handledCompletionRef.current = null;
+    attemptedPlaybackRef.current = playbackId;
+    const result = await playPersonal({
+      text: body,
       lang: current.speechLang || lang,
-      narratorId,
-      localOnly: true,
-      // Ouviu até o FIM = recebeu a afirmação de hoje. Parar no meio, trocar de
-      // afirmação ou sair da aba liga a trava e não conta.
-      onDone: () => {
-        if (run !== audioRunRef.current) return;
-        setSpeaking(false);
-        if (!abortedRef.current) markAffirmationRead();
-      },
-      onError: () => {
-        if (run !== audioRunRef.current) return;
-        setSpeaking(false);
-        if (currentPersonal) setAudioFailed(true);
-      },
+      playbackId,
     });
-    if (!ok) {
-      setSpeaking(false);
-      if (currentPersonal) setAudioFailed(true);
+
+    if (run !== audioRunRef.current) {
+      if (result?.ok && activePlaybackIdRef.current === playbackId) stopNarration();
+      return;
+    }
+    if (!result?.ok && result?.error !== 'audio_cancelled') {
+      attemptedPlaybackRef.current = null;
+      setAudioFailed(true);
     }
   };
 
@@ -376,6 +379,7 @@ export default function AffirmationsScreen() {
             return (
               <TouchableOpacity
                 key={chip.key}
+                testID={`affirmation-filter-${chip.key}`}
                 activeOpacity={0.8}
                 onPress={() => {
                   stopSpeech();
@@ -458,7 +462,7 @@ export default function AffirmationsScreen() {
                 style={{ marginTop: 16 }}
               />
             ) : null}
-            {currentPersonal && (!canHear || audioFailed) ? (
+            {currentPersonal && audioFailed ? (
               <Text style={[styles.privateAudioNote, { color: theme.textMuted }]}>
                 {t(S.privateAudioUnavailable)}
               </Text>

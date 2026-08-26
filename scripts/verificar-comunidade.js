@@ -25,6 +25,7 @@ assert.ok(screenSource.includes('Ainda não há relatos publicados'), 'estado va
 assert.ok(screenSource.includes('No published stories yet'), 'estado vazio EN ausente');
 assert.ok(!screenSource.includes('const TESTIMONIALS'), 'nao inclua depoimentos de exemplo');
 assert.ok(serviceSource.includes("post.status === 'published'"), 'feed deve aceitar somente published');
+assert.ok(serviceSource.includes('category: safeCategory(input.category)'), 'recibo deve preservar categoria real');
 assert.ok(screenSource.includes('deleteCommunityStory'), 'autora precisa conseguir apagar o proprio relato');
 assert.ok(
   screenSource.includes('const submitRef = useRef(false)') &&
@@ -117,6 +118,7 @@ new Function('require', 'module', 'exports', 'process', transformed)(
     locale: 'pt',
     manifestationId: 'm-local-1',
     manifestationTitle: 'Minha nova fase',
+    category: 'Peace',
   });
   assert.strictEqual(result.synced, false, 'sem credenciais nunca deve fingir envio');
   assert.strictEqual(result.item.status, 'local_draft');
@@ -124,6 +126,7 @@ new Function('require', 'module', 'exports', 'process', transformed)(
   assert.strictEqual(loaded.feed.length, 0, 'fallback nao pode inventar feed publico');
   assert.strictEqual(loaded.own.length, 1, 'rascunho local deve sobreviver ao reload');
   assert.strictEqual(loaded.own[0].manifestationId, 'm-local-1');
+  assert.strictEqual(loaded.own[0].category, 'Peace', 'categoria real deve sobreviver ao reload');
   const deleted = await api.deleteCommunityStory(loaded.own[0]);
   assert.strictEqual(deleted.ok, true, 'rascunho local deve poder ser apagado');
   assert.strictEqual((await api.loadLocalCommunityStories()).length, 0, 'rascunho apagado nao pode reaparecer');
@@ -168,11 +171,18 @@ new Function('require', 'module', 'exports', 'process', transformed)(
 
   storage.set(
     api.COMMUNITY_STORAGE_KEY,
-    JSON.stringify([{ body: 'Relato legado sem identificador, mas ainda valido.', status: 'local_draft' }])
+    JSON.stringify([
+      {
+        body: 'Relato legado sem identificador, mas ainda valido.',
+        status: 'local_draft',
+        category: 'Categoria inventada',
+      },
+    ])
   );
   const legacyFirst = await api.loadLocalCommunityStories();
   const legacySecond = await api.loadLocalCommunityStories();
   assert.strictEqual(legacyFirst[0].id, legacySecond[0].id, 'id legado precisa ser deterministico');
+  assert.strictEqual(legacyFirst[0].category, null, 'categoria invalida nunca pode ser inventada no relato');
   await api.removeLocalCommunityStory(legacyFirst[0].id);
   assert.strictEqual(
     (await api.loadLocalCommunityStories()).length,

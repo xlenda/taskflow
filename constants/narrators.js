@@ -10,9 +10,13 @@ export const NARRATORS = [
     },
     accent: 3,
     localTone: { rate: 0.94, pitch: 1.06 },
-    preview: {
-      pt: '/audio/narrators/aurora-pt-v1.mp3',
-      en: '/audio/narrators/aurora-en-v1.mp3',
+    tts: {
+      provider: 'gemini',
+      voice: 'Sulafat',
+      style: {
+        pt: 'calorosa, confiante e luminosa',
+        en: 'warm, confident and luminous',
+      },
     },
   },
   {
@@ -24,9 +28,13 @@ export const NARRATORS = [
     },
     accent: 2,
     localTone: { rate: 0.89, pitch: 0.96 },
-    preview: {
-      pt: '/audio/narrators/rio-pt-v1.mp3',
-      en: '/audio/narrators/rio-en-v1.mp3',
+    tts: {
+      provider: 'gemini',
+      voice: 'Callirrhoe',
+      style: {
+        pt: 'calma, neutra e contemplativa',
+        en: 'calm, neutral and contemplative',
+      },
     },
   },
   {
@@ -38,9 +46,67 @@ export const NARRATORS = [
     },
     accent: 1,
     localTone: { rate: 0.86, pitch: 0.82 },
-    preview: {
-      pt: '/audio/narrators/atlas-pt-v1.mp3',
-      en: '/audio/narrators/atlas-en-v1.mp3',
+    tts: {
+      provider: 'gemini',
+      voice: 'Orus',
+      style: {
+        pt: 'grave, quente e envolvente',
+        en: 'deep, warm and immersive',
+      },
+    },
+  },
+  {
+    id: 'serena',
+    name: { pt: 'Serena', en: 'Serena' },
+    description: {
+      pt: 'Suave, íntima e serena',
+      en: 'Soft, intimate and serene',
+    },
+    accent: 0,
+    localTone: { rate: 0.9, pitch: 1.01 },
+    tts: {
+      provider: 'gemini',
+      voice: 'Vindemiatrix',
+      style: {
+        pt: 'suave, íntima e serena',
+        en: 'soft, intimate and serene',
+      },
+    },
+  },
+  {
+    id: 'luma',
+    name: { pt: 'Luma', en: 'Luma' },
+    description: {
+      pt: 'Próxima, leve e acolhedora',
+      en: 'Friendly, light and reassuring',
+    },
+    accent: 3,
+    localTone: { rate: 0.96, pitch: 1.04 },
+    tts: {
+      provider: 'gemini',
+      voice: 'Achird',
+      style: {
+        pt: 'próxima, leve e acolhedora',
+        en: 'friendly, light and reassuring',
+      },
+    },
+  },
+  {
+    id: 'nilo',
+    name: { pt: 'Nilo', en: 'Nilo' },
+    description: {
+      pt: 'Clara, centrada e segura',
+      en: 'Clear, grounded and assured',
+    },
+    accent: 2,
+    localTone: { rate: 0.91, pitch: 0.91 },
+    tts: {
+      provider: 'gemini',
+      voice: 'Charon',
+      style: {
+        pt: 'clara, centrada e segura',
+        en: 'clear, grounded and assured',
+      },
     },
   },
 ];
@@ -63,5 +129,6 @@ export function narratorText(value, lang = 'pt') {
 
 export function narratorPreviewUrl(id, lang = 'pt') {
   const narrator = narratorById(id);
-  return narrator.preview[lang === 'en' ? 'en' : 'pt'];
+  const preview = narrator && narrator.preview;
+  return preview ? preview[lang === 'en' ? 'en' : 'pt'] || null : null;
 }

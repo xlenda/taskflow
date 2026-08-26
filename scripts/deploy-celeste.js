@@ -22,6 +22,9 @@ const UTF8 = 'utf8';
 const STATIC_GATES = [
   ['scripts/verificar-gemini-api.js', 'Teste local da API Gemini falhou'],
   ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],
+  ['scripts/verificar-waf-vercel.js', 'WAF ativo da Vercel diverge da protecao versionada'],
+  ['scripts/verificar-audio-gemini.js', 'Infraestrutura de voz Gemini falhou'],
+  ['scripts/verificar-sonho-gemini.js', 'Transformacao Gemini de sonho falhou'],
   ['scripts/verificar-base-conhecimento.js', 'Base de conhecimento da Celeste falhou'],
   ['scripts/verificar-video-abertura.js', 'Teste do video de abertura falhou'],
   ['scripts/verificar-recuperacao-travamentos.js', 'Recuperacao de travamentos falhou'],
@@ -100,6 +103,8 @@ function copyDeployInputs() {
   for (const name of apiFiles) fs.copyFileSync(path.join(apiSource, name), path.join(apiTarget, name));
   assert(fs.existsSync(path.join(apiTarget, 'gerar-cena.js')), 'Funcao Gemini ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'traduzir-cena.js')), 'Funcao de traducao ausente do pacote');
+  assert(fs.existsSync(path.join(apiTarget, 'transformar-sonho.js')), 'Funcao de sonho ausente do pacote');
+  assert(fs.existsSync(path.join(apiTarget, 'gerar-audio.js')), 'Funcao de voz Gemini ausente do pacote');
 
   const projectPackage = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), UTF8));
   const botidVersion = projectPackage.dependencies && projectPackage.dependencies.botid;
@@ -304,16 +309,23 @@ async function liveAssetChecks() {
 }
 
 async function liveGeminiChecks() {
-  const blocked = await fetchWithTimeout(`${PROD}/api/gerar-cena`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: PROD },
-    body: '{}',
-  }, 25000);
-  const blockedPayload = await blocked.json().catch(() => ({}));
-  assert(
-    blocked.status === 403 && blockedPayload.error === 'automated_request_blocked',
-    `Cliente sem BotID nao foi bloqueado: HTTP ${blocked.status} ${JSON.stringify(blockedPayload)}`
-  );
+  for (const pathname of [
+    '/api/gerar-cena',
+    '/api/traduzir-cena',
+    '/api/transformar-sonho',
+    '/api/gerar-audio',
+  ]) {
+    const blocked = await fetchWithTimeout(`${PROD}${pathname}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: PROD },
+      body: '{}',
+    }, 25000);
+    const blockedPayload = await blocked.json().catch(() => ({}));
+    assert(
+      blocked.status === 403 && blockedPayload.error === 'automated_request_blocked',
+      `Cliente sem BotID passou em ${pathname}: HTTP ${blocked.status} ${JSON.stringify(blockedPayload)}`
+    );
+  }
 
   const generationBody = {
     desire: 'uma rotina criativa com calma',
@@ -451,7 +463,9 @@ async function main() {
   }
 
   for (const [script, failure] of STATIC_GATES) await runNode(script, { failure });
-  await run(NODE, [EXPO_CLI, 'export', '--platform', 'web', '--output-dir', DIST], { failure: 'Export web do Expo falhou' });
+  await run(NODE, [EXPO_CLI, 'export', '--platform', 'web', '--output-dir', DIST, '--clear'], {
+    failure: 'Export web do Expo falhou',
+  });
   await runNode('scripts/enxugar-fontes.js', { failure: 'Subset das fontes falhou' });
   await runNode('scripts/verificar-icones.js', { failure: 'Subset de icones quebrou glifos usados pelo app' });
   copyDeployInputs();

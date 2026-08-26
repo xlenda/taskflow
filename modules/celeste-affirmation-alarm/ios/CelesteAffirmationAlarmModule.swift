@@ -13,6 +13,7 @@ struct AffirmationSchedulePayload: Record {
   @Field var stopLabel: String = "Parar"
   @Field var voiceIdentifier: String?
   @Field var soundFileName: String?
+  @Field var audioBase64Wav: String?
   @Field var requestAuthorization: Bool = true
 }
 
@@ -24,6 +25,7 @@ struct AffirmationTestPayload: Record {
   @Field var stopLabel: String = "Parar"
   @Field var voiceIdentifier: String?
   @Field var soundFileName: String?
+  @Field var audioBase64Wav: String?
   @Field var delaySeconds: Int = 60
   @Field var requestAuthorization: Bool = true
 }
@@ -120,7 +122,7 @@ public final class CelesteAffirmationAlarmModule: Module {
     [
       "supported": false,
       "authorization": "unavailable",
-      "apiVersion": "1",
+      "apiVersion": "2",
       "reason": reason
     ]
   }

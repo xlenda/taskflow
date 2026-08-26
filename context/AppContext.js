@@ -15,6 +15,7 @@ import {
 import { generatePersonalizedScene } from '../services/generatePersonalizedScene';
 import { translateManifestationScene } from '../services/translateManifestationScene';
 import { createSerialStorageWriter } from '../utils/serialStorageWriter';
+import { alarmWeekdaysOrDefault, normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 import {
   beginCommunityDataReset,
   cancelCommunityDataReset,
@@ -134,6 +135,8 @@ function mergeDefensivo(parsed) {
     st.profile.cloudAdultConfirmed === true;
   st.profile.cloudPersonalization = cloudAllowed;
   st.profile.cloudAdultConfirmed = cloudAllowed;
+  st.profile.cloudNarrationConsent =
+    cloudAllowed && st.profile.cloudNarrationConsent === true;
   // Item importado/antigo sem sessions derrubaria derived e setPractice —
   // normalizar aqui protege load e import de uma vez.
   st.manifestations = st.manifestations
@@ -142,7 +145,7 @@ function mergeDefensivo(parsed) {
     const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const itemLang = m.lang === 'pt' || m.lang === 'en' ? m.lang : st.lang;
     const categories = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
-    const category = categories.includes(m.category) ? m.category : 'Wealth';
+    const category = categories.includes(m.category) ? m.category : null;
     const titleFallback = itemLang === 'pt' ? 'Minha manifestação' : 'My manifestation';
     const textOr = (value, fallback, max) =>
       typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : fallback;
@@ -209,9 +212,15 @@ function mergeDefensivo(parsed) {
     reminderTime: validTime(savedRitual.reminderTime)
       ? savedRitual.reminderTime
       : defaultRitual.reminderTime,
+    weekdays: alarmWeekdaysOrDefault(savedRitual.weekdays),
     wakeAffirmationId: shortText(savedRitual.wakeAffirmationId, 160) || null,
     wakeAffirmationText: shortText(savedRitual.wakeAffirmationText, 800),
     wakeAffirmationLang: savedRitual.wakeAffirmationLang === 'en' ? 'en' : 'pt',
+    wakeNarratorId: isNarratorId(savedRitual.wakeNarratorId) ? savedRitual.wakeNarratorId : null,
+    wakeSoundSource:
+      savedRitual.wakeSoundSource === 'neural_wav' || savedRitual.wakeSoundSource === 'local_speech'
+        ? savedRitual.wakeSoundSource
+        : null,
     entries: (Array.isArray(savedRitual.entries) ? savedRitual.entries : [])
       .filter(
         (entry) =>
@@ -294,6 +303,8 @@ function mergeDefensivo(parsed) {
     st.morningRitual.wakeAffirmationId = fallbackWake ? fallbackWake.id : null;
     st.morningRitual.wakeAffirmationText = fallbackWake ? fallbackWake.text : '';
     st.morningRitual.wakeAffirmationLang = fallbackWake ? fallbackWake.lang : st.lang;
+    st.morningRitual.wakeNarratorId = null;
+    st.morningRitual.wakeSoundSource = null;
     if (fallbackWake) {
       // The native AlarmKit may still contain the removed catalog narration.
       // Keep the alarm visible, but force NativeAlarmContentSync to replace it
@@ -805,6 +816,8 @@ export function AppProvider({ children }) {
                 wakeAffirmationId: null,
                 wakeAffirmationText: '',
                 wakeAffirmationLang: s.lang === 'en' ? 'en' : 'pt',
+                wakeNarratorId: null,
+                wakeSoundSource: null,
               },
             }
           : {}),
@@ -1001,6 +1014,10 @@ export function AppProvider({ children }) {
         next.alarmSyncError = patch.alarmSyncError;
       }
       if (patch && validTime(patch.reminderTime)) next.reminderTime = patch.reminderTime;
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'weekdays')) {
+        const weekdays = normalizeAlarmWeekdays(patch.weekdays);
+        if (weekdays) next.weekdays = weekdays;
+      }
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeAffirmationId')) {
         next.wakeAffirmationId = shortText(patch.wakeAffirmationId, 160) || null;
       }
@@ -1009,6 +1026,15 @@ export function AppProvider({ children }) {
       }
       if (patch && (patch.wakeAffirmationLang === 'pt' || patch.wakeAffirmationLang === 'en')) {
         next.wakeAffirmationLang = patch.wakeAffirmationLang;
+      }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeNarratorId')) {
+        next.wakeNarratorId = isNarratorId(patch.wakeNarratorId) ? patch.wakeNarratorId : null;
+      }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeSoundSource')) {
+        next.wakeSoundSource =
+          patch.wakeSoundSource === 'neural_wav' || patch.wakeSoundSource === 'local_speech'
+            ? patch.wakeSoundSource
+            : null;
       }
       return { ...s, morningRitual: next };
     });
@@ -1113,6 +1139,8 @@ export function AppProvider({ children }) {
                 reminderEnabled: false,
                 wakeAffirmationId: null,
                 wakeAffirmationText: '',
+                wakeNarratorId: null,
+                wakeSoundSource: null,
               }
             : {}),
         },
@@ -1141,6 +1169,7 @@ export function AppProvider({ children }) {
       ...(restored.profile || {}),
       cloudPersonalization: false,
       cloudAdultConfirmed: false,
+      cloudNarrationConsent: false,
     };
     if (
       pendingResetRevisionRef.current ||
@@ -1206,6 +1235,7 @@ export function AppProvider({ children }) {
       ) {
         profile.cloudPersonalization = false;
         profile.cloudAdultConfirmed = false;
+        profile.cloudNarrationConsent = false;
       }
       return {
         ...s,

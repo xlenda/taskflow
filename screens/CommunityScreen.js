@@ -29,7 +29,6 @@ import {
 const S = {
   title: { en: 'Community', pt: 'Comunidade' },
   subtitle: { en: 'Real stories, reviewed before they appear', pt: 'Relatos reais, analisados antes de aparecer' },
-  back: { en: 'Go back', pt: 'Voltar' },
   realTitle: { en: 'Real experiences only', pt: 'Só experiências reais' },
   realBody: {
     en: 'This space is never filled with made-up testimonials. Personal stories are not a promise of the same result.',
@@ -209,7 +208,7 @@ function StoryCard({ item, mine, t, lang, theme, onDelete, deleting }) {
   );
 }
 
-export default function CommunityScreen({ navigation }) {
+export default function CommunityScreen() {
   const theme = useTheme();
   const { state } = useApp();
   const { t, lang } = useT();
@@ -339,14 +338,6 @@ export default function CommunityScreen({ navigation }) {
     }
   };
 
-  const goBack = () => {
-    if (navigation && navigation.canGoBack && navigation.canGoBack()) {
-      navigation.goBack();
-      return;
-    }
-    if (navigation && navigation.navigate) navigation.navigate('Main');
-  };
-
   return (
     <SafeAreaView
       testID="community-screen"
@@ -356,26 +347,14 @@ export default function CommunityScreen({ navigation }) {
       <ScrollView
         testID="community-scroll"
         style={styles.scrollView}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, styles.screenContent]}
       >
       <View style={styles.headerRow}>
-        <Pressable
-          testID="community-back"
-          accessibilityRole="button"
-          accessibilityLabel={t(S.back)}
-          hitSlop={10}
-          onPress={goBack}
-          style={({ pressed }) => [
-            styles.iconButton,
-            { backgroundColor: theme.surface, borderColor: theme.border },
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="arrow-back" size={22} color={theme.text} />
-        </Pressable>
         <View style={styles.headerText}>
           <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{t(S.title)}</Text>
           <Text style={[styles.subtitle, { color: theme.textMuted }]}>{t(S.subtitle)}</Text>
@@ -644,7 +623,6 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0 },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: 0 },
   subtitle: { marginTop: 3, fontSize: 14, lineHeight: 20, letterSpacing: 0 },
-  iconButton: { width: 42, height: 42, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   createIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
   pressed: { opacity: 0.76 },
   truthBand: { flexDirection: 'row', paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, marginBottom: 16 },

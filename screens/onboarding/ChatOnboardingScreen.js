@@ -10,6 +10,7 @@ import {
   ScrollView,
   ActivityIndicator,
   AccessibilityInfo,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -62,6 +63,7 @@ function normalizeCloudConsent(profile) {
 
 export default function ChatOnboardingScreen({ navigation }) {
   const { saveProfile, addManifestation, state } = useApp();
+  const { height: viewportHeight } = useWindowDimensions();
   const lang = (state && state.lang) || 'en';
   const T = UI[lang];
 
@@ -86,6 +88,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   const draftInteractionRef = useRef(false);
 
   const step = FLOW[idx];
+  const shortCompactStep = step.compact && viewportHeight <= 520;
   const lines = useMemo(() => stepLines(step, answers, APP_NAME, lang), [idx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Labels follow the active language. Keys stay stable for selection state,
@@ -280,6 +283,7 @@ export default function ChatOnboardingScreen({ navigation }) {
     if (step.key === 'age' || step.key === 'cloudPersonalization') {
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
+      next.cloudNarrationConsent = false;
     }
     for (const s of FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
@@ -304,11 +308,13 @@ export default function ChatOnboardingScreen({ navigation }) {
     if (step.key === 'age' && !ageConfirmsAdult(val)) {
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
+      next.cloudNarrationConsent = false;
     }
     if (step.key === 'cloudPersonalization') {
       const allowed = val === true && ageConfirmsAdult(next.age);
       next.cloudPersonalization = allowed;
       next.cloudAdultConfirmed = allowed;
+      next.cloudNarrationConsent = allowed;
     }
     // Drop answers from gated steps that became unreachable (e.g. kids after hasKids -> No).
     for (const s of FLOW) {
@@ -483,8 +489,8 @@ export default function ChatOnboardingScreen({ navigation }) {
               minHeight: 0,
               paddingHorizontal: 26,
               justifyContent: centered ? 'center' : 'flex-start',
-              paddingTop: centered ? 0 : step.compact ? 32 : 100,
-              paddingBottom: centered ? 60 : step.compact ? 16 : 0,
+              paddingTop: centered ? 0 : shortCompactStep ? 12 : step.compact ? 32 : 100,
+              paddingBottom: centered ? 60 : shortCompactStep ? 8 : step.compact ? 16 : 0,
             }}
           >
             {step.type === 'intro' ? (
@@ -519,7 +525,7 @@ export default function ChatOnboardingScreen({ navigation }) {
                 key={`${step.id}-${lang}`}
                 lines={lines}
                 instant={instant}
-                textStyle={serifStyle(step.textSize || 29)}
+                textStyle={serifStyle(shortCompactStep ? step.shortTextSize || 19 : step.textSize || 29)}
                 onCharacter={pulseForCharacter}
                 characterMotion={!reduceMotion}
                 onDone={onTyped}
@@ -530,7 +536,7 @@ export default function ChatOnboardingScreen({ navigation }) {
             {!typing && opts.length ? (
               <ScrollView
                 showsVerticalScrollIndicator={false}
-                style={{ marginTop: step.compact ? 18 : 28, flex: 1, minHeight: 0 }}
+                style={{ marginTop: shortCompactStep ? 10 : step.compact ? 18 : 28, flex: 1, minHeight: 0 }}
                 contentContainerStyle={[
                   { paddingBottom: 8 },
                   step.wrap && { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10 },

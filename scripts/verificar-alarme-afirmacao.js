@@ -13,7 +13,27 @@ const iosRoot = path.join(moduleRoot, 'ios');
 const moduleSwiftFile = path.join(iosRoot, 'CelesteAffirmationAlarmModule.swift');
 const coordinatorSwiftFile = path.join(iosRoot, 'AffirmationAlarmCoordinator.swift');
 const soundWriterSwiftFile = path.join(iosRoot, 'SpeechSoundWriter.swift');
+const neuralWriterSwiftFile = path.join(iosRoot, 'NeuralWavSoundWriter.swift');
 const podspecFile = path.join(iosRoot, 'CelesteAffirmationAlarm.podspec');
+
+function makePCM16WavBase64({ sampleRate = 24_000, frameCount = 240 } = {}) {
+  const dataBytes = frameCount * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(36 + dataBytes, 4);
+  wav.write('WAVE', 8, 'ascii');
+  wav.write('fmt ', 12, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(dataBytes, 40);
+  return wav.toString('base64');
+}
 
 function loadService() {
   const source = fs.readFileSync(serviceFile, 'utf8');
@@ -127,7 +147,7 @@ async function main() {
   let scheduledAlarmIds = [];
   const nativeModule = {
     async getCapability() {
-      return { supported: true, authorization, apiVersion: '1', scheduledAlarmIds };
+      return { supported: true, authorization, apiVersion: '2', scheduledAlarmIds };
     },
     async requestAuthorization() {
       calls.push(['requestAuthorization']);
@@ -141,7 +161,10 @@ async function main() {
         ok: true,
         alarmId: payload.alarmId,
         scheduledFor: '2026-08-25T07:00:00-03:00',
-        soundFileName: 'celeste-affirmation.caf',
+        soundFileName: payload.audioBase64Wav
+          ? 'celeste-affirmation.wav'
+          : 'celeste-affirmation.caf',
+        soundSource: payload.audioBase64Wav ? 'neural_wav' : 'local_speech',
       };
     },
     async cancel(payload) {
@@ -172,14 +195,80 @@ async function main() {
   });
   assert.strictEqual(scheduled.ok, true);
   assert.strictEqual(scheduled.scheduled, true);
+  assert.strictEqual(scheduled.capability.nativeApiVersion, '2');
   assert.deepStrictEqual(calls[1][1].weekdays, [1, 3, 5]);
   assert.strictEqual(calls[1][1].hour, 6);
   assert.strictEqual(calls[1][1].affirmation, 'I wake with calm and purpose.');
   assert.strictEqual(calls[1][1].stopLabel, 'Stop', 'English alarm button must be localized');
+  assert.strictEqual(calls[1][1].audioBase64Wav, undefined, 'fallback local deve omitir o WAV');
+  assert.strictEqual(scheduled.soundSource, 'local_speech');
 
   const invalid = await ios.schedule({ time: '25:10', affirmation: 'A valid phrase.' });
   assert.strictEqual(invalid.reason, 'invalid_time');
   assert.strictEqual(calls.filter(([name]) => name === 'schedule').length, 1);
+
+  for (const audioBase64Wav of [
+    '',
+    'data:audio/wav;base64,UklGRg==',
+    Buffer.from('not a wave').toString('base64'),
+    'UklGRg===',
+  ]) {
+    const rejectedAudio = await ios.schedule({
+      time: '06:31',
+      affirmation: 'A valid phrase.',
+      audioBase64Wav,
+    });
+    assert.strictEqual(rejectedAudio.reason, 'invalid_audio_base64_wav');
+  }
+  assert.strictEqual(
+    calls.filter(([name]) => name === 'schedule').length,
+    1,
+    'WAV neural invalido nunca deve atravessar a ponte nativa'
+  );
+
+  const oversizedAudio = await ios.schedule({
+    time: '06:32',
+    affirmation: 'A valid phrase.',
+    audioBase64Wav: 'A'.repeat(service.AFFIRMATION_ALARM_MAX_WAV_BASE64_CHARS + 4),
+  });
+  assert.strictEqual(oversizedAudio.reason, 'audio_base64_wav_too_large');
+
+  const neuralWav = makePCM16WavBase64();
+  const neuralScheduled = await ios.schedule({
+    time: '06:35',
+    weekdays: [7, 1, 7],
+    affirmation: 'I wake with my chosen voice.',
+    audioBase64Wav: neuralWav,
+  });
+  assert.strictEqual(neuralScheduled.ok, true);
+  assert.strictEqual(neuralScheduled.soundSource, 'neural_wav');
+  assert.match(neuralScheduled.soundFileName, /\.wav$/);
+  const neuralPayload = calls.filter(([name]) => name === 'schedule').at(-1)[1];
+  assert.strictEqual(neuralPayload.audioBase64Wav, neuralWav);
+  assert.deepStrictEqual(neuralPayload.weekdays, [1, 7]);
+
+  let legacyScheduleCalls = 0;
+  const legacyNativeModule = {
+    ...nativeModule,
+    async getCapability() {
+      return { supported: true, authorization: 'authorized', apiVersion: '1' };
+    },
+    async schedule() {
+      legacyScheduleCalls += 1;
+      return { ok: true };
+    },
+  };
+  const legacyIOS = service.createAffirmationAlarmAdapter({
+    platform: { OS: 'ios', Version: 26 },
+    getNativeModule: () => legacyNativeModule,
+  });
+  const unsupportedNeural = await legacyIOS.schedule({
+    time: '06:40',
+    affirmation: 'I wake with my chosen voice.',
+    audioBase64Wav: neuralWav,
+  });
+  assert.strictEqual(unsupportedNeural.reason, 'neural_audio_unsupported');
+  assert.strictEqual(legacyScheduleCalls, 0, 'bridge v1 nao pode degradar para fala local');
 
   const cancelled = await ios.cancel(scheduled.alarmId);
   assert.deepStrictEqual(
@@ -248,6 +337,8 @@ async function main() {
   }
   assert.match(moduleSwift, /#if canImport\(AlarmKit\)/);
   assert.match(moduleSwift, /#available\(iOS 26\.0, \*\)/);
+  assert.match(moduleSwift, /@Field var audioBase64Wav: String\?/);
+  assert.match(moduleSwift, /"apiVersion": "2"/);
 
   const coordinatorSwift = fs.readFileSync(coordinatorSwiftFile, 'utf8');
   assert.match(coordinatorSwift, /AlarmManager\.shared/);
@@ -262,6 +353,12 @@ async function main() {
   assert.match(coordinatorSwift, /let localizedStopLabel = LocalizedStringResource/);
   assert.match(coordinatorSwift, /text: localizedStopLabel/);
   assert.match(coordinatorSwift, /appendingPathComponent\("Sounds"/);
+  assert.match(coordinatorSwift, /if let audioBase64Wav/);
+  assert.match(coordinatorSwift, /NeuralWavSoundWriter\.write/);
+  assert.match(coordinatorSwift, /usesNeuralWav \? "wav" : "caf"/);
+  assert.match(coordinatorSwift, /source: "neural_wav"/);
+  assert.match(coordinatorSwift, /source: "local_speech"/);
+  assert.match(coordinatorSwift, /"apiVersion": "2"/);
   assert.doesNotMatch(coordinatorSwift, /UNUserNotificationCenter|UNNotificationRequest/);
 
   const soundWriterSwift = fs.readFileSync(soundWriterSwiftFile, 'utf8');
@@ -269,6 +366,19 @@ async function main() {
   assert.match(soundWriterSwift, /synthesizer\.write\(utterance\)/);
   assert.match(soundWriterSwift, /maximumDuration: TimeInterval = 29/);
   assert.match(soundWriterSwift, /kAudioFormatLinearPCM/);
+
+  const neuralWriterSwift = fs.readFileSync(neuralWriterSwiftFile, 'utf8');
+  assert.match(neuralWriterSwift, /maximumEncodedCharacters = 2_000_000/);
+  assert.match(neuralWriterSwift, /maximumDecodedBytes = 1_500_000/);
+  assert.match(neuralWriterSwift, /maximumDuration: TimeInterval = 29/);
+  assert.match(neuralWriterSwift, /Data\(base64Encoded: base64Wav, options: \[\]\)/);
+  assert.match(neuralWriterSwift, /ascii\(data, at: 0\) == "RIFF"/);
+  assert.match(neuralWriterSwift, /ascii\(data, at: 8\) == "WAVE"/);
+  assert.match(neuralWriterSwift, /audioFormat == 1/);
+  assert.match(neuralWriterSwift, /bitsPerSample == 16/);
+  assert.match(neuralWriterSwift, /wavData\.write\(to: destinationURL, options: \.atomic\)/);
+  assert.match(neuralWriterSwift, /AVAudioFile\(forReading: destinationURL\)/);
+  assert.match(neuralWriterSwift, /decodedDuration <= maximumDuration/);
 
   const podspec = fs.readFileSync(podspecFile, 'utf8');
   assert.match(podspec, /s\.dependency 'ExpoModulesCore'/);

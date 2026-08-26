@@ -15,6 +15,7 @@ private struct PreparedAffirmationSound {
   let fileName: String
   let url: URL
   let duration: TimeInterval
+  let source: String
 }
 
 @available(iOS 26.0, *)
@@ -102,7 +103,8 @@ actor AffirmationAlarmCoordinator {
         affirmation: payload.affirmation,
         locale: payload.locale,
         voiceIdentifier: payload.voiceIdentifier,
-        requestedFileName: payload.soundFileName
+        requestedFileName: payload.soundFileName,
+        audioBase64Wav: payload.audioBase64Wav
       )
     } catch {
       return soundFailure(operation: "schedule", alarmId: payload.alarmId, error: error)
@@ -130,7 +132,8 @@ actor AffirmationAlarmCoordinator {
         "operation": "schedule",
         "alarmId": alarm.id.uuidString,
         "soundFileName": preparedSound.fileName,
-        "soundDurationSeconds": preparedSound.duration
+        "soundDurationSeconds": preparedSound.duration,
+        "soundSource": preparedSound.source
       ]
       if let nextDate = nextFireDate(
         hour: payload.hour,
@@ -176,7 +179,8 @@ actor AffirmationAlarmCoordinator {
         affirmation: payload.affirmation,
         locale: payload.locale,
         voiceIdentifier: payload.voiceIdentifier,
-        requestedFileName: payload.soundFileName
+        requestedFileName: payload.soundFileName,
+        audioBase64Wav: payload.audioBase64Wav
       )
     } catch {
       return soundFailure(operation: "test", alarmId: payload.alarmId, error: error)
@@ -205,7 +209,8 @@ actor AffirmationAlarmCoordinator {
         "alarmId": alarm.id.uuidString,
         "scheduledFor": isoFormatter.string(from: scheduledDate),
         "soundFileName": preparedSound.fileName,
-        "soundDurationSeconds": preparedSound.duration
+        "soundDurationSeconds": preparedSound.duration,
+        "soundSource": preparedSound.source
       ]
     } catch {
       try? FileManager.default.removeItem(at: preparedSound.url)
@@ -287,18 +292,42 @@ actor AffirmationAlarmCoordinator {
     affirmation: String,
     locale: String,
     voiceIdentifier: String?,
-    requestedFileName: String?
+    requestedFileName: String?,
+    audioBase64Wav: String?
   ) async throws -> PreparedAffirmationSound {
     let directory = try soundsDirectory()
-    let fileName = makeSoundFileName(requestedFileName, alarmId: alarmId)
+    let usesNeuralWav = audioBase64Wav != nil
+    let fileName = makeSoundFileName(
+      requestedFileName,
+      alarmId: alarmId,
+      fileExtension: usesNeuralWav ? "wav" : "caf"
+    )
     let url = directory.appendingPathComponent(fileName, isDirectory: false)
+    if let audioBase64Wav {
+      let duration = try NeuralWavSoundWriter.write(
+        base64Wav: audioBase64Wav,
+        to: url
+      )
+      return PreparedAffirmationSound(
+        fileName: fileName,
+        url: url,
+        duration: duration,
+        source: "neural_wav"
+      )
+    }
+
     let duration = try await SpeechSoundWriter.render(
       text: affirmation,
       locale: locale,
       voiceIdentifier: voiceIdentifier,
       to: url
     )
-    return PreparedAffirmationSound(fileName: fileName, url: url, duration: duration)
+    return PreparedAffirmationSound(
+      fileName: fileName,
+      url: url,
+      duration: duration,
+      source: "local_speech"
+    )
   }
 
   private func requireAuthorization(
@@ -357,7 +386,11 @@ actor AffirmationAlarmCoordinator {
     return directory
   }
 
-  private func makeSoundFileName(_ requestedName: String?, alarmId: UUID) -> String {
+  private func makeSoundFileName(
+    _ requestedName: String?,
+    alarmId: UUID,
+    fileExtension: String
+  ) -> String {
     let requestedStem = requestedName.map {
       URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
     } ?? "celeste-affirmation"
@@ -370,7 +403,7 @@ actor AffirmationAlarmCoordinator {
     let trimmed = filtered.trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
     let stem = trimmed.isEmpty ? "celeste-affirmation" : String(trimmed.prefix(48))
     let revision = UUID().uuidString.prefix(8).lowercased()
-    return "\(stem)-\(alarmId.uuidString.lowercased())-\(revision).caf"
+    return "\(stem)-\(alarmId.uuidString.lowercased())-\(revision).\(fileExtension)"
   }
 
   private func rememberSound(_ fileName: String, for alarmId: UUID) {
@@ -442,7 +475,7 @@ actor AffirmationAlarmCoordinator {
     var result: [String: Any] = [
       "supported": true,
       "authorization": authorization,
-      "apiVersion": "1",
+      "apiVersion": "2",
       "scheduledAlarmIds": (try? alarmManager.alarms.map { $0.id.uuidString }) ?? []
     ]
     if let reason { result["reason"] = reason }
@@ -456,6 +489,15 @@ actor AffirmationAlarmCoordinator {
     case SpeechSoundWriterError.voiceUnavailable:
       reason = "voice_unavailable"
     case SpeechSoundWriterError.audioTooLong:
+      reason = "affirmation_audio_too_long"
+    case NeuralWavSoundWriterError.invalidBase64,
+         NeuralWavSoundWriterError.invalidWav,
+         NeuralWavSoundWriterError.unsupportedWav,
+         NeuralWavSoundWriterError.emptyAudio:
+      reason = "invalid_neural_wav"
+    case NeuralWavSoundWriterError.audioTooLarge:
+      reason = "neural_wav_too_large"
+    case NeuralWavSoundWriterError.audioTooLong:
       reason = "affirmation_audio_too_long"
     default:
       reason = "sound_render_failed"

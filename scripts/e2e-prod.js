@@ -279,7 +279,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await typeAnswer(page, 'Alex');
 
   await page.setViewport({ width: 320, height: 480 });
-  await waitForText(page, 'permite enviar ao Gemini', 30000);
+  await waitForText(page, 'envie ao Gemini somente o necessário', 30000);
   await sleep(1000);
   await assertChips(page, ['Permitir', 'Criar no aparelho'], 'consentimento Gemini');
   const compactConsent = await page.evaluate(() => {
@@ -339,6 +339,14 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Sua Cena-Âncora está aberta', 40000);
   await waitForText(page, '3 de 3 estrelas acesas');
   await waitForText(page, 'Sua ponte para hoje');
+  await page.setViewport({ width: 390, height: 664 });
+  const bridgeLayout = await page.$eval('[data-testid="anchor-bridge-input"]', (element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  if (bridgeLayout.scrollHeight > bridgeLayout.clientHeight + 2) {
+    throw new Error(`Ponte para hoje ficou cortada no iPhone: ${JSON.stringify(bridgeLayout)}`);
+  }
   await page.screenshot({ path: path.join(SHOT_DIR, 'reveal.png') });
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   if (mobileOverflow) throw new Error('Reveal tem rolagem horizontal no celular');
@@ -376,27 +384,31 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   // A afirmação é o próprio despertador, não uma rotina depois de acordar.
   // No web a pessoa configura e ouve a prévia, mas o switch permanece incapaz
   // de fingir que um alarme do sistema foi criado.
-  await clickTestId(page, 'open-dream-journal');
-  await waitForText(page, 'Meu despertar', 20000);
-  await waitForText(page, 'No site você pode escolher', 20000);
-  await clickTestId(page, 'open-wake-affirmation-picker');
+  await clickTestId(page, 'open-affirmation-alarm');
+  await waitForText(page, 'Meu despertador', 20000);
+  await waitForText(page, 'No site você pode preparar e ouvir', 20000);
+  await clickTestId(page, 'open-alarm-affirmation-picker');
   const customWake = 'Eu acordo confiante e pronta para viver um dia extraordinário.';
-  await page.waitForSelector('[data-testid="custom-wake-affirmation"]', { visible: true });
-  await page.type('[data-testid="custom-wake-affirmation"]', customWake, { delay: 12 });
-  await clickTestId(page, 'save-custom-wake-affirmation');
-  await waitForText(page, customWake);
-  await clickTestId(page, 'alarm-time-0630');
-  await page.waitForFunction(
-    (expected) => {
-      const ritual = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual || {};
-      return ritual.wakeAffirmationText === expected && ritual.reminderTime === '06:30';
-    },
-    { timeout: 15000, polling: 200 },
-    customWake
-  );
+  await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { visible: true });
+  await page.type('[data-testid="custom-alarm-affirmation"]', customWake, { delay: 12 });
+  await clickTestId(page, 'save-custom-alarm-affirmation');
+  await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { hidden: true, timeout: 15000 });
+  await page.waitForFunction((text) => document.body.innerText.includes(text), { timeout: 15000 }, customWake);
+  await page.$eval('[data-testid="alarm-time-input"]', (input) => {
+    input.focus();
+    input.select();
+  });
+  await page.keyboard.press('Backspace');
+  await sleep(150);
+  await page.keyboard.type('0630', { delay: 12 });
+  await sleep(500);
+  const alarmDraftValue = await page.$eval('[data-testid="alarm-time-input"]', (input) => input.value);
+  if (alarmDraftValue !== '06:30') {
+    throw new Error(`HorÃ¡rio do despertador nÃ£o aceitou 06:30: ${JSON.stringify(alarmDraftValue)}`);
+  }
   const webAlarmState = await page.evaluate(() => {
     const ritual = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual || {};
-    const control = document.querySelector('[data-testid="affirmation-alarm-switch"]');
+    const control = document.querySelector('[data-testid="activate-affirmation-alarm"]');
     const switchParts = control ? [control, ...control.querySelectorAll('*')] : [];
     return {
       enabled: ritual.reminderEnabled === true,
@@ -411,6 +423,10 @@ async function assertChips(page, labels, screen, timeout = 30000) {
 
   // O bonus usa uma imagem do relato real; nao basta escolher uma frase pronta
   // pelo tema. A transformacao permanece local e persiste seu recibo tecnico.
+  await clickTestId(page, 'affirmation-alarm-back');
+  await waitForText(page, 'Manifestar', 20000);
+  await clickTestId(page, 'open-dream-journal');
+  await waitForText(page, 'Meus sonhos', 20000);
   await clickTestId(page, 'open-dream-shortcut');
   const dreamReport = 'Eu estava em uma casa perto do mar.';
   await page.type('[data-testid="dream-report-input"]', dreamReport, { delay: 12 });
@@ -448,17 +464,17 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   });
   await page.setViewport({ width: 320, height: 480 });
   await sleep(400);
-  const alarmOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  if (alarmOverflow) throw new Error('Despertador tem rolagem horizontal em 320x480');
-  await page.screenshot({ path: path.join(SHOT_DIR, 'despertador-320x480.png') });
+  const dreamOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  if (dreamOverflow) throw new Error('Sonhos tem rolagem horizontal em 320x480');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'sonhos-320x480.png') });
   await page.setViewport({ width: 420, height: 900 });
-  await clickTestId(page, 'affirmation-alarm-back');
+  await clickTestId(page, 'morning-ritual-back');
   await waitForText(page, 'Manifestar', 20000);
 
   // A preferência do Gemini é reversível: desligar não pede confirmação;
   // religar exige uma confirmação nova de 18+ e de envio ao provedor.
   await clickTestId(page, 'open-profile');
-  await waitForText(page, 'Cenas personalizadas com Gemini', 20000);
+  await waitForText(page, 'Personalização e voz neural', 20000);
   const geminiInitiallyOn = await page.evaluate(
     () => {
       const profile = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {};
@@ -493,9 +509,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
 
   // Comunidade começa vazia e nunca inventa depoimentos. Sem conta/backend, o
   // envio vira rascunho local e a autora consegue apagá-lo imediatamente.
-  await waitAndClick(page, 'Jornada');
-  await waitForText(page, 'Perfil e configurações', 20000);
-  await clickTestId(page, 'journey-open-community');
+  await waitAndClick(page, 'Comunidade');
   await waitForText(page, 'Ainda não há relatos publicados', 20000);
   await waitAndClick(page, 'Contar o que aconteceu');
   const story = 'Percebi que comecei a agir com mais confiança durante esta semana.';
@@ -512,8 +526,6 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Um rascunho local é apagado deste aparelho', 15000);
   await waitAndClick(page, 'Apagar');
   await waitForText(page, 'Seu relato pode começar aqui', 20000);
-  await clickTestId(page, 'community-back');
-  await waitForText(page, 'Jornada', 20000);
   await waitAndClick(page, 'Manifestar');
   await waitForText(page, 'manifest', 20000);
 

@@ -16,22 +16,20 @@ Deployment: `dpl_DmQVkysrRN9hMgCU9WRXKXtf5bGV`
   cena, a afirmação, a história e a ponte prática. Com consentimento adulto, o
   Gemini pode enriquecer essa criação; sem consentimento ou sem rede, a criação
   local continua pessoal e utilizável.
-- `Aurora`, `Rio` e `Atlas` são escolhas de apresentação persistidas no aparelho.
-  Os únicos MP3 incluídos no app são seis amostras curtas, uma por voz e idioma,
-  usadas somente no seletor. Elas nunca substituem o conteúdo pessoal.
-- A narração do conteúdo pessoal usa uma voz local do aparelho e respeita o
-  narrador escolhido como preferência de timbre, ritmo e altura quando o sistema
-  disponibiliza uma voz compatível. Se não houver voz local, o texto permanece
-  acessível; o app nunca toca um MP3 genérico ou em outro idioma.
-- A chave `ELEVENLABS_API_KEY` continua somente como segredo da Vercel e nunca
-  entra no bundle, GitHub, URL ou log. A geração dinâmica para clientes permanece
-  desativada enquanto a conta não tiver plano/contrato OEM elegível.
-- Quando a geração dinâmica for habilitada, o servidor deve gerar o áudio uma
-  única vez por texto pessoal, idioma e narrador, armazená-lo de forma privada e
-  reutilizá-lo em todas as reproduções. Novo gasto só ocorre ao criar ou alterar
-  conteúdo pessoal, trocar a voz ou pedir nova versão; nunca a cada play.
-- Referências: `https://elevenlabs.io/docs/api-reference/authentication` e
-  `https://elevenlabs.io/oem-terms`.
+- `Aurora`, `Rio`, `Atlas`, `Serena`, `Luma` e `Nilo` são seis vozes Gemini
+  curadas. A escolha fica persistida no aparelho e é a mesma nos cards, cenas,
+  visões, sonhos e prévia do despertador.
+- Não há MP3 de narrador empacotado nem fallback para voz robótica. A prévia usa
+  um texto fixo; a narração pessoal usa somente o texto final criado para aquela
+  pessoa e mantém o conteúdo legível quando a voz neural está indisponível.
+- Narração pessoal exige confirmação adulta e consentimento explícito para voz
+  neural. O cliente envia apenas texto final, idioma e identificador da voz para
+  `/api/gerar-audio`; a chave Gemini permanece somente no backend.
+- A função exige `Origin` permitido e BotID, usa allowlist de campos, envia
+  `store: false` ao Gemini e responde com `no-store` também nos caches de CDN.
+- O WAV pode ser reutilizado apenas na memória privada da sessão, por texto,
+  idioma e voz. Não existe cache público, URL pessoal, arquivo persistente no
+  servidor ou geração automática de um catálogo de áudios.
 
 ## Revisão Zeus final — publicada
 
@@ -259,18 +257,24 @@ reverter nem limpar alterações fora desses pontos. Trabalhar sempre em
 
 - Producao publicada em `https://celeste-jet-two.vercel.app` pelo deployment
   `dpl_HX2Knze3Z69cwzQdotCBjbwvfsPe`.
-- `api/gerar-cena.js` e `api/traduzir-cena.js` agora rejeitam `Origin` ausente ou
-  fora da lista antes de qualquer validacao ou chamada ao Gemini.
-- As duas rotas exigem BotID Basic. Bot detectado retorna
+- As quatro funções Gemini (`gerar-cena`, `traduzir-cena`, `transformar-sonho` e
+  `gerar-audio`) rejeitam `Origin` ausente ou fora da lista antes de qualquer
+  validação ou chamada ao provedor.
+- As quatro rotas exigem BotID Basic. Bot detectado retorna
   `automated_request_blocked`; falha no verificador retorna
   `bot_verification_unavailable`. Os dois casos fecham antes do Gemini.
 - O `Map()` por instancia foi removido. A protecao distribuida esta no Vercel
-  WAF, regra `rule_celeste_gemini_api_rate_limit_o1N0Tn`: uma unica regra Hobby
-  para os dois POSTs, 5 requisicoes por 60 segundos, chaves IP + JA4, HTTP 429.
-- A configuracao versionada esta em
-  `ops/vercel-firewall-gemini-rate-limit.json`; o gate
-  `scripts/verificar-protecao-gemini.js` impede regressao de Origin, BotID,
-  rewrites e WAF.
+  WAF, regra `rule_celeste_gemini_api_rate_limit_o1N0Tn`. O contrato versionado
+  limita os quatro POSTs em conjunto a 12 requisições por 60 segundos, por IP +
+  JA4, com HTTP 429. Doze comporta as seis prévias e o fluxo pessoal sem deixar
+  a cota aberta para rajadas grandes.
+- A auditoria somente leitura de 25/08/2026 encontrou primeiro a regra antiga,
+  cobrindo apenas cena e tradução. A atualização idempotente versionada como
+  `rules.update` foi aplicada; o gate ao vivo confirmou os quatro caminhos e o
+  limite de 12/min na configuração ativa.
+- `scripts/verificar-protecao-gemini.js` valida o contrato local e
+  `scripts/verificar-waf-vercel.js` lê a configuração ativa da Vercel. O deploy
+  agora é bloqueado quando os quatro caminhos ou o limite 12/min não estão ativos.
 - Validacao real aprovada: cliente sem prova foi bloqueado; Chrome normal gerou
   e traduziu com `gemini-3.7-flash`; Chrome headless foi bloqueado e o app usou
   o fallback local; E2E, PT/EN, QA e performance passaram.

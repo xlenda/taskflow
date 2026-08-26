@@ -19,6 +19,16 @@ export function initCelesteBotProtection() {
         method: 'POST',
         advancedOptions: { checkLevel: 'basic' },
       },
+      {
+        path: '/api/transformar-sonho',
+        method: 'POST',
+        advancedOptions: { checkLevel: 'basic' },
+      },
+      {
+        path: '/api/gerar-audio',
+        method: 'POST',
+        advancedOptions: { checkLevel: 'basic' },
+      },
     ],
   });
 }

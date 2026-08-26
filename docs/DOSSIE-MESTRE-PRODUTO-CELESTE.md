@@ -227,8 +227,8 @@ O aprendizado comum dos cinco produtos não é copiar telas. É combinar:
 
 O loop proprietário cabe em três verbos:
 
-- **Sentir:** entrar na Cena-Âncora em texto e, quando houver voz local comprovada,
-  também em áudio. Esta etapa está implementada.
+- **Sentir:** entrar na Cena-Âncora em texto e, com consentimento adulto, também
+  na voz neural escolhida. Esta etapa está implementada.
 - **Seguir:** escolher e editar a Ponte de Hoje. A interface existe; marcar sua
   realização e vinculá-la à prática ainda é evolução futura.
 - **Selar:** concluir uma prática e, quando houver algo a observar, guardar um
@@ -421,10 +421,10 @@ Princípios de RLS:
 - PT-BR e inglês com portões de paridade;
 - primeira manifestação criada com respostas reais;
 - recompensa antes da tela de acesso;
-- seis amostras curtas de narrador para a escolha de voz, sem catálogo de
-  afirmações ou histórias prontas;
-- histórias pessoais narradas somente quando o navegador oferece uma voz
-  comprovadamente local; sem essa comprovação, a experiência permanece em texto;
+- o seletor anterior já separava escolha de narrador de conteúdo pessoal, mas
+  ainda usava amostras empacotadas; esses arquivos foram removidos nesta onda;
+- a arquitetura anterior mantinha histórias em texto quando não comprovava uma
+  voz local; a revisão atual substituiu esse caminho pela voz neural consentida;
 - prática de 21 dias com histórico;
 - edição de título e afirmação;
 - backup e restauração manual na web;
@@ -529,7 +529,7 @@ Princípios de RLS:
 
 - nova revelação com cena completa;
 - áudio acionado por gesto;
-- fallback textual quando não existe voz local comprovada;
+- fallback textual quando a voz neural não está disponível ou não foi autorizada;
 - tratamento de redução de movimento implementado no código, ainda pendente de
   validação em aparelho real;
 - haptic suave onde a plataforma oferece suporte;
@@ -586,16 +586,20 @@ Princípios de RLS:
 
 ### Privacidade do áudio
 
-- o endpoint `/api/voz` foi removido, junto com sua dependência de servidor;
-- nomes, localização e desejos não entram em URL, log ou cache de CDN;
-- histórias pessoais usam somente voz comprovadamente local no navegador; se não
-  houver uma voz local, ou no app nativo sem comprovação equivalente, a tela faz
-  fallback textual e não inicia narração;
-- os seis MP3 neurais restantes são apenas amostras do seletor de narrador e
-  nunca substituem uma afirmação, história ou visão pessoal;
-- voz pessoal em nuvem só poderá voltar com opt-in, POST autenticado, `no-store`
-  e política de retenção visível, além de plano ou contrato OEM elegível. Quando
-  voltar, deve ser gerada uma vez por texto, idioma e voz e reutilizada nos plays.
+- `/api/gerar-audio` recebe somente modo, texto final quando pessoal, idioma,
+  narrador e os dois sinais de consentimento; preferências, histórico, perfil e
+  respostas brutas do questionário ficam fora desse payload;
+- texto pessoal só é aceito com confirmação adulta e consentimento explícito para
+  voz neural. O endpoint exige origem permitida e BotID antes de chamar o Gemini;
+- a chave Gemini fica somente no servidor. A requisição ao provedor declara
+  `store: false`, e respostas de sucesso ou erro usam `no-store` no navegador,
+  CDN da Vercel e caches intermediários;
+- a escolha entre seis vozes Gemini é aplicada à prévia fixa e a todo conteúdo
+  pessoal. Não há MP3 de narrador empacotado nem fallback para voz robótica;
+- o WAV é reutilizado somente na memória privada da sessão, com chave composta
+  por texto, idioma e voz. Não há URL pessoal pública nem persistência no backend;
+- texto longo é dividido sem truncamento. Cada bloco mantém a mesma voz escolhida
+  e só é solicitado quando necessário para reprodução.
 
 ### Confiança
 
@@ -765,39 +769,29 @@ As afirmações ligadas aos sonhos e manifestações salvos aparecem primeiro. E
 já foram criadas pelas regras locais da manifestação e persistidas no estado;
 entrar na aba não chama um modelo generativo nem cria uma nova frase.
 
-### Decisão de voz fechada em 24/08/2026
+### Decisão de voz fechada em 25/08/2026
 
-Para o MVP, usar **Google Cloud Text-to-Speech com `gemini-2.5-flash-tts` e
-`pt-BR`** quando a voz em nuvem for ligada. Até lá, histórias pessoais usam
-somente uma voz que o navegador comprove como local. Se essa voz não existir, ou
-se o app nativo não oferecer comprovação equivalente, a experiência usa fallback
-textual e não narra. O modelo oferece PT-BR em disponibilidade geral, 30 vozes,
-direção de emoção/ritmo e streaming. O Cloud TTS declara processamento sem
-registro do texto ou áudio do cliente.
+O MVP usa o endpoint server-side `/api/gerar-audio` com
+`gemini-3.1-flash-tts-preview`. Seis vozes foram curadas e a escolha da pessoa é
+persistida no aparelho. A mesma voz acompanha prévias, afirmações, cenas, visões,
+sonhos e o áudio preparado para o despertador compatível.
 
-Fontes: [Gemini TTS](https://docs.cloud.google.com/text-to-speech/docs/gemini-tts),
-[preços do Cloud TTS](https://cloud.google.com/text-to-speech/pricing) e
-[tratamento de dados](https://docs.cloud.google.com/text-to-speech/docs/data-logging).
+Arquitetura: app -> consentimento adulto explícito -> backend da Celeste -> texto
+final minimizado + idioma + narrador -> Gemini TTS com `store: false` -> WAV
+`no-store` -> memória privada da sessão. A chave nunca entra em `EXPO_PUBLIC_*`,
+no bundle, em URL ou na resposta. Não há catálogo fixo, MP3 de narrador, cache de
+CDN, armazenamento remoto de áudio pessoal ou fallback para voz robótica.
 
-A ElevenLabs fica para uma fase posterior. Seus
-[termos OEM](https://elevenlabs.io/oem-terms) não permitem que um aplicativo por
-assinatura entregue a API a usuários finais nos planos Free, Starter, Creator ou
-Pro; exigem Scale, Business, Enterprise ou equivalente. Zero Retention também é
-restrito a clientes Enterprise selecionados. Não basta comprar Creator e
-publicar a Celeste nas lojas.
+O endpoint aceita somente origem allowlistada e BotID válido. A proteção de cota
+usa uma regra WAF distribuída para todas as quatro APIs Gemini, com limite de 12
+requisições por minuto por IP + JA4. O limite comporta a audição das seis prévias
+e uma prática pessoal, sem liberar rajadas anônimas. O deploy consulta a regra
+ativa e falha quando ela diverge do contrato versionado.
 
-Arquitetura obrigatória: app autenticado -> backend da Celeste -> texto final
-minimizado -> adaptador de provedor -> Google Cloud TTS -> armazenamento privado
-criptografado -> URL assinada curta. A chave nunca entra em `EXPO_PUBLIC_*`.
-Gerar uma vez e reutilizar, com limite diário, idempotência, alerta de gasto,
-consentimento explícito e exclusão automática. Chuva, oceano e café continuam
-como faixas licenciadas separadas e misturadas no aparelho.
-
-Contrato desta onda: histórias pessoais narram apenas com voz local
-comprovada no navegador; nos demais casos ficam em texto, sem narração. O catálogo
-fixo usa MP3 neural na web e voz do sistema no aplicativo nativo. A integração
-Google só entra depois de projeto cloud, backend, política de retenção,
-consentimento e teste cego de 20 roteiros PT-BR. Clonagem de voz não entra no MVP.
+Textos longos são divididos em blocos sem perder palavras. O cliente antecipa
+apenas o próximo bloco e reutiliza o WAV em memória quando texto, idioma e voz são
+iguais. Ao fechar a sessão ou trocar qualquer um desses elementos, não há arquivo
+pessoal persistente a reaproveitar. Clonagem de voz não entra no MVP.
 
 ## 19. Base científica e conhecimento usado dentro do app — 25/08/2026
 

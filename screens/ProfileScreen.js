@@ -51,10 +51,10 @@ const S = {
   themePaper: { en: 'Paper', pt: 'Papel' },
   themeCloud: { en: 'Cloud', pt: 'Nuvem' },
   themeViolet: { en: 'Midnight rose', pt: 'Rosa de meia-noite' },
-  geminiTitle: { en: 'Personalized scenes with Gemini', pt: 'Cenas personalizadas com Gemini' },
+  geminiTitle: { en: 'Personalization and neural voice', pt: 'Personalização e voz neural' },
   geminiOn: {
-    en: 'Your desire and selected answers about you may be sent. Names entered for children, important people, or a specific person stay on this device.',
-    pt: 'Seu desejo e algumas respostas sobre você podem ser enviados. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho.',
+    en: 'Gemini may receive only the information needed for personal scenes, dream reflections you request, and on-demand narration. Saved names of other people stay on this device.',
+    pt: 'O Gemini pode receber somente o necessário para cenas pessoais, reflexões de sonhos que você pedir e narração sob demanda. Nomes cadastrados de outras pessoas ficam neste aparelho.',
   },
   geminiOff: {
     en: 'New personal scenes use Celeste\'s local generator.',
@@ -62,8 +62,8 @@ const S = {
   },
   geminiConfirmTitle: { en: 'Allow Gemini personalization?', pt: 'Permitir personalização com Gemini?' },
   geminiConfirmBody: {
-    en: 'Confirm that you are 18 or older and allow Celeste to send Gemini your desire and selected answers about your goals, work, home, and self-description. Names entered for children, important people, or a specific person stay on this device. Avoid including another person\'s name in free-text answers. You can turn this off at any time.',
-    pt: 'Confirme que você tem 18 anos ou mais e permite que o Celeste envie ao Gemini seu desejo e algumas respostas sobre objetivos, trabalho, casa e como você se descreve. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite escrever o nome de outra pessoa nas respostas livres. Você pode desligar quando quiser.',
+    en: 'Confirm that you are 18 or older and allow Celeste to send Gemini only the information needed to create personal scenes, reflect on dreams you choose to send, and narrate selected text on demand. Saved names of children, important people, or a specific person stay on this device. Avoid names and confidential data in free text. You can turn this off at any time.',
+    pt: 'Confirme que você tem 18 anos ou mais e permite que o Celeste envie ao Gemini somente o necessário para criar cenas pessoais, refletir sobre sonhos que você escolher enviar e narrar o texto selecionado sob demanda. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar quando quiser.',
   },
   geminiConfirmAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
   geminiUnder18: {
@@ -277,7 +277,7 @@ export default function ProfileScreen({ navigation }) {
       profile.cloudPersonalization === true &&
       (profile.cloudAdultConfirmed !== true || isUnder18Age(profile.age))
     ) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false });
+      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
     }
   }, [saveProfile, state && state.profile && state.profile.age, state && state.profile && state.profile.cloudAdultConfirmed, state && state.profile && state.profile.cloudPersonalization]);
 
@@ -328,7 +328,8 @@ export default function ProfileScreen({ navigation }) {
     !under18 &&
     state.profile &&
     state.profile.cloudPersonalization === true &&
-    state.profile.cloudAdultConfirmed === true;
+    state.profile.cloudAdultConfirmed === true &&
+    state.profile.cloudNarrationConsent === true;
 
   const saveDisplayName = () => {
     if (!canSaveName) return;
@@ -341,12 +342,12 @@ export default function ProfileScreen({ navigation }) {
 
   const changeCloudPersonalization = async (nextValue) => {
     if (!nextValue) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false });
+      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
       tap();
       return;
     }
     if (under18) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false });
+      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
       tap();
       return;
     }
@@ -359,7 +360,7 @@ export default function ProfileScreen({ navigation }) {
       lang,
     });
     if (!allowed) return;
-    saveProfile({ cloudPersonalization: true, cloudAdultConfirmed: true });
+    saveProfile({ cloudPersonalization: true, cloudAdultConfirmed: true, cloudNarrationConsent: true });
     success();
   };
 
@@ -376,6 +377,8 @@ export default function ProfileScreen({ navigation }) {
         <ScrollView
           testID="profile-scroll"
           style={styles.scrollView}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="automatic"

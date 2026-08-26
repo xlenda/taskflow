@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
-import { isSpeechAvailable } from '../utils/speech';
 import { accentAt, alpha } from '../utils/colors';
 
 const S = {
@@ -30,7 +29,7 @@ export default function AffirmationCard({
 
   // Afirmações são pessoais; a reprodução só aparece quando o aparelho
   // oferece uma voz local disponível.
-  const showSpeak = !!onToggleSpeak && isSpeechAvailable();
+  const showSpeak = !!onToggleSpeak;
 
   return (
     <View

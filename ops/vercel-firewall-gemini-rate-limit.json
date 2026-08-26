@@ -1,9 +1,9 @@
 {
-  "action": "rules.insert",
-  "id": null,
+  "action": "rules.update",
+  "id": "rule_celeste_gemini_api_rate_limit_o1N0Tn",
   "value": {
     "name": "Celeste Gemini API rate limit",
-    "description": "Protege geracao e traducao Gemini contra abuso distribuido",
+    "description": "Protege cenas, sonhos, traducao e voz Gemini contra abuso distribuido",
     "active": true,
     "conditionGroup": [
       {
@@ -33,6 +33,34 @@
             "value": "POST"
           }
         ]
+      },
+      {
+        "conditions": [
+          {
+            "type": "path",
+            "op": "eq",
+            "value": "/api/transformar-sonho"
+          },
+          {
+            "type": "method",
+            "op": "eq",
+            "value": "POST"
+          }
+        ]
+      },
+      {
+        "conditions": [
+          {
+            "type": "path",
+            "op": "eq",
+            "value": "/api/gerar-audio"
+          },
+          {
+            "type": "method",
+            "op": "eq",
+            "value": "POST"
+          }
+        ]
       }
     ],
     "action": {
@@ -40,7 +68,7 @@
         "redirect": null,
         "action": "rate_limit",
         "rateLimit": {
-          "limit": 5,
+          "limit": 12,
           "action": "deny",
           "window": 60,
           "algo": "fixed_window",

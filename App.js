@@ -1,5 +1,14 @@
 import React from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  AppState,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -10,11 +19,14 @@ import { StatusBar } from 'expo-status-bar';
 
 import { ThemeProvider, useSetTheme, useTheme } from './ui/theme';
 import { AppProvider, useApp } from './context/AppContext';
+import { NarrationProvider, useNarration } from './context/NarrationContext';
 import { useT } from './utils/useT';
-import { warmUpVoices } from './utils/speech';
 import { confirmAsync } from './utils/confirm';
+import { wavBytesToBase64 } from './utils/audioBase64';
+import { alarmAffirmationText } from './utils/personalAffirmations';
 import { detectLang } from './constants/i18n';
 import { initCelesteBotProtection } from './utils/botProtection';
+import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -24,6 +36,7 @@ import AffirmationsScreen from './screens/AffirmationsScreen';
 import JourneyScreen from './screens/JourneyScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import MorningRitualScreen from './screens/MorningRitualScreen';
+import AffirmationAlarmScreen from './screens/AffirmationAlarmScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 import WelcomeScreen from './screens/onboarding/WelcomeScreen';
@@ -70,6 +83,7 @@ const S = {
   tabVisions: { en: 'Visions', pt: 'Visões' },
   tabAffirm: { en: 'Affirmations', pt: 'Afirmações' },
   tabJourney: { en: 'Journey', pt: 'Jornada' },
+  tabCommunity: { en: 'Community', pt: 'Comunidade' },
 };
 
 const Tab = createBottomTabNavigator();
@@ -198,9 +212,7 @@ function alarmContentForState(state) {
   if (wakeId.startsWith('manifestation:')) {
     const manifestationId = wakeId.slice('manifestation:'.length);
     const manifestation = (state.manifestations || []).find((item) => item.id === manifestationId);
-    const text = manifestation && typeof manifestation.affirmation === 'string'
-      ? manifestation.affirmation.trim()
-      : '';
+    const text = alarmAffirmationText(manifestation && manifestation.affirmation);
     if (text) {
       return {
         id: wakeId,
@@ -213,9 +225,7 @@ function alarmContentForState(state) {
   if (wakeId.startsWith('ritual:')) {
     const entryId = wakeId.slice('ritual:'.length);
     const entry = ((ritual && ritual.entries) || []).find((item) => item.id === entryId);
-    const text = entry && typeof entry.affirmation === 'string'
-      ? entry.affirmation.trim()
-      : '';
+    const text = alarmAffirmationText(entry && entry.affirmation);
     if (text) {
       return {
         id: wakeId,
@@ -226,9 +236,7 @@ function alarmContentForState(state) {
   }
 
   if (wakeId === 'custom') {
-    const text = typeof ritual.wakeAffirmationText === 'string'
-      ? ritual.wakeAffirmationText.trim()
-      : '';
+    const text = alarmAffirmationText(ritual.wakeAffirmationText);
     if (text) {
       return {
         id: 'custom',
@@ -244,7 +252,7 @@ function alarmContentForState(state) {
   if (firstManifestation) {
     return {
       id: `manifestation:${firstManifestation.id}`,
-      text: firstManifestation.affirmation.trim(),
+      text: alarmAffirmationText(firstManifestation.affirmation),
       lang: firstManifestation.lang === 'en' ? 'en' : 'pt',
     };
   }
@@ -255,13 +263,58 @@ function alarmContentForState(state) {
   if (!firstDream) return null;
   return {
     id: `ritual:${firstDream.id}`,
-    text: firstDream.affirmation.trim(),
+    text: alarmAffirmationText(firstDream.affirmation),
     lang: firstDream.lang === 'en' ? 'en' : 'pt',
   };
 }
 
+function hasSavedNarrationConsent(state) {
+  const profile = state && state.profile;
+  return (
+    profile?.cloudPersonalization === true &&
+    profile?.cloudAdultConfirmed === true &&
+    profile?.cloudNarrationConsent === true
+  );
+}
+
+function alarmTextWithoutSavedNames(text, state, lang) {
+  const profile = state?.profile || {};
+  return redactThirdPartyNames(text, thirdPartyNames(profile), lang);
+}
+
+async function prepareNeuralAlarm({ preparePersonal, state, desired, narratorId }) {
+  if (!hasSavedNarrationConsent(state) || !desired || !narratorId) {
+    return { ok: false, error: 'cloud_consent_required' };
+  }
+  const prepared = await preparePersonal({
+    text: alarmTextWithoutSavedNames(desired.text, state, desired.lang),
+    narratorId,
+    lang: desired.lang,
+    cloudConsent: true,
+    adultConfirmed: true,
+  });
+  if (!prepared?.ok) return prepared || { ok: false, error: 'audio_generation_failed' };
+  try {
+    return { ok: true, audioBase64Wav: wavBytesToBase64(prepared.bytes) };
+  } catch (_error) {
+    return { ok: false, error: 'invalid_wav_bytes' };
+  }
+}
+
+function alarmSyncSignature(desired, ritual, narratorId) {
+  return JSON.stringify([
+    desired.id,
+    desired.text,
+    desired.lang,
+    ritual && ritual.reminderTime,
+    ritual && ritual.weekdays,
+    narratorId,
+  ]);
+}
+
 function NativeAlarmContentSync() {
   const { state, saveMorningRitualPreferences } = useApp();
+  const { preparePersonal } = useNarration();
   const lastQueuedRef = React.useRef('');
   const latestDesiredRef = React.useRef('');
   const confirmedNativeRef = React.useRef('');
@@ -294,30 +347,59 @@ function NativeAlarmContentSync() {
         if (!alive || capabilityAttemptRef.current !== attempt) return;
         const latestDesired = alarmContentForState(stateRef.current);
         if (latestDesired) {
-          const latestRitual = stateRef.current && stateRef.current.morningRitual;
-          const restored = await scheduleAffirmationAlarm({
-            time: latestRitual && latestRitual.reminderTime,
-            affirmation: latestDesired.text,
-            locale: latestDesired.lang === 'pt' ? 'pt-BR' : 'en-US',
-            requestAuthorization: true,
-          }).catch(() => null);
+          const latestState = stateRef.current;
+          const latestRitual = latestState && latestState.morningRitual;
+          const latestNarratorId = latestState?.narration?.narratorId;
+          const restoreSignature = alarmSyncSignature(
+            latestDesired,
+            latestRitual,
+            latestNarratorId
+          );
+          const neuralAudio = await prepareNeuralAlarm({
+            preparePersonal,
+            state: latestState,
+            desired: latestDesired,
+            narratorId: latestNarratorId,
+          });
           if (!alive || capabilityAttemptRef.current !== attempt) return;
-          if (!restored || !restored.ok) {
+          const currentRestoreState = stateRef.current;
+          const currentRestoreDesired = alarmContentForState(currentRestoreState);
+          const currentRestoreSignature = currentRestoreDesired
+            ? alarmSyncSignature(
+                currentRestoreDesired,
+                currentRestoreState.morningRitual,
+                currentRestoreState?.narration?.narratorId
+              )
+            : '';
+          if (currentRestoreSignature !== restoreSignature) return;
+          if (!neuralAudio.ok) {
+            failedDesiredRef.current = restoreSignature;
             saveMorningRitualPreferences({ alarmSyncError: true });
             return;
           }
-          confirmedNativeRef.current = JSON.stringify([
-            latestDesired.id,
-            latestDesired.text,
-            latestDesired.lang,
-            latestRitual && latestRitual.reminderTime,
-          ]);
+          const restored = await scheduleAffirmationAlarm({
+            time: latestRitual && latestRitual.reminderTime,
+            weekdays: latestRitual && latestRitual.weekdays,
+            affirmation: latestDesired.text,
+            locale: latestDesired.lang === 'pt' ? 'pt-BR' : 'en-US',
+            audioBase64Wav: neuralAudio.audioBase64Wav,
+            requestAuthorization: true,
+          }).catch(() => null);
+          if (!alive || capabilityAttemptRef.current !== attempt) return;
+          if (!restored || !restored.ok || restored.soundSource !== 'neural_wav') {
+            failedDesiredRef.current = restoreSignature;
+            saveMorningRitualPreferences({ alarmSyncError: true });
+            return;
+          }
+          confirmedNativeRef.current = restoreSignature;
           failedDesiredRef.current = '';
           lastQueuedRef.current = '';
           saveMorningRitualPreferences({
             wakeAffirmationId: latestDesired.id,
             wakeAffirmationText: latestDesired.text,
             wakeAffirmationLang: latestDesired.lang,
+            wakeNarratorId: latestNarratorId,
+            wakeSoundSource: restored.soundSource,
             reminderEnabled: true,
             alarmSyncError: false,
           });
@@ -359,7 +441,7 @@ function NativeAlarmContentSync() {
       capabilityAttemptRef.current += 1;
       if (subscription && subscription.remove) subscription.remove();
     };
-  }, [!!state, saveMorningRitualPreferences]);
+  }, [!!state, preparePersonal, saveMorningRitualPreferences]);
 
   React.useEffect(() => {
     const ritual = state && state.morningRitual;
@@ -368,27 +450,32 @@ function NativeAlarmContentSync() {
       latestDesiredRef.current = '';
       return;
     }
-    const signature = JSON.stringify([
-      desired.id,
-      desired.text,
-      desired.lang,
-      ritual.reminderTime,
-    ]);
+    const narratorId = state?.narration?.narratorId;
+    const signature = alarmSyncSignature(desired, ritual, narratorId);
     latestDesiredRef.current = signature;
-    const cachedSignature = ritual.wakeAffirmationId && ritual.wakeAffirmationText
-      ? JSON.stringify([
-          ritual.wakeAffirmationId,
-          ritual.wakeAffirmationText,
-          ritual.wakeAffirmationLang,
-          ritual.reminderTime,
-        ])
+    const cachedSignature =
+      ritual.wakeAffirmationId &&
+      ritual.wakeAffirmationText &&
+      ritual.wakeSoundSource === 'neural_wav'
+      ? alarmSyncSignature(
+          {
+            id: ritual.wakeAffirmationId,
+            text: ritual.wakeAffirmationText,
+            lang: ritual.wakeAffirmationLang,
+          },
+          ritual,
+          ritual.wakeNarratorId
+        )
       : '';
     if (!ritual.alarmSyncError && !confirmedNativeRef.current && cachedSignature) {
       confirmedNativeRef.current = cachedSignature;
     }
     const localMatches =
+      ritual.wakeAffirmationId === desired.id &&
       ritual.wakeAffirmationText === desired.text &&
-      ritual.wakeAffirmationLang === desired.lang;
+      ritual.wakeAffirmationLang === desired.lang &&
+      ritual.wakeNarratorId === narratorId &&
+      ritual.wakeSoundSource === 'neural_wav';
     if (localMatches && !ritual.alarmSyncError && pendingRef.current === 0) {
       confirmedNativeRef.current = signature;
       failedDesiredRef.current = '';
@@ -398,13 +485,25 @@ function NativeAlarmContentSync() {
     lastQueuedRef.current = signature;
     pendingRef.current += 1;
 
-    void replaceScheduledAffirmationAlarm({
-      time: ritual.reminderTime,
-      affirmation: desired.text,
-      locale: desired.lang === 'pt' ? 'pt-BR' : 'en-US',
-      requestAuthorization: true,
-    })
+    void prepareNeuralAlarm({ preparePersonal, state, desired, narratorId })
+      .then((neuralAudio) => {
+        if (latestDesiredRef.current !== signature) return null;
+        if (!neuralAudio.ok) {
+          failedDesiredRef.current = signature;
+          saveMorningRitualPreferences({ alarmSyncError: true });
+          return null;
+        }
+        return replaceScheduledAffirmationAlarm({
+          time: ritual.reminderTime,
+          weekdays: ritual.weekdays,
+          affirmation: desired.text,
+          locale: desired.lang === 'pt' ? 'pt-BR' : 'en-US',
+          audioBase64Wav: neuralAudio.audioBase64Wav,
+          requestAuthorization: true,
+        });
+      })
       .then(async (response) => {
+        if (!response) return;
         if (!response.ok) {
           // A newer replacement is already queued in the same native FIFO.
           // Cleanup from this stale attempt must never run after it and win.
@@ -452,6 +551,12 @@ function NativeAlarmContentSync() {
           saveMorningRitualPreferences({ alarmSyncError: true });
           return;
         }
+        if (response.soundSource !== 'neural_wav') {
+          if (latestDesiredRef.current !== signature) return;
+          failedDesiredRef.current = signature;
+          saveMorningRitualPreferences({ alarmSyncError: true });
+          return;
+        }
         confirmedNativeRef.current = signature;
         failedDesiredRef.current = '';
         if (latestDesiredRef.current !== signature) return;
@@ -459,6 +564,8 @@ function NativeAlarmContentSync() {
           wakeAffirmationId: desired.id,
           wakeAffirmationText: desired.text,
           wakeAffirmationLang: desired.lang,
+          wakeNarratorId: narratorId,
+          wakeSoundSource: response.soundSource,
           alarmSyncError: false,
         });
       })
@@ -471,7 +578,7 @@ function NativeAlarmContentSync() {
       .finally(() => {
         pendingRef.current = Math.max(0, pendingRef.current - 1);
       });
-  }, [state, retryEpoch, saveMorningRitualPreferences]);
+  }, [state, retryEpoch, preparePersonal, saveMorningRitualPreferences]);
 
   return null;
 }
@@ -499,10 +606,13 @@ function Tabs() {
   // Tabs é componente, então pode ler o idioma pelo hook — é assim que os
   // rótulos das abas ficam em português sem tocar no `name` das rotas.
   const { t } = useT();
+  const { width } = useWindowDimensions();
+  const compactTabs = width < 360;
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textMuted,
         tabBarStyle: {
@@ -510,25 +620,59 @@ function Tabs() {
           borderTopColor: theme.border || 'rgba(0,0,0,0.06)',
           borderTopWidth: 1,
           height: 84,
-          paddingTop: 8,
+          paddingTop: compactTabs ? 7 : 8,
           paddingBottom: 26,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarItemStyle: { minWidth: 0 },
+        tabBarLabelStyle: {
+          fontSize: compactTabs ? 9.5 : 10.5,
+          lineHeight: compactTabs ? 12 : 14,
+          fontWeight: '600',
+          letterSpacing: 0,
+        },
         tabBarIcon: ({ color, size, focused }) => {
           const map = {
             Manifest: focused ? 'sparkles' : 'sparkles-outline',
             Visions: focused ? 'play-circle' : 'play-circle-outline',
             Affirm: focused ? 'heart' : 'heart-outline',
             Journey: focused ? 'stats-chart' : 'stats-chart-outline',
+            Community: focused ? 'people' : 'people-outline',
           };
-          return <Ionicons name={map[route.name]} size={size ? size - 2 : 22} color={color} />;
+          return (
+            <Ionicons
+              name={map[route.name]}
+              size={compactTabs ? 19 : size ? size - 2 : 22}
+              color={color}
+            />
+          );
         },
       })}
     >
-      <Tab.Screen name="Manifest" component={HomeStackNav} options={{ title: t(S.tabManifest) }} />
-      <Tab.Screen name="Visions" component={VisionStackNav} options={{ title: t(S.tabVisions) }} />
-      <Tab.Screen name="Affirm" component={AffirmationsScreen} options={{ title: t(S.tabAffirm) }} />
-      <Tab.Screen name="Journey" component={JourneyScreen} options={{ title: t(S.tabJourney) }} />
+      <Tab.Screen
+        name="Manifest"
+        component={HomeStackNav}
+        options={{ title: t(S.tabManifest), tabBarTestID: 'tab-manifest' }}
+      />
+      <Tab.Screen
+        name="Visions"
+        component={VisionStackNav}
+        options={{ title: t(S.tabVisions), tabBarTestID: 'tab-visions' }}
+      />
+      <Tab.Screen
+        name="Affirm"
+        component={AffirmationsScreen}
+        options={{ title: t(S.tabAffirm), tabBarTestID: 'tab-affirmations' }}
+      />
+      <Tab.Screen
+        name="Journey"
+        component={JourneyScreen}
+        options={{ title: t(S.tabJourney), tabBarTestID: 'tab-journey' }}
+      />
+      <Tab.Screen
+        name="Community"
+        component={CommunityScreen}
+        options={{ title: t(S.tabCommunity), tabBarTestID: 'tab-community' }}
+      />
     </Tab.Navigator>
   );
 }
@@ -650,9 +794,6 @@ function RootNav() {
       document.documentElement.lang = state.lang === 'pt' ? 'pt-BR' : 'en';
     }
   }, [state && state.lang]);
-  React.useEffect(() => {
-    if (state && state.lang) warmUpVoices(state.lang, { localOnly: true });
-  }, [state && state.lang]);
   if (loading) return <AppBootState />;
   if (storageLoadError || !state) {
     return (
@@ -671,7 +812,7 @@ function RootNav() {
         <>
           <Root.Screen name="Main" component={Tabs} />
           <Root.Screen name="MorningRitual" component={MorningRitualScreen} />
-          <Root.Screen name="Community" component={CommunityScreen} />
+          <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
           <Root.Screen name="Profile" component={ProfileScreen} />
         </>
       ) : (
@@ -713,10 +854,11 @@ const linking = {
           },
           Affirm: 'afirmacoes',
           Journey: 'jornada',
+          Community: 'comunidade',
         },
       },
-      MorningRitual: 'despertar',
-      Community: 'comunidade',
+      MorningRitual: 'sonhos',
+      AffirmationAlarm: 'despertar',
       Profile: 'perfil',
       Welcome: 'bem-vindo',
       Referral: 'convite',
@@ -741,14 +883,16 @@ export default function App() {
           accents={['#5E93D8', '#8B7ED8', '#4DB6A4', '#E8B04E', '#E38B67', '#7FA88F']}
         >
           <AppProvider>
-            <PersistedTheme />
-            <NativeAlarmContentSync />
-            <StatusBar style="dark" />
-            <NavigationContainer linking={linking}>
-              <RootNav />
-            </NavigationContainer>
-            <StorageMutationGuard />
-            <PersistenceNotice />
+            <NarrationProvider>
+              <PersistedTheme />
+              <NativeAlarmContentSync />
+              <StatusBar style="dark" />
+              <NavigationContainer linking={linking}>
+                <RootNav />
+              </NavigationContainer>
+              <StorageMutationGuard />
+              <PersistenceNotice />
+            </NarrationProvider>
           </AppProvider>
         </ThemeProvider>
       </SafeAreaProvider>

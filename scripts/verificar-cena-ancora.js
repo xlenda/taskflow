@@ -289,5 +289,12 @@ assert.ok(
   !revealSource.includes('setTimeout(returnToWelcome, 0)'),
   'mensagem de cena inexistente precisa permanecer visivel ate a pessoa escolher voltar'
 );
+assert.ok(
+  revealSource.includes('testID="anchor-bridge-input"') &&
+    revealSource.includes('onContentSizeChange=') &&
+    revealSource.includes('scrollEnabled={false}') &&
+    revealSource.includes('height: bridgeInputHeight'),
+  'ponte para hoje precisa crescer com o texto sem rolagem interna no iPhone'
+);
 
-process.stdout.write(`Cena-Ancora: ${categories.length + 19} casos aprovados\n`);
+process.stdout.write(`Cena-Ancora: ${categories.length + 20} casos aprovados\n`);

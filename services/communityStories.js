@@ -93,6 +93,10 @@ function safeText(value, max) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function safeCategory(value) {
+  return Object.prototype.hasOwnProperty.call(CATEGORY_CIRCLES, value) ? value : null;
+}
+
 function stableLegacyId(raw, body, index) {
   const seed = JSON.stringify([
     body,
@@ -140,6 +144,7 @@ function sanitizeLocalItem(raw, index = 0) {
     locale: raw.locale === 'en' ? 'en' : 'pt',
     manifestationId: safeText(raw.manifestationId, 120) || null,
     manifestationTitle: safeText(raw.manifestationTitle, 160) || null,
+    category: safeCategory(raw.category),
     publicationConsentAt: safeText(raw.publicationConsentAt, 40) || null,
     createdAt: safeText(raw.createdAt, 40) || new Date(0).toISOString(),
     updatedAt: safeText(raw.updatedAt, 40) || safeText(raw.createdAt, 40) || new Date(0).toISOString(),
@@ -258,6 +263,7 @@ function remotePostToItem(post, localReceipt) {
     locale: post.locale === 'en' ? 'en' : 'pt',
     manifestationId: localReceipt ? localReceipt.manifestationId : null,
     manifestationTitle: localReceipt ? localReceipt.manifestationTitle : null,
+    category: localReceipt ? localReceipt.category : null,
     publicationConsentAt: localReceipt ? localReceipt.publicationConsentAt : null,
     createdAt: post.created_at,
     updatedAt: post.updated_at || post.created_at,
@@ -318,6 +324,7 @@ export async function submitCommunityStory(input) {
     locale: input.locale === 'en' ? 'en' : 'pt',
     manifestationId: safeText(input.manifestationId, 120) || null,
     manifestationTitle: safeText(input.manifestationTitle, 160) || null,
+    category: safeCategory(input.category),
     publicationConsentAt: now,
     createdAt: now,
     updatedAt: now,

@@ -1,18 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import {
   DEFAULT_NARRATOR_ID,
   NARRATORS,
   isNarratorId,
-  narratorPreviewUrl,
   narratorText,
 } from '../constants/narrators';
+import { useNarration } from '../context/NarrationContext';
 import { accentAt, alpha } from '../utils/colors';
-
-const PREVIEW_TIMEOUT_MS = 10000;
 
 const FALLBACK_THEME = {
   dark: false,
@@ -60,207 +57,43 @@ export default function NarratorSelector({
   const palette = theme || FALLBACK_THEME;
   const compact = variant === 'compact';
   const selectedId = isNarratorId(value) ? value : DEFAULT_NARRATOR_ID;
-  const player = useAudioPlayer(null, { updateInterval: 200 });
-  const status = useAudioPlayerStatus(player);
-  const [activeId, setActiveId] = useState(null);
-  const [previewPhase, setPreviewPhase] = useState('idle');
+  const narration = useNarration();
   const [errorId, setErrorId] = useState(null);
-  const activeIdRef = useRef(null);
-  const startStatusRef = useRef(null);
-  const loadingTimerRef = useRef(null);
-  const localeRef = useRef(locale);
-  const webAudioRef = useRef(null);
-
-  const clearLoadingTimer = useCallback(() => {
-    if (loadingTimerRef.current !== null) {
-      clearTimeout(loadingTimerRef.current);
-      loadingTimerRef.current = null;
-    }
-  }, []);
-
-  const teardownPreview = useCallback(() => {
-    clearLoadingTimer();
-    activeIdRef.current = null;
-    startStatusRef.current = null;
-    const webAudio = webAudioRef.current;
-    webAudioRef.current = null;
-    if (webAudio) {
-      webAudio.onplaying = null;
-      webAudio.onended = null;
-      webAudio.onerror = null;
-      try {
-        webAudio.pause();
-        webAudio.removeAttribute('src');
-        webAudio.load();
-      } catch (_error) {}
-    }
-    try {
-      if (Platform.OS !== 'web') {
-        player.pause();
-        player.replace(null);
-      }
-    } catch (_error) {
-      // The player may already be released while the component is unmounting.
-    }
-    setActiveId(null);
-    setPreviewPhase('idle');
-  }, [clearLoadingTimer, player]);
-
-  const markPreviewError = useCallback(
-    (narratorId) => {
-      if (activeIdRef.current !== narratorId) return;
-      teardownPreview();
-      setErrorId(narratorId);
-    },
-    [teardownPreview]
-  );
-
-  const startPreview = useCallback(
-    (narratorId) => {
-      if (activeIdRef.current) teardownPreview();
-      clearLoadingTimer();
-      activeIdRef.current = narratorId;
-      startStatusRef.current = status;
-      setActiveId(narratorId);
-      setPreviewPhase('loading');
-      setErrorId(null);
-
-      try {
-        const url = narratorPreviewUrl(narratorId, locale);
-        if (Platform.OS === 'web' && typeof Audio !== 'undefined') {
-          const audio = new Audio(url);
-          webAudioRef.current = audio;
-          audio.preload = 'auto';
-          audio.onplaying = () => {
-            if (activeIdRef.current !== narratorId) return;
-            clearLoadingTimer();
-            setPreviewPhase('playing');
-          };
-          audio.onended = () => {
-            if (activeIdRef.current === narratorId) teardownPreview();
-          };
-          audio.onerror = () => markPreviewError(narratorId);
-          const request = audio.play();
-          if (request && typeof request.catch === 'function') {
-            request.catch((error) => {
-              if (activeIdRef.current !== narratorId || error?.name === 'AbortError') return;
-              markPreviewError(narratorId);
-            });
-          }
-        } else {
-          // replace() unloads the previous native sample before installing the next one.
-          player.pause();
-          player.replace({ uri: url });
-          player.play();
-        }
-      } catch (_error) {
-        markPreviewError(narratorId);
-        return;
-      }
-
-      loadingTimerRef.current = setTimeout(() => {
-        markPreviewError(narratorId);
-      }, PREVIEW_TIMEOUT_MS);
-    },
-    [clearLoadingTimer, locale, markPreviewError, player, status, teardownPreview]
-  );
 
   const handlePreview = useCallback(
-    (narratorId) => {
+    async (narratorId) => {
       if (disabled) return;
       if (
-        activeIdRef.current === narratorId &&
-        (previewPhase === 'loading' || previewPhase === 'playing')
+        narration.activeNarratorId === narratorId &&
+        (narration.isLoading || narration.isPlaying || narration.isPaused)
       ) {
-        teardownPreview();
+        narration.stop();
         return;
       }
-      startPreview(narratorId);
+      setErrorId(null);
+      const result = await narration.playPreview(narratorId, locale);
+      if (!result.ok && result.error !== 'audio_cancelled') setErrorId(narratorId);
     },
-    [disabled, previewPhase, startPreview, teardownPreview]
+    [disabled, locale, narration]
   );
 
   const handleSelect = useCallback(
     (narratorId) => {
       if (disabled || narratorId === selectedId) return;
-      teardownPreview();
+      narration.stop();
       setErrorId(null);
       if (typeof onChange === 'function') onChange(narratorId);
     },
-    [disabled, onChange, selectedId, teardownPreview]
+    [disabled, narration, onChange, selectedId]
   );
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const narratorId = activeIdRef.current;
-    if (!narratorId || status === startStatusRef.current) return;
-    startStatusRef.current = null;
-
-    const playbackState = String(status.playbackState || '').toLowerCase();
-    if (playbackState === 'failed') {
-      markPreviewError(narratorId);
-      return;
-    }
-
-    if (status.playing) {
-      clearLoadingTimer();
-      setPreviewPhase('playing');
-      return;
-    }
-
-    if (
-      previewPhase === 'playing' &&
-      (status.didJustFinish || playbackState === 'ended')
-    ) {
-      teardownPreview();
-    }
-  }, [
-    clearLoadingTimer,
-    markPreviewError,
-    previewPhase,
-    status,
-    teardownPreview,
-  ]);
-
-  useEffect(() => {
-    if (localeRef.current === locale) return;
-    localeRef.current = locale;
-    teardownPreview();
     setErrorId(null);
-  }, [locale, teardownPreview]);
+  }, [locale]);
 
   useEffect(() => {
-    if (disabled) teardownPreview();
-  }, [disabled, teardownPreview]);
-
-  useEffect(
-    () => () => {
-      clearLoadingTimer();
-      activeIdRef.current = null;
-      const webAudio = webAudioRef.current;
-      webAudioRef.current = null;
-      if (webAudio) {
-        webAudio.onplaying = null;
-        webAudio.onended = null;
-        webAudio.onerror = null;
-        try {
-          webAudio.pause();
-          webAudio.removeAttribute('src');
-          webAudio.load();
-        } catch (_error) {}
-      }
-      try {
-        if (Platform.OS !== 'web') {
-          player.pause();
-          // useAudioPlayer releases the native object after unmount; remove unloads now.
-          player.remove();
-        }
-      } catch (_error) {
-        // Cleanup is best-effort if the native shared object released first.
-      }
-    },
-    [clearLoadingTimer, player]
-  );
+    if (disabled) narration.stop();
+  }, [disabled, narration]);
 
   return (
     <View
@@ -271,8 +104,9 @@ export default function NarratorSelector({
     >
       {NARRATORS.map((narrator) => {
         const selected = narrator.id === selectedId;
-        const loading = narrator.id === activeId && previewPhase === 'loading';
-        const playing = narrator.id === activeId && previewPhase === 'playing';
+        const active = narrator.id === narration.activeNarratorId;
+        const loading = active && narration.isLoading;
+        const playing = active && (narration.isPlaying || narration.isPaused);
         const failed = narrator.id === errorId;
         const name = narratorText(narrator.name, locale);
         const description = narratorText(narrator.description, locale);

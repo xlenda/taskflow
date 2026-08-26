@@ -15,10 +15,10 @@ export const CATEGORIES = [
 
 export const categoryMeta = (key) =>
   CATEGORIES.find((category) => category.key === key) || {
-    key: 'Wealth',
+    key: 'Personal',
     icon: 'sparkles',
     accent: 0,
-    label: { en: 'Wealth', pt: 'Prosperidade' },
+    label: { en: 'Personal', pt: 'Pessoal' },
   };
 
 const TEXT_FIELDS = [
@@ -60,9 +60,12 @@ export const initialState = () => ({
     reminderEnabled: false,
     alarmSyncError: false,
     reminderTime: '07:00',
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
     wakeAffirmationId: null,
     wakeAffirmationText: '',
     wakeAffirmationLang: 'pt',
+    wakeNarratorId: null,
+    wakeSoundSource: null,
     entries: [],
   },
 });

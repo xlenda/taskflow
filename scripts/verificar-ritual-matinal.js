@@ -129,8 +129,8 @@ const languageSyncBlock = app.slice(
   app.indexOf('function NativeAlarmContentSync'),
   app.indexOf('function HomeStackNav')
 );
-const replacementBlock = languageSyncBlock.slice(
-  languageSyncBlock.indexOf('void replaceScheduledAffirmationAlarm')
+  const replacementBlock = languageSyncBlock.slice(
+    languageSyncBlock.indexOf('return replaceScheduledAffirmationAlarm')
 );
 assert.ok(
   app.includes('<NativeAlarmContentSync />') &&
@@ -170,10 +170,16 @@ assert.ok(
     languageSyncBlock.includes('const latestDesired = alarmContentForState(stateRef.current)'),
   'alarme legado orfao deve ser cancelado e restaurar conteudo pessoal que surgir durante a operacao'
 );
-assert.ok(
-  languageSyncBlock.includes('replaceScheduledAffirmationAlarm'),
-  'audio traduzido deve substituir somente um alarme nativo que ainda existe'
-);
+  assert.ok(
+    languageSyncBlock.includes('replaceScheduledAffirmationAlarm'),
+    'audio traduzido deve substituir somente um alarme nativo que ainda existe'
+  );
+  assert.ok(
+    languageSyncBlock.includes('prepareNeuralAlarm') &&
+      languageSyncBlock.includes('audioBase64Wav: neuralAudio.audioBase64Wav') &&
+      languageSyncBlock.includes("response.soundSource !== 'neural_wav'"),
+    'sincronizacao deve preparar e confirmar a mesma voz neural escolhida'
+  );
 assert.ok(
   /replaceScheduledAffirmationAlarm\(\{[\s\S]*if \(!response\.ok[\s\S]*saveMorningRitualPreferences\(\{/.test(
     languageSyncBlock
@@ -229,7 +235,6 @@ assert.ok(
 for (const [name, block] of [
   ['wake phrase', selectWakeBlock],
   ['alarm time', selectTimeBlock],
-  ['dream affirmation', resultWakeBlock],
 ]) {
   assert.ok(block.includes('await scheduleRealAlarm'), `${name} must reschedule an active native alarm`);
   assert.ok(
@@ -238,6 +243,13 @@ for (const [name, block] of [
   );
   assert.ok(block.includes('if (!scheduled) return'), `${name} must preserve the old selection after native failure`);
 }
+assert.ok(
+  resultWakeBlock.includes("navigation.navigate('AffirmationAlarm'") &&
+    resultWakeBlock.includes('preselectId: `ritual:${entryId}`') &&
+    !resultWakeBlock.includes('scheduleRealAlarm') &&
+    !resultWakeBlock.includes('saveMorningRitualPreferences'),
+  'a frase do sonho deve abrir a tela própria; permissão e persistência ficam no CTA do despertador'
+);
 
 const context = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
 const content = fs.readFileSync(path.join(root, 'constants', 'content.js'), 'utf8');
@@ -305,7 +317,10 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     'React',
     'Platform',
     'useApp',
+    'useNarration',
     'alarmContentForState',
+    'alarmSyncSignature',
+    'prepareNeuralAlarm',
     'replaceScheduledAffirmationAlarm',
     'scheduleAffirmationAlarm',
     'getAffirmationAlarmCapability',
@@ -320,7 +335,18 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
       state: currentState,
       saveMorningRitualPreferences: (patch) => savedPatches.push(patch),
     }),
+    () => ({ preparePersonal: async () => ({ ok: true }) }),
     (state) => state.desired,
+    (desired, alarmRitual, narratorId) =>
+      JSON.stringify([
+        desired.id,
+        desired.text,
+        desired.lang,
+        alarmRitual && alarmRitual.reminderTime,
+        alarmRitual && alarmRitual.weekdays,
+        narratorId,
+      ]),
+    async () => ({ ok: true, audioBase64Wav: 'UklGRgAAAABXQVZF' }),
     (payload) => new Promise((resolve) => replacements.push({ payload, resolve })),
     async () => ({ ok: true }),
     () => new Promise((resolve) => capabilityRequests.push(resolve)),
@@ -332,13 +358,14 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     { addEventListener: () => ({ remove() {} }) }
   );
 
-  const renderContentEffect = (state) => {
+  const renderContentEffect = async (state) => {
     currentState = state;
     hookCursor = 0;
     effectCursor = 0;
     NativeAlarmContentSync();
     assert.strictEqual(effects.length, 2, 'sync component must keep capability and content effects separate');
     effects[1].factory();
+    await flushMicrotasks();
   };
 
   const ritual = {
@@ -348,10 +375,13 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     wakeAffirmationId: 'old',
     wakeAffirmationText: 'Old affirmation',
     wakeAffirmationLang: 'pt',
+    wakeNarratorId: 'aurora',
+    wakeSoundSource: 'neural_wav',
   };
-  renderContentEffect({
+  await renderContentEffect({
     morningRitual: ritual,
     desired: { id: 'manifestation:a', text: 'Affirmation A', lang: 'pt' },
+    narration: { narratorId: 'aurora' },
   });
   assert.strictEqual(replacements.length, 1, 'intent A must start its replacement');
 
@@ -359,9 +389,10 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
   await flushMicrotasks();
   assert.strictEqual(capabilityRequests.length, 1, 'A failure must reconcile native capability');
 
-  renderContentEffect({
+  await renderContentEffect({
     morningRitual: ritual,
     desired: { id: 'manifestation:b', text: 'Affirmation B', lang: 'pt' },
+    narration: { narratorId: 'aurora' },
   });
   assert.strictEqual(replacements.length, 2, 'intent B must enter while A awaits capability');
 
@@ -372,7 +403,7 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
   await flushMicrotasks();
   assert.strictEqual(cancelCalls, 0, 'stale failure A cannot cancel after intent B has entered');
 
-  replacements[1].resolve({ ok: true });
+  replacements[1].resolve({ ok: true, soundSource: 'neural_wav' });
   await flushMicrotasks();
   assert.ok(
     savedPatches.some((patch) => patch.wakeAffirmationId === 'manifestation:b'),

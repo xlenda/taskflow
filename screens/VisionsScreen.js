@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,16 +15,17 @@ import * as Haptics from 'expo-haptics';
 import { Screen, Header, Card, EmptyState } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
-import { categoryMeta } from '../constants/content';
+import { CATEGORIES, categoryMeta } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
-import { speak, splitScript, stopSpeaking } from '../utils/speech';
+import { usePersonalNarration } from '../utils/usePersonalNarration';
 
 import GradientCover from '../components/GradientCover';
 import SectionHeading from '../components/SectionHeading';
 
 const GAP = 14;
+const PLAYBACK_PREFIX = 'visions:';
 
 const S = {
   title: { en: 'Visions', pt: 'Visões' },
@@ -54,6 +55,11 @@ const S = {
   replay: { en: 'Play again', pt: 'Ouvir de novo' },
   playNow: { en: 'Play this vision now', pt: 'Tocar esta visão agora' },
   stopNow: { en: 'Stop the narration', pt: 'Parar a narração' },
+  audioUnavailable: {
+    en: 'Audio is unavailable. Your vision remains here in text.',
+    pt: 'O áudio não está disponível. Sua visão continua aqui em texto.',
+  },
+  all: { en: 'All', pt: 'Todas' },
 };
 
 const CAT = {
@@ -83,14 +89,17 @@ function toPersonalVision(item, fallbackLang) {
   const title = String(txt(item.title, itemLang) || '').trim();
   const story = String(txt(item.story, itemLang) || '').trim();
   if (!title || !story) return null;
-  const firstLine = splitScript(story)[0] || story;
+  const firstLine = (story.match(/^.*?[.!?…](?:\s|$)/)?.[0] || story).trim();
+  const category = CATEGORIES.some((candidate) => candidate.key === item.category)
+    ? item.category
+    : null;
   return {
     id: String(item.id),
     title,
     story,
     caption: firstLine,
-    category: item.category || 'Wealth',
-    accent: Number.isInteger(item.accent) ? item.accent : categoryMeta(item.category).accent,
+    category,
+    accent: Number.isInteger(item.accent) ? item.accent : category ? categoryMeta(category).accent : 0,
     lang: itemLang,
   };
 }
@@ -101,14 +110,64 @@ export default function VisionsScreen() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
   const { state, loading, toggleSavedVision, logVisionPlay } = useApp();
-  const narratorId = state?.narration?.narratorId;
+  const {
+    activePlaybackId,
+    lastCompletedPlaybackId,
+    phase: narrationPhase,
+    playPersonal,
+    stop: stopNarration,
+  } = usePersonalNarration();
   const [index, setIndex] = useState(0);
-  const [playingId, setPlayingId] = useState(null);
+  const [filter, setFilter] = useState('All');
+  const [audioFailedId, setAudioFailedId] = useState(null);
   const scrollRef = useRef(null);
   const playSessionRef = useRef(0);
+  const activePlaybackIdRef = useRef(activePlaybackId);
+  const handledCompletionRef = useRef(null);
+  const attemptedPlaybackRef = useRef(null);
   const isFocused = useIsFocused();
 
-  const visions = useMemo(
+  const playingId =
+    String(activePlaybackId || '').startsWith(PLAYBACK_PREFIX) &&
+    (narrationPhase === 'loading' ||
+      narrationPhase === 'playing' ||
+      narrationPhase === 'paused')
+      ? activePlaybackId.slice(PLAYBACK_PREFIX.length)
+      : null;
+
+  useEffect(() => {
+    activePlaybackIdRef.current = activePlaybackId;
+  }, [activePlaybackId]);
+
+  useEffect(() => {
+    if (
+      !lastCompletedPlaybackId ||
+      !lastCompletedPlaybackId.startsWith(PLAYBACK_PREFIX) ||
+      attemptedPlaybackRef.current !== lastCompletedPlaybackId ||
+      handledCompletionRef.current === lastCompletedPlaybackId
+    ) {
+      return;
+    }
+    handledCompletionRef.current = lastCompletedPlaybackId;
+    attemptedPlaybackRef.current = null;
+    logVisionPlay(lastCompletedPlaybackId.slice(PLAYBACK_PREFIX.length));
+  }, [lastCompletedPlaybackId, logVisionPlay]);
+
+  useEffect(() => {
+    if (narrationPhase !== 'error' || !attemptedPlaybackRef.current) return;
+    setAudioFailedId(attemptedPlaybackRef.current.slice(PLAYBACK_PREFIX.length));
+    attemptedPlaybackRef.current = null;
+  }, [narrationPhase]);
+
+  const stopOwnedNarration = useCallback(() => {
+    playSessionRef.current += 1;
+    attemptedPlaybackRef.current = null;
+    if (String(activePlaybackIdRef.current || '').startsWith(PLAYBACK_PREFIX)) {
+      stopNarration();
+    }
+  }, [stopNarration]);
+
+  const allVisions = useMemo(
     () =>
       ((state && state.manifestations) || [])
         .map((item) => toPersonalVision(item, lang))
@@ -116,30 +175,36 @@ export default function VisionsScreen() {
     [state && state.manifestations, lang]
   );
 
-  useEffect(() => {
-    if (!isFocused && playingId) {
-      playSessionRef.current += 1;
-      stopSpeaking();
-      setPlayingId(null);
-    }
-  }, [isFocused, playingId]);
-
-  useEffect(
-    () => () => {
-      playSessionRef.current += 1;
-      stopSpeaking();
-    },
-    []
+  const populatedCategories = useMemo(() => {
+    const present = new Set(allVisions.map((vision) => vision.category).filter(Boolean));
+    return CATEGORIES.filter((category) => present.has(category.key));
+  }, [allVisions]);
+  const activeFilter =
+    filter === 'All' || populatedCategories.some((category) => category.key === filter)
+      ? filter
+      : 'All';
+  const visions = useMemo(
+    () =>
+      activeFilter === 'All'
+        ? allVisions
+        : allVisions.filter((vision) => vision.category === activeFilter),
+    [activeFilter, allVisions]
   );
 
   useEffect(() => {
+    if (!isFocused && playingId) {
+      stopOwnedNarration();
+    }
+  }, [isFocused, playingId, stopOwnedNarration]);
+
+  useEffect(() => () => stopOwnedNarration(), [stopOwnedNarration]);
+
+  useEffect(() => {
     if (playingId && !visions.some((vision) => vision.id === playingId)) {
-      playSessionRef.current += 1;
-      stopSpeaking();
-      setPlayingId(null);
+      stopOwnedNarration();
     }
     setIndex((current) => Math.max(0, Math.min(current, Math.max(0, visions.length - 1))));
-  }, [visions, playingId]);
+  }, [visions, playingId, stopOwnedNarration]);
 
   const CARD_W = Math.max(250, width - 72);
 
@@ -159,6 +224,16 @@ export default function VisionsScreen() {
   }, [state, visions]);
 
   const catLabel = (key) => (CAT[key] ? t(CAT[key]) : String(key || ''));
+
+  const chooseFilter = (key) => {
+    if (key === activeFilter) return;
+    stopOwnedNarration();
+    setAudioFailedId(null);
+    setFilter(key);
+    setIndex(0);
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+    Haptics.selectionAsync().catch(() => {});
+  };
 
   if (loading || !state) {
     return (
@@ -183,42 +258,72 @@ export default function VisionsScreen() {
     }
   };
 
-  const onPlayCircle = (vision) => {
+  const onPlayCircle = async (vision) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (playingId === vision.id) {
-      playSessionRef.current += 1;
-      stopSpeaking();
-      setPlayingId(null);
+    const playbackId = `${PLAYBACK_PREFIX}${vision.id}`;
+    if (activePlaybackId === playbackId && playingId === vision.id) {
+      stopOwnedNarration();
       return;
     }
 
     const token = playSessionRef.current + 1;
     playSessionRef.current = token;
-    const started = speak(vision.story, {
+    setAudioFailedId(null);
+    handledCompletionRef.current = null;
+    attemptedPlaybackRef.current = playbackId;
+    const result = await playPersonal({
+      text: vision.story,
       lang: vision.lang,
-      narratorId,
-      localOnly: true,
-      onDone: () => {
-        if (playSessionRef.current !== token) return;
-        setPlayingId(null);
-        logVisionPlay(vision.id);
-      },
-      onError: () => {
-        if (playSessionRef.current === token) setPlayingId(null);
-      },
+      playbackId,
     });
 
-    if (started) {
-      setPlayingId(vision.id);
+    if (playSessionRef.current !== token) {
+      if (result?.ok && activePlaybackIdRef.current === playbackId) stopNarration();
       return;
     }
-    navigation.navigate('VisionPlayer', { visionId: vision.id });
+    if (!result?.ok && result?.error !== 'audio_cancelled') {
+      attemptedPlaybackRef.current = null;
+      setAudioFailedId(vision.id);
+    }
   };
 
   return (
     <Screen>
       <Header title={t(S.title)} subtitle={t(S.subtitle)} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        {allVisions.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryFilters}
+          >
+            {[{ key: 'All', accent: 0 }, ...populatedCategories].map((category) => {
+              const selected = category.key === activeFilter;
+              const color = accentAt(th, category.accent);
+              return (
+                <TouchableOpacity
+                  key={category.key}
+                  testID={`vision-filter-${category.key}`}
+                  activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => chooseFilter(category.key)}
+                  style={[
+                    styles.categoryFilter,
+                    {
+                      backgroundColor: selected ? color : alpha(color, 0.12),
+                      borderColor: alpha(color, 0.3),
+                    },
+                  ]}
+                >
+                  <Text style={[styles.categoryFilterText, { color: selected ? '#FFFFFF' : color }]}>
+                    {category.key === 'All' ? t(S.all) : catLabel(category.key)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
         <Text style={[styles.lead, { color: th.textMuted }]}>
           {t(S.leadA)}
           <Text style={[styles.leadItalic, { color: th.text }]}>{t(S.leadB)}</Text>
@@ -250,10 +355,14 @@ export default function VisionsScreen() {
                   >
                     <GradientCover accent={vision.accent} radius={26} style={styles.slide}>
                       <View style={styles.slideTop}>
-                        <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
-                          <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
-                          <Text style={styles.pillText}>{catLabel(vision.category)}</Text>
-                        </View>
+                        {vision.category ? (
+                          <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
+                            <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
+                            <Text style={styles.pillText}>{catLabel(vision.category)}</Text>
+                          </View>
+                        ) : (
+                          <View />
+                        )}
                         <TouchableOpacity
                           activeOpacity={0.7}
                           onPress={() => {
@@ -296,7 +405,11 @@ export default function VisionsScreen() {
                           <Text numberOfLines={1} style={styles.slideTitle}>
                             {vision.title}
                           </Text>
-                          <Text style={styles.slideDur}>{t(S.personalNarration)}</Text>
+                          <Text style={styles.slideDur}>
+                            {audioFailedId === vision.id
+                              ? t(S.audioUnavailable)
+                              : t(S.personalNarration)}
+                          </Text>
                         </View>
                       </View>
                     </GradientCover>
@@ -413,6 +526,15 @@ export default function VisionsScreen() {
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  categoryFilters: { gap: 8, paddingRight: 16, paddingBottom: 14 },
+  categoryFilter: {
+    minHeight: 38,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 13,
+  },
+  categoryFilterText: { fontSize: 12.5, lineHeight: 17, fontWeight: '700', letterSpacing: 0 },
   lead: { fontSize: 15, textAlign: 'center', marginBottom: 16, marginTop: 4 },
   leadItalic: { fontStyle: 'italic', fontWeight: '600' },
   carousel: { paddingRight: 16 },

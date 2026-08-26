@@ -19,19 +19,12 @@ import { useApp } from '../context/AppContext';
 import { categoryMeta } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
+import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO, lastNDays } from '../utils/date';
 import {
-  speak,
-  stopSpeaking,
-  isSpeechAvailable,
-  splitScript,
-} from '../utils/speech';
-import {
-  DEFAULT_AFFIRMATION_ALARM_ID,
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
-  scheduleAffirmationAlarm,
 } from '../services/affirmationAlarm';
 
 import GradientCover from '../components/GradientCover';
@@ -59,8 +52,8 @@ const S = {
   },
   nowPlaying: { en: 'Sentence {i} of {n}', pt: 'Frase {i} de {n}' },
   noVoice: {
-    en: 'Your device has no voice available — read the story slowly, out loud.',
-    pt: 'Seu aparelho não tem voz disponível — leia a história devagar, em voz alta.',
+    en: 'Personal narration is unavailable — read the story slowly, out loud.',
+    pt: 'A narração pessoal não está disponível — leia a história devagar, em voz alta.',
   },
   listen: { en: 'Listen to the narrative', pt: 'Ouvir a narrativa' },
   pause: { en: 'Pause the narrative', pt: 'Pausar a narrativa' },
@@ -168,12 +161,15 @@ const WEEK_LETTERS = {
   pt: ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'],
 };
 
-// Sem áudio gravado: a narração é a voz do aparelho (utils/speech). A barra usa
-// uma estimativa de ~140 palavras/min (rate 0.82) só para acompanhar a leitura —
-// e por ser estimativa o tempo total NÃO aparece na tela (só quem tem MP3 mostra
-// duração, que aí vem medida do arquivo).
+// A estimativa sustenta a barra apenas até o áudio pessoal informar a duração real.
 const SECONDS_PER_WORD = 0.42;
 const FALLBACK_SECONDS = 168;
+
+const splitNarration = (text) =>
+  String(text || '')
+    .split(/(?<=[.!?\u2026])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
 
 const estimateSeconds = (text) => {
   const words = String(text || '')
@@ -214,7 +210,20 @@ export default function ManifestationScreen() {
     removeManifestation,
     saveMorningRitualPreferences,
   } = useApp();
-  const narratorId = state?.narration?.narratorId;
+  const {
+    activePlaybackId,
+    lastCompletedPlaybackId,
+    phase: narrationPhase,
+    isLoading: narrationLoading,
+    isPlaying: narrationPlaying,
+    isPaused: narrationPaused,
+    progress: narrationProgress,
+    playPersonal,
+    prime,
+    pause,
+    resume,
+    stop,
+  } = usePersonalNarration();
 
   // Esta tela aceita somente manifestações pessoais que já existem no estado.
   // Se o navigator reaproveitar a instância, routeId muda e o item acompanha no
@@ -238,20 +247,20 @@ export default function ManifestationScreen() {
     };
   }, [saved, lang]);
 
-  const speechOn = useMemo(() => isSpeechAvailable(), []);
-  const lines = useMemo(() => (item ? splitScript(item.story) : []), [item]);
+  const lines = useMemo(() => (item ? splitNarration(item.story) : []), [item]);
   const estimated = useMemo(() => (item ? estimateSeconds(item.story) : FALLBACK_SECONDS), [item]);
-  const duration = estimated;
-  // História pessoal nunca consulta o banco de MP3. No navegador, ela usa
-  // apenas uma voz comprovadamente local; se não houver, o texto continua visível.
-  const audioOn = speechOn && lines.length > 0 && Platform.OS === 'web';
+  const playbackId = routeId ? `manifestation:${routeId}` : null;
+  const ownsPlayback = Boolean(playbackId && activePlaybackId === playbackId);
+  const playing = ownsPlayback && (narrationLoading || narrationPlaying);
+  const narrationActive =
+    ownsPlayback && (narrationLoading || narrationPlaying || narrationPaused);
+  const audioOn = lines.length > 0;
 
-  const [playing, setPlaying] = useState(false);
   const [audioFailed, setAudioFailed] = useState(false);
   const [position, setPosition] = useState(0);
   const [lineIndex, setLineIndex] = useState(0);
-  const timer = useRef(null);
   const lineRef = useRef(0);
+  const duration = estimated;
   // Id lido no momento de finalizar, sem depender do closure de uma rota antiga.
   const savedIdRef = useRef(saved ? saved.id : null);
   // Prática de hoje no MOMENTO de finalizar a narrativa: togglePractice é
@@ -268,30 +277,45 @@ export default function ManifestationScreen() {
   const [releaseError, setReleaseError] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState(false);
-  // Token da reprodução atual: qualquer onDone de uma sessão antiga é ignorado
-  // (evita duas vozes ou um "fim" fantasma depois de pausar).
-  const runRef = useRef(0);
+  const requestEpochRef = useRef(0);
+  const playbackStartedRef = useRef(false);
+  const manualStopRef = useRef(false);
+  const ownsAttemptRef = useRef(false);
+  const activePlaybackIdRef = useRef(activePlaybackId);
+  const ownedPlaybackIdRef = useRef(playbackId);
+  const playbackOffsetRatioRef = useRef(0);
   const isFocused = useIsFocused();
   const focusRef = useRef(isFocused);
   focusRef.current = isFocused;
+
+  useEffect(() => {
+    activePlaybackIdRef.current = activePlaybackId;
+  }, [activePlaybackId]);
 
   const contentKey = routeId;
   useEffect(() => {
     // React Navigation pode manter esta instância e apenas trocar os params.
     // Nenhum rascunho, recibo ou áudio de A pode atravessar para B.
-    runRef.current += 1;
-    stopSpeaking();
-    setPlaying(false);
+    requestEpochRef.current += 1;
+    if (activePlaybackIdRef.current === ownedPlaybackIdRef.current) {
+      manualStopRef.current = true;
+      stop();
+    }
+    ownedPlaybackIdRef.current = playbackId;
+    playbackStartedRef.current = false;
+    ownsAttemptRef.current = false;
+    playbackOffsetRatioRef.current = 0;
     setAudioFailed(false);
     setPosition(0);
     setLineIndex(0);
+    lineRef.current = 0;
     setEditing(false);
     setDraftTitle('');
     setDraftAffirmation('');
     setDraftAnchorStep('');
     setEvidenceDraft('');
     setEvidenceSaved(false);
-  }, [contentKey]);
+  }, [contentKey, playbackId, stop]);
 
   useEffect(() => {
     savedIdRef.current = saved ? saved.id : null;
@@ -300,49 +324,72 @@ export default function ManifestationScreen() {
     doneTodayRef.current = saved ? saved.sessions : [];
   }, [saved]);
 
-  // Relógio só da barra de progresso — quem manda no áudio é a voz.
+  // O contexto agrega o progresso dos blocos neurais. Quando a pessoa avança
+  // para uma frase, o offset mantém a barra relativa à história inteira.
   useEffect(() => {
-    if (!playing) return undefined;
-    timer.current = setInterval(() => {
-      // Aba escondida: o navegador segura a voz local, então a barra espera.
-      if (Platform.OS === 'web' && typeof document !== 'undefined' && document.hidden) return;
-      setPosition((p) => Math.min(duration, p + 1));
-    }, 1000);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, [playing, duration]);
+    if (!ownsPlayback) return;
+    if (narrationPlaying) playbackStartedRef.current = true;
+    const remainingProgress = Math.min(1, Math.max(0, Number(narrationProgress) || 0));
+    const offset = playbackOffsetRatioRef.current;
+    const overallProgress = offset + remainingProgress * (1 - offset);
+    setPosition(overallProgress * duration);
+    if (lines.length) {
+      const nextLine = Math.min(
+        lines.length - 1,
+        Math.max(0, Math.floor(overallProgress * lines.length))
+      );
+      lineRef.current = nextLine;
+      setLineIndex(nextLine);
+    }
+  }, [
+    duration,
+    lines.length,
+    narrationPlaying,
+    narrationProgress,
+    ownsPlayback,
+  ]);
 
   // Sair da tela cala a voz na hora.
   useEffect(() => {
-    if (isFocused) return;
-    runRef.current += 1;
-    stopSpeaking();
-    setPlaying(false);
-  }, [isFocused]);
+    if (isFocused || activePlaybackIdRef.current !== playbackId) return;
+    requestEpochRef.current += 1;
+    manualStopRef.current = true;
+    ownsAttemptRef.current = false;
+    playbackStartedRef.current = false;
+    stop();
+  }, [isFocused, playbackId, stop]);
 
   // Trocar de idioma no meio da narração: cala a voz antiga em vez de misturar
   // as duas línguas na mesma história.
   useEffect(() => {
-    runRef.current += 1;
-    stopSpeaking();
-    setPlaying(false);
-  }, [lang]);
+    requestEpochRef.current += 1;
+    if (activePlaybackIdRef.current === playbackId) {
+      manualStopRef.current = true;
+      ownsAttemptRef.current = false;
+      playbackStartedRef.current = false;
+      stop();
+    }
+  }, [lang, playbackId, stop]);
 
   useEffect(
     () => () => {
-      runRef.current += 1;
-      stopSpeaking();
-      if (timer.current) clearInterval(timer.current);
+      requestEpochRef.current += 1;
+      if (activePlaybackIdRef.current === playbackId) {
+        manualStopRef.current = true;
+        ownsAttemptRef.current = false;
+        playbackStartedRef.current = false;
+        stop();
+      }
     },
-    []
+    [playbackId, stop]
   );
 
   const finishNarrative = useCallback(() => {
-    runRef.current += 1;
+    playbackStartedRef.current = false;
+    ownsAttemptRef.current = false;
+    manualStopRef.current = false;
     lineRef.current = 0;
     setLineIndex(0);
-    setPlaying(false);
     setPosition(duration);
     const id = savedIdRef.current;
     // Fim da narrativa só MARCA o dia — se já estava feito, fica como está.
@@ -352,32 +399,43 @@ export default function ManifestationScreen() {
     }
   }, [duration, togglePractice]);
 
-  // Fala frase a frase e encadeia a próxima no onDone da anterior.
-  const playFrom = (index, run) => {
-    if (run !== runRef.current) return;
-    if (index >= lines.length) {
-      finishNarrative();
+  useEffect(() => {
+    if (!ownsAttemptRef.current) return;
+    if (activePlaybackId && activePlaybackId !== playbackId) {
+      ownsAttemptRef.current = false;
+      playbackStartedRef.current = false;
+      manualStopRef.current = false;
       return;
     }
-    lineRef.current = index;
-    setLineIndex(index);
-    const mark = Math.round((index / lines.length) * duration);
-    setPosition((p) => Math.max(p, mark));
-    speak(lines[index], {
-      lang,
-      narratorId,
-      localOnly: true,
-      onDone: () => playFrom(index + 1, run),
-      // Só reage ao erro da fala ATUAL: parar uma fala dispara o evento de erro
-      // da anterior, e incrementar o token aqui matava a narração que acabou de
-      // começar (sintoma: pular frase parava tudo e a prática nunca era logada).
-      onError: () => {
-        if (run !== runRef.current) return;
-        setPlaying(false);
-        setAudioFailed(true);
-      },
-    });
-  };
+    if (narrationPhase === 'error') {
+      ownsAttemptRef.current = false;
+      playbackStartedRef.current = false;
+      manualStopRef.current = false;
+      setAudioFailed(true);
+      return;
+    }
+    if (
+      narrationPhase === 'idle' &&
+      !ownsPlayback &&
+      lastCompletedPlaybackId === playbackId &&
+      playbackStartedRef.current
+    ) {
+      if (manualStopRef.current) {
+        ownsAttemptRef.current = false;
+        playbackStartedRef.current = false;
+        manualStopRef.current = false;
+      } else {
+        finishNarrative();
+      }
+    }
+  }, [
+    activePlaybackId,
+    finishNarrative,
+    lastCompletedPlaybackId,
+    narrationPhase,
+    ownsPlayback,
+    playbackId,
+  ]);
 
   if (!item) {
     return (
@@ -411,27 +469,69 @@ export default function ManifestationScreen() {
     hit: saved ? saved.sessions.includes(iso) : false,
   }));
 
-  // Safari só deixa falar dentro do gesto: speak() sai daqui, do próprio onPress.
-  const togglePlay = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    if (playing) {
-      runRef.current += 1;
-      stopSpeaking();
-      setPlaying(false);
+  const startNarration = async (startLine) => {
+    prime?.();
+    if (!playbackId || !item.story || !lines.length) return;
+    const at = Math.min(lines.length - 1, Math.max(0, startLine));
+    const requestEpoch = requestEpochRef.current + 1;
+    requestEpochRef.current = requestEpoch;
+    playbackOffsetRatioRef.current = lines.length ? at / lines.length : 0;
+    manualStopRef.current = false;
+    playbackStartedRef.current = false;
+    ownsAttemptRef.current = true;
+    lineRef.current = at;
+    setLineIndex(at);
+    setPosition(playbackOffsetRatioRef.current * duration);
+    setAudioFailed(false);
+
+    const result = await playPersonal({
+      text: lines.slice(at).join(' '),
+      lang,
+      playbackId,
+    });
+    if (requestEpoch !== requestEpochRef.current) {
+      if (
+        ownedPlaybackIdRef.current !== playbackId &&
+        activePlaybackIdRef.current === playbackId
+      ) {
+        stop();
+      }
       return;
     }
-    setAudioFailed(false);
+    if (!result?.ok) {
+      ownsAttemptRef.current = false;
+      playbackStartedRef.current = false;
+      if (result?.error !== 'audio_cancelled') setAudioFailed(true);
+      return;
+    }
+  };
+
+  const togglePlay = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    if (ownsPlayback && narrationLoading) {
+      requestEpochRef.current += 1;
+      manualStopRef.current = true;
+      ownsAttemptRef.current = false;
+      playbackStartedRef.current = false;
+      stop();
+      return;
+    }
+    if (ownsPlayback && narrationPlaying) {
+      pause();
+      return;
+    }
+    if (ownsPlayback && narrationPaused) {
+      resume();
+      return;
+    }
     const restart = position >= duration || lineRef.current >= lines.length;
-    const startAt = restart ? 0 : lineRef.current;
+    const startLine = restart ? 0 : lineRef.current;
     if (restart) {
       lineRef.current = 0;
       setLineIndex(0);
       setPosition(0);
     }
-    setPlaying(true);
-    const run = runRef.current + 1;
-    runRef.current = run;
-    playFrom(startAt, run);
+    startNarration(startLine);
   };
 
   const jumpLine = (delta) => {
@@ -439,14 +539,9 @@ export default function ManifestationScreen() {
     const next = Math.min(lines.length - 1, Math.max(0, lineRef.current + delta));
     lineRef.current = next;
     setLineIndex(next);
-    setPosition(Math.round((next / lines.length) * duration));
-    if (playing) {
-      const run = runRef.current + 1;
-      runRef.current = run;
-      playFrom(next, run);
-    } else {
-      stopSpeaking();
-    }
+    const target = Math.round((next / lines.length) * duration);
+    setPosition(target);
+    if (ownsPlayback) startNarration(next);
   };
 
   const onTogglePractice = async () => {
@@ -507,39 +602,13 @@ export default function ManifestationScreen() {
       const alarmContentChanged =
         afirmacao !== state.morningRitual?.wakeAffirmationText ||
         lang !== state.morningRitual?.wakeAffirmationLang;
-      if (usedAsAlarm && state.morningRitual?.reminderEnabled && alarmContentChanged) {
-        const capability = await getAffirmationAlarmCapability().catch(() => null);
-        if (!capability) {
-          setEditError(true);
-          return;
-        }
-        if (
-          Platform.OS === 'ios' &&
-          (capability.supported === true || capability.nativeModuleAvailable === true)
-        ) {
-          const scheduled = await scheduleAffirmationAlarm({
-            time: state.morningRitual.reminderTime,
-            affirmation: afirmacao,
-            locale: lang === 'pt' ? 'pt-BR' : 'en-US',
-            requestAuthorization: true,
-          });
-          if (!scheduled.ok) {
-            const currentCapability = await getAffirmationAlarmCapability().catch(() => null);
-            const scheduledIds = Array.isArray(scheduled.scheduledAlarmIds)
-              ? scheduled.scheduledAlarmIds
-              : currentCapability && currentCapability.scheduledAlarmIds;
-            if (Array.isArray(scheduledIds)) {
-              saveMorningRitualPreferences({
-                reminderEnabled: scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID),
-                alarmSyncError: scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID),
-              });
-            }
-            setEditError(true);
-            return;
-          }
-        }
-      }
-      if (usedAsAlarm) {
+      // An active alarm is replaced centrally only after its selected neural
+      // WAV is ready. Keep the cached native content untouched until then.
+      if (
+        usedAsAlarm &&
+        !state.morningRitual?.reminderEnabled &&
+        alarmContentChanged
+      ) {
         saveMorningRitualPreferences({
           wakeAffirmationText: afirmacao,
           wakeAffirmationLang: lang,
@@ -594,8 +663,13 @@ export default function ManifestationScreen() {
           }
         }
       }
-      runRef.current += 1;
-      stopSpeaking();
+      requestEpochRef.current += 1;
+      if (activePlaybackIdRef.current === playbackId) {
+        manualStopRef.current = true;
+        ownsAttemptRef.current = false;
+        playbackStartedRef.current = false;
+        stop();
+      }
       removeManifestation(saved.id);
       if (focusRef.current) navigation.goBack();
     } finally {
@@ -611,7 +685,7 @@ export default function ManifestationScreen() {
     { icon: 'moon-outline', label: t(S.step3), note: t(S.step3Note) },
   ];
 
-  const audioHint = playing
+  const audioHint = narrationActive
     ? t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
     : t(S.hintEyes);
 

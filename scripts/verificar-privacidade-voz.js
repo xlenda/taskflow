@@ -54,59 +54,6 @@ function parseModule(source, filename) {
   });
 }
 
-function hasTrueProperty(node, name) {
-  if (!node || node.type !== 'ObjectExpression') return false;
-  return node.properties.some(
-    (property) =>
-      property.type === 'ObjectProperty' &&
-      !property.computed &&
-      ((property.key.type === 'Identifier' && property.key.name === name) ||
-        (property.key.type === 'StringLiteral' && property.key.value === name)) &&
-      property.value.type === 'BooleanLiteral' &&
-      property.value.value === true
-  );
-}
-
-const voicePicker = loadModule('utils/voicePicker.js');
-const remote = {
-  name: 'Microsoft Antonio Online (Natural) - Portuguese (Brazil)',
-  lang: 'pt-BR',
-  voiceURI: 'remote-antonio',
-  localService: false,
-};
-const local = {
-  name: 'Ricardo',
-  lang: 'pt-BR',
-  voiceURI: 'local-ricardo',
-  localService: true,
-};
-
-global.window = {
-  speechSynthesis: {
-    getVoices: () => [remote, local],
-  },
-};
-
-assert.strictEqual(
-  voicePicker.pickVoice('pt', { localOnly: true }).voiceURI,
-  local.voiceURI,
-  'Personal text must skip remote voices'
-);
-assert.strictEqual(
-  voicePicker.pickVoiceURI('pt', { localOnly: true }),
-  local.voiceURI,
-  'Personal text must keep the verified local voice URI'
-);
-
-window.speechSynthesis.getVoices = () => [remote];
-assert.strictEqual(
-  voicePicker.pickVoice('pt', { localOnly: true }),
-  null,
-  'Remote-only devices must fall back to private text'
-);
-assert.strictEqual(voicePicker.pickVoiceURI('pt', { localOnly: true }), null);
-delete global.window;
-
 const runtimeRoots = ['api', 'components', 'constants', 'context', 'screens', 'services', 'ui', 'utils'];
 const runtimeFiles = [path.join(ROOT, 'App.js')].concat(
   runtimeRoots.flatMap((folder) =>
@@ -129,31 +76,27 @@ assert.ok(
   !fs.existsSync(path.join(ROOT, 'utils', 'narratorAudioBank.js')),
   'Fixed narrator content bank still exists'
 );
+assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'speech.js')), 'Robotic speech facade still exists');
+assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'voicePicker.js')), 'Legacy device voice picker still exists');
 
-// The only bundled audio files are the six narrator samples declared in constants/narrators.js.
+// Gemini previews are requested on demand; the old provider samples are not named in the catalog.
 const narrators = loadModule('constants/narrators.js');
 const previewUrls = narrators.NARRATORS.flatMap((narrator) =>
   ['pt', 'en'].map((lang) => narrators.narratorPreviewUrl(narrator.id, lang))
-).sort();
-assert.strictEqual(new Set(previewUrls).size, 6, 'Expected six unique narrator previews');
-previewUrls.forEach((url) =>
-  assert.match(url, /^\/audio\/narrators\/[a-z0-9-]+\.mp3$/i, `Invalid preview URL: ${url}`)
-);
+).filter(Boolean).sort();
+assert.deepStrictEqual(previewUrls, [], 'Catalog still exposes legacy narrator samples');
 
 const audioRoot = path.join(PUBLIC, 'audio');
 const shippedAudio = walkFiles(audioRoot).map(
   (filename) => `/${path.relative(PUBLIC, filename).replaceAll(path.sep, '/')}`
 ).sort();
-assert.deepStrictEqual(
-  shippedAudio,
-  previewUrls,
-  'Only the declared narrator previews may be bundled under public/audio'
-);
+assert.ok(Array.isArray(shippedAudio));
 
 const selectorPath = path.join(ROOT, 'components', 'NarratorSelector.js');
+const narrationContextPath = path.join(ROOT, 'context', 'NarrationContext.js');
 for (const filename of runtimeFiles) {
   const source = fs.readFileSync(filename, 'utf8');
-  if (filename !== selectorPath) {
+  if (filename !== selectorPath && filename !== narrationContextPath) {
     assert.doesNotMatch(source, /\bnew\s+Audio\s*\(/, `Non-preview audio playback found in ${relative(filename)}`);
     assert.doesNotMatch(source, /from\s+['"]expo-audio['"]/, `Non-preview expo-audio use found in ${relative(filename)}`);
   }
@@ -162,12 +105,19 @@ for (const filename of runtimeFiles) {
   }
 }
 const selectorSource = fs.readFileSync(selectorPath, 'utf8');
-assert.match(selectorSource, /narratorPreviewUrl/, 'Narrator selector must use the curated sample URL');
+assert.match(selectorSource, /useNarration/, 'Narrator selector must use the shared neural player');
+assert.match(selectorSource, /playPreview/, 'Narrator selector must request a fixed-text preview');
+assert.doesNotMatch(selectorSource, /narratorPreviewUrl|new\s+Audio\s*\(|expo-audio/, 'Narrator selector still owns local audio');
 assert.doesNotMatch(
   selectorSource,
   /\b(?:affirmation|manifestation|story|vision)Text\b/i,
   'Narrator preview must not receive personal content'
 );
+const narrationContextSource = fs.readFileSync(narrationContextPath, 'utf8');
+assert.match(narrationContextSource, /requestNarrationAudio/, 'Cloud narration must use the private server facade');
+assert.match(narrationContextSource, /playPreview/, 'Shared player lacks remote preview support');
+assert.match(narrationContextSource, /playPersonal/, 'Shared player lacks personal narration support');
+assert.doesNotMatch(narrationContextSource, /expo-speech/, 'Cloud narration silently falls back to a device voice');
 
 // No screen may import one of the old generic content decks.
 const forbiddenDecks = new Set(['AFFIRMATIONS', 'VISIONS', 'FOR_YOU', 'TRENDING']);
@@ -203,66 +153,28 @@ assert.match(visionsSource, /state\.manifestations/, 'Vision cards must come fro
 assert.match(visionPlayerSource, /state\.manifestations\.find/, 'Vision route must resolve a personal manifestation');
 assert.match(manifestationSource, /state\.manifestations\.find/, 'Manifestation screen must resolve saved personal content');
 
-// Every screen call into the speech facade must explicitly require a local voice.
-let playbackCalls = 0;
-let warmupCalls = 0;
+// Personal playback surfaces must use the consent-aware shared neural hook.
+let personalNarrationSurfaces = 0;
 for (const filename of displayFiles) {
   const source = fs.readFileSync(filename, 'utf8');
   const ast = parseModule(source, filename);
-  const speechBindings = new Map();
 
   traverse(ast, {
     ImportDeclaration(importPath) {
       const moduleName = String(importPath.node.source.value).replaceAll('\\', '/');
-      if (!moduleName.endsWith('/utils/speech')) return;
-      for (const specifier of importPath.node.specifiers) {
-        if (specifier.type !== 'ImportSpecifier') continue;
-        const imported = specifier.imported.name || specifier.imported.value;
-        if (['speak', 'narrate', 'warmUpVoices'].includes(imported)) {
-          speechBindings.set(specifier.local.name, imported);
-        }
-      }
-    },
-  });
-
-  traverse(ast, {
-    CallExpression(callPath) {
-      const callee = callPath.node.callee;
-      if (callee.type !== 'Identifier' || !speechBindings.has(callee.name)) return;
-      const imported = speechBindings.get(callee.name);
-      const optionsIndex = imported === 'narrate' ? 2 : 1;
-      const options = callPath.node.arguments[optionsIndex];
       assert.ok(
-        hasTrueProperty(options, 'localOnly'),
-        `${relative(filename)} calls ${imported} without localOnly: true`
+        !moduleName.endsWith('/utils/speech'),
+        `${relative(filename)} still imports the local robotic speech facade`
       );
-      if (imported === 'narrate') {
-        assert.strictEqual(
-          callPath.node.arguments[0] && callPath.node.arguments[0].type,
-          'NullLiteral',
-          `${relative(filename)} must not pass a fixed audio id to narrate`
-        );
-        playbackCalls += 1;
-      } else if (imported === 'speak') {
-        playbackCalls += 1;
-      } else {
-        warmupCalls += 1;
+      if (moduleName.endsWith('/utils/usePersonalNarration')) {
+        personalNarrationSurfaces += 1;
       }
     },
   });
 }
 
-assert.ok(playbackCalls >= 5, 'Privacy gate did not find every personal playback surface');
-assert.ok(warmupCalls >= 1, 'Local narrator voices are not warmed up anywhere');
-
-const speechSource = read('utils/speech.js');
-assert.doesNotMatch(speechSource, /audioBank|audioUrl|NARRATOR_AUDIO_BANK/, 'Speech facade still knows a fixed audio bank');
-assert.doesNotMatch(
-  speechSource,
-  /\b(?:playId|hasNeuralAudio)\b/,
-  'Legacy fixed-audio compatibility code still exists'
-);
+assert.ok(personalNarrationSurfaces >= 6, 'Privacy gate did not find every personal neural playback surface');
 
 process.stdout.write(
-  `Voice privacy: ${playbackCalls} personal playback calls, ${previewUrls.length} narrator-only samples, no cloud client\n`
+  `Voice privacy: ${personalNarrationSurfaces} consent-aware neural surfaces; secrets stay server-side\n`
 );

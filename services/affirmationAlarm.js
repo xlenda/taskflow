@@ -4,6 +4,8 @@ import { NativeModules, Platform } from 'react-native';
 const AFFIRMATION_ALARM_NATIVE_MODULE = 'CelesteAffirmationAlarm';
 const AFFIRMATION_ALARM_MIN_IOS_VERSION = 26;
 export const DEFAULT_AFFIRMATION_ALARM_ID = 'c31e57e0-75ee-4de2-9526-0cc321f55a11';
+export const AFFIRMATION_ALARM_MAX_WAV_BYTES = 1_500_000;
+export const AFFIRMATION_ALARM_MAX_WAV_BASE64_CHARS = 2_000_000;
 
 const DEFAULT_TEST_ALARM_ID = '81d83a39-af98-4879-9aad-22f08ffdb2d7';
 const REQUIRED_NATIVE_METHODS = ['getCapability', 'schedule', 'cancel', 'test'];
@@ -23,6 +25,11 @@ function cleanCode(value, fallback) {
 function iosMajor(version) {
   const parsed = Number.parseInt(String(version == null ? '' : version), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nativeApiMajor(version) {
+  const parsed = Number.parseInt(String(version == null ? '' : version), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function resolveNativeModule() {
@@ -162,6 +169,86 @@ function normalizeWeekdays(value) {
   return weekdays.sort((left, right) => left - right);
 }
 
+function decodeBase64Prefix(value, byteCount) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const bytes = [];
+  let buffer = 0;
+  let bufferedBits = 0;
+
+  for (let index = 0; index < value.length && bytes.length < byteCount; index += 1) {
+    const character = value[index];
+    if (character === '=') break;
+    const digit = alphabet.indexOf(character);
+    if (digit < 0) return null;
+    buffer = (buffer << 6) | digit;
+    bufferedBits += 6;
+    while (bufferedBits >= 8 && bytes.length < byteCount) {
+      bufferedBits -= 8;
+      bytes.push((buffer >> bufferedBits) & 0xff);
+      buffer &= bufferedBits === 0 ? 0 : (1 << bufferedBits) - 1;
+    }
+  }
+
+  return bytes;
+}
+
+function isStrictBase64(value) {
+  let paddingCount = 0;
+  let reachedPadding = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x3d) {
+      reachedPadding = true;
+      paddingCount += 1;
+      if (paddingCount > 2) return false;
+      continue;
+    }
+    if (reachedPadding) return false;
+    const isLetter = (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+    const isNumber = code >= 0x30 && code <= 0x39;
+    if (!isLetter && !isNumber && code !== 0x2b && code !== 0x2f) return false;
+  }
+
+  return true;
+}
+
+function normalizeNeuralWav(value) {
+  if (value == null) return { value: null };
+  if (typeof value !== 'string' || value.length === 0) {
+    return { error: 'invalid_audio_base64_wav' };
+  }
+  if (value.length > AFFIRMATION_ALARM_MAX_WAV_BASE64_CHARS) {
+    return { error: 'audio_base64_wav_too_large' };
+  }
+  if (value.length % 4 !== 0 || !isStrictBase64(value)) {
+    return { error: 'invalid_audio_base64_wav' };
+  }
+
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const decodedBytes = (value.length / 4) * 3 - padding;
+  if (decodedBytes < 12) return { error: 'invalid_audio_base64_wav' };
+  if (decodedBytes > AFFIRMATION_ALARM_MAX_WAV_BYTES) {
+    return { error: 'audio_base64_wav_too_large' };
+  }
+
+  const header = decodeBase64Prefix(value, 12);
+  const isWav =
+    header &&
+    header.length === 12 &&
+    header[0] === 0x52 &&
+    header[1] === 0x49 &&
+    header[2] === 0x46 &&
+    header[3] === 0x46 &&
+    header[8] === 0x57 &&
+    header[9] === 0x41 &&
+    header[10] === 0x56 &&
+    header[11] === 0x45;
+  if (!isWav) return { error: 'invalid_audio_base64_wav' };
+
+  return { value };
+}
+
 function normalizeAlarmContent(input, fallbackId) {
   if (!input || typeof input !== 'object') return { error: 'invalid_input' };
   const alarmId = cleanText(input.alarmId || fallbackId, 80);
@@ -171,6 +258,7 @@ function normalizeAlarmContent(input, fallbackId) {
   const stopLabel = cleanText(input.stopLabel, 32) || (/^en(?:-|$)/i.test(locale) ? 'Stop' : 'Parar');
   const voiceIdentifier = cleanText(input.voiceIdentifier, 160) || null;
   const soundFileName = cleanText(input.soundFileName, 120) || null;
+  const neuralWav = normalizeNeuralWav(input.audioBase64Wav);
 
   if (!UUID_PATTERN.test(alarmId)) return { error: 'invalid_alarm_id' };
   if (!affirmation) return { error: 'missing_affirmation' };
@@ -178,18 +266,20 @@ function normalizeAlarmContent(input, fallbackId) {
   if (soundFileName && !FILE_NAME_PATTERN.test(soundFileName)) {
     return { error: 'invalid_sound_file_name' };
   }
+  if (neuralWav.error) return neuralWav;
 
-  return {
-    value: {
-      alarmId,
-      affirmation,
-      title,
-      locale,
-      stopLabel,
-      voiceIdentifier,
-      soundFileName,
-    },
+  const value = {
+    alarmId,
+    affirmation,
+    title,
+    locale,
+    stopLabel,
+    voiceIdentifier,
+    soundFileName,
   };
+  if (neuralWav.value) value.audioBase64Wav = neuralWav.value;
+
+  return { value };
 }
 
 function normalizeScheduleInput(input) {
@@ -256,8 +346,10 @@ function normalizeNativeResult(operation, response, capability, alarmId) {
   if (operation === 'test') result.test = true;
   const scheduledFor = cleanText(response.scheduledFor, 80);
   const soundFileName = cleanText(response.soundFileName, 120);
+  const soundSource = cleanCode(response.soundSource, '');
   if (scheduledFor) result.scheduledFor = scheduledFor;
   if (soundFileName) result.soundFileName = soundFileName;
+  if (['neural_wav', 'local_speech'].includes(soundSource)) result.soundSource = soundSource;
   return result;
 }
 
@@ -272,9 +364,10 @@ function normalizeNativeResult(operation, response, capability, alarmId) {
  * - test(payload) -> { ok, alarmId, scheduledFor?, soundFileName?, reason? }
  *
  * `schedule` receives a local weekly schedule (`time`, ISO weekdays 1...7) and
- * affirmation text. The native side owns on-device TTS, the Library/Sounds file,
- * AlarmKit authorization and lifecycle. The web adapter never creates a timer or
- * claims that a browser can wake the user.
+ * affirmation text. `audioBase64Wav` may carry a pre-generated neural WAV; when
+ * omitted, the native side renders local speech. The native side owns the
+ * Library/Sounds file, AlarmKit authorization and lifecycle. The web adapter
+ * never creates a timer or claims that a browser can wake the user.
  */
 export function createAffirmationAlarmAdapter({
   platform = Platform,
@@ -310,7 +403,12 @@ export function createAffirmationAlarmAdapter({
       const response = await nativeModule.requestAuthorization();
       return normalizeNativeCapability(
         capability,
-        { supported: true, authorization: response && response.authorization },
+        {
+          supported: true,
+          authorization: response && response.authorization,
+          apiVersion: capability.nativeApiVersion,
+          scheduledAlarmIds: capability.scheduledAlarmIds,
+        },
         nativeModule
       );
     } catch (error) {
@@ -331,6 +429,11 @@ export function createAffirmationAlarmAdapter({
     const { nativeModule } = inspected;
     if (!capability.supported) {
       return failure(operation, capability.reason, capability, { alarmId: payload.alarmId });
+    }
+    if (payload.audioBase64Wav && nativeApiMajor(capability.nativeApiVersion) < 2) {
+      return failure(operation, 'neural_audio_unsupported', capability, {
+        alarmId: payload.alarmId,
+      });
     }
     if (capability.authorization === 'denied') {
       return failure(operation, 'authorization_denied', capability, { alarmId: payload.alarmId });

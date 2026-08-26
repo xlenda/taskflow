@@ -45,8 +45,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Gemini personalization', pt: 'Personalização com Gemini' },
     paragraphs: [
       {
-        en: 'When enabled by an adult, Celeste may send Gemini the desire, category, language, your name, desired location or home, work context, relationship context, self-description, partnership preference, past influence, obstacle and why the desire matters. Only fields that contain an answer are included. Saved scenes do not change when you turn this preference off.',
-        pt: 'Quando ativado por uma pessoa adulta, o Celeste pode enviar ao Gemini o desejo, a categoria, o idioma, seu nome, lugar ou casa desejada, contexto de trabalho e relacionamento, sua autodescrição, preferência de parceria, influência do passado, obstáculo e por que o desejo importa. Só entram os campos que têm resposta. As cenas já salvas não mudam quando você desativa essa preferência.',
+        en: 'When enabled by an adult, Celeste may send Gemini only the answered fields needed to create a personal scene. When you explicitly transform a dream, Celeste may also send that transcript, your selected waking feeling and theme, plus a reduced profile context. Saved content does not change when you turn this preference off.',
+        pt: 'Quando ativado por uma pessoa adulta, o Celeste pode enviar ao Gemini somente os campos respondidos necessários para criar uma cena pessoal. Quando você pedir para transformar um sonho, o Celeste também poderá enviar essa transcrição, o sentimento e o tema escolhidos, além de um contexto reduzido do perfil. O conteúdo já salvo não muda quando você desativa essa preferência.',
       },
       {
         en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If Gemini is unavailable or consent is incomplete, Celeste uses its local generator.',
@@ -58,12 +58,12 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Voice and media', pt: 'Voz e mídia' },
     paragraphs: [
       {
-        en: 'Celeste does not use a fixed narration catalog. Personal text is narrated only when Celeste can select a voice identified as local by the device. Otherwise, it remains available as text. The short voice-choice samples contain no questionnaire answers.',
-        pt: 'O Celeste não usa um catálogo fixo de narração. Textos pessoais só são narrados quando o Celeste consegue selecionar uma voz identificada como local pelo aparelho. Caso contrário, continuam disponíveis em texto. As amostras curtas para escolher a voz não contêm respostas do questionário.',
+        en: 'With explicit adult consent, pressing Play sends the selected personal text, language and narrator choice to Gemini text-to-speech. Gemini returns audio for that request; Celeste does not publish it or use it as a shared voice catalog. Voice previews use fixed sample text and contain no questionnaire answers.',
+        pt: 'Com consentimento adulto explícito, tocar em Reproduzir envia ao Gemini de texto para fala o texto pessoal selecionado, o idioma e a voz escolhida. O Gemini devolve o áudio daquela solicitação; o Celeste não o publica nem o usa como catálogo compartilhado. As prévias de voz usam um texto fixo e não contêm respostas do questionário.',
       },
       {
-        en: 'If you choose to dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives the resulting transcript and transforms it locally; Celeste does not upload the recording itself.',
-        pt: 'Se você escolher ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe a transcrição resultante e faz a transformação localmente; o Celeste não envia a gravação por conta própria.',
+        en: 'If you dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives only the transcript, never uploads the recording itself, and sends the transcript to Gemini only when you request cloud reflection with consent; otherwise it uses the local fallback.',
+        pt: 'Se você ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe apenas a transcrição, nunca envia a gravação por conta própria e só envia o texto ao Gemini quando você pedir a reflexão em nuvem com consentimento; caso contrário, usa a alternativa local.',
       },
       {
         en: 'In a compatible installed iPhone app, Celeste may request Alarm access and create an on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
@@ -83,8 +83,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'Edite ou exclua rastros privados e manifestações dentro do app.',
       },
       {
-        en: 'Delete an individual dream and its generated affirmation from the alarm screen, or use Reset my journey to remove all locally saved entries.',
-        pt: 'Apague um sonho e sua afirmação gerada na tela do despertador, ou use Recomeçar minha jornada para remover todos os registros salvos localmente.',
+        en: 'Delete an individual dream and its generated affirmation from the Dreams area, or use Reset my journey to remove all locally saved entries.',
+        pt: 'Apague um sonho e sua afirmação gerada na área Sonhos, ou use Recomeçar minha jornada para remover todos os registros salvos localmente.',
       },
       {
         en: 'Use Reset my journey to remove the saved practice and redo onboarding. Clearing this site or app data from the device also removes the local copy.',
@@ -96,8 +96,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Future services', pt: 'Serviços futuros' },
     paragraphs: [
       {
-        en: 'Accounts, payments, cloud generation of personal voice and community publishing are not active in this release. Before any of them is enabled, Celeste must show what data is collected, why it is needed, who receives it and how it can be deleted.',
-        pt: 'Contas, pagamentos, geração em nuvem de voz pessoal e publicação na comunidade não estão ativos nesta versão. Antes de qualquer um deles ser habilitado, o Celeste deverá informar quais dados são coletados, por que são necessários, quem os recebe e como apagá-los.',
+        en: 'Accounts and payments are not active in this release. Community publication requires its own explicit consent and moderation. Before any materially different data use is enabled, Celeste must explain what is collected, why it is needed, who receives it and how it can be deleted.',
+        pt: 'Contas e pagamentos não estão ativos nesta versão. A publicação na comunidade exige consentimento próprio e moderação. Antes de qualquer uso de dados materialmente diferente ser habilitado, o Celeste deverá explicar o que é coletado, por que é necessário, quem recebe e como apagar.',
       },
       {
         en: 'A community story created without an authenticated account and configured community service remains a private draft on this device; it is not a public testimonial.',

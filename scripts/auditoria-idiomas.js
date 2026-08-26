@@ -90,8 +90,8 @@ const SEED = (lang) => ({
 });
 
 const ABAS = {
-  pt: ['Manifestar', 'Visões', 'Afirmações', 'Jornada'],
-  en: ['Manifest', 'Visions', 'Affirmations', 'Journey'],
+  pt: ['Manifestar', 'Visões', 'Afirmações', 'Jornada', 'Comunidade'],
+  en: ['Manifest', 'Visions', 'Affirmations', 'Journey', 'Community'],
 };
 const DESEJO = { pt: 'um apartamento na praia', en: 'a beach apartment' };
 

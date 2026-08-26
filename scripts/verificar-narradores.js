@@ -60,27 +60,28 @@ function walkJavaScript(directory) {
 
 const narrators = loadModule('constants/narrators.js');
 
-assert.strictEqual(narrators.NARRATORS.length, 3, 'Celeste deve oferecer exatamente tres vozes curadas');
+assert.strictEqual(narrators.NARRATORS.length, 6, 'Celeste deve oferecer exatamente seis vozes curadas');
 assert.ok(narrators.isNarratorId(narrators.DEFAULT_NARRATOR_ID), 'Narrador padrao invalido');
 assert.deepStrictEqual(
   new Set(narrators.NARRATORS.map(({ id }) => id)).size,
-  3,
+  6,
   'IDs dos narradores precisam ser unicos'
 );
 
-let previewCount = 0;
 for (const narrator of narrators.NARRATORS) {
+  assert.strictEqual(narrator.tts?.provider, 'gemini', `Provider invalido para ${narrator.id}`);
+  assert.match(narrator.tts?.voice || '', /^[A-Za-z]+$/, `Voz Gemini invalida para ${narrator.id}`);
   for (const lang of ['pt', 'en']) {
-    assertMp3(narrators.narratorPreviewUrl(narrator.id, lang));
-    previewCount += 1;
+    assert.strictEqual(narrators.narratorPreviewUrl(narrator.id, lang), null);
+    assert.ok(narrator.tts.style[lang], `Estilo ${lang} ausente para ${narrator.id}`);
   }
 }
+assert.strictEqual(new Set(narrators.NARRATORS.map(({ tts }) => tts.voice)).size, 6);
 
 const profile = read('screens/ProfileScreen.js');
 const reveal = read('screens/onboarding/RevealScreen.js');
 const context = read('context/AppContext.js');
 const content = read('constants/content.js');
-const speech = read('utils/speech.js');
 const selector = read('components/NarratorSelector.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -89,17 +90,14 @@ assert.ok(reveal.includes('<NarratorSelector'), 'Seletor de narrador ausente da 
 assert.ok(profile.includes('setNarrator'), 'Perfil nao persiste a voz escolhida');
 assert.ok(context.includes('isNarratorId') && context.includes('setNarrator'), 'Contexto nao protege a escolha de voz');
 assert.ok(content.includes('narratorId: DEFAULT_NARRATOR_ID'), 'Estado inicial sem narrador padrao');
-assert.doesNotMatch(speech, /audioBank|NARRATOR_AUDIO_BANK/, 'Player ainda depende de catalogo fixo');
-assert.match(speech, /narratorId\s*=\s*DEFAULT_NARRATOR_ID/, 'Voz local nao recebe a preferencia do narrador');
 assert.ok(selector.includes('accessibilityRole="radiogroup"'), 'Seletor sem radiogroup acessivel');
 assert.ok(selector.includes('aria-checked={selected}'), 'Radio sem estado selecionado para a web');
-assert.match(
-  selector,
-  /if \(activeIdRef\.current\) teardownPreview\(\);/,
-  'Trocar de amostra precisa parar a voz anterior antes de iniciar outra'
-);
+assert.match(selector, /useNarration/, 'Seletor nao usa o player neural compartilhado');
+assert.match(selector, /playPreview/, 'Seletor nao solicita a previa neural');
+assert.doesNotMatch(selector, /narratorPreviewUrl|expo-audio|new\s+Audio\s*\(/, 'Seletor ainda toca amostra local');
 assert.strictEqual(packageJson.dependencies['expo-audio'], '~1.1.1', 'Versao do expo-audio fora do SDK 54');
 assert.strictEqual(packageJson.dependencies['expo-asset'], '~12.0.13', 'Peer expo-asset fora do SDK 54');
+assert.strictEqual(packageJson.dependencies['expo-file-system'], '~19.0.24', 'FileSystem fora do SDK 54');
 
 const runtimeRoots = ['components', 'constants', 'context', 'screens', 'services', 'utils'];
 for (const filename of runtimeRoots.flatMap((folder) => walkJavaScript(path.join(ROOT, folder)))) {
@@ -109,15 +107,8 @@ for (const filename of runtimeRoots.flatMap((folder) => walkJavaScript(path.join
   assert.doesNotMatch(source, /ELEVENLABS_API_KEY/, `Nome do segredo vazou no bundle em ${path.relative(ROOT, filename)}`);
 }
 
-assert.strictEqual(previewCount, 6, 'Quantidade inesperada de amostras');
-
-const audioRoot = path.join(PUBLIC, 'audio');
-const shippedMp3s = fs.existsSync(audioRoot)
-  ? fs.readdirSync(audioRoot, { recursive: true, withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.mp3'))
-  : [];
-assert.strictEqual(shippedMp3s.length, 6, 'Somente as seis amostras de voz podem ser empacotadas');
+assert.doesNotMatch(read('constants/narrators.js'), /\/audio\/narrators\//, 'Catalogo ainda aponta para MP3 antigo');
 assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'narratorAudioBank.js')), 'Banco de narradores fixos ainda existe');
 assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'audioBank.js')), 'Banco de conteudo fixo ainda existe');
 
-console.log(`OK: ${narrators.NARRATORS.length} narradores, ${previewCount} amostras e nenhum catalogo fixo`);
+console.log(`OK: ${narrators.NARRATORS.length} narradores Gemini e nenhum catalogo fixo`);

@@ -20,6 +20,8 @@ const community = read('screens/CommunityScreen.js');
 const profile = read('screens/ProfileScreen.js');
 const manifestation = read('screens/ManifestationScreen.js');
 const visionPlayer = read('screens/VisionPlayerScreen.js');
+const visions = read('screens/VisionsScreen.js');
+const affirmations = read('screens/AffirmationsScreen.js');
 const context = read('context/AppContext.js');
 const legal = read('constants/legal.js');
 const chat = read('screens/onboarding/ChatOnboardingScreen.js');
@@ -33,6 +35,9 @@ for (const file of [
   'screens/ProfileScreen.js',
   'screens/ManifestationScreen.js',
   'screens/VisionPlayerScreen.js',
+  'screens/VisionsScreen.js',
+  'screens/AffirmationsScreen.js',
+  'screens/AffirmationAlarmScreen.js',
   'screens/onboarding/ChatOnboardingScreen.js',
   'services/affirmationAlarm.js',
   'services/communityStories.js',
@@ -40,11 +45,18 @@ for (const file of [
   compile(file);
 }
 
-assert.strictEqual((app.match(/<Tab\.Screen/g) || []).length, 4, 'app deve manter quatro abas principais');
-assert.ok(app.includes('<Root.Screen name="MorningRitual"'), 'despertador deve ser rota raiz');
-assert.ok(app.includes('<Root.Screen name="Community"'), 'comunidade deve ser rota raiz');
+assert.strictEqual((app.match(/<Tab\.Screen/g) || []).length, 5, 'app deve ter cinco abas principais');
+assert.ok(app.includes('<Root.Screen name="MorningRitual"'), 'sonhos devem ser rota raiz');
+assert.ok(app.includes('<Root.Screen name="AffirmationAlarm"'), 'despertador deve ser rota raiz separada');
+assert.ok(/<Tab\.Screen\s+name="Community"/.test(app), 'comunidade deve ser uma aba principal');
+for (const tabId of ['tab-manifest', 'tab-visions', 'tab-affirmations', 'tab-journey', 'tab-community']) {
+  assert.ok(app.includes(`tabBarTestID: '${tabId}'`), `aba sem identificador estavel: ${tabId}`);
+}
+assert.ok(!app.includes('<Root.Screen name="Community"'), 'comunidade nao pode ter rota raiz duplicada');
+assert.ok(app.includes('tabBarHideOnKeyboard: true'), 'teclado deve liberar o compositor da comunidade');
 assert.ok(app.includes('<Root.Screen name="Profile"'), 'perfil deve ser rota raiz');
-assert.ok(app.includes("MorningRitual: 'despertar'"), 'deep link do despertador ausente');
+assert.ok(app.includes("MorningRitual: 'sonhos'"), 'deep link dos sonhos ausente');
+assert.ok(app.includes("AffirmationAlarm: 'despertar'"), 'deep link do despertador ausente');
 assert.ok(app.includes("Community: 'comunidade'"), 'deep link da comunidade ausente');
 assert.ok(app.includes("Profile: 'perfil'"), 'deep link do perfil ausente');
 
@@ -67,9 +79,10 @@ assert.ok(
   'Home e detalhe devem usar somente manifestacoes pessoais salvas por id'
 );
 assert.ok(
-  /<PersonalVisionPlayer[\s\S]*narratorId=\{narratorId\}/.test(visionPlayer) &&
-    /function PersonalVisionPlayer\(\{[\s\S]*narratorId,/.test(visionPlayer),
-  'player de visao pessoal precisa receber a voz escolhida sem depender de variavel global'
+  visionPlayer.includes('usePersonalNarration') &&
+    visionPlayer.includes('playPersonal') &&
+    !visionPlayer.includes('utils/speech'),
+  'player de visao pessoal precisa usar a voz neural escolhida no contexto'
 );
 assert.ok(
   manifestation.includes('await getAffirmationAlarmCapability()') &&
@@ -126,6 +139,7 @@ assert.ok(
   'rota do sonho precisa abrir o formulario em um toque'
 );
 assert.ok(community.includes('deleteCommunityStory'), 'relato precisa de exclusao pela autora');
+assert.ok(!community.includes('testID="community-back"'), 'aba Comunidade nao deve exibir seta Voltar');
 assert.ok(profile.includes('profile-privacy-link') && profile.includes('profile-terms-link'), 'documentos legais ausentes');
 assert.ok(
   community.includes('refreshRequestRef.current !== requestId'),
@@ -135,6 +149,17 @@ assert.ok(
   community.includes('await refresh({ clearError: response.ok })') &&
     community.includes('if (!response.ok) setError(t(S.deleteFailed))'),
   'falha ao apagar relato nao pode ser apagada pelo refresh'
+);
+assert.ok(
+  affirmations.includes('const populatedCategories = useMemo') &&
+    affirmations.includes('...populatedCategories.map'),
+  'afirmacoes devem mostrar apenas categorias com conteudo pessoal'
+);
+assert.ok(
+  visions.includes('const populatedCategories = useMemo') &&
+    visions.includes("activeFilter === 'All'") &&
+    !visions.includes("category: item.category || 'Wealth'"),
+  'visoes devem filtrar categorias pessoais sem fallback silencioso para prosperidade'
 );
 assert.ok(
   profile.includes("navigation.addListener('beforeRemove'") && profile.includes('setDocument(null)'),

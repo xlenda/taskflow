@@ -31,6 +31,7 @@ const state = {
 
 const routes = [
   { path: 'despertar', id: 'affirmation-alarm-screen', slug: 'despertador' },
+  { path: 'sonhos', id: 'morning-ritual-screen', slug: 'sonhos' },
   { path: 'perfil', id: 'profile-screen', slug: 'perfil' },
   { path: 'comunidade', id: 'community-screen', slug: 'comunidade' },
   { path: 'jornada', id: 'journey-screen', slug: 'jornada' },
@@ -86,20 +87,38 @@ let browser;
       }
 
       if (route.slug === 'jornada') {
-        const communityVisible = await page.evaluate(() => {
+        const navigationLayout = await page.evaluate(() => {
           const community = document.querySelector('[data-testid="journey-open-community"]');
-          const tabBar = document.querySelector('[role="tablist"]');
-          if (!community) return false;
+          const tabs = [
+            'tab-manifest',
+            'tab-visions',
+            'tab-affirmations',
+            'tab-journey',
+            'tab-community',
+          ].map((id) => document.querySelector(`[data-testid="${id}"]`)).filter(Boolean);
+          if (!community) return { communityVisible: false, tabCount: tabs.length, tabsFit: false };
           const communityRect = community.getBoundingClientRect();
-          const visibleBottom = tabBar ? tabBar.getBoundingClientRect().top : innerHeight;
-          return communityRect.top >= 0 && communityRect.bottom <= visibleBottom;
+          const visibleBottom = tabs.length
+            ? Math.min(...tabs.map((tab) => tab.getBoundingClientRect().top))
+            : innerHeight;
+          return {
+            communityVisible: communityRect.top >= 0 && communityRect.bottom <= visibleBottom,
+            tabCount: tabs.length,
+            tabsFit: tabs.every((tab) => {
+              const rect = tab.getBoundingClientRect();
+              return rect.left >= -1 && rect.right <= innerWidth + 1 && rect.width >= 44;
+            }),
+          };
         });
-        if (!communityVisible) {
+        if (!navigationLayout.communityVisible) {
           throw new Error(`Comunidade continua escondida na Jornada em ${viewport.label}`);
+        }
+        if (navigationLayout.tabCount !== 5 || !navigationLayout.tabsFit) {
+          throw new Error(`Cinco abas nao cabem em ${viewport.label}: ${JSON.stringify(navigationLayout)}`);
         }
       }
 
-      if (route.slug === 'despertador') {
+      if (route.slug === 'sonhos') {
         const dreamShortcutVisible = await page.$eval('[data-testid="open-dream-shortcut"]', (element) => {
           const rect = element.getBoundingClientRect();
           return rect.top >= 0 && rect.bottom <= innerHeight;
@@ -192,7 +211,7 @@ let browser;
       return rect.top >= 0 && rect.bottom <= innerHeight && document.activeElement === input;
     }, { timeout: 30000 });
     const route = await page.evaluate(() => location.pathname);
-    if (!route.includes('/despertar')) throw new Error(`atalho de sonho abriu rota errada: ${route}`);
+    if (!route.includes('/sonhos')) throw new Error(`atalho de sonho abriu rota errada: ${route}`);
     await page.type('[data-testid="dream-report-input"]', 'Luz sobre o mar');
     if (viewport.label === '320x480') {
       await page.click('[data-testid="dream-feeling-calm"]');
@@ -221,7 +240,7 @@ let browser;
     }
     await page.screenshot({ path: path.join(SHOTS, `qa-home-sonho-um-toque-${viewport.label}.png`) });
     if (viewport.label === '320x480') {
-      await page.click('[data-testid="affirmation-alarm-back"]');
+      await page.click('[data-testid="morning-ritual-back"]');
       await page.waitForFunction(() => location.pathname === '/', { timeout: 30000 });
       const alarmPreserved = await page.evaluate(() => {
         const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
@@ -246,7 +265,7 @@ let browser;
 
   const dreamPage = await browser.newPage();
   await dreamPage.setViewport({ width: 320, height: 480 });
-  await dreamPage.goto(`${URL}/despertar`, { waitUntil: 'networkidle2', timeout: 60000 });
+  await dreamPage.goto(`${URL}/sonhos`, { waitUntil: 'networkidle2', timeout: 60000 });
   await dreamPage.waitForSelector('[data-testid="open-dream-shortcut"]', { visible: true, timeout: 30000 });
   await dreamPage.click('[data-testid="open-dream-shortcut"]');
   await dreamPage.waitForFunction(() => {
@@ -255,7 +274,7 @@ let browser;
     const rect = input.getBoundingClientRect();
     return rect.top >= 0 && rect.bottom <= innerHeight;
   }, { timeout: 30000 });
-  await dreamPage.screenshot({ path: path.join(SHOTS, 'qa-despertador-320x480-sonho.png') });
+  await dreamPage.screenshot({ path: path.join(SHOTS, 'qa-sonhos-320x480.png') });
   await dreamPage.close();
 
   // Regressão: o compositor aumenta muito a altura da Comunidade. Em 320x480
@@ -300,12 +319,25 @@ let browser;
     await page.setViewport({ width: 390, height: 844 });
     await page.goto(`${URL}/${route.path}`, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.waitForSelector(`[data-testid="${route.id}"]`, { visible: true, timeout: 30000 });
-    const backId = route.slug === 'despertador'
-      ? 'affirmation-alarm-back'
-      : route.slug === 'comunidade'
-      ? 'community-back'
-      : null;
-    if (backId) {
+    const backId =
+      route.slug === 'despertador'
+        ? 'affirmation-alarm-back'
+        : route.slug === 'sonhos'
+        ? 'morning-ritual-back'
+        : null;
+    if (route.slug === 'comunidade') {
+      await page.evaluate(() => {
+        const label = [...document.querySelectorAll('div, span')].find(
+          (element) =>
+            element.children.length === 0 &&
+            element.textContent.trim() === 'Manifestar' &&
+            element.offsetParent !== null
+        );
+        const target = label && (label.closest('[role="tab"]') || label.parentElement);
+        if (!target) throw new Error('aba Manifestar nao encontrada');
+        target.click();
+      });
+    } else if (backId) {
       await page.click(`[data-testid="${backId}"]`);
     } else {
       await page.click('[aria-label="Voltar"]');

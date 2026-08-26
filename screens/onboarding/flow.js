@@ -421,8 +421,8 @@ export const FLOW = [
     textSize: 23,
     compact: true,
     question: {
-      en: 'Are you 18 or older, and do you allow Celeste to send Gemini your desire and selected answers to create your scene? Other people\'s names stay on this device.',
-      pt: 'Você tem 18 anos ou mais e permite enviar ao Gemini seu desejo e algumas respostas para criar sua cena? Nomes de outras pessoas ficam neste aparelho.',
+      en: 'Are you 18 or older, and do you allow Celeste to send Gemini only the information needed to create your scenes, reflect on dreams you choose to send, and narrate your personal text? Saved names of other people stay on this device.',
+      pt: 'Você tem 18 anos ou mais e permite que o Celeste envie ao Gemini somente o necessário para criar suas cenas, refletir sobre sonhos que você escolher enviar e narrar seu texto pessoal? Nomes cadastrados de outras pessoas ficam neste aparelho.',
     },
     yesLabel: { en: 'Allow', pt: 'Permitir' },
     noLabel: { en: 'Create on device', pt: 'Criar no aparelho' },
