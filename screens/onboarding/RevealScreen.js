@@ -20,6 +20,7 @@ import { useApp } from '../../context/AppContext';
 import { usePersonalNarration } from '../../utils/usePersonalNarration';
 import CelestialTrace from '../../components/CelestialTrace';
 import NarratorSelector from '../../components/NarratorSelector';
+import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 
 const BRIDGE_MIN_HEIGHT = 118;
 
@@ -83,6 +84,10 @@ export default function RevealScreen({ navigation, route }) {
   const [bridgeDraft, setBridgeDraft] = useState('');
   const [bridgeInputHeight, setBridgeInputHeight] = useState(BRIDGE_MIN_HEIGHT);
   const [unlocked, setUnlocked] = useState(false);
+  const [selectedNarratorId, setSelectedNarratorId] = useState(() => {
+    const saved = state && state.narration && state.narration.narratorId;
+    return isNarratorId(saved) ? saved : DEFAULT_NARRATOR_ID;
+  });
   const reveal = useRef(new Animated.Value(0)).current;
   const sceneReveal = useRef(new Animated.Value(0)).current;
 
@@ -108,6 +113,11 @@ export default function RevealScreen({ navigation, route }) {
     // a pessoa edita o campo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m && m.id, narration.stop, sceneReveal]);
+
+  useEffect(() => {
+    const saved = state && state.narration && state.narration.narratorId;
+    if (isNarratorId(saved)) setSelectedNarratorId(saved);
+  }, [state && state.narration && state.narration.narratorId]);
 
   useEffect(() => {
     let alive = true;
@@ -167,6 +177,7 @@ export default function RevealScreen({ navigation, route }) {
     const result = await narration.playPersonal({
       text: m.story,
       lang,
+      narratorId: selectedNarratorId,
       playbackId,
     });
     if (!result.ok && result.error !== 'audio_cancelled') setAudioFailed(true);
@@ -237,8 +248,11 @@ export default function RevealScreen({ navigation, route }) {
                 <Text style={styles.sectionLabel}>{t(S.voiceTitle)}</Text>
                 <Text style={styles.voiceHint}>{t(S.voiceHint)}</Text>
                 <NarratorSelector
-                  value={state && state.narration && state.narration.narratorId}
-                  onChange={setNarrator}
+                  value={selectedNarratorId}
+                  onChange={(narratorId) => {
+                    setSelectedNarratorId(narratorId);
+                    setNarrator(narratorId);
+                  }}
                   lang={lang}
                   variant="compact"
                 />

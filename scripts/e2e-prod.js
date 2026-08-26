@@ -437,8 +437,8 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Manifestar', 30000);
 
   // A afirmação é o próprio despertador, não uma rotina depois de acordar.
-  // No web a pessoa configura e ouve a prévia, mas o switch permanece incapaz
-  // de fingir que um alarme do sistema foi criado.
+  // No web a pessoa salva a escolha e ouve a prévia, sem fingir que o
+  // navegador criou um alarme do sistema.
   await clickTestId(page, 'open-affirmation-alarm');
   await waitForText(page, 'Meu despertador', 20000);
   await waitForText(page, 'No site você pode preparar e ouvir', 20000);
@@ -461,6 +461,8 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   if (alarmDraftValue !== '06:30') {
     throw new Error(`HorÃ¡rio do despertador nÃ£o aceitou 06:30: ${JSON.stringify(alarmDraftValue)}`);
   }
+  await clickTestId(page, 'activate-affirmation-alarm');
+  await waitForText(page, 'Escolha salva neste aparelho', 15000);
   const webAlarmState = await page.evaluate(() => {
     const ritual = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual || {};
     const control = document.querySelector('[data-testid="activate-affirmation-alarm"]');
@@ -470,10 +472,17 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       disabled: switchParts.some(
         (part) => part.disabled === true || part.getAttribute('aria-disabled') === 'true'
       ),
+      time: ritual.reminderTime,
+      phrase: ritual.wakeAffirmationText,
     };
   });
-  if (webAlarmState.enabled || !webAlarmState.disabled) {
-    throw new Error(`Web fingiu ativar despertador nativo: ${JSON.stringify(webAlarmState)}`);
+  if (
+    webAlarmState.enabled ||
+    webAlarmState.disabled ||
+    webAlarmState.time !== '06:30' ||
+    webAlarmState.phrase !== customWake
+  ) {
+    throw new Error(`Web não salvou o rascunho corretamente: ${JSON.stringify(webAlarmState)}`);
   }
 
   // O bonus usa uma imagem do relato real; nao basta escolher uma frase pronta

@@ -94,6 +94,16 @@ assert.ok(selector.includes('accessibilityRole="radiogroup"'), 'Seletor sem radi
 assert.ok(selector.includes('aria-checked={selected}'), 'Radio sem estado selecionado para a web');
 assert.match(selector, /useNarration/, 'Seletor nao usa o player neural compartilhado');
 assert.match(selector, /playPreview/, 'Seletor nao solicita a previa neural');
+assert.ok(
+  selector.includes("if (narratorId !== selectedId && typeof onChange === 'function')") &&
+    selector.indexOf('onChange(narratorId)') < selector.indexOf('narration.playPreview(narratorId, locale)'),
+  'ouvir uma amostra deve selecionar a mesma voz antes da reproducao'
+);
+assert.ok(
+  reveal.includes('narratorId: selectedNarratorId') &&
+    reveal.includes('value={selectedNarratorId}'),
+  'a primeira cena deve enviar explicitamente a voz escolhida'
+);
 assert.doesNotMatch(selector, /narratorPreviewUrl|expo-audio|new\s+Audio\s*\(/, 'Seletor ainda toca amostra local');
 assert.strictEqual(packageJson.dependencies['expo-audio'], '~1.1.1', 'Versao do expo-audio fora do SDK 54');
 assert.strictEqual(packageJson.dependencies['expo-asset'], '~12.0.13', 'Peer expo-asset fora do SDK 54');

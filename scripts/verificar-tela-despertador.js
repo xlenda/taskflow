@@ -74,6 +74,7 @@ assert.deepStrictEqual(
 
 const screen = read('screens/AffirmationAlarmScreen.js');
 const activation = screen.slice(screen.indexOf('const activate = useCallback'), screen.indexOf('const deactivate = useCallback'));
+const webSave = screen.slice(screen.indexOf('const saveWebChoice = useCallback'), screen.indexOf('const deactivate = useCallback'));
 const cancellation = screen.slice(screen.indexOf('const deactivate = useCallback'), screen.indexOf('const goBack = useCallback'));
 const selection = screen.slice(screen.indexOf('const choose = useCallback'), screen.indexOf('const chooseCustom = useCallback'));
 
@@ -117,6 +118,26 @@ assert.ok(
 );
 assert.ok(!/elevenlabs|voiceIdentifier|EXPO_PUBLIC_ELEVEN/i.test(screen), 'despertador não pode expor segredo de voz');
 
+assert.ok(
+  activation.indexOf('await confirmAsync') < activation.indexOf('narration.preparePersonal'),
+  'ativacao nativa deve pedir confirmacao antes de gerar audio ou solicitar permissao'
+);
+assert.ok(
+  webSave.includes('saveMorningRitualPreferences') &&
+    webSave.includes('wakeAffirmationText: selected.text') &&
+    webSave.includes("setFeedback('saved_draft')"),
+  'o site deve salvar e confirmar o rascunho do despertador'
+);
+assert.ok(
+  !webSave.includes('reminderEnabled: true') && !webSave.includes('scheduleAffirmationAlarm'),
+  'salvar no site nao pode fingir que um alarme nativo foi ativado'
+);
+assert.ok(
+  screen.includes("Platform.OS === 'web' ? saveWebChoice : activate") &&
+    screen.includes('Salvar minha escolha'),
+  'o CTA web precisa confirmar a escolha em vez de parecer inerte'
+);
+
 const morning = read('screens/MorningRitualScreen.js');
 assert.ok(morning.includes("mode = 'dreams'"), 'ritual deve abrir em modo somente sonhos');
 assert.ok(morning.includes("const alarmVisible = mode === 'combined'"), 'modo legado precisa ficar explicitamente isolado');
@@ -137,6 +158,8 @@ const home = read('screens/HomeScreen.js');
 assert.ok(home.includes('testID="open-dream-journal"'), 'atalho de sonhos ausente da Home');
 assert.ok(home.includes('testID="open-affirmation-alarm"'), 'atalho separado do despertador ausente da Home');
 assert.ok(home.includes("navigation.navigate('AffirmationAlarm')"), 'Home não abre a nova tela');
+
+assert.ok(home.includes('testID="open-community-home"'), 'comunidade continua escondida fora da Home');
 
 const content = read('constants/content.js');
 const context = read('context/AppContext.js');

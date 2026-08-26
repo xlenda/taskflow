@@ -407,18 +407,37 @@ export default function HomeScreen() {
             title={APP_NAME}
             subtitle={t(S.subtitle, { name: state.name })}
             right={(
-              <Pressable
-                testID="open-profile"
-                accessibilityRole="button"
-                accessibilityLabel={t(S.openProfile)}
-                onPress={() => navigation.navigate('Profile')}
-                style={({ pressed }) => [styles.mascotProfile, pressed && styles.actionPressed]}
-              >
-                <CelesteMascot size={46} testID="celeste-mascot-home" />
-                <View style={[styles.profileBadge, { backgroundColor: th.surface, borderColor: th.border }]}>
-                  <Ionicons name="person" size={11} color={th.text} />
-                </View>
-              </Pressable>
+              <View style={styles.headerActions}>
+                <Pressable
+                  testID="open-community-home"
+                  accessibilityRole="button"
+                  accessibilityLabel={lang === 'en' ? 'Open community' : 'Abrir comunidade'}
+                  onPress={() => {
+                    const tabs = navigation.getParent && navigation.getParent();
+                    if (tabs && tabs.navigate) tabs.navigate('Community');
+                    else navigation.navigate('Community');
+                  }}
+                  style={({ pressed }) => [
+                    styles.communityHeaderButton,
+                    { backgroundColor: th.surface, borderColor: th.border },
+                    pressed && styles.actionPressed,
+                  ]}
+                >
+                  <Ionicons name="people-outline" size={22} color={th.accent} />
+                </Pressable>
+                <Pressable
+                  testID="open-profile"
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.openProfile)}
+                  onPress={() => navigation.navigate('Profile')}
+                  style={({ pressed }) => [styles.mascotProfile, pressed && styles.actionPressed]}
+                >
+                  <CelesteMascot size={46} testID="celeste-mascot-home" />
+                  <View style={[styles.profileBadge, { backgroundColor: th.surface, borderColor: th.border }]}>
+                    <Ionicons name="person" size={11} color={th.text} />
+                  </View>
+                </Pressable>
+              </View>
             )}
           />
         </View>
@@ -591,6 +610,16 @@ const styles = StyleSheet.create({
   scroller: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingBottom: 96 },
   headerHold: { marginHorizontal: -16 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  communityHeaderButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
   mascotProfile: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
   profileBadge: {
     position: 'absolute',

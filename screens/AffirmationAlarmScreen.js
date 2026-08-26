@@ -34,6 +34,17 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useT } from '../utils/useT';
 
 const COPY = {
+  saveChoice: { pt: 'Salvar minha escolha', en: 'Save my choice' },
+  confirmTitle: { pt: 'Confirmar este despertador?', en: 'Confirm this alarm?' },
+  confirmBody: {
+    pt: 'Acordar às {time} com “{phrase}” nos dias escolhidos? O iPhone pedirá permissão em seguida.',
+    en: 'Wake at {time} with “{phrase}” on the selected days? Your iPhone will ask for permission next.',
+  },
+  confirmAction: { pt: 'Confirmar e ativar', en: 'Confirm and turn on' },
+  savedDraft: {
+    pt: 'Escolha salva neste aparelho. O alarme ainda não está ativo; ative-o no aplicativo instalado.',
+    en: 'Choice saved on this device. The alarm is not active yet; turn it on in the installed app.',
+  },
   title: { pt: 'Meu despertador', en: 'My alarm' },
   subtitle: {
     pt: 'Acorde com uma afirmação criada para você.',
@@ -301,6 +312,15 @@ export default function AffirmationAlarmScreen({ route }) {
 
   const activate = useCallback(async () => {
     if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
+    const confirmed = await confirmAsync({
+      title: t(COPY.confirmTitle),
+      message: t(COPY.confirmBody, { time, phrase: selected.text }),
+      confirmLabel: t(COPY.confirmAction),
+      cancelLabel: t(COPY.cancel),
+      destructive: false,
+      lang,
+    });
+    if (!confirmed || operationRef.current) return;
     operationRef.current = true;
     setBusy(true);
     setFeedback(null);
@@ -352,7 +372,21 @@ export default function AffirmationAlarmScreen({ route }) {
       operationRef.current = false;
       if (mountedRef.current) setBusy(false);
     }
-  }, [haptic, lang, narration, saveMorningRitualPreferences, selected, time, weekdays]);
+  }, [haptic, lang, narration, saveMorningRitualPreferences, selected, t, time, weekdays]);
+
+  const saveWebChoice = useCallback(() => {
+    if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
+    saveMorningRitualPreferences({
+      reminderTime: time,
+      weekdays,
+      wakeAffirmationId: selected.id,
+      wakeAffirmationText: selected.text,
+      wakeAffirmationLang: selected.lang || lang,
+      wakeNarratorId: narration.narratorId,
+    });
+    setFeedback('saved_draft');
+    haptic(true);
+  }, [haptic, lang, narration.narratorId, saveMorningRitualPreferences, selected, time, weekdays]);
 
   const deactivate = useCallback(async () => {
     if (operationRef.current) return;
@@ -402,9 +436,12 @@ export default function AffirmationAlarmScreen({ route }) {
     capability.supported === true &&
     (capability.canSchedule || capability.canRequestAuthorization)
   );
+  const canSaveChoice = !!(selected && isValidTime(time) && weekdays.length > 0);
 
   const status = busy
     ? t(COPY.scheduling)
+    : feedback === 'saved_draft'
+    ? t(COPY.savedDraft)
     : feedback === 'denied' || capability?.authorization === 'denied'
     ? t(COPY.denied)
     : feedback === 'failed'
@@ -616,10 +653,16 @@ export default function AffirmationAlarmScreen({ route }) {
 
             <PrimaryButton
               testID="activate-affirmation-alarm"
-              label={ritual.reminderEnabled ? COPY.update : COPY.activate}
-              icon="alarm-outline"
-              disabled={busy || !canSchedule}
-              onPress={activate}
+              label={
+                Platform.OS === 'web'
+                  ? COPY.saveChoice
+                  : ritual.reminderEnabled
+                  ? COPY.update
+                  : COPY.activate
+              }
+              icon={Platform.OS === 'web' ? 'checkmark-circle-outline' : 'alarm-outline'}
+              disabled={busy || (Platform.OS === 'web' ? !canSaveChoice : !canSchedule)}
+              onPress={Platform.OS === 'web' ? saveWebChoice : activate}
               style={styles.primaryAction}
             />
             {ritual.reminderEnabled ? (
@@ -638,13 +681,30 @@ export default function AffirmationAlarmScreen({ route }) {
               accessibilityLiveRegion="polite"
               style={[
                 styles.status,
-                { backgroundColor: alpha(feedback === 'failed' || feedback === 'denied' ? theme.danger : theme.warning, 0.1) },
+                {
+                  backgroundColor: alpha(
+                    feedback === 'failed' || feedback === 'denied'
+                      ? theme.danger
+                      : feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
+                      ? theme.success
+                      : theme.warning,
+                    0.1
+                  ),
+                },
               ]}
             >
               <Ionicons
-                name={ritual.reminderEnabled && !dirty ? 'checkmark-circle-outline' : 'information-circle-outline'}
+                name={
+                  feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
+                    ? 'checkmark-circle-outline'
+                    : 'information-circle-outline'
+                }
                 size={19}
-                color={ritual.reminderEnabled && !dirty ? theme.success : theme.warning}
+                color={
+                  feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
+                    ? theme.success
+                    : theme.warning
+                }
               />
               <Text style={[styles.statusText, { color: theme.textMuted }]}>{status}</Text>
             </View>

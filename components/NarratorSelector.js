@@ -71,10 +71,15 @@ export default function NarratorSelector({
         return;
       }
       setErrorId(null);
+      // The preview control also selects that narrator. Otherwise a person can
+      // hear one voice here and unknowingly keep the previous voice for scenes.
+      if (narratorId !== selectedId && typeof onChange === 'function') {
+        onChange(narratorId);
+      }
       const result = await narration.playPreview(narratorId, locale);
       if (!result.ok && result.error !== 'audio_cancelled') setErrorId(narratorId);
     },
-    [disabled, locale, narration]
+    [disabled, locale, narration, onChange, selectedId]
   );
 
   const handleSelect = useCallback(
