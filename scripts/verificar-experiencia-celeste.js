@@ -129,6 +129,15 @@ assert.ok(
   journey.includes('const reset = await resetAll()') && journey.includes('if (!reset)'),
   'recomecar deve esperar e conferir a limpeza local antes de confirmar sucesso'
 );
+assert.ok(
+  journey.includes('const MAX_BACKUP_BYTES = 2 * 1024 * 1024') &&
+    journey.includes('file.size > MAX_BACKUP_BYTES'),
+  'backup gigante deve ser recusado antes do FileReader'
+);
+assert.ok(
+  journey.includes('stopNarration();') && journey.includes('clearAudioCache();'),
+  'recomecar deve interromper e apagar o audio pessoal em memoria'
+);
 
 assert.ok(morning.includes('custom-wake-affirmation'), 'afirmacao livre para o despertador ausente');
 assert.ok(morning.includes('scheduleAffirmationAlarm'), 'tela nao esta ligada ao alarme nativo');

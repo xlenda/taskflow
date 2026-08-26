@@ -34,6 +34,16 @@ for (const [name, source] of [
   assert.doesNotMatch(source, /new Map\s*\(/, `${name} voltou a depender de limite em memoria`);
   assert.match(source, /require\('botid\/server'\)/, `${name} nao carrega BotID`);
   assert.match(source, /checkLevel:\s*'basic'/, `${name} nao fixa BotID Basic`);
+  assert.match(
+    source,
+    /CELESTE_ALLOW_LOCAL_BOT_BYPASS\s*===\s*'1'[\s\S]*?VERCEL_ENV\s*!==\s*'preview'/,
+    `${name} pode liberar BotID automaticamente em preview`
+  );
+  assert.doesNotMatch(
+    source,
+    /isDevelopment:\s*process\.env\.VERCEL_ENV\s*!==\s*'production'/,
+    `${name} reintroduziu bypass em todo deploy nao produtivo`
+  );
   assert.match(source, /bot_verification_unavailable/, `${name} nao fecha em falha do BotID`);
   assert.match(source, /Cache-Control',\s*'no-store, max-age=0'/, `${name} permite cache de resposta pessoal`);
   assert.doesNotMatch(source, /console\.(?:log|warn|error)/, `${name} pode registrar conteudo pessoal`);

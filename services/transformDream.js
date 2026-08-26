@@ -105,6 +105,11 @@ export async function transformDreamWithKnowledge({
     theme: THEMES.has(theme || 'auto') ? theme || 'auto' : 'auto',
     lang: lang === 'en' ? 'en' : 'pt',
   };
+  const safeDream = requiredText(
+    redactThirdPartyNames(source.dream, thirdPartyNames(sourceProfile), source.lang),
+    1600,
+    'text'
+  );
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
@@ -116,6 +121,7 @@ export async function transformDreamWithKnowledge({
       signal: controller ? controller.signal : undefined,
       body: JSON.stringify({
         ...source,
+        dream: safeDream,
         profile: minimizeDreamProfile(sourceProfile, source.lang),
         cloudConsent: true,
         adultConfirmed: true,

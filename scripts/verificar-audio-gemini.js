@@ -338,9 +338,11 @@ async function main() {
   let liveAbortStarted = false;
   let sharedFetchCalls = 0;
   let resolveSharedFetch;
-  const sharedFetch = async () => {
+  let sharedUpstreamSignal;
+  const sharedFetch = async (_url, options = {}) => {
     liveAbortStarted = true;
     sharedFetchCalls += 1;
+    sharedUpstreamSignal = options.signal;
     return new Promise((resolve) => {
       resolveSharedFetch = () => resolve({
         ok: true,
@@ -369,10 +371,47 @@ async function main() {
     () => interruptedRequest,
     (requestError) => requestError && requestError.code === 'audio_cancelled'
   );
+  assert.strictEqual(
+    sharedUpstreamSignal && sharedUpstreamSignal.aborted,
+    false,
+    'cancelar um de dois consumidores nao pode abortar a geracao compartilhada'
+  );
   resolveSharedFetch();
   const survivingBytes = await survivingRequest;
   assert.ok(survivingBytes instanceof Uint8Array && survivingBytes.length === wav.length);
   assert.strictEqual(sharedFetchCalls, 1, 'cancelar um consumidor nao deve abortar outro com o mesmo audio');
+
+  const loneAbort = new AbortController();
+  let loneUpstreamSignal;
+  let loneUpstreamAborted = false;
+  const loneFetch = async (_url, options = {}) => {
+    loneUpstreamSignal = options.signal;
+    return new Promise((_resolve, reject) => {
+      const rejectAbort = () => {
+        loneUpstreamAborted = true;
+        const abortError = new Error('aborted');
+        abortError.name = 'AbortError';
+        reject(abortError);
+      };
+      if (options.signal && options.signal.aborted) rejectAbort();
+      else if (options.signal) options.signal.addEventListener('abort', rejectAbort, { once: true });
+    });
+  };
+  const loneRequest = service.requestNarrationAudio({
+    ...cachedPersonalRequest,
+    text: 'Uma geracao isolada que precisa parar junto com seu ultimo consumidor.',
+    signal: loneAbort.signal,
+    fetchImpl: loneFetch,
+  });
+  assert.ok(loneUpstreamSignal, 'a geracao compartilhada precisa receber um AbortSignal');
+  loneAbort.abort();
+  await assert.rejects(
+    () => loneRequest,
+    (requestError) => requestError && requestError.code === 'audio_cancelled'
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.strictEqual(loneUpstreamAborted, true, 'o ultimo consumidor deve abortar a chamada paga');
+  assert.strictEqual(loneUpstreamSignal.aborted, true, 'o AbortSignal upstream deve refletir o cancelamento');
 
   service.clearNarrationAudioMemoryCache();
   await service.requestNarrationAudio(previewRequest);

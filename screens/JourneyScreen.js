@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Screen, Header, Card, pct } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
+import { useNarration } from '../context/NarrationContext';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { lastNDays, todayISO, streakFrom } from '../utils/date';
@@ -30,6 +31,8 @@ import WeekChart from '../components/WeekChart';
 import SectionHeading from '../components/SectionHeading';
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
+
+const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 
 // Dicionário local da tela (o portão scripts/i18n-parity.js exige en + pt).
 const S = {
@@ -171,6 +174,7 @@ export default function JourneyScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { t, lang } = useT();
+  const { stop: stopNarration, clearAudioCache } = useNarration();
   // setMood/exportStateJson/importStateJson vêm do contrato novo do AppContext.
   const {
     state,
@@ -309,6 +313,8 @@ export default function JourneyScreen() {
         setResetError('storage');
         return;
       }
+      stopNarration();
+      clearAudioCache();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     } finally {
       setResetBusy(false);
@@ -341,6 +347,10 @@ export default function JourneyScreen() {
     input.onchange = () => {
       const file = input.files && input.files[0];
       if (!file) return;
+      if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_BACKUP_BYTES) {
+        setBackupErro('invalid');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = async () => {
         // Confirma ANTES de aplicar: restaurar apaga a prática atual.

@@ -231,7 +231,7 @@ test('Gemini scene API contract', async (t) => {
     const profile = validBody().profile;
 
     await generatePersonalizedScene({
-      desire: 'viver com mais serenidade',
+      desire: 'viver com mais serenidade ao lado de Bia e Leo',
       category: 'Peace',
       lang: 'pt',
       profile,
@@ -246,6 +246,12 @@ test('Gemini scene API contract', async (t) => {
     });
 
     assert.strictEqual(requests[0].category, 'Peace');
+    assert.strictEqual(
+      requests[0].desire,
+      'viver com mais serenidade ao lado de uma pessoa próxima e uma pessoa próxima'
+    );
+    assert.ok(!JSON.stringify(requests[0]).includes('Bia'));
+    assert.ok(!JSON.stringify(requests[0]).includes('Leo'));
     assert.strictEqual(requests[0].profile.name, 'Ana');
     assert.strictEqual(requests[0].profile.work, undefined);
     assert.strictEqual(requests[0].profile.relationshipStatus, undefined);

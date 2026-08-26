@@ -175,6 +175,11 @@ export async function generatePersonalizedScene({ desire, category, lang, profil
   if (!title) throw new Error('missing_desire');
 
   const sourceProfile = profile && typeof profile === 'object' ? profile : {};
+  const locale = lang === 'en' ? 'en' : 'pt';
+  const safeTitle = cleanText(
+    redactThirdPartyNames(title, thirdPartyNames(sourceProfile), locale),
+    240
+  );
   const cloudConsent = sourceProfile.cloudPersonalization === true;
   const adultConfirmed = profileConfirmsAdult(sourceProfile);
   if (!cloudConsent) throw new Error('cloud_consent_required');
@@ -190,10 +195,10 @@ export async function generatePersonalizedScene({ desire, category, lang, profil
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
       body: JSON.stringify({
-        desire: title,
+        desire: safeTitle,
         category,
-        lang: lang === 'en' ? 'en' : 'pt',
-        profile: minimizeProfile(sourceProfile, category, lang),
+        lang: locale,
+        profile: minimizeProfile(sourceProfile, category, locale),
         cloudConsent,
         adultConfirmed,
       }),

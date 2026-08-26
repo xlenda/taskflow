@@ -1,7 +1,32 @@
 const assert = require('assert');
+const fs = require('fs');
+const Module = require('module');
+const path = require('path');
+const { transformSync } = require('@babel/core');
 
 const api = require('../api/transformar-sonho');
 const internals = api._internals;
+const ROOT = path.resolve(__dirname, '..');
+
+function loadClientModule(relativePath) {
+  const filename = path.join(ROOT, relativePath);
+  const compiled = transformSync(fs.readFileSync(filename, 'utf8'), {
+    filename,
+    presets: ['babel-preset-expo'],
+    sourceType: 'module',
+  }).code;
+  const loaded = new Module(filename, module);
+  loaded.filename = filename;
+  loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+  require.cache[filename] = loaded;
+  loaded._compile(compiled, filename);
+  return loaded.exports;
+}
+
+function loadDreamClient() {
+  loadClientModule('services/generatePersonalizedScene.js');
+  return loadClientModule('services/transformDream.js');
+}
 
 function responseMock() {
   return {
@@ -92,6 +117,45 @@ assert.throws(
 );
 
 (async () => {
+  const dreamClient = loadDreamClient();
+  let outboundDream;
+  const originalDream = 'Sonhei que caminhava com Bia e Leo perto do mar.';
+  const transformed = await dreamClient.transformDreamWithKnowledge({
+    dream: originalDream,
+    feeling: 'curious',
+    theme: 'clarity',
+    lang: 'pt',
+    profile: {
+      name: 'Ana',
+      people: [{ name: 'Bia' }],
+      kids: [{ name: 'Leo' }],
+      cloudPersonalization: true,
+      cloudNarrationConsent: true,
+      cloudAdultConfirmed: true,
+    },
+    fetchImpl: async (_url, options) => {
+      outboundDream = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          dream: {
+            reflection: 'Uma possibilidade segura para refletir.',
+            affirmation: 'Eu acolho o que senti e escolho um passo presente.',
+            basis: ['dream', 'feeling', 'theme'],
+          },
+          generation: {},
+        }),
+      };
+    },
+  });
+  assert.strictEqual(
+    outboundDream.dream,
+    'Sonhei que caminhava com uma pessoa próxima e uma pessoa próxima perto do mar.'
+  );
+  assert.ok(!JSON.stringify(outboundDream).includes('Bia'));
+  assert.ok(!JSON.stringify(outboundDream).includes('Leo'));
+  assert.strictEqual(transformed.dream, originalDream, 'o relato privado local deve preservar o texto original');
+
   let res = responseMock();
   await api(request(validBody, { headers: {} }), res);
   assert.strictEqual(res.statusCode, 403);

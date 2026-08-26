@@ -149,6 +149,10 @@ function rememberAudio(key, bytes) {
 }
 
 export function clearNarrationAudioMemoryCache() {
+  for (const pending of pendingAudioRequests.values()) {
+    if (pending && pending.controller && !pending.settled) pending.controller.abort();
+  }
+  pendingAudioRequests.clear();
   audioMemoryCache.clear();
   audioMemoryCacheBytes = 0;
 }
@@ -289,20 +293,48 @@ export async function requestNarrationAudio({
   if (cached) return cached;
 
   let pending = pendingAudioRequests.get(key);
+  if (
+    pending &&
+    !pending.settled &&
+    pending.consumers === 0 &&
+    pending.controller &&
+    pending.controller.signal.aborted
+  ) {
+    if (pendingAudioRequests.get(key) === pending) pendingAudioRequests.delete(key);
+    pending = null;
+  }
   if (!pending) {
-    // A rede é compartilhada por reprodução e preparo do despertador. Cada
-    // consumidor pode desistir sem abortar a mesma geração usada pelo outro.
-    pending = fetchNarrationAudio({ body, fetchImpl })
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    pending = {
+      controller,
+      consumers: 0,
+      settled: false,
+      promise: null,
+    };
+    pending.promise = fetchNarrationAudio({
+      body,
+      fetchImpl,
+      signal: controller ? controller.signal : undefined,
+    })
       .then((bytes) => {
         rememberAudio(key, bytes);
         return bytes;
       })
       .finally(() => {
+        pending.settled = true;
         if (pendingAudioRequests.get(key) === pending) pendingAudioRequests.delete(key);
       });
     pendingAudioRequests.set(key, pending);
   }
 
-  const bytes = await waitForConsumer(pending, signal);
-  return bytes.slice();
+  pending.consumers += 1;
+  try {
+    const bytes = await waitForConsumer(pending.promise, signal);
+    return bytes.slice();
+  } finally {
+    pending.consumers = Math.max(0, pending.consumers - 1);
+    if (!pending.settled && pending.consumers === 0 && pending.controller) {
+      pending.controller.abort();
+    }
+  }
 }

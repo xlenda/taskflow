@@ -21,6 +21,11 @@ for (const file of ['App.js', 'screens/HomeScreen.js', 'screens/ManifestationScr
 }
 
 assert.match(app, /Manifestation:\s*'m\/:id\??'/, 'rota deve transportar o id da manifestacao pessoal');
+assert.match(
+  app,
+  /prefixes:\s*\[APP_URL,\s*'celeste:\/\/'\]/,
+  'build instalado deve reconhecer deep links celeste://'
+);
 
 // A Home nao oferece nem abre catalogo. Toda entrada no detalhe carrega somente
 // o id de uma manifestacao que ja existe no estado da propria pessoa.

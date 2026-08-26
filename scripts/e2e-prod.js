@@ -55,6 +55,37 @@ async function waitForText(page, fragment, timeout = 30000) {
   );
 }
 
+async function waitForAffirmationInDeck(page, fragment, maxCards = 12) {
+  for (let index = 0; index < maxCards; index += 1) {
+    const visible = await page.evaluate(
+      (text) => [...document.querySelectorAll('div')].some(
+        (element) => element.offsetParent !== null && element.textContent.includes(text)
+      ),
+      fragment
+    );
+    if (visible) return;
+
+    const advanced = await page.evaluate(() => {
+      const counter = [...document.querySelectorAll('div, span')].find(
+        (element) =>
+          element.offsetParent !== null &&
+          element.children.length === 0 &&
+          /^\d+\s*\/\s*\d+$/.test(element.textContent.trim())
+      );
+      if (!counter || !counter.parentElement) return false;
+      const siblings = [...counter.parentElement.children]
+        .filter((element) => element !== counter && element.offsetParent !== null);
+      const nextButton = siblings[siblings.length - 1];
+      if (!nextButton) return false;
+      nextButton.click();
+      return true;
+    });
+    if (!advanced) break;
+    await sleep(250);
+  }
+  throw new Error(`Afirmacao pessoal nao apareceu no deck: ${fragment.slice(0, 80)}`);
+}
+
 async function clickTestId(page, testId, timeout = 30000) {
   const selector = `[data-testid="${testId}"]`;
   await page.waitForSelector(selector, { visible: true, timeout });
@@ -539,7 +570,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   if (!personalAffirmation) throw new Error('Onboarding não salvou a afirmação derivada do sonho');
   await waitAndClick(page, 'Afirmações');
   await waitForText(page, 'Dos seus sonhos');
-  await waitForText(page, personalAffirmation);
+  await waitForAffirmationInDeck(page, personalAffirmation);
   await waitAndClick(page, 'Manifestar');
   await waitForText(page, 'manifest', 20000);
 

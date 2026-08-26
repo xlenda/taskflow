@@ -362,7 +362,10 @@ async function verifyHumanRequest(req) {
   try {
     const verification = await botVerifier({
       developmentOptions: {
-        isDevelopment: process.env.VERCEL_ENV !== 'production',
+        isDevelopment:
+          process.env.CELESTE_ALLOW_LOCAL_BOT_BYPASS === '1' &&
+          process.env.VERCEL_ENV !== 'production' &&
+          process.env.VERCEL_ENV !== 'preview',
         bypass: 'HUMAN',
       },
       advancedOptions: {

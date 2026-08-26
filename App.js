@@ -835,7 +835,7 @@ function RootNav() {
 // tela a tela e F5 recarrega na mesma tela — o fallback SPA do Vercel já manda
 // qualquer path pro index.html. Paths são chaves técnicas, não passam por i18n.
 const linking = {
-  prefixes: [APP_URL],
+  prefixes: [APP_URL, 'celeste://'],
   config: {
     screens: {
       Main: {
