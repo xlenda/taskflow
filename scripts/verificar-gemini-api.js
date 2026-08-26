@@ -313,8 +313,8 @@ test('Gemini scene API contract', async (t) => {
     );
     assert.match(flowSource, /when:\s*\(answers\)\s*=>\s*ageConfirmsAdult\(answers\.age\)/);
     assert.match(chatSource, /cloudAdultConfirmed:\s*allowed/);
-    assert.match(profileSource, /cloudPersonalization:\s*true,\s*cloudAdultConfirmed:\s*true/);
-    assert.match(profileSource, /cloudPersonalization:\s*false,\s*cloudAdultConfirmed:\s*false/);
+    assert.match(profileSource, /cloudPersonalization:\s*true[\s\S]*cloudAdultConfirmed:\s*true[\s\S]*cloudDreamConsent:\s*true/);
+    assert.match(profileSource, /cloudPersonalization:\s*false[\s\S]*cloudAdultConfirmed:\s*false[\s\S]*cloudDreamConsent:\s*false/);
     assert.match(profileSource, /isUnder18Age\(state\.profile/);
   });
 

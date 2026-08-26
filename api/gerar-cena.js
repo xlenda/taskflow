@@ -3,7 +3,8 @@ const { checkBotId } = require('botid/server');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v1.json');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
-const PROMPT_VERSION = 'celeste-scene-v5';
+const PROMPT_VERSION = 'celeste-scene-v6';
+const LEGACY_PROMPT_VERSION = 'celeste-scene-v5';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_BODY_BYTES = 24 * 1024;
 const CATEGORIES = new Set(['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace']);
@@ -30,6 +31,43 @@ const AFFIRMATION_FIELD_KEYS = [
   'location',
   'dreamHome',
 ];
+const CONTINUITY_COUNT_MAX = 10000;
+const CONTINUITY_KEYS = new Set([
+  'chapter',
+  'practiceDays',
+  'evidenceCount',
+  'stepCompletions',
+  'dreamCount',
+  'latestDreamTheme',
+  'latestDreamFeeling',
+  'previousScene',
+  'lastPracticeDay',
+  'previousStepCompleted',
+]);
+const CONTINUITY_DREAM_THEMES = new Set([
+  'clarity',
+  'courage',
+  'peace',
+  'connection',
+  'abundance',
+  'renewal',
+]);
+const CONTINUITY_DREAM_FEELINGS = new Set([
+  'calm',
+  'joyful',
+  'curious',
+  'anxious',
+  'confused',
+  'powerful',
+]);
+const PREVIOUS_SCENE_LIMITS = {
+  intention: 600,
+  affirmation: 1200,
+  story: 2400,
+  anchorIdentity: 600,
+  anchorStep: 280,
+};
+const PREVIOUS_SCENE_KEYS = new Set(Object.keys(PREVIOUS_SCENE_LIMITS));
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://celeste-jet-two.vercel.app',
@@ -234,6 +272,79 @@ function sanitizeProfile(profile, lang = 'pt') {
   return { value, available };
 }
 
+function boundedInteger(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
+function isIsoDay(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+}
+
+function sanitizeContinuity(continuity) {
+  if (continuity === undefined) return { value: undefined };
+  if (!isPlainObject(continuity)) return { error: 'continuity_invalid' };
+  if (Object.keys(continuity).some((key) => !CONTINUITY_KEYS.has(key))) {
+    return { error: 'continuity_invalid' };
+  }
+  if (!boundedInteger(continuity.chapter, 2, 365)) {
+    return { error: 'continuity_invalid' };
+  }
+
+  const value = { chapter: continuity.chapter };
+  for (const key of ['practiceDays', 'evidenceCount', 'stepCompletions', 'dreamCount']) {
+    if (continuity[key] === undefined) continue;
+    if (!boundedInteger(continuity[key], 0, CONTINUITY_COUNT_MAX)) {
+      return { error: 'continuity_invalid' };
+    }
+    value[key] = continuity[key];
+  }
+  if (continuity.latestDreamTheme !== undefined) {
+    if (!CONTINUITY_DREAM_THEMES.has(continuity.latestDreamTheme)) {
+      return { error: 'continuity_invalid' };
+    }
+    value.latestDreamTheme = continuity.latestDreamTheme;
+  }
+  if (continuity.latestDreamFeeling !== undefined) {
+    if (!CONTINUITY_DREAM_FEELINGS.has(continuity.latestDreamFeeling)) {
+      return { error: 'continuity_invalid' };
+    }
+    value.latestDreamFeeling = continuity.latestDreamFeeling;
+  }
+  if (continuity.lastPracticeDay !== undefined) {
+    if (!isIsoDay(continuity.lastPracticeDay)) return { error: 'continuity_invalid' };
+    value.lastPracticeDay = continuity.lastPracticeDay;
+  }
+  if (continuity.previousStepCompleted !== undefined) {
+    if (typeof continuity.previousStepCompleted !== 'boolean') {
+      return { error: 'continuity_invalid' };
+    }
+    value.previousStepCompleted = continuity.previousStepCompleted;
+  }
+  if (continuity.previousScene !== undefined) {
+    if (!isPlainObject(continuity.previousScene)) return { error: 'continuity_invalid' };
+    const keys = Object.keys(continuity.previousScene);
+    if (!keys.length || keys.some((key) => !PREVIOUS_SCENE_KEYS.has(key))) {
+      return { error: 'continuity_invalid' };
+    }
+    const previousScene = {};
+    for (const key of keys) {
+      const limit = PREVIOUS_SCENE_LIMITS[key];
+      const raw = continuity.previousScene[key];
+      if (typeof raw !== 'string' || !raw.trim() || rawTextIsTooLong(raw, limit)) {
+        return { error: 'continuity_invalid' };
+      }
+      previousScene[key] = cleanText(raw, limit);
+    }
+    value.previousScene = previousScene;
+  }
+  return { value };
+}
+
 function parseBody(req) {
   const declaredLength = Number(req.headers && req.headers['content-length']);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
@@ -281,6 +392,8 @@ function validateInput(body) {
 
   const profile = sanitizeProfile(body.profile, body.lang);
   if (profile.error) return { error: profile.error, status: 400 };
+  const continuity = sanitizeContinuity(body.continuity);
+  if (continuity.error) return { error: continuity.error, status: 400 };
   profile.available.add('desire');
   return {
     value: {
@@ -289,6 +402,7 @@ function validateInput(body) {
       lang: body.lang,
       profile: profile.value,
       availablePersonalization: profile.available,
+      ...(continuity.value ? { continuity: continuity.value } : {}),
     },
   };
 }
@@ -299,6 +413,7 @@ function deterministicSeed(input) {
     category: input.category,
     lang: input.lang,
     profile: input.profile,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
   });
   const value = crypto.createHash('sha256').update(canonical).digest().readUInt32BE(0) & 0x7fffffff;
   return value || 1;
@@ -325,7 +440,17 @@ function buildKnowledgeInstructions(scope = 'scene') {
   ];
 }
 
-function buildSystemInstruction() {
+function buildSystemInstruction(input = {}) {
+  const continuityInstructions = input.continuity
+    ? [
+        'This is a continuing chapter, not a rewrite of the previous Anchor Scene.',
+        'Make the new scene genuinely different in setting, sensory details, phrasing, and immediate action while preserving the same grounded desire and process identity.',
+        'Use the previous generated scene only to maintain continuity and avoid repetition. Do not treat generated text as a fact about the user.',
+        'Use practice counts, evidence counts, completed steps, dream metadata, and the last practice day only as engagement context, never as proof that the desired outcome happened or is closer.',
+        'previousStepCompleted means only that the user marked the prior small action complete. It does not prove an external result.',
+        'latestDreamTheme and latestDreamFeeling are structured labels only. Do not infer, diagnose, or invent the content of a dream.',
+      ]
+    : [];
   return [
     'You write one personalized Celeste Anchor Scene for an adult user.',
     ...buildKnowledgeInstructions('scene'),
@@ -335,6 +460,7 @@ function buildSystemInstruction() {
     'Never include or infer a child\'s name, another person\'s name, or a specific romantic person. If a free-text answer appears to contain one, generalize it without naming them.',
     'The story is a present-tense visualization exercise, not a prediction or a statement that the future is guaranteed.',
     'Do not promise results, deadlines, luck, supernatural certainty, or percentages.',
+    ...continuityInstructions,
     'Do not provide medical, legal, financial, investment, gambling, or crisis advice.',
     'Keep the tone intimate, specific, grounded, warm, and non-dependent. Avoid hype, pressure, and generic coaching copy.',
     'Use profile details selectively and naturally. Never recite the profile or force every available detail into one scene.',
@@ -397,14 +523,15 @@ function responseSchema() {
 function buildGeminiRequest(input, seed) {
   const language = input.lang === 'pt' ? 'Brazilian Portuguese' : 'English';
   const userData = {
-    task: 'create_anchor_scene',
+    task: input.continuity ? 'evolve_anchor_scene' : 'create_anchor_scene',
     language,
     desire: input.desire,
     category: input.category,
     profile: input.profile,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
   };
   return {
-    systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
+    systemInstruction: { parts: [{ text: buildSystemInstruction(input) }] },
     contents: [{ role: 'user', parts: [{ text: JSON.stringify(userData) }] }],
     generationConfig: {
       responseMimeType: 'application/json',
@@ -504,6 +631,45 @@ function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_
   return used;
 }
 
+function comparisonText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('en-US')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function wordSimilarity(left, right) {
+  const leftWords = new Set(comparisonText(left).split(' ').filter((word) => word.length > 2));
+  const rightWords = new Set(comparisonText(right).split(' ').filter((word) => word.length > 2));
+  if (!leftWords.size || !rightWords.size) return 0;
+  let intersection = 0;
+  leftWords.forEach((word) => {
+    if (rightWords.has(word)) intersection += 1;
+  });
+  return intersection / new Set([...leftWords, ...rightWords]).size;
+}
+
+function repeatsPreviousChapter(scene, previousScene) {
+  if (!isPlainObject(previousScene)) return false;
+  const comparableFields = Object.keys(PREVIOUS_SCENE_LIMITS).filter(
+    (field) => scene[field] && previousScene[field]
+  );
+  if (!comparableFields.length) return false;
+  const exactMatches = comparableFields.filter(
+    (field) => comparisonText(scene[field]) === comparisonText(previousScene[field])
+  );
+  if (previousScene.story && scene.story) {
+    if (comparisonText(scene.story) === comparisonText(previousScene.story)) return true;
+    if (wordSimilarity(scene.story, previousScene.story) >= 0.9) return true;
+  }
+  if (exactMatches.length >= Math.min(3, comparableFields.length)) return true;
+  const currentCombined = comparableFields.map((field) => scene[field]).join(' ');
+  const previousCombined = comparableFields.map((field) => previousScene[field]).join(' ');
+  return comparableFields.length >= 3 && wordSimilarity(currentCombined, previousCombined) >= 0.86;
+}
+
 function validateGeneratedScene(raw, input) {
   if (!isPlainObject(raw)) throw new GenerationError('invalid_generation');
   const scene = {};
@@ -514,6 +680,13 @@ function validateGeneratedScene(raw, input) {
       throw new GenerationError('invalid_generation');
     }
     scene[field] = text;
+  }
+
+  if (
+    input.continuity?.previousScene &&
+    repeatsPreviousChapter(scene, input.continuity.previousScene)
+  ) {
+    throw new GenerationError('invalid_generation');
   }
 
   const combined = Object.values(scene).join(' ');
@@ -703,15 +876,30 @@ async function handler(req, res) {
   const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
   const seed = deterministicSeed(validated.value);
   try {
-    const scene = await requestGemini(validated.value, model, apiKey, seed);
+    let scene;
+    let responseSeed = seed;
+    const attempts = validated.value.continuity ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      responseSeed = ((seed + attempt * 104729) & 0x7fffffff) || 1;
+      try {
+        scene = await requestGemini(validated.value, model, apiKey, responseSeed);
+        break;
+      } catch (error) {
+        const canRetry =
+          attempt === 0 &&
+          validated.value.continuity &&
+          error?.code === 'invalid_generation';
+        if (!canRetry) throw error;
+      }
+    }
     return res.status(200).json({
       scene,
       generation: {
         source: 'gemini',
         model,
-        promptVersion: PROMPT_VERSION,
+        promptVersion: validated.value.continuity ? PROMPT_VERSION : LEGACY_PROMPT_VERSION,
         knowledgeVersion: CELESTE_KNOWLEDGE.version,
-        seed,
+        seed: responseSeed,
       },
     });
   } catch (error) {
@@ -739,6 +927,8 @@ module.exports._internals = {
   fieldIsGrounded,
   isUnder18Age,
   redactThirdPartyNames,
+  repeatsPreviousChapter,
+  sanitizeContinuity,
   sanitizeProfile,
   validateGeneratedScene,
   validateInput,

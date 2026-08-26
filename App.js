@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -27,6 +28,11 @@ import { alarmAffirmationText } from './utils/personalAffirmations';
 import { detectLang } from './constants/i18n';
 import { initCelesteBotProtection } from './utils/botProtection';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
+import {
+  configureDailyRitualNotifications,
+  initialDailyRitualNotificationUrl,
+  subscribeDailyRitualNotificationUrls,
+} from './services/dailyRitualReminder';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -37,6 +43,7 @@ import JourneyScreen from './screens/JourneyScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import MorningRitualScreen from './screens/MorningRitualScreen';
 import AffirmationAlarmScreen from './screens/AffirmationAlarmScreen';
+import DailyRitualScreen from './screens/DailyRitualScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 import WelcomeScreen from './screens/onboarding/WelcomeScreen';
@@ -271,7 +278,6 @@ function alarmContentForState(state) {
 function hasSavedNarrationConsent(state) {
   const profile = state && state.profile;
   return (
-    profile?.cloudPersonalization === true &&
     profile?.cloudAdultConfirmed === true &&
     profile?.cloudNarrationConsent === true
   );
@@ -813,6 +819,7 @@ function RootNav() {
           <Root.Screen name="Main" component={Tabs} />
           <Root.Screen name="MorningRitual" component={MorningRitualScreen} />
           <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
+          <Root.Screen name="DailyRitual" component={DailyRitualScreen} />
           <Root.Screen name="Profile" component={ProfileScreen} />
         </>
       ) : (
@@ -836,6 +843,18 @@ function RootNav() {
 // qualquer path pro index.html. Paths são chaves técnicas, não passam por i18n.
 const linking = {
   prefixes: [APP_URL, 'celeste://'],
+  async getInitialURL() {
+    const url = await Linking.getInitialURL();
+    return url || initialDailyRitualNotificationUrl();
+  },
+  subscribe(listener) {
+    const linkingSubscription = Linking.addEventListener('url', ({ url }) => listener(url));
+    const unsubscribeNotifications = subscribeDailyRitualNotificationUrls(listener);
+    return () => {
+      linkingSubscription.remove();
+      unsubscribeNotifications();
+    };
+  },
   config: {
     screens: {
       Main: {
@@ -859,6 +878,7 @@ const linking = {
       },
       MorningRitual: 'sonhos',
       AffirmationAlarm: 'despertar',
+      DailyRitual: 'ritual',
       Profile: 'perfil',
       Welcome: 'bem-vindo',
       Referral: 'convite',
@@ -874,6 +894,9 @@ const linking = {
 };
 
 export default function App() {
+  React.useEffect(() => {
+    configureDailyRitualNotifications();
+  }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <SafeAreaProvider style={{ flex: 1, minHeight: 0 }}>

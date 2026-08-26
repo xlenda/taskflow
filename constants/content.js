@@ -55,6 +55,12 @@ export const initialState = () => ({
   savedVisions: [],
   visionPlays: [],
   affirmationDates: [],
+  dailyRitual: {
+    reminderEnabled: false,
+    reminderTime: '20:30',
+    notificationId: null,
+    permission: 'unknown',
+  },
   morningRitual: {
     alarmStatus: 'native_integration_required',
     reminderEnabled: false,

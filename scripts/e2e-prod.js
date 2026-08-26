@@ -55,6 +55,13 @@ async function waitForText(page, fragment, timeout = 30000) {
   );
 }
 
+async function waitForHome(page, timeout = 30000) {
+  await page.waitForSelector('[data-testid="celeste-mascot-home"]', {
+    visible: true,
+    timeout,
+  });
+}
+
 async function waitForAffirmationInDeck(page, fragment, maxCards = 12) {
   for (let index = 0; index < maxCards; index += 1) {
     const visible = await page.evaluate(
@@ -399,7 +406,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'entra em breve');
   await waitForText(page, 'Um começo transparente');
   await waitAndClick(page, 'Entrar no Celeste');
-  await waitForText(page, 'manifest', 20000);
+  await waitForHome(page, 20000);
   await waitForText(page, 'Ter mais paz e equilíbrio', 20000); // Home abre COM a manifestação criada, não vazia
   await page.waitForFunction(
     `JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').onboardingDone === true`,
@@ -411,6 +418,23 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Ter mais paz e equilíbrio', 20000);
   await sleep(2000);
   await page.screenshot({ path: path.join(SHOT_DIR, 'app.png') });
+
+  // O ritual diário deve nascer da resposta real do onboarding e abrir em um
+  // toque, sem substituir nem duplicar os 3S que já fazem parte da jornada.
+  await clickTestId(page, 'open-daily-ritual');
+  await page.waitForSelector('[data-testid="daily-ritual-screen"]', {
+    visible: true,
+    timeout: 20000,
+  });
+  await waitForText(page, 'Seu minuto Celeste', 20000);
+  await waitForText(page, 'Ter mais paz e equilíbrio', 20000);
+  const ritualOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 1
+  );
+  if (ritualOverflow) throw new Error('Ritual de um minuto tem rolagem horizontal no celular');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'ritual-diario.png') });
+  await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
+  await waitForText(page, 'Manifestar', 30000);
 
   // A afirmação é o próprio despertador, não uma rotina depois de acordar.
   // No web a pessoa configura e ouve a prévia, mas o switch permanece incapaz
@@ -558,7 +582,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitAndClick(page, 'Apagar');
   await waitForText(page, 'Seu relato pode começar aqui', 20000);
   await waitAndClick(page, 'Manifestar');
-  await waitForText(page, 'manifest', 20000);
+  await waitForHome(page, 20000);
 
   // O desejo respondido no onboarding precisa chegar à prática diária: a aba
   // abre no deck pessoal e mostra exatamente a afirmação salva, não um card
@@ -572,7 +596,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Dos seus sonhos');
   await waitForAffirmationInDeck(page, personalAffirmation);
   await waitAndClick(page, 'Manifestar');
-  await waitForText(page, 'manifest', 20000);
+  await waitForHome(page, 20000);
 
   // Falha de armazenamento não pode parecer sucesso. Força quota/permissão
   // negada, confirma o aviso global e depois prova que o botão tenta novamente.
@@ -583,7 +607,18 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       throw new Error('storage-blocked-for-e2e');
     };
   });
-  await waitAndClick(page, 'Praticar');
+  const openedPersonalManifestation = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('[role="button"], button')].find((element) =>
+      /ainda não praticada hoje/i.test(element.getAttribute('aria-label') || '')
+    );
+    if (!card) return false;
+    card.scrollIntoView({ block: 'center', inline: 'center' });
+    card.click();
+    return true;
+  });
+  if (!openedPersonalManifestation) {
+    throw new Error('Card da manifestação pessoal não ficou acessível na Home');
+  }
   await waitForText(page, 'Sua narrativa em áudio', 30000);
   await waitAndClick(page, 'Marcar a prática de hoje');
   await waitForText(page, 'Não conseguimos guardar suas últimas mudanças', 30000);

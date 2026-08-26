@@ -17,10 +17,20 @@ import { translateManifestationScene } from '../services/translateManifestationS
 import { createSerialStorageWriter } from '../utils/serialStorageWriter';
 import { alarmWeekdaysOrDefault, normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 import {
+  bridgeDoneOn,
+  buildEvolutionContinuity,
+  emptyLivingMirror,
+  livingMirrorReceipt,
+  livingMirrorStatus,
+  normalizeLivingMirror,
+  snapshotLivingMirrorChapter,
+} from '../utils/livingMirror';
+import {
   beginCommunityDataReset,
   cancelCommunityDataReset,
   finishCommunityDataReset,
 } from '../services/communityStories';
+import { cancelDailyRitualReminder } from '../services/dailyRitualReminder';
 
 const STORAGE_KEY = '@stella_state_v2';
 const AUXILIARY_STORAGE_KEYS = [
@@ -129,14 +139,29 @@ function mergeDefensivo(parsed) {
   st.profile = st.profile && typeof st.profile === 'object' && !Array.isArray(st.profile)
     ? { ...st.profile }
     : {};
-  const cloudAllowed =
-    !isKnownMinor(st.profile) &&
-    st.profile.cloudPersonalization === true &&
-    st.profile.cloudAdultConfirmed === true;
-  st.profile.cloudPersonalization = cloudAllowed;
-  st.profile.cloudAdultConfirmed = cloudAllowed;
+  const cloudAdultConfirmed =
+    !isKnownMinor(st.profile) && st.profile.cloudAdultConfirmed === true;
+  st.profile.cloudAdultConfirmed = cloudAdultConfirmed;
+  st.profile.cloudPersonalization =
+    cloudAdultConfirmed && st.profile.cloudPersonalization === true;
   st.profile.cloudNarrationConsent =
-    cloudAllowed && st.profile.cloudNarrationConsent === true;
+    cloudAdultConfirmed && st.profile.cloudNarrationConsent === true;
+  st.profile.cloudDreamConsent =
+    cloudAdultConfirmed && st.profile.cloudDreamConsent === true;
+  const savedDailyRitual =
+    st.dailyRitual && typeof st.dailyRitual === 'object' && !Array.isArray(st.dailyRitual)
+      ? st.dailyRitual
+      : {};
+  st.dailyRitual = {
+    reminderEnabled: savedDailyRitual.reminderEnabled === true,
+    reminderTime: validTime(savedDailyRitual.reminderTime)
+      ? savedDailyRitual.reminderTime
+      : base.dailyRitual.reminderTime,
+    notificationId: shortText(savedDailyRitual.notificationId, 240) || null,
+    permission: ['unknown', 'granted', 'denied', 'unsupported'].includes(savedDailyRitual.permission)
+      ? savedDailyRitual.permission
+      : 'unknown',
+  };
   // Item importado/antigo sem sessions derrubaria derived e setPractice —
   // normalizar aqui protege load e import de uma vez.
   st.manifestations = st.manifestations
@@ -195,6 +220,7 @@ function mergeDefensivo(parsed) {
           : undefined,
       anchorIdentity: textOr(cameFromCatalog ? null : m.anchorIdentity, generated.anchorIdentity, 600),
       anchorStep: textOr(cameFromCatalog ? null : m.anchorStep, generated.anchorStep, 280),
+      livingMirror: normalizeLivingMirror(m.livingMirror),
       generation: cameFromCatalog
         ? { source: 'local', promptVersion: 'personal-catalog-migration-v1' }
         : m.generation,
@@ -255,6 +281,7 @@ function mergeDefensivo(parsed) {
           typeof entry.lastPracticedAt === 'string' && !Number.isNaN(Date.parse(entry.lastPracticedAt))
             ? entry.lastPracticedAt
             : null,
+        useInLivingMirror: entry.useInLivingMirror === true,
       }))
       .slice(0, 90),
   };
@@ -336,6 +363,7 @@ export function AppProvider({ children }) {
   const translationLanguageEpochRef = useRef(0);
   const desiredLanguageRef = useRef(null);
   const lastDreamSaveRef = useRef({ epoch: -1, signature: '', id: null, at: 0 });
+  const evolutionRequestsRef = useRef(new Set());
   const resetInProgressRef = useRef(false);
   const storageMutationRef = useRef(null);
   const pendingResetRevisionRef = useRef(0);
@@ -678,6 +706,7 @@ export function AppProvider({ children }) {
       createdAt: todayISO(),
       sessions: [],
       evidence: [],
+      livingMirror: emptyLivingMirror(),
     };
     const bilingualItem = localizeManifestation(item, profile, lang);
     setState((s) => {
@@ -715,6 +744,190 @@ export function AppProvider({ children }) {
   // Atalhos de hoje: logSession só marca (2ª prática no dia não desmarca), undo só desmarca.
   const logSession = useCallback((id) => setPractice(id, todayISO(), true), [setPractice]);
   const undoSession = useCallback((id) => setPractice(id, todayISO(), false), [setPractice]);
+
+  // A Ponte e a pratica usam o mesmo dia, mas continuam fatos diferentes:
+  // concluir a Ponte marca a pratica; desfazer a Ponte nao apaga uma pratica
+  // que tambem pode ter sido concluida pela narrativa ou pelo ritual de 1 min.
+  const toggleBridgeCompletion = useCallback((id, dateIso) => {
+    const day = validDay(dateIso) ? dateIso : todayISO();
+    setState((s) => ({
+      ...s,
+      manifestations: s.manifestations.map((manifestation) => {
+        if (manifestation.id !== id) return manifestation;
+        const mirror = normalizeLivingMirror(manifestation.livingMirror);
+        const alreadyDone = bridgeDoneOn(manifestation, day);
+        if (alreadyDone) {
+          return {
+            ...manifestation,
+            livingMirror: {
+              ...mirror,
+              bridgeCompletions: mirror.bridgeCompletions.filter(
+                (entry) => !(entry.date === day && entry.chapter === mirror.chapter)
+              ),
+            },
+          };
+        }
+        const step = shortText(manifestation.anchorStep, 280);
+        if (!step) return manifestation;
+        const completedAt = new Date().toISOString();
+        const sessions = manifestation.sessions.includes(day)
+          ? manifestation.sessions
+          : [...manifestation.sessions, day];
+        const next = {
+          ...manifestation,
+          sessions,
+          livingMirror: {
+            ...mirror,
+            bridgeCompletions: [
+              {
+                id: `bridge-${id}-${mirror.chapter}-${day}`,
+                date: day,
+                step,
+                chapter: mirror.chapter,
+                completedAt,
+              },
+              ...mirror.bridgeCompletions,
+            ].slice(0, 90),
+          },
+        };
+        if (!manifestation.completedAt && sessions.length >= manifestation.goalDays) {
+          next.completedAt = day;
+        }
+        return next;
+      }),
+    }));
+  }, []);
+
+  const evolveManifestation = useCallback(async (id) => {
+    const target = shortText(id, 120);
+    const snapshot = stateRef.current;
+    const manifestation = snapshot?.manifestations?.find((item) => item.id === target);
+    if (!manifestation) return { ok: false, error: 'manifestation_not_found' };
+
+    const day = todayISO();
+    const status = livingMirrorStatus(manifestation, snapshot.morningRitual?.entries, day);
+    if (status.evolvedToday) return { ok: false, error: 'already_evolved_today' };
+    if (!status.hasNewMemory) return { ok: false, error: 'new_memory_required' };
+    if (
+      isKnownMinor(snapshot.profile) ||
+      snapshot.profile?.cloudPersonalization !== true ||
+      snapshot.profile?.cloudAdultConfirmed !== true
+    ) {
+      return { ok: false, error: 'cloud_consent_required' };
+    }
+
+    const requestKey = `${target}:${manifestation.lang}:${status.memorySignature}`;
+    if (evolutionRequestsRef.current.has(requestKey)) {
+      return { ok: false, error: 'evolution_in_progress' };
+    }
+    evolutionRequestsRef.current.add(requestKey);
+    const generationEpoch = generationEpochRef.current;
+    const sourceFingerprint = JSON.stringify(snapshotManifestationContent(manifestation));
+    try {
+      const remote = await generatePersonalizedScene({
+        desire: manifestation.title,
+        category: manifestation.category || 'Wealth',
+        lang: manifestation.lang,
+        profile: snapshot.profile,
+        continuity: buildEvolutionContinuity(manifestation, snapshot.morningRitual?.entries),
+      });
+      if (generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'state_replaced' };
+      }
+
+      const createdAt = new Date().toISOString();
+      const nextChapter = Math.min(365, status.chapter + 1);
+      let resolveCommit;
+      const commitResult = new Promise((resolve) => {
+        resolveCommit = resolve;
+      });
+      setState((currentState) => {
+        if (!currentState || generationEpoch !== generationEpochRef.current) {
+          resolveCommit({ ok: false, error: 'state_replaced' });
+          return currentState;
+        }
+        const index = currentState.manifestations.findIndex((item) => item.id === target);
+        if (index < 0) {
+          resolveCommit({ ok: false, error: 'manifestation_not_found' });
+          return currentState;
+        }
+        const current = currentState.manifestations[index];
+        const latestStatus = livingMirrorStatus(
+          current,
+          currentState.morningRitual?.entries,
+          day
+        );
+        if (
+          latestStatus.memorySignature !== status.memorySignature ||
+          JSON.stringify(snapshotManifestationContent(current)) !== sourceFingerprint
+        ) {
+          resolveCommit({ ok: false, error: 'memory_changed' });
+          return currentState;
+        }
+
+        const previous = snapshotLivingMirrorChapter(
+          current,
+          livingMirrorReceipt(status.memory),
+          createdAt
+        );
+        const variant = manifestationVariantFromScene({
+          title: current.title,
+          scene: remote.scene,
+          generation: remote.generation,
+        });
+        const mirror = normalizeLivingMirror(current.livingMirror);
+        const evolved = {
+          ...current,
+          ...variant,
+          lang: currentState.lang,
+          originLang: currentState.lang,
+          contentByLang: { [currentState.lang]: variant },
+          livingMirror: {
+            ...mirror,
+            chapter: nextChapter,
+            lastEvolvedOn: day,
+            lastMemorySignature: status.memorySignature,
+            chapters: [previous, ...mirror.chapters]
+              .filter(
+                (entry, chapterIndex, chapters) =>
+                  chapters.findIndex((candidate) => candidate.chapter === entry.chapter) === chapterIndex
+              )
+              .slice(0, 12),
+          },
+        };
+        const manifestations = [...currentState.manifestations];
+        manifestations[index] = localizeManifestation(
+          evolved,
+          currentState.profile,
+          currentState.lang
+        );
+        resolveCommit({ ok: true, chapter: nextChapter });
+        return { ...currentState, manifestations };
+      });
+      let commitTimeout;
+      const outcome = await Promise.race([
+        commitResult,
+        new Promise((resolve) => {
+          commitTimeout = setTimeout(
+            () => resolve({ ok: false, error: 'state_update_unavailable' }),
+            2000
+          );
+        }),
+      ]);
+      if (commitTimeout) clearTimeout(commitTimeout);
+      return outcome;
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error && typeof error.message === 'string' && error.message
+            ? error.message
+            : 'generation_unavailable',
+      };
+    } finally {
+      evolutionRequestsRef.current.delete(requestKey);
+    }
+  }, []);
 
   const updateManifestation = useCallback((id, patch) => {
     setState((s) => ({
@@ -1003,6 +1216,24 @@ export function AppProvider({ children }) {
     setState((s) => ({ ...s, narration: { narratorId } }));
   }, []);
 
+  const saveDailyRitualPreferences = useCallback((patch) => {
+    setState((s) => {
+      const current = s.dailyRitual || initialState().dailyRitual;
+      const next = { ...current };
+      if (patch && typeof patch.reminderEnabled === 'boolean') {
+        next.reminderEnabled = patch.reminderEnabled;
+      }
+      if (patch && validTime(patch.reminderTime)) next.reminderTime = patch.reminderTime;
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'notificationId')) {
+        next.notificationId = shortText(patch.notificationId, 240) || null;
+      }
+      if (patch && ['unknown', 'granted', 'denied', 'unsupported'].includes(patch.permission)) {
+        next.permission = patch.permission;
+      }
+      return { ...s, dailyRitual: next };
+    });
+  }, []);
+
   const saveMorningRitualPreferences = useCallback((patch) => {
     setState((s) => {
       const current = s.morningRitual || initialState().morningRitual;
@@ -1085,6 +1316,7 @@ export function AppProvider({ children }) {
       createdAt: now,
       practiceCount: 0,
       lastPracticedAt: null,
+      useInLivingMirror: false,
     };
     setState((s) => {
       const ritual = s.morningRitual || initialState().morningRitual;
@@ -1107,13 +1339,30 @@ export function AppProvider({ children }) {
         morningRitual: {
           ...ritual,
           entries: (ritual.entries || []).map((entry) =>
-            entry.id === id
+            entry.id === id && String(entry.lastPracticedAt || '').slice(0, 10) !== day
               ? {
                   ...entry,
                   practiceCount: (Number(entry.practiceCount) || 0) + 1,
                   lastPracticedAt: practicedAt,
                 }
               : entry
+          ),
+        },
+      };
+    });
+  }, []);
+
+  const setDreamLivingMirrorConsent = useCallback((id, enabled) => {
+    const target = shortText(id, 160);
+    if (!target || typeof enabled !== 'boolean') return;
+    setState((s) => {
+      const ritual = s.morningRitual || initialState().morningRitual;
+      return {
+        ...s,
+        morningRitual: {
+          ...ritual,
+          entries: (ritual.entries || []).map((entry) =>
+            entry.id === target ? { ...entry, useInLivingMirror: enabled } : entry
           ),
         },
       };
@@ -1170,6 +1419,20 @@ export function AppProvider({ children }) {
       cloudPersonalization: false,
       cloudAdultConfirmed: false,
       cloudNarrationConsent: false,
+      cloudDreamConsent: false,
+    };
+    restored.dailyRitual = {
+      ...(restored.dailyRitual || initialState().dailyRitual),
+      reminderEnabled: false,
+      notificationId: null,
+      permission: 'unknown',
+    };
+    restored.morningRitual = {
+      ...(restored.morningRitual || initialState().morningRitual),
+      entries: (restored.morningRitual?.entries || []).map((entry) => ({
+        ...entry,
+        useInLivingMirror: false,
+      })),
     };
     if (
       pendingResetRevisionRef.current ||
@@ -1179,6 +1442,12 @@ export function AppProvider({ children }) {
       !writerRef.current
     ) {
       return { ok: false, erro: 'storage_unavailable' };
+    }
+    const reminderCancelled = await cancelDailyRitualReminder(
+      stateRef.current?.dailyRitual?.notificationId
+    );
+    if (!reminderCancelled.ok) {
+      return { ok: false, erro: 'reminder_cancel_failed' };
     }
     generationEpochRef.current += 1;
     storageMutationRef.current = 'import';
@@ -1228,14 +1497,15 @@ export function AppProvider({ children }) {
   const saveProfile = useCallback((patch) => {
     setState((s) => {
       const profile = { ...(s.profile || {}), ...(patch || {}) };
-      if (
-        isKnownMinor(profile) ||
-        profile.cloudPersonalization !== true ||
-        profile.cloudAdultConfirmed !== true
-      ) {
+      if (isKnownMinor(profile) || profile.cloudAdultConfirmed !== true) {
         profile.cloudPersonalization = false;
         profile.cloudAdultConfirmed = false;
         profile.cloudNarrationConsent = false;
+        profile.cloudDreamConsent = false;
+      } else {
+        profile.cloudPersonalization = profile.cloudPersonalization === true;
+        profile.cloudNarrationConsent = profile.cloudNarrationConsent === true;
+        profile.cloudDreamConsent = profile.cloudDreamConsent === true;
       }
       return {
         ...s,
@@ -1385,6 +1655,8 @@ export function AppProvider({ children }) {
       togglePractice,
       logSession,
       undoSession,
+      toggleBridgeCompletion,
+      evolveManifestation,
       removeManifestation,
       toggleFavoriteAffirmation,
       markAffirmationRead,
@@ -1393,9 +1665,11 @@ export function AppProvider({ children }) {
       setName,
       setMood,
       setNarrator,
+      saveDailyRitualPreferences,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,
+      setDreamLivingMirrorConsent,
       removeDreamRitual,
       resetAll,
       exportStateJson,
@@ -1424,6 +1698,8 @@ export function AppProvider({ children }) {
       togglePractice,
       logSession,
       undoSession,
+      toggleBridgeCompletion,
+      evolveManifestation,
       removeManifestation,
       toggleFavoriteAffirmation,
       markAffirmationRead,
@@ -1432,9 +1708,11 @@ export function AppProvider({ children }) {
       setName,
       setMood,
       setNarrator,
+      saveDailyRitualPreferences,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,
+      setDreamLivingMirrorConsent,
       removeDreamRitual,
       resetAll,
       exportStateJson,

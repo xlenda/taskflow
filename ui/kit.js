@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './theme';
@@ -52,7 +52,10 @@ export function Screen(props) {
       : React.createElement(
           ScrollView,
           {
-            style: { flex: 1 },
+            style: [
+              { flex: 1, minHeight: 0 },
+              Platform.OS === 'web' ? { height: '100%', overflowY: 'auto', overflowX: 'hidden' } : null,
+            ],
             contentContainerStyle: [
               { paddingHorizontal: padding, paddingBottom: 96 },
               props.style,
@@ -65,7 +68,12 @@ export function Screen(props) {
     SafeAreaView,
     {
       testID: props.testID,
-      style: { flex: 1, backgroundColor: theme.bg },
+      style: [
+        { flex: 1, minHeight: 0, backgroundColor: theme.bg },
+        Platform.OS === 'web'
+          ? { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' }
+          : { overflow: 'hidden' },
+      ],
       edges: ['top'],
     },
     inner
@@ -149,7 +157,16 @@ export function Card(props) {
       props.children
     );
   }
-  return React.createElement(View, { style }, props.children);
+  return React.createElement(
+    View,
+    {
+      style,
+      testID: props.testID,
+      accessibilityLabel: props.accessibilityLabel,
+      accessibilityHint: props.accessibilityHint,
+    },
+    props.children
+  );
 }
 
 function IconBadge(props) {
@@ -182,8 +199,16 @@ export function Button(props) {
   return React.createElement(
     Pressable,
     {
+      testID: props.testID,
       onPress: props.onPress,
       disabled: props.disabled || props.loading,
+      accessibilityRole: 'button',
+      accessibilityLabel: props.accessibilityLabel || props.label,
+      accessibilityHint: props.accessibilityHint,
+      accessibilityState: {
+        disabled: props.disabled === true || props.loading === true,
+        busy: props.loading === true,
+      },
       style: ({ pressed }) => [
         {
           flexDirection: 'row',

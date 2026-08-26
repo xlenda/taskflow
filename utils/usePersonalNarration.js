@@ -40,7 +40,6 @@ export function usePersonalNarration() {
       return { ok: false, error: 'adult_confirmation_required' };
     }
     if (
-      profile.cloudPersonalization === true &&
       profile.cloudAdultConfirmed === true &&
       profile.cloudNarrationConsent === true
     ) {
@@ -59,7 +58,6 @@ export function usePersonalNarration() {
     if (!accepted) return { ok: false, error: 'cloud_consent_required' };
 
     saveProfile({
-      cloudPersonalization: true,
       cloudAdultConfirmed: true,
       cloudNarrationConsent: true,
     });

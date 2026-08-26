@@ -58,6 +58,8 @@ function normalizeCloudConsent(profile) {
     ...source,
     cloudPersonalization: allowed,
     cloudAdultConfirmed: allowed,
+    cloudNarrationConsent: allowed,
+    cloudDreamConsent: allowed,
   };
 }
 
@@ -284,6 +286,7 @@ export default function ChatOnboardingScreen({ navigation }) {
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
       next.cloudNarrationConsent = false;
+      next.cloudDreamConsent = false;
     }
     for (const s of FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
@@ -309,12 +312,14 @@ export default function ChatOnboardingScreen({ navigation }) {
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
       next.cloudNarrationConsent = false;
+      next.cloudDreamConsent = false;
     }
     if (step.key === 'cloudPersonalization') {
       const allowed = val === true && ageConfirmsAdult(next.age);
       next.cloudPersonalization = allowed;
       next.cloudAdultConfirmed = allowed;
       next.cloudNarrationConsent = allowed;
+      next.cloudDreamConsent = allowed;
     }
     // Drop answers from gated steps that became unreachable (e.g. kids after hasKids -> No).
     for (const s of FLOW) {

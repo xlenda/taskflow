@@ -22,6 +22,7 @@ import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO, lastNDays } from '../utils/date';
+import { bridgeDoneOn, normalizeLivingMirror } from '../utils/livingMirror';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
@@ -125,6 +126,14 @@ const S = {
     en: 'A small action you control. You can edit it with the pencil above.',
     pt: 'Uma ação pequena que está nas suas mãos. Você pode editá-la no lápis acima.',
   },
+  chapter: { en: 'Chapter {n}', pt: 'Capítulo {n}' },
+  bridgeComplete: { en: 'I completed this bridge', pt: 'Fiz esta ponte' },
+  bridgeDone: { en: 'Bridge completed today', pt: 'Ponte feita hoje' },
+  undoBridgeTitle: { en: "Undo today's bridge?", pt: 'Desfazer a ponte de hoje?' },
+  undoBridgeBody: {
+    en: 'The bridge will leave your living mirror. Today’s practice will stay recorded.',
+    pt: 'A ponte sairá do seu espelho vivo. A prática de hoje continuará registrada.',
+  },
   evidenceTitle: { en: 'Traces of change', pt: 'Rastros de mudança' },
   evidencePrompt: {
     en: 'What happened, did not happen, or would you like to adjust?',
@@ -205,6 +214,7 @@ export default function ManifestationScreen() {
   const {
     state,
     togglePractice,
+    toggleBridgeCompletion,
     updateManifestation,
     addEvidence,
     removeManifestation,
@@ -460,6 +470,8 @@ export default function ManifestationScreen() {
   const goal = item.goalDays || 21;
   const percent = pct(done, goal);
   const doneToday = saved ? saved.sessions.includes(todayISO()) : false;
+  const mirror = normalizeLivingMirror(saved?.livingMirror);
+  const bridgeDoneToday = saved ? bridgeDoneOn(saved, todayISO()) : false;
   // Ciclo fechado: chegou na meta — a tela celebra e para de cobrar check-in.
   const completed = done >= goal;
 
@@ -558,6 +570,25 @@ export default function ManifestationScreen() {
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     togglePractice(saved.id);
+  };
+
+  const onToggleBridge = async () => {
+    if (!saved || !item.anchorStep) return;
+    if (bridgeDoneToday) {
+      const ok = await confirmAsync({
+        title: t(S.undoBridgeTitle),
+        message: t(S.undoBridgeBody),
+        confirmLabel: t(S.undoConfirm),
+        cancelLabel: t(S.keep),
+      });
+      if (!ok) return;
+    }
+    toggleBridgeCompletion(saved.id, todayISO());
+    Haptics.notificationAsync(
+      bridgeDoneToday
+        ? Haptics.NotificationFeedbackType.Warning
+        : Haptics.NotificationFeedbackType.Success
+    ).catch(() => {});
   };
 
   // Bolinha da semana: marca/desfaz o dia que ela mostra (últimos 7), sempre
@@ -809,7 +840,7 @@ export default function ManifestationScreen() {
                   date: prettyDateIn(saved.createdAt, lang),
                   day: Math.min(done, goal),
                   goal,
-                })}
+                })} · {t(S.chapter, { n: mirror.chapter })}
               </Text>
             </View>
           </GradientCover>
@@ -829,6 +860,15 @@ export default function ManifestationScreen() {
                 </View>
               </View>
               <Text style={[styles.anchorNote, { color: th.textMuted }]}>{t(S.anchorNote)}</Text>
+              <PrimaryButton
+                testID="toggle-bridge-completion"
+                label={bridgeDoneToday ? t(S.bridgeDone) : t(S.bridgeComplete)}
+                icon={bridgeDoneToday ? 'checkmark-circle' : 'footsteps-outline'}
+                variant="soft"
+                accent={item.accent}
+                onPress={onToggleBridge}
+                style={styles.anchorButton}
+              />
             </Card>
           </>
         ) : null}
@@ -1145,6 +1185,7 @@ const styles = StyleSheet.create({
   anchorIdentity: { fontSize: 12.5, lineHeight: 18, fontWeight: '700' },
   anchorStep: { fontSize: 16, lineHeight: 23, fontWeight: '600', marginTop: 5 },
   anchorNote: { fontSize: 12.5, lineHeight: 18, marginTop: 13 },
+  anchorButton: { marginTop: 12 },
   evidencePrompt: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
   evidenceInput: {
     minHeight: 88,

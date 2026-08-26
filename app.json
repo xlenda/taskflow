@@ -24,7 +24,8 @@
       "package": "com.lenda.celeste"
     },
     "plugins": [
-      "expo-video"
+      "expo-video",
+      "expo-notifications"
     ]
   }
 }

@@ -146,12 +146,27 @@ const affirmationsSource = read('screens/AffirmationsScreen.js');
 const visionsSource = read('screens/VisionsScreen.js');
 const visionPlayerSource = read('screens/VisionPlayerScreen.js');
 const manifestationSource = read('screens/ManifestationScreen.js');
+const personalNarrationSource = read('utils/usePersonalNarration.js');
+const morningRitualSource = read('screens/MorningRitualScreen.js');
+const dreamServiceSource = read('services/transformDream.js');
 
 assert.match(affirmationsSource, /state\.manifestations/, 'Affirmations must come from personal manifestations');
 assert.match(affirmationsSource, /state\.morningRitual/, 'Dream affirmations must come from the personal ritual');
 assert.match(visionsSource, /state\.manifestations/, 'Vision cards must come from personal manifestations');
 assert.match(visionPlayerSource, /state\.manifestations\.find/, 'Vision route must resolve a personal manifestation');
 assert.match(manifestationSource, /state\.manifestations\.find/, 'Manifestation screen must resolve saved personal content');
+assert.doesNotMatch(
+  personalNarrationSource,
+  /cloudPersonalization|cloudDreamConsent/,
+  'Voice consent must not silently enable scene or dream uploads'
+);
+assert.match(
+  personalNarrationSource,
+  /cloudAdultConfirmed:\s*true,[\s\S]*cloudNarrationConsent:\s*true/,
+  'Voice consent must enable only adult-confirmed narration'
+);
+assert.match(morningRitualSource, /cloudDreamConsent === true/, 'Dream upload needs its own consent');
+assert.match(dreamServiceSource, /cloudDreamConsent !== true/, 'Dream service must fail closed without dream consent');
 
 // Personal playback surfaces must use the consent-aware shared neural hook.
 let personalNarrationSurfaces = 0;

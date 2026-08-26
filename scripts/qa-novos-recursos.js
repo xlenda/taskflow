@@ -30,6 +30,7 @@ const state = {
 };
 
 const routes = [
+  { path: 'ritual', id: 'daily-ritual-screen', slug: 'ritual' },
   { path: 'despertar', id: 'affirmation-alarm-screen', slug: 'despertador' },
   { path: 'sonhos', id: 'morning-ritual-screen', slug: 'sonhos' },
   { path: 'perfil', id: 'profile-screen', slug: 'perfil' },
@@ -128,6 +129,16 @@ let browser;
         }
       }
 
+      if (route.slug === 'ritual' && viewport.label === '320x480') {
+        const startVisible = await page.$eval('[data-testid="start-daily-ritual"]', (element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.top >= 0 && rect.bottom <= innerHeight;
+        });
+        if (!startVisible) {
+          throw new Error('acao principal do Ritual ficou abaixo da primeira tela em 320x480');
+        }
+      }
+
       await page.screenshot({ path: path.join(SHOTS, `qa-${route.slug}-${viewport.label}-top.png`) });
 
       const scrollInfo = await page.evaluate(() => {
@@ -153,9 +164,31 @@ let browser;
 
       const mustScroll =
         viewport.label !== 'desktop' &&
-        (route.slug === 'despertador' || route.slug === 'perfil' || route.slug === 'jornada');
+        ((route.slug === 'ritual' && viewport.label === '320x480') ||
+          route.slug === 'despertador' ||
+          route.slug === 'perfil' ||
+          route.slug === 'jornada');
       if (mustScroll && !scrollInfo) {
-        throw new Error(`${route.path} não possui um contêiner rolável real em ${viewport.label}`);
+        const diagnostics = await page.evaluate(() => ({
+          innerHeight,
+          body: { client: document.body.clientHeight, scroll: document.body.scrollHeight },
+          root: {
+            client: document.documentElement.clientHeight,
+            scroll: document.documentElement.scrollHeight,
+          },
+          overflow: [...document.querySelectorAll('*')]
+            .map((element) => ({
+              tag: element.tagName,
+              client: element.clientHeight,
+              scroll: element.scrollHeight,
+              overflowY: getComputedStyle(element).overflowY,
+            }))
+            .filter((item) => item.scroll > item.client)
+            .slice(0, 8),
+        }));
+        throw new Error(
+          `${route.path} não possui um contêiner rolável real em ${viewport.label}: ${JSON.stringify(diagnostics)}`
+        );
       }
       if (scrollInfo) {
         await page.mouse.move(Math.floor(viewport.width / 2), Math.max(80, viewport.height - 90));

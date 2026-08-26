@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { confirmAsync } from '../utils/confirm';
 import { useT } from '../utils/useT';
 import { txt, tr, detectLang } from '../constants/i18n';
 import { isUnder18Age } from './onboarding/flow';
+import { selectDailyRitual } from '../utils/dailyRitual';
 
 import GradientCover from '../components/GradientCover';
 import CelesteMascot from '../components/CelesteMascot';
@@ -68,14 +69,6 @@ const S = {
   streakMany: { en: '{n} day streak', pt: '{n} dias seguidos' },
   // Meta do dia = 1 prática, qualquer uma. Nada de "0 de 8 · 0%": a faixa diz
   // se hoje já foi e quantas seguem ativas — número honesto, sem denominador.
-  todayDone: { en: 'today ✓', pt: 'hoje ✓' },
-  todayPending: { en: 'today pending', pt: 'hoje pendente' },
-  activeOne: { en: '1 active', pt: '1 ativa' },
-  activeMany: { en: '{n} active', pt: '{n} ativas' },
-  allDone: { en: 'all cycles complete', pt: 'todos os ciclos concluídos' },
-  todaysPractice: { en: 'Today’s practice', pt: 'Prática de hoje' },
-  bridgeToday: { en: 'Bridge to today', pt: 'Ponte para hoje' },
-  practiceBtn: { en: 'Practice', pt: 'Praticar' },
   newManifest: { en: 'New manifestation', pt: 'Nova manifestação' },
   // Mesmo texto da tela interna: desfazer pede confirmação, marcar não.
   undoTitle: { en: 'Undo today’s practice?', pt: 'Desfazer a prática de hoje?' },
@@ -106,6 +99,15 @@ const S = {
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
   openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
   openProfile: { en: 'Open profile and settings', pt: 'Abrir perfil e configurações' },
+  minuteTitle: { en: 'Your Celeste minute', pt: 'Seu minuto Celeste' },
+  minuteReady: {
+    en: 'One affirmation and one possible step for today',
+    pt: 'Uma afirmação e um passo possível para hoje',
+  },
+  minuteDone: { en: 'Today complete · {streak}', pt: 'Hoje concluído · {streak}' },
+  minuteStart: { en: 'Start my minute', pt: 'Começar meu minuto' },
+  minuteRepeat: { en: 'Repeat my minute', pt: 'Repetir meu minuto' },
+  chapter: { en: 'Chapter {n}', pt: 'Capítulo {n}' },
 };
 
 // Dispensar o convite é preferência de interface, não dado de conta: guardamos
@@ -148,12 +150,6 @@ export default function HomeScreen() {
       alive = false;
     };
   }, []);
-
-  const doneToday = useMemo(() => {
-    if (!state) return 0;
-    const day = todayISO();
-    return state.manifestations.filter((m) => m.sessions.includes(day)).length;
-  }, [state]);
 
   if (loading || !state) {
     // Ainda não temos state.lang — cai no idioma do aparelho para não piscar em inglês.
@@ -273,34 +269,18 @@ export default function HomeScreen() {
   // atual do ciclo, porém, vem sempre da contagem atual e pode voltar a ativo
   // quando a pessoa desfaz um dia.
   const isComplete = (m) => m.sessions.length >= m.goalDays;
-  const activeOnes = state.manifestations.filter((m) => !isComplete(m));
-  const pendingToday = activeOnes.filter((m) => !m.sessions.includes(todayISO()));
-  const firstPending = pendingToday[0] || null;
   const morningRitual = state.morningRitual || {};
   const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const hasItems = state.manifestations.length > 0;
+  const dailyRitual = selectDailyRitual(state, todayISO());
   // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
   // concluídas por último (sort estável preserva a ordem de criação).
   const rankOf = (m) => (isComplete(m) ? 2 : m.sessions.includes(todayISO()) ? 1 : 0);
   const sorted = [...state.manifestations].sort((a, b) => rankOf(a) - rankOf(b));
 
-  // Faixa e botão Praticar levam pra primeira pendente de hoje; se todas já
-  // foram praticadas, cai na primeira da lista mesmo.
-  const openFirstPending = () => {
-    const target = firstPending || state.manifestations[0];
-    if (target) navigation.navigate('Manifestation', { id: target.id });
-  };
-
   const streakLabel =
     derived.streak === 1 ? t(S.streakOne) : t(S.streakMany, { n: derived.streak });
-  const activeLabel =
-    activeOnes.length === 1 ? t(S.activeOne) : t(S.activeMany, { n: activeOnes.length });
-  // Com tudo concluído não há pendência — a faixa não pode cobrar "hoje pendente · 0 ativas".
-  const todaySubLabel =
-    activeOnes.length === 0
-      ? t(S.allDone)
-      : `${doneToday > 0 ? t(S.todayDone) : t(S.todayPending)} · ${activeLabel}`;
 
   // O hero de escrever desejo. Com a lista vazia fica sempre aberto; com itens
   // recolhe em "Nova manifestação" e só expande quando pedirem.
@@ -443,6 +423,44 @@ export default function HomeScreen() {
           />
         </View>
 
+        {dailyRitual ? (
+          <Card
+            style={[
+              styles.minuteCard,
+              { backgroundColor: th.surface, borderColor: alpha(th.accent, 0.28) },
+            ]}
+          >
+            <View style={styles.minuteHeader}>
+              <View style={[styles.minuteIcon, { backgroundColor: alpha(th.accent, 0.13) }]}>
+                <Ionicons name="sparkles" size={22} color={th.accent} />
+              </View>
+              <View style={styles.minuteCopy}>
+                <Text style={[styles.minuteTitle, { color: th.text }]}>{t(S.minuteTitle)}</Text>
+                <Text style={[styles.minuteSub, { color: th.textMuted }]}>
+                  {dailyRitual.completedToday
+                    ? t(S.minuteDone, { streak: streakLabel })
+                    : t(S.minuteReady)}
+                </Text>
+              </View>
+              {dailyRitual.chapter ? (
+                <Text style={[styles.minuteChapter, { color: th.accent }]}>
+                  {t(S.chapter, { n: dailyRitual.chapter })}
+                </Text>
+              ) : null}
+            </View>
+            <Text numberOfLines={2} style={[styles.minuteAffirmation, { color: th.text }]}>
+              {dailyRitual.affirmation}
+            </Text>
+            <Button
+              testID="open-daily-ritual"
+              icon={dailyRitual.completedToday ? 'refresh' : 'play'}
+              label={dailyRitual.completedToday ? t(S.minuteRepeat) : t(S.minuteStart)}
+              onPress={() => navigation.navigate('DailyRitual')}
+              style={styles.minuteButton}
+            />
+          </Card>
+        ) : null}
+
         <Card
           testID="open-dream-journal"
           onPress={() => navigation.navigate('MorningRitual', { focus: 'dream' })}
@@ -487,69 +505,6 @@ export default function HomeScreen() {
 
         {hasItems ? (
           <>
-            {/* ---- Faixa do dia: meta = 1 prática, qualquer uma. Sem
-                 "0 de 8 · 0%" — só hoje feito/pendente e quantas seguem
-                 ativas. Tocar abre a primeira pendente. ---- */}
-            <Card
-              onPress={openFirstPending}
-              accessibilityRole="button"
-              accessibilityLabel={t(S.todaysPractice)}
-              style={[styles.todayCard, { backgroundColor: th.surface }]}
-            >
-              <View style={[styles.todayRow, { marginBottom: 0 }]}>
-                <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 2), 0.16) }]}>
-                  <Ionicons name="flame" size={20} color={accentAt(th, 2)} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.todayTitle, { color: th.text }]}>{streakLabel}</Text>
-                  <Text style={[styles.todaySub, { color: th.textMuted }]}>{todaySubLabel}</Text>
-                </View>
-                <Ionicons
-                  name={doneToday > 0 ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={24}
-                  color={doneToday > 0 ? accentAt(th, 0) : th.textMuted}
-                />
-              </View>
-            </Card>
-
-            {/* ---- Prática do dia: a Home do décimo dia abre no que importa —
-                 a próxima pendente, com o caminho de um toque. ---- */}
-            {firstPending ? (
-              <Card
-                onPress={() => navigation.navigate('Manifestation', { id: firstPending.id })}
-                style={[styles.todayCard, { backgroundColor: th.surface }]}
-              >
-                <Text style={[styles.todaySub, { color: th.textMuted }]}>
-                  {t(S.todaysPractice)}
-                </Text>
-                <Text
-                  numberOfLines={2}
-                  style={[styles.todayTitle, { color: th.text, marginTop: 2 }]}
-                >
-                  {txt(firstPending.title, lang)}
-                </Text>
-                {firstPending.anchorStep ? (
-                  <View style={[styles.bridgeMini, { backgroundColor: alpha(accentAt(th, firstPending.accent), 0.1) }]}>
-                    <Ionicons name="footsteps-outline" size={16} color={accentAt(th, firstPending.accent)} />
-                    <View style={{ flex: 1, marginLeft: 9 }}>
-                      <Text style={[styles.bridgeMiniLabel, { color: accentAt(th, firstPending.accent) }]}>
-                        {t(S.bridgeToday)}
-                      </Text>
-                      <Text numberOfLines={2} style={[styles.bridgeMiniText, { color: th.text }]}>
-                        {firstPending.anchorStep}
-                      </Text>
-                    </View>
-                  </View>
-                ) : null}
-                <Button
-                  icon="play"
-                  label={t(S.practiceBtn)}
-                  onPress={() => navigation.navigate('Manifestation', { id: firstPending.id })}
-                  style={{ marginTop: 10 }}
-                />
-              </Card>
-            ) : null}
-
             {/* Campo compacto: quem já pratica só abre o composer se quiser. */}
             {composerOpen ? (
               composer
@@ -661,6 +616,28 @@ const styles = StyleSheet.create({
   morningCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
   morningTitle: { fontSize: 15.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0 },
   morningSub: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
+  minuteCard: { borderRadius: 8, padding: 16, marginTop: 4, marginBottom: 12 },
+  minuteHeader: { flexDirection: 'row', alignItems: 'center' },
+  minuteIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  minuteCopy: { flex: 1, minWidth: 0, marginLeft: 12 },
+  minuteTitle: { fontSize: 17, lineHeight: 22, fontWeight: '800', letterSpacing: 0 },
+  minuteSub: { marginTop: 2, fontSize: 12, lineHeight: 17, fontWeight: '600', letterSpacing: 0 },
+  minuteChapter: { marginLeft: 8, fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0 },
+  minuteAffirmation: {
+    marginTop: 15,
+    fontFamily: 'Georgia',
+    fontSize: 17,
+    lineHeight: 25,
+    fontStyle: 'italic',
+    letterSpacing: 0,
+  },
+  minuteButton: { marginTop: 12, marginBottom: 0 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hero: { paddingVertical: 22, paddingHorizontal: 18, marginTop: 4 },
   heroInner: { alignItems: 'center' },
@@ -723,8 +700,5 @@ const styles = StyleSheet.create({
   todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   todayTitle: { fontSize: 16, fontWeight: '700' },
   todaySub: { fontSize: 12.5, marginTop: 2 },
-  bridgeMini: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, padding: 11, marginTop: 10 },
-  bridgeMiniLabel: { fontSize: 11.5, fontWeight: '800' },
-  bridgeMiniText: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', marginTop: 3 },
   inviteClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

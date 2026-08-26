@@ -26,6 +26,7 @@ import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
 } from '../services/affirmationAlarm';
+import { cancelDailyRitualReminder } from '../services/dailyRitualReminder';
 
 import WeekChart from '../components/WeekChart';
 import SectionHeading from '../components/SectionHeading';
@@ -116,8 +117,8 @@ const S = {
   resetConfirm: { en: 'Reset', pt: 'Recomeçar' },
   resetStoppingAlarm: { en: 'Resetting...', pt: 'Recomeçando...' },
   resetAlarmFailed: {
-    en: 'The alarm could not be turned off. Open My alarm and try again before resetting.',
-    pt: 'Não foi possível desligar o despertador. Abra Meu despertador e tente novamente antes de recomeçar.',
+    en: 'The alarm or daily reminder could not be turned off. Review them and try again before resetting.',
+    pt: 'Não foi possível desligar o despertador ou o lembrete diário. Revise-os e tente novamente antes de recomeçar.',
   },
   resetStorageFailed: {
     en: 'The device is still confirming the reset. Keep Celeste open and try again.',
@@ -145,6 +146,10 @@ const S = {
   restoreStorageFail: {
     en: 'The device has not confirmed the restore yet. Keep Celeste open and try again.',
     pt: 'O aparelho ainda não confirmou a restauração. Mantenha o Celeste aberto e tente novamente.',
+  },
+  restoreReminderFail: {
+    en: 'The daily reminder could not be turned off. Review it and try the restore again.',
+    pt: 'Não foi possível desligar o lembrete diário. Revise-o e tente restaurar novamente.',
   },
 
   footer: {
@@ -308,6 +313,13 @@ export default function JourneyScreen() {
           return;
         }
       }
+      const reminderCancelled = await cancelDailyRitualReminder(
+        state.dailyRitual?.notificationId
+      );
+      if (!reminderCancelled.ok) {
+        setResetError('alarm');
+        return;
+      }
       const reset = await resetAll();
       if (!reset) {
         setResetError('storage');
@@ -365,7 +377,13 @@ export default function JourneyScreen() {
         if (r && r.ok) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         } else {
-          setBackupErro(r && r.erro === 'storage_unavailable' ? 'storage' : 'invalid');
+          setBackupErro(
+            r && r.erro === 'storage_unavailable'
+              ? 'storage'
+              : r && r.erro === 'reminder_cancel_failed'
+                ? 'reminder'
+                : 'invalid'
+          );
         }
       };
       reader.readAsText(file);
@@ -685,7 +703,14 @@ export default function JourneyScreen() {
             />
             {backupErro ? (
               <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
-                {t(backupErro === 'storage' ? S.restoreStorageFail : S.restoreFail, { app: APP_NAME })}
+                {t(
+                  backupErro === 'storage'
+                    ? S.restoreStorageFail
+                    : backupErro === 'reminder'
+                      ? S.restoreReminderFail
+                      : S.restoreFail,
+                  { app: APP_NAME }
+                )}
               </Text>
             ) : null}
           </>

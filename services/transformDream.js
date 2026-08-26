@@ -91,8 +91,7 @@ export async function transformDreamWithKnowledge({
 }) {
   const sourceProfile = profile && typeof profile === 'object' ? profile : {};
   if (
-    sourceProfile.cloudPersonalization !== true ||
-    sourceProfile.cloudNarrationConsent !== true
+    sourceProfile.cloudDreamConsent !== true
   ) {
     throw new Error('cloud_consent_required');
   }

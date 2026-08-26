@@ -46,10 +46,18 @@ assert.match(
 );
 
 const detailNavigations = home.match(/navigation\.navigate\('Manifestation',\s*\{[^}]*\}\)/g) || [];
-assert.ok(detailNavigations.length >= 3, 'Home deve manter os caminhos para abrir manifestacoes pessoais');
+assert.ok(
+  detailNavigations.length >= 2,
+  'Home deve abrir a manifestacao criada e cada manifestacao pessoal salva'
+);
 for (const call of detailNavigations) {
   assert.match(call, /\{\s*id(?:\s*[:,}])/, `navegacao sem id pessoal: ${call}`);
 }
+assert.match(
+  home,
+  /navigation\.navigate\('DailyRitual'\)/,
+  'Home deve manter o Ritual como entrada diaria principal'
+);
 
 // O ref e gravado antes de qualquer await: dois toques no mesmo desejo nao
 // conseguem abrir duas geracoes enquanto o consentimento ou o Gemini respondem.

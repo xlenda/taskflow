@@ -133,6 +133,11 @@ const S = {
   completed: { pt: 'Prática concluída', en: 'Practice complete' },
   useTomorrow: { pt: 'Usar no próximo despertar', en: 'Use for my next wake-up' },
   usedTomorrow: { pt: 'Este será seu próximo despertar', en: 'This will be your next wake-up' },
+  mirrorConsentTitle: { pt: 'Levar para o Espelho Vivo', en: 'Carry into Living Mirror' },
+  mirrorConsentBody: {
+    pt: 'Usa somente o tema e como você acordou nos próximos capítulos. O relato completo não é reutilizado.',
+    en: 'Uses only the theme and how you woke up in future chapters. The full dream report is not reused.',
+  },
   lastDream: { pt: 'Praticar a última frase', en: 'Practice the latest phrase' },
   pickerTitle: { pt: 'Afirmação para despertar', en: 'Wake-up affirmation' },
   pickerBody: {
@@ -202,14 +207,14 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     saveMorningRitualPreferences,
     saveDreamRitual,
     markDreamRitualPracticed,
+    setDreamLivingMirrorConsent,
     removeDreamRitual,
   } = useApp();
   const narration = usePersonalNarration();
   const alarmVisible = mode === 'combined';
   const cloudDreamEnabled =
-    state.profile?.cloudPersonalization === true &&
     state.profile?.cloudAdultConfirmed === true &&
-    state.profile?.cloudNarrationConsent === true;
+    state.profile?.cloudDreamConsent === true;
 
   const ritual = state.morningRitual || {
     alarmStatus: 'native_integration_required',
@@ -296,6 +301,9 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
 
   const lastEntry = ritual.entries && ritual.entries[0];
   const usingResultForWake = !!result && ritual.wakeAffirmationId === `ritual:${entryId}`;
+  const currentDreamEntry = entryId
+    ? (ritual.entries || []).find((entry) => entry.id === entryId) || null
+    : null;
 
   const clearPractice = useCallback(() => {
     practiceTimers.current.forEach(clearTimeout);
@@ -811,6 +819,12 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     navigation.navigate('AffirmationAlarm', { preselectId: `ritual:${entryId}` });
   }, [entryId, haptic, navigation, result]);
 
+  const toggleLivingMirrorDream = useCallback((enabled) => {
+    if (!entryId) return;
+    setDreamLivingMirrorConsent(entryId, enabled);
+    haptic();
+  }, [entryId, haptic, setDreamLivingMirrorConsent]);
+
   const deleteCurrentDream = useCallback(async () => {
     if (!entryId) return;
     setDreamDeleteError(false);
@@ -1308,6 +1322,27 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                         <Text style={[styles.resultButtonText, { color: accentAt(theme, 2) }]}>{usingResultForWake ? t(S.usedTomorrow) : t(S.useTomorrow)}</Text>
                       </Pressable>
                     </View>
+                    <View style={[styles.mirrorConsentRow, { borderColor: theme.border }]}>
+                      <View style={[styles.mirrorConsentIcon, { backgroundColor: alpha(theme.accent, 0.1) }]}>
+                        <Ionicons name="sparkles-outline" size={18} color={theme.accent} />
+                      </View>
+                      <View style={styles.mirrorConsentCopy}>
+                        <Text style={[styles.mirrorConsentTitle, { color: theme.text }]}>
+                          {t(S.mirrorConsentTitle)}
+                        </Text>
+                        <Text style={[styles.mirrorConsentBody, { color: theme.textMuted }]}>
+                          {t(S.mirrorConsentBody)}
+                        </Text>
+                      </View>
+                      <Switch
+                        testID="dream-living-mirror-consent"
+                        value={currentDreamEntry?.useInLivingMirror === true}
+                        onValueChange={toggleLivingMirrorDream}
+                        disabled={!entryId}
+                        trackColor={{ false: theme.surfaceAlt, true: alpha(theme.accent, 0.45) }}
+                        thumbColor={currentDreamEntry?.useInLivingMirror ? theme.accent : '#FFFFFF'}
+                      />
+                    </View>
                     {audioFailed ? <Text style={[styles.warningText, { color: theme.warning }]}>{t(S.audioUnavailable)}</Text> : null}
 
                     <Pressable
@@ -1508,6 +1543,19 @@ const styles = StyleSheet.create({
   resultActions: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 13 },
   resultButton: { minHeight: 42, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, margin: 4 },
   resultButtonText: { fontSize: 12, lineHeight: 17, fontWeight: '800', marginLeft: 6, letterSpacing: 0 },
+  mirrorConsentRow: {
+    minHeight: 76,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mirrorConsentIcon: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  mirrorConsentCopy: { flex: 1, minWidth: 0, marginHorizontal: 10 },
+  mirrorConsentTitle: { fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0 },
+  mirrorConsentBody: { marginTop: 2, fontSize: 11, lineHeight: 16, fontWeight: '500', letterSpacing: 0 },
   practiceButton: { minHeight: 46, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 12 },
   practiceText: { fontSize: 13, lineHeight: 19, fontWeight: '800', marginLeft: 7, letterSpacing: 0 },
   deleteDreamButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', marginTop: 7 },

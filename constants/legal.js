@@ -2,8 +2,8 @@
 // hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
 // serem ativados.
 export const LEGAL_UPDATED = {
-  en: 'Updated August 25, 2026',
-  pt: 'Atualizado em 25 de agosto de 2026',
+  en: 'Updated August 26, 2026',
+  pt: 'Atualizado em 26 de agosto de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -28,8 +28,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'Seu nome, idioma, preferência visual e respostas do questionário.',
       },
       {
-        en: 'Manifestations, personal scenes, affirmations, private traces and daily bridges.',
-        pt: 'Manifestações, cenas pessoais, afirmações, rastros privados e pontes diárias.',
+        en: 'Manifestations, personal scenes and earlier chapters, affirmations, private traces and completed daily bridges.',
+        pt: 'Manifestações, cenas pessoais e capítulos anteriores, afirmações, rastros privados e pontes diárias concluídas.',
       },
       {
         en: 'Favorites and practice history used to calculate your journey and streak.',
@@ -45,12 +45,16 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Gemini personalization', pt: 'Personalização com Gemini' },
     paragraphs: [
       {
-        en: 'When enabled by an adult, Celeste may send Gemini only the answered fields needed to create a personal scene. When you explicitly transform a dream, Celeste may also send that transcript, your selected waking feeling and theme, plus a reduced profile context. Saved content does not change when you turn this preference off.',
-        pt: 'Quando ativado por uma pessoa adulta, o Celeste pode enviar ao Gemini somente os campos respondidos necessários para criar uma cena pessoal. Quando você pedir para transformar um sonho, o Celeste também poderá enviar essa transcrição, o sentimento e o tema escolhidos, além de um contexto reduzido do perfil. O conteúdo já salvo não muda quando você desativa essa preferência.',
+        en: 'Celeste stores separate permissions for personal scenes, dream reflection and neural narration. Enabling voice alone never authorizes a dream upload. With the corresponding adult permission, Celeste may send Gemini only the answered fields needed for a scene, or the dream transcript, selected waking feeling and theme, plus reduced profile context. Saved content does not change when you turn a permission off.',
+        pt: 'O Celeste guarda permissões separadas para cenas pessoais, reflexão de sonhos e narração neural. Ativar apenas a voz nunca autoriza o envio de um sonho. Com a permissão adulta correspondente, o Celeste pode enviar ao Gemini somente os campos necessários para uma cena ou a transcrição do sonho, o sentimento e o tema escolhidos, além de um contexto reduzido do perfil. O conteúdo já salvo não muda quando você desativa uma permissão.',
       },
       {
         en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If Gemini is unavailable or consent is incomplete, Celeste uses its local generator.',
         pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Se o Gemini estiver indisponível ou o consentimento estiver incompleto, o Celeste usa o gerador local.',
+      },
+      {
+        en: 'When you request a new Living Mirror chapter, Celeste sends the prior generated scene and structured progress counts to Gemini. Private trace text and full dream reports are never included. A dream contributes only its selected theme and waking feeling after you turn on that choice for the individual dream.',
+        pt: 'Quando você pede um novo capítulo do Espelho Vivo, o Celeste envia ao Gemini a cena anterior já gerada e contagens estruturadas do progresso. O texto dos Rastros privados e o relato completo dos sonhos nunca são incluídos. Um sonho contribui somente com o tema escolhido e como você acordou depois que você ativa essa opção naquele sonho.',
       },
     ],
   },
@@ -68,6 +72,10 @@ export const PRIVACY_SECTIONS = [
       {
         en: 'In a compatible installed iPhone app, Celeste may request Alarm access and create an on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
         pt: 'No app instalado em um iPhone compatível, o Celeste pode pedir acesso aos Alarmes e criar um áudio no aparelho para usar a afirmação escolhida como som do despertador. O site não consegue agendar esse alarme do sistema.',
+      },
+      {
+        en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream or affirmation. The website cannot schedule this system reminder.',
+        pt: 'Se você ativar o lembrete do ritual diário no app instalado, o Celeste pede permissão para notificações e o agenda naquele aparelho. O texto na tela bloqueada é propositalmente genérico e nunca inclui seu desejo, sonho ou afirmação. O site não consegue agendar esse lembrete do sistema.',
       },
     ],
   },

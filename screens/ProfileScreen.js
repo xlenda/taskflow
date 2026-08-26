@@ -60,6 +60,10 @@ const S = {
     en: 'New personal scenes use Celeste\'s local generator.',
     pt: 'Novas cenas pessoais usam o gerador local do Celeste.',
   },
+  geminiPartial: {
+    en: 'Neural voice is active only for text you choose to hear. Personal scenes and dreams stay on this device until you enable the full option.',
+    pt: 'A voz neural está ativa apenas para textos que você escolhe ouvir. Cenas pessoais e sonhos ficam neste aparelho até você ativar a opção completa.',
+  },
   geminiConfirmTitle: { en: 'Allow Gemini personalization?', pt: 'Permitir personalização com Gemini?' },
   geminiConfirmBody: {
     en: 'Confirm that you are 18 or older and allow Celeste to send Gemini only the information needed to create personal scenes, reflect on dreams you choose to send, and narrate selected text on demand. Saved names of children, important people, or a specific person stay on this device. Avoid names and confidential data in free text. You can turn this off at any time.',
@@ -274,12 +278,26 @@ export default function ProfileScreen({ navigation }) {
     const profile = state && state.profile;
     if (
       profile &&
-      profile.cloudPersonalization === true &&
+      (profile.cloudPersonalization === true ||
+        profile.cloudNarrationConsent === true ||
+        profile.cloudDreamConsent === true) &&
       (profile.cloudAdultConfirmed !== true || isUnder18Age(profile.age))
     ) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
+      saveProfile({
+        cloudPersonalization: false,
+        cloudAdultConfirmed: false,
+        cloudNarrationConsent: false,
+        cloudDreamConsent: false,
+      });
     }
-  }, [saveProfile, state && state.profile && state.profile.age, state && state.profile && state.profile.cloudAdultConfirmed, state && state.profile && state.profile.cloudPersonalization]);
+  }, [
+    saveProfile,
+    state?.profile?.age,
+    state?.profile?.cloudAdultConfirmed,
+    state?.profile?.cloudPersonalization,
+    state?.profile?.cloudNarrationConsent,
+    state?.profile?.cloudDreamConsent,
+  ]);
 
   useEffect(() => {
     if (!document || !navigation || !navigation.addListener) return undefined;
@@ -324,12 +342,19 @@ export default function ProfileScreen({ navigation }) {
   const cleanName = nameDraft.trim();
   const canSaveName = !!cleanName && cleanName !== state.name;
   const under18 = isUnder18Age(state.profile && state.profile.age);
+  const cloudPartiallyEnabled =
+    !under18 &&
+    state.profile?.cloudAdultConfirmed === true &&
+    (state.profile?.cloudPersonalization === true ||
+      state.profile?.cloudNarrationConsent === true ||
+      state.profile?.cloudDreamConsent === true);
   const cloudEnabled =
     !under18 &&
     state.profile &&
     state.profile.cloudPersonalization === true &&
     state.profile.cloudAdultConfirmed === true &&
-    state.profile.cloudNarrationConsent === true;
+    state.profile.cloudNarrationConsent === true &&
+    state.profile.cloudDreamConsent === true;
 
   const saveDisplayName = () => {
     if (!canSaveName) return;
@@ -342,12 +367,22 @@ export default function ProfileScreen({ navigation }) {
 
   const changeCloudPersonalization = async (nextValue) => {
     if (!nextValue) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
+      saveProfile({
+        cloudPersonalization: false,
+        cloudAdultConfirmed: false,
+        cloudNarrationConsent: false,
+        cloudDreamConsent: false,
+      });
       tap();
       return;
     }
     if (under18) {
-      saveProfile({ cloudPersonalization: false, cloudAdultConfirmed: false, cloudNarrationConsent: false });
+      saveProfile({
+        cloudPersonalization: false,
+        cloudAdultConfirmed: false,
+        cloudNarrationConsent: false,
+        cloudDreamConsent: false,
+      });
       tap();
       return;
     }
@@ -360,7 +395,12 @@ export default function ProfileScreen({ navigation }) {
       lang,
     });
     if (!allowed) return;
-    saveProfile({ cloudPersonalization: true, cloudAdultConfirmed: true, cloudNarrationConsent: true });
+    saveProfile({
+      cloudPersonalization: true,
+      cloudAdultConfirmed: true,
+      cloudNarrationConsent: true,
+      cloudDreamConsent: true,
+    });
     success();
   };
 
@@ -550,7 +590,15 @@ export default function ProfileScreen({ navigation }) {
                 testID="profile-gemini-switch"
                 accessibilityRole="switch"
                 accessibilityLabel={t(S.geminiTitle)}
-                accessibilityHint={t(under18 ? S.geminiUnder18 : cloudEnabled ? S.geminiOn : S.geminiOff)}
+                accessibilityHint={t(
+                  under18
+                    ? S.geminiUnder18
+                    : cloudEnabled
+                      ? S.geminiOn
+                      : cloudPartiallyEnabled
+                        ? S.geminiPartial
+                        : S.geminiOff
+                )}
                 accessibilityState={{ checked: cloudEnabled, disabled: under18 }}
                 disabled={under18}
                 onPress={() => changeCloudPersonalization(!cloudEnabled)}
@@ -564,7 +612,15 @@ export default function ProfileScreen({ navigation }) {
                 <View style={styles.geminiCopy}>
                   <Text style={[styles.settingTitle, { color: theme.text }]}>{t(S.geminiTitle)}</Text>
                   <Text style={[styles.settingNote, { color: theme.textMuted }]}>
-                    {t(under18 ? S.geminiUnder18 : cloudEnabled ? S.geminiOn : S.geminiOff)}
+                    {t(
+                      under18
+                        ? S.geminiUnder18
+                        : cloudEnabled
+                          ? S.geminiOn
+                          : cloudPartiallyEnabled
+                            ? S.geminiPartial
+                            : S.geminiOff
+                    )}
                   </Text>
                 </View>
                 <Switch

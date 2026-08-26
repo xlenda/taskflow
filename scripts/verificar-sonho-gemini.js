@@ -129,8 +129,7 @@ assert.throws(
       name: 'Ana',
       people: [{ name: 'Bia' }],
       kids: [{ name: 'Leo' }],
-      cloudPersonalization: true,
-      cloudNarrationConsent: true,
+      cloudDreamConsent: true,
       cloudAdultConfirmed: true,
     },
     fetchImpl: async (_url, options) => {

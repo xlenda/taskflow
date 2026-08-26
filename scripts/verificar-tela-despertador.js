@@ -127,7 +127,7 @@ assert.ok(
 );
 assert.ok(
   morning.includes('cloudAdultConfirmed === true') &&
-    morning.includes('cloudNarrationConsent === true') &&
+    morning.includes('cloudDreamConsent === true') &&
     morning.includes('transformDreamWithKnowledge'),
   'sonho só pode ir ao Gemini com consentimentos explícitos e confirmação adulta'
 );

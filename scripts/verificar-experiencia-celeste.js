@@ -185,6 +185,7 @@ assert.ok(
 assert.ok(
   context.includes('cloudPersonalization: false') &&
     context.includes('cloudAdultConfirmed: false') &&
+    context.includes('cloudDreamConsent: false') &&
     context.includes('!isKnownMinor(profile)') &&
     context.includes('Consentimento para enviar respostas'),
   'backup importado nunca pode reativar Gemini'
