@@ -101,6 +101,7 @@ function toPersonalVision(item, fallbackLang) {
     category,
     accent: Number.isInteger(item.accent) ? item.accent : category ? categoryMeta(category).accent : 0,
     lang: itemLang,
+    visualKey: item.visual && item.visual.cacheKey,
   };
 }
 
@@ -353,7 +354,12 @@ export default function VisionsScreen() {
                     onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
                     style={{ width: CARD_W, marginRight: GAP }}
                   >
-                    <GradientCover accent={vision.accent} radius={26} style={styles.slide}>
+                    <GradientCover
+                      accent={vision.accent}
+                      visualKey={vision.visualKey}
+                      radius={26}
+                      style={styles.slide}
+                    >
                       <View style={styles.slideTop}>
                         {vision.category ? (
                           <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
@@ -449,7 +455,12 @@ export default function VisionsScreen() {
                   onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
                 >
                   <Card style={[styles.row, { backgroundColor: th.surface }]}>
-                    <GradientCover accent={vision.accent} radius={12} style={styles.thumb} />
+                    <GradientCover
+                      accent={vision.accent}
+                      visualKey={vision.visualKey}
+                      radius={12}
+                      style={styles.thumb}
+                    />
                     <View style={styles.rowBody}>
                       <Text numberOfLines={1} style={[styles.rowTitle, { color: th.text }]}>
                         {vision.title}

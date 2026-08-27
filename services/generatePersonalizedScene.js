@@ -28,8 +28,12 @@ const CATEGORY_PROFILE_FIELDS = {
   Peace: [],
 };
 const MAX_PERSONALIZED_LABELS = 16;
+const MAX_KNOWLEDGE_CARD_IDS_PER_PACK = 8;
+const MAX_PREVIOUS_KNOWLEDGE_CARD_IDS = 24;
 const UNDER_18_VALUES = new Set(['under18', 'menosde18']);
 const CONTINUITY_COUNT_MAX = 10000;
+const CONTINUITY_MAX_BYTES = 12 * 1024;
+const KNOWLEDGE_CARD_ID = /^[a-z0-9][a-z0-9_-]{1,79}$/;
 const CONTINUITY_DREAM_THEMES = new Set([
   'clarity',
   'courage',
@@ -53,6 +57,20 @@ const PREVIOUS_SCENE_LIMITS = {
   anchorIdentity: 600,
   anchorStep: 280,
 };
+const CHRONOLOGY_CHAPTER_LIMITS = {
+  title: 160,
+  intention: 500,
+  affirmation: 900,
+  anchorIdentity: 500,
+  anchorStep: 280,
+};
+const MEMORY_RECEIPTS = new Set([
+  'desire',
+  'practice_days',
+  'completed_steps',
+  'private_trace_count',
+  'consented_dream_theme',
+]);
 
 function cleanText(value, max) {
   return typeof value === 'string'
@@ -62,6 +80,76 @@ function cleanText(value, max) {
         .trim()
         .slice(0, max)
     : '';
+}
+
+function normalizeKnowledgeCardIds(value, max = MAX_KNOWLEDGE_CARD_IDS_PER_PACK) {
+  return [...new Set(
+    (Array.isArray(value) ? value : [])
+      .map((id) => typeof id === 'string'
+        ? id
+            .replace(/[\u0000-\u001f\u007f]/g, '')
+            .trim()
+            .toLowerCase()
+        : '')
+      .filter((id) => id.length <= 80 && KNOWLEDGE_CARD_ID.test(id))
+  )].slice(0, max);
+}
+
+function utf8ByteLength(value) {
+  let bytes = 0;
+  for (const character of String(value || '')) {
+    const point = character.codePointAt(0);
+    if (point <= 0x7f) bytes += 1;
+    else if (point <= 0x7ff) bytes += 2;
+    else if (point <= 0xffff) bytes += 3;
+    else bytes += 4;
+  }
+  return bytes;
+}
+
+function truncateUtf8(value, maxBytes) {
+  let output = '';
+  let bytes = 0;
+  for (const character of String(value || '')) {
+    const size = utf8ByteLength(character);
+    if (bytes + size > maxBytes) break;
+    output += character;
+    bytes += size;
+  }
+  return output.trim();
+}
+
+const serializedBytes = (value) => utf8ByteLength(JSON.stringify(value));
+
+function compactSanitizedContinuity(value) {
+  const output = value;
+  const tooLarge = () => serializedBytes(output) > CONTINUITY_MAX_BYTES;
+  const chronology = output.chronology;
+  while (tooLarge() && chronology?.recentChapters?.length) {
+    chronology.recentChapters.pop();
+  }
+  if (tooLarge() && output.previousScene) delete output.previousScene.story;
+  if (output.previousScene && !Object.keys(output.previousScene).length) {
+    delete output.previousScene;
+  }
+  while (tooLarge() && chronology?.recentDreamSignals?.length) {
+    chronology.recentDreamSignals.pop();
+  }
+  if (tooLarge() && output.previousScene) {
+    for (const [key, limit] of [
+      ['affirmation', 1200],
+      ['intention', 700],
+      ['anchorIdentity', 700],
+      ['anchorStep', 500],
+    ]) {
+      if (output.previousScene[key]) {
+        output.previousScene[key] = truncateUtf8(output.previousScene[key], limit);
+      }
+    }
+  }
+  if (tooLarge()) delete output.previousScene;
+  if (tooLarge()) delete output.chronology;
+  return output;
 }
 
 function normalizedAge(value) {
@@ -156,6 +244,77 @@ function isoDay(value) {
     : '';
 }
 
+function isoTimestamp(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? '' : new Date(time).toISOString();
+}
+
+function sanitizeChronology(value, privateNames, lang) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out = {};
+  const currentChapter = boundedInteger(value.currentChapter, 1, 365);
+  const chapterCount = boundedInteger(value.chapterCount, 1, 365);
+  const goalDays = boundedInteger(value.goalDays, 1, 365);
+  if (currentChapter !== undefined) out.currentChapter = currentChapter;
+  if (chapterCount !== undefined) out.chapterCount = chapterCount;
+  if (goalDays !== undefined) out.goalDays = goalDays;
+  const startedOn = isoDay(value.startedOn);
+  const completedOn = isoDay(value.completedOn);
+  const lastActivityAt = isoTimestamp(value.lastActivityAt);
+  if (startedOn) out.startedOn = startedOn;
+  if (completedOn) out.completedOn = completedOn;
+  if (lastActivityAt) out.lastActivityAt = lastActivityAt;
+
+  const recentChapters = (Array.isArray(value.recentChapters) ? value.recentChapters : [])
+    .slice(0, 3)
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const chapter = boundedInteger(entry.chapter, 1, 365);
+      const occurredAt = isoTimestamp(entry.occurredAt);
+      if (chapter === undefined || !occurredAt) return null;
+      const item = { chapter, occurredAt, lang: entry.lang === 'en' ? 'en' : 'pt' };
+      for (const [key, limit] of Object.entries(CHRONOLOGY_CHAPTER_LIMITS)) {
+        const text = cleanText(redactThirdPartyNames(entry[key], privateNames, lang), limit);
+        if (text) item[key] = text;
+      }
+      const memoryReceipt = (Array.isArray(entry.memoryReceipt) ? entry.memoryReceipt : [])
+        .filter((label) => MEMORY_RECEIPTS.has(label))
+        .filter((label, index, labels) => labels.indexOf(label) === index)
+        .slice(0, 5);
+      if (memoryReceipt.length) item.memoryReceipt = memoryReceipt;
+      return item;
+    })
+    .filter(Boolean);
+  if (recentChapters.length) out.recentChapters = recentChapters;
+
+  const recentDreamSignals = (Array.isArray(value.recentDreamSignals)
+    ? value.recentDreamSignals
+    : [])
+    .slice(0, 3)
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      if (!CONTINUITY_DREAM_THEMES.has(entry.theme) || !CONTINUITY_DREAM_FEELINGS.has(entry.feeling)) {
+        return null;
+      }
+      const item = {
+        theme: entry.theme,
+        feeling: entry.feeling,
+        lang: entry.lang === 'en' ? 'en' : 'pt',
+        practiceCount: boundedInteger(entry.practiceCount, 0, CONTINUITY_COUNT_MAX) || 0,
+      };
+      const occurredAt = isoTimestamp(entry.occurredAt);
+      const lastPracticedAt = isoTimestamp(entry.lastPracticedAt);
+      if (occurredAt) item.occurredAt = occurredAt;
+      if (lastPracticedAt) item.lastPracticedAt = lastPracticedAt;
+      return item;
+    })
+    .filter(Boolean);
+  if (recentDreamSignals.length) out.recentDreamSignals = recentDreamSignals;
+  out.rawDreamTextIncluded = false;
+  return out;
+}
+
 // Continuity is deliberately narrower than the local journey state. Raw dreams,
 // notes, traces and any unknown properties never cross the network boundary.
 export function sanitizeContinuity(continuity, privateNames = [], lang = 'pt') {
@@ -181,6 +340,15 @@ export function sanitizeContinuity(continuity, privateNames = [], lang = 'pt') {
   if (typeof continuity.previousStepCompleted === 'boolean') {
     out.previousStepCompleted = continuity.previousStepCompleted;
   }
+  const previousKnowledgeCardIds = normalizeKnowledgeCardIds(
+    continuity.previousKnowledgeCardIds,
+    MAX_PREVIOUS_KNOWLEDGE_CARD_IDS
+  );
+  if (previousKnowledgeCardIds.length) {
+    out.previousKnowledgeCardIds = previousKnowledgeCardIds;
+  }
+  const chronology = sanitizeChronology(continuity.chronology, privateNames, lang);
+  if (chronology) out.chronology = chronology;
 
   const previous = continuity.previousScene;
   if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
@@ -194,7 +362,7 @@ export function sanitizeContinuity(continuity, privateNames = [], lang = 'pt') {
     }
     if (Object.keys(previousScene).length) out.previousScene = previousScene;
   }
-  return out;
+  return compactSanitizedContinuity(out);
 }
 
 function apiEndpoint() {
@@ -202,6 +370,13 @@ function apiEndpoint() {
   if (configured) return `${configured}/api/gerar-cena`;
   if (typeof window !== 'undefined' && window.location) return '/api/gerar-cena';
   return `${PROD_API_URL}/api/gerar-cena`;
+}
+
+async function paidApiHeaders(fetchImpl) {
+  // Unit tests inject fetch directly; the server remains the security boundary.
+  if (fetchImpl) return {};
+  const { celestePaidApiHeaders } = require('./celesteApiSession');
+  return celestePaidApiHeaders();
 }
 
 function requiredText(value, max, field) {
@@ -225,6 +400,19 @@ function validateScene(payload) {
   const affirmationLabels = cleanLabels(raw.affirmationPersonalizedWith);
   const storyLabels = cleanLabels(raw.storyPersonalizedWith);
   const labels = [...new Set([...legacyLabels, ...affirmationLabels, ...storyLabels])];
+  const generationSource = body.generation && typeof body.generation === 'object'
+    ? body.generation
+    : {};
+  const knowledgeCardIds = normalizeKnowledgeCardIds(generationSource.knowledgeCardIds);
+  const hasKnowledgeReceipt = knowledgeCardIds.length > 0;
+  const declaredSource = cleanText(generationSource.source, 40);
+  const declaredPromptVersion = cleanText(generationSource.promptVersion, 80);
+  const declaredKnowledgeVersion = cleanText(generationSource.knowledgeVersion, 80);
+  const declaredBrainVersion = cleanText(generationSource.brainVersion, 80);
+  const declaredProvider = cleanText(generationSource.provider, 20).toLowerCase();
+  const provider = ['anthropic', 'openai', 'gemini'].includes(declaredProvider)
+    ? declaredProvider
+    : '';
   return {
     scene: {
       intention: requiredText(raw.intention, 600, 'intention'),
@@ -237,14 +425,26 @@ function validateScene(payload) {
       storyPersonalizedWith: storyLabels,
     },
     generation: {
-      source: 'gemini',
-      model: cleanText(body.generation && body.generation.model, 100) || 'gemini',
-      promptVersion: cleanText(body.generation && body.generation.promptVersion, 80) || 'celeste-scene-v6',
-      knowledgeVersion:
-        cleanText(body.generation && body.generation.knowledgeVersion, 80) ||
-        'celeste-knowledge-v1',
-      seed: Number.isInteger(body.generation && body.generation.seed)
-        ? body.generation.seed
+      source: hasKnowledgeReceipt ? declaredSource || 'celeste-ai' : 'legacy-remote',
+      model: cleanText(generationSource.model, 100) || 'unknown',
+      promptVersion:
+        declaredPromptVersion || (hasKnowledgeReceipt ? 'unknown' : 'legacy-unknown'),
+      knowledgeVersion: declaredKnowledgeVersion || 'unknown',
+      brainVersion: declaredBrainVersion || 'unknown',
+      knowledgeCardIds,
+      qualityScore:
+        Number.isInteger(generationSource.qualityScore) &&
+        generationSource.qualityScore >= 0 &&
+        generationSource.qualityScore <= 100
+          ? generationSource.qualityScore
+          : undefined,
+      provider: provider || undefined,
+      fallbackUsed:
+        typeof generationSource.fallbackUsed === 'boolean'
+          ? generationSource.fallbackUsed
+          : undefined,
+      seed: Number.isInteger(generationSource.seed)
+        ? generationSource.seed
         : undefined,
     },
   };
@@ -278,9 +478,10 @@ export async function generatePersonalizedScene({
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
   try {
+    const authorization = await paidApiHeaders(fetchImpl);
     const response = await request(apiEndpoint(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authorization },
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
       body: JSON.stringify({

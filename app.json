@@ -7,12 +7,13 @@
     "orientation": "portrait",
     "icon": "./assets/icon-celeste-v2.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "backgroundColor": "#E6EFF8"
-    },
     "ios": {
       "supportsTablet": false,
+      "buildNumber": "1",
       "bundleIdentifier": "com.lenda.celeste",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com a afirmação que você escolheu."
       }
@@ -22,11 +23,33 @@
         "foregroundImage": "./assets/mascot/celi.png",
         "backgroundColor": "#AFC8E7"
       },
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "versionCode": 1,
       "package": "com.lenda.celeste"
     },
     "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-video",
-      "expo-notifications"
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#E6EFF8"
+        }
+      ],
+      "expo-notifications",
+      "expo-image"
     ]
   }
 }

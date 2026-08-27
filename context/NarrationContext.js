@@ -9,7 +9,11 @@ import React, {
 } from 'react';
 import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio';
 
 import {
   clearNarrationAudioMemoryCache,
@@ -21,6 +25,67 @@ import {
 const NarrationCtx = createContext(null);
 let nativeFileSequence = 0;
 let playbackSequence = 0;
+let narrationAudioModePromise = null;
+const WEB_PLAY_START_TIMEOUT_MS = 1800;
+
+const NARRATION_AUDIO_MODE = Object.freeze({
+  playsInSilentMode: true,
+  allowsRecording: false,
+  interruptionMode: 'doNotMix',
+  shouldPlayInBackground: false,
+  shouldRouteThroughEarpiece: false,
+});
+
+export const NARRATION_PLAYBACK_RATES = Object.freeze([0.75, 1, 1.25, 1.5]);
+
+function configureNarrationAudioMode(
+  setMode = setAudioModeAsync,
+  platform = Platform.OS
+) {
+  if (platform === 'web') return Promise.resolve(true);
+  if (!narrationAudioModePromise) {
+    narrationAudioModePromise = Promise.resolve()
+      .then(() => setMode(NARRATION_AUDIO_MODE))
+      .then(() => true)
+      .catch(() => {
+        // A later playback can retry a transient native audio-session failure.
+        narrationAudioModePromise = null;
+        return false;
+      });
+  }
+  return narrationAudioModePromise;
+}
+
+function supportedPlaybackRate(value) {
+  const requested = Number(value);
+  return NARRATION_PLAYBACK_RATES.includes(requested) ? requested : 1;
+}
+
+function aggregatePlaybackMetrics(chunkProgress, localTime, localDuration) {
+  const totalWeight = Math.max(0, Number(chunkProgress.totalWeight) || 0);
+  const completedWeight = Math.max(0, Number(chunkProgress.completedWeight) || 0);
+  const currentWeight = Math.max(0, Number(chunkProgress.currentWeight) || 0);
+  const safeLocalTime = Math.max(0, Number(localTime) || 0);
+  const safeLocalDuration = Math.max(0, Number(localDuration) || 0);
+  const localRatio = safeLocalDuration
+    ? Math.max(0, Math.min(1, safeLocalTime / safeLocalDuration))
+    : 0;
+  const progress = totalWeight
+    ? Math.max(
+        0,
+        Math.min(1, (completedWeight + currentWeight * localRatio) / totalWeight)
+      )
+    : 0;
+  const totalDuration = safeLocalDuration && currentWeight
+    ? (safeLocalDuration * totalWeight) / currentWeight
+    : 0;
+
+  return {
+    progress,
+    elapsedTime: totalDuration * progress,
+    totalDuration,
+  };
+}
 
 function errorCode(error) {
   return error && typeof error.code === 'string' ? error.code : 'audio_unavailable';
@@ -28,6 +93,58 @@ function errorCode(error) {
 
 function narrationError(code) {
   return Object.assign(new Error(code), { code });
+}
+
+function webPlaybackFailure(error) {
+  const blocked = error && error.name === 'NotAllowedError';
+  return {
+    ok: false,
+    error: blocked ? 'audio_autoplay_blocked' : 'audio_playback_failed',
+    recoverable: blocked,
+  };
+}
+
+function attemptWebPlayback(audio, timeoutMs = WEB_PLAY_START_TIMEOUT_MS) {
+  let started;
+  try {
+    started = audio.play();
+  } catch (error) {
+    return Promise.resolve(webPlaybackFailure(error));
+  }
+
+  if (!started || typeof started.then !== 'function') {
+    return Promise.resolve(
+      audio.paused === false
+        ? { ok: true, error: null, recoverable: false }
+        : { ok: false, error: 'audio_playback_start_timeout', recoverable: true }
+    );
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+
+    timer = setTimeout(
+      () =>
+        finish({
+          ok: false,
+          error: 'audio_playback_start_timeout',
+          recoverable: true,
+        }),
+      Math.max(1, Number(timeoutMs) || WEB_PLAY_START_TIMEOUT_MS)
+    );
+
+    Promise.resolve(started).then(
+      () => finish({ ok: true, error: null, recoverable: false }),
+      (error) => finish(webPlaybackFailure(error))
+    );
+  });
 }
 
 function nextPlaybackId() {
@@ -111,6 +228,7 @@ export function NarrationProvider({ children }) {
   const [activeNarratorId, setActiveNarratorId] = useState(null);
   const [activePlaybackId, setActivePlaybackId] = useState(null);
   const [lastCompletedPlaybackId, setLastCompletedPlaybackId] = useState(null);
+  const [playbackRate, setPlaybackRateState] = useState(1);
   const [webProgress, setWebProgress] = useState({ currentTime: 0, duration: 0 });
   const [chunkProgress, setChunkProgress] = useState({
     index: 0,
@@ -123,6 +241,7 @@ export function NarrationProvider({ children }) {
   const unlockSourceRef = useRef(null);
   const webAudioRef = useRef(null);
   const webUnlockingRef = useRef(false);
+  const webUnlockPromiseRef = useRef(null);
   const webEndedHandlerRef = useRef(null);
   const webFailureHandlerRef = useRef(null);
   const sequenceRef = useRef(null);
@@ -130,6 +249,7 @@ export function NarrationProvider({ children }) {
   const prepareRequestRef = useRef(null);
   const prepareEpochRef = useRef(0);
   const requestEpochRef = useRef(0);
+  const playbackRateRef = useRef(1);
   const mountedRef = useRef(true);
 
   const ensureWebAudio = useCallback(() => {
@@ -138,6 +258,8 @@ export function NarrationProvider({ children }) {
       const audio = new Audio();
       audio.preload = 'auto';
       audio.playsInline = true;
+      audio.playbackRate = playbackRateRef.current;
+      if ('preservesPitch' in audio) audio.preservesPitch = true;
       audio.onplaying = () => {
         if (!mountedRef.current || webUnlockingRef.current || !sourceRef.current) return;
         setPhase('playing');
@@ -172,6 +294,7 @@ export function NarrationProvider({ children }) {
   const releaseUnlockSource = useCallback(() => {
     const source = unlockSourceRef.current;
     unlockSourceRef.current = null;
+    webUnlockPromiseRef.current = null;
     if (source) source.dispose();
   }, []);
 
@@ -212,9 +335,9 @@ export function NarrationProvider({ children }) {
   }, []);
 
   const blessWebAudio = useCallback(() => {
-    if (Platform.OS !== 'web') return true;
+    if (Platform.OS !== 'web') return Promise.resolve(true);
     const audio = ensureWebAudio();
-    if (!audio) return false;
+    if (!audio) return Promise.resolve(false);
 
     releaseUnlockSource();
     try {
@@ -222,16 +345,32 @@ export function NarrationProvider({ children }) {
       unlockSourceRef.current = unlockSource;
       webUnlockingRef.current = true;
       audio.loop = true;
-      audio.muted = true;
+      // The samples are all zero, so this is silent without using `muted`.
+      // WebKit can otherwise allow only the muted playback and block the later voice.
+      audio.muted = false;
       audio.src = unlockSource.uri;
       audio.load();
-      const unlocking = audio.play();
-      if (unlocking && typeof unlocking.catch === 'function') unlocking.catch(() => {});
-      return true;
+      const unlocking = attemptWebPlayback(audio).then((result) => {
+        if (
+          unlockSourceRef.current !== unlockSource ||
+          webAudioRef.current !== audio
+        ) {
+          return false;
+        }
+        if (result.ok) return true;
+        try {
+          audio.pause();
+        } catch (_error) {}
+        webUnlockingRef.current = false;
+        releaseUnlockSource();
+        return false;
+      });
+      webUnlockPromiseRef.current = unlocking;
+      return unlocking;
     } catch (_error) {
       webUnlockingRef.current = false;
       releaseUnlockSource();
-      return false;
+      return Promise.resolve(false);
     }
   }, [ensureWebAudio, releaseUnlockSource]);
 
@@ -305,6 +444,11 @@ export function NarrationProvider({ children }) {
       sequence.pending.delete(index);
       if (!isCurrentSequence(sequence)) throw narrationError('audio_cancelled');
 
+      if (Platform.OS === 'web' && sequence.webUnlockPromise) {
+        await sequence.webUnlockPromise;
+        if (!isCurrentSequence(sequence)) throw narrationError('audio_cancelled');
+      }
+
       const keepsWebUnlock =
         Platform.OS === 'web' && webUnlockingRef.current && !sourceRef.current;
       if (!keepsWebUnlock) releaseSource();
@@ -324,6 +468,7 @@ export function NarrationProvider({ children }) {
         currentWeight: sequence.chunkWeights[index],
         totalWeight: sequence.totalWeight,
       });
+      let readyForGesture = false;
       if (Platform.OS === 'web') {
         const audio = ensureWebAudio();
         if (!audio) throw narrationError('audio_playback_unavailable');
@@ -332,20 +477,27 @@ export function NarrationProvider({ children }) {
         audio.muted = false;
         audio.src = source.uri;
         audio.load();
+        audio.playbackRate = playbackRateRef.current;
+        if ('preservesPitch' in audio) audio.preservesPitch = true;
         releaseUnlockSource();
-        try {
-          const playing = audio.play();
-          if (playing && typeof playing.then === 'function') await playing;
-        } catch (playError) {
-          const code = playError && playError.name === 'NotAllowedError'
-            ? 'audio_autoplay_blocked'
-            : 'audio_playback_failed';
-          throw narrationError(code);
-        }
+        const playback = await attemptWebPlayback(audio);
         if (!isCurrentSequence(sequence)) throw narrationError('audio_cancelled');
-        setPhase('playing');
+        if (!playback.ok) {
+          if (!playback.recoverable) throw narrationError(playback.error);
+          try {
+            audio.pause();
+          } catch (_error) {}
+          // Keep the generated blob and sequence alive for a fresh user gesture.
+          setPhase('ready');
+          setError(playback.error);
+          readyForGesture = true;
+        } else {
+          setPhase('playing');
+          setError(null);
+        }
       } else {
         player.replace({ uri: source.uri });
+        player.setPlaybackRate(playbackRateRef.current, 'high');
         player.play();
         setPhase('loading');
       }
@@ -353,6 +505,7 @@ export function NarrationProvider({ children }) {
       if (index + 1 < sequence.chunks.length) {
         requestChunk(sequence, index + 1);
       }
+      return { ready: readyForGesture };
     },
     [ensureWebAudio, isCurrentSequence, player, releaseSource, releaseUnlockSource, requestChunk]
   );
@@ -446,6 +599,21 @@ export function NarrationProvider({ children }) {
 
   const start = useCallback(
     async (request) => {
+      if (Platform.OS !== 'web') {
+        const audioModeReady = await configureNarrationAudioMode();
+        if (!audioModeReady) {
+          const code = 'audio_session_unavailable';
+          if (mountedRef.current) {
+            setPhase('error');
+            setError(code);
+            setActiveNarratorId(null);
+            setActivePlaybackId(null);
+            setLastCompletedPlaybackId(null);
+          }
+          return { ok: false, error: code };
+        }
+      }
+
       let chunks;
       try {
         chunks = request.mode === 'personal' ? splitNarrationText(request.text) : [undefined];
@@ -482,8 +650,9 @@ export function NarrationProvider({ children }) {
         Platform.OS === 'web' &&
         webUnlockingRef.current &&
         Boolean(unlockSourceRef.current) &&
+        Boolean(webUnlockPromiseRef.current) &&
         !sourceRef.current;
-      let webAudioReady = hasPrimedWebAudio;
+      let webAudioReady = hasPrimedWebAudio ? webUnlockPromiseRef.current : Promise.resolve(true);
       if (!hasPrimedWebAudio) {
         releaseSource();
         releaseUnlockSource();
@@ -509,6 +678,7 @@ export function NarrationProvider({ children }) {
         advancing: false,
         pending: new Map(),
         controller,
+        webUnlockPromise: Platform.OS === 'web' ? Promise.resolve(webAudioReady) : null,
         chunkWeights,
         weightOffsets,
         totalWeight,
@@ -528,17 +698,12 @@ export function NarrationProvider({ children }) {
         totalWeight,
       });
 
-      if (!webAudioReady) {
-        failSequence(sequence, 'audio_playback_unavailable');
-        return { ok: false, error: 'audio_playback_unavailable', playbackId };
-      }
-
       try {
-        await playChunk(sequence, 0);
+        const playback = await playChunk(sequence, 0);
         if (!isCurrentSequence(sequence)) {
           return { ok: false, error: 'audio_cancelled', playbackId };
         }
-        return { ok: true, playbackId };
+        return { ok: true, playbackId, ready: Boolean(playback && playback.ready) };
       } catch (requestError) {
         const code = errorCode(requestError);
         const wasCurrent = isCurrentSequence(sequence);
@@ -639,12 +804,24 @@ export function NarrationProvider({ children }) {
 
   const resume = useCallback(async () => {
     if (!sourceRef.current) return false;
+    const sequence = sequenceRef.current;
     try {
       if (Platform.OS === 'web') {
         const audio = webAudioRef.current;
         if (!audio) return false;
-        const playing = audio.play();
-        if (playing && typeof playing.then === 'function') await playing;
+        const playback = await attemptWebPlayback(audio);
+        if (!sequence || !isCurrentSequence(sequence)) return false;
+        if (!playback.ok) {
+          if (playback.recoverable) {
+            try {
+              audio.pause();
+            } catch (_error) {}
+            setPhase('ready');
+            setError(playback.error);
+            return false;
+          }
+          throw narrationError(playback.error);
+        }
       } else {
         player.play();
       }
@@ -652,14 +829,33 @@ export function NarrationProvider({ children }) {
       setError(null);
       return true;
     } catch (playError) {
-      const code = playError && playError.name === 'NotAllowedError'
-        ? 'audio_autoplay_blocked'
-        : 'audio_playback_failed';
-      const sequence = sequenceRef.current;
-      if (sequence) failSequence(sequence, code);
+      if (sequence) failSequence(sequence, errorCode(playError));
       return false;
     }
-  }, [failSequence, player]);
+  }, [failSequence, isCurrentSequence, player]);
+
+  const setPlaybackRate = useCallback(
+    (rate) => {
+      const nextRate = supportedPlaybackRate(rate);
+      playbackRateRef.current = nextRate;
+      setPlaybackRateState(nextRate);
+      try {
+        if (Platform.OS === 'web') {
+          const audio = ensureWebAudio();
+          if (audio) {
+            audio.playbackRate = nextRate;
+            if ('preservesPitch' in audio) audio.preservesPitch = true;
+          }
+        } else if (sourceRef.current) {
+          player.setPlaybackRate(nextRate, 'high');
+        }
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    },
+    [ensureWebAudio, player]
+  );
 
   const seek = useCallback(
     async (seconds) => {
@@ -731,58 +927,48 @@ export function NarrationProvider({ children }) {
   }, [cancelPrepare, cancelRequest, releaseSource, releaseUnlockSource]);
 
   const value = useMemo(
-    () => ({
-      phase,
-      error,
-      activeNarratorId,
-      activePlaybackId,
-      playbackId: activePlaybackId,
-      lastCompletedPlaybackId,
-      chunkIndex: chunkProgress.index,
-      chunkCount: chunkProgress.count,
-      isLoading: phase === 'loading',
-      isPlaying: phase === 'playing',
-      isPaused: phase === 'paused',
-      currentTime:
-        Platform.OS === 'web'
-          ? webProgress.currentTime
-          : Number(status.currentTime) || 0,
-      duration:
-        Platform.OS === 'web'
-          ? webProgress.duration
-          : Number(status.duration) || 0,
-      progress: (() => {
-        if (!chunkProgress.totalWeight) return 0;
-        const localTime = Platform.OS === 'web'
-          ? webProgress.currentTime
-          : Number(status.currentTime) || 0;
-        const localDuration = Platform.OS === 'web'
-          ? webProgress.duration
-          : Number(status.duration) || 0;
-        const localRatio = localDuration
-          ? Math.max(0, Math.min(1, localTime / localDuration))
-          : 0;
-        return Math.max(
-          0,
-          Math.min(
-            1,
-            (chunkProgress.completedWeight + chunkProgress.currentWeight * localRatio) /
-              chunkProgress.totalWeight
-          )
-        );
-      })(),
-      playPreview,
-      playPersonal,
-      preparePersonal,
-      cancelPrepare,
-      prime,
-      pause,
-      resume,
-      seek,
-      stop,
-      clearAudioCache: clearNarrationAudioMemoryCache,
-      clearError: () => setError(null),
-    }),
+    () => {
+      const localTime = Platform.OS === 'web'
+        ? webProgress.currentTime
+        : Number(status.currentTime) || 0;
+      const localDuration = Platform.OS === 'web'
+        ? webProgress.duration
+        : Number(status.duration) || 0;
+      const aggregate = aggregatePlaybackMetrics(chunkProgress, localTime, localDuration);
+
+      return {
+        phase,
+        error,
+        activeNarratorId,
+        activePlaybackId,
+        playbackId: activePlaybackId,
+        lastCompletedPlaybackId,
+        chunkIndex: chunkProgress.index,
+        chunkCount: chunkProgress.count,
+        isLoading: phase === 'loading',
+        isPlaying: phase === 'playing',
+        isPaused: phase === 'paused',
+        isReady: phase === 'ready',
+        currentTime: localTime,
+        duration: localDuration,
+        elapsedTime: aggregate.elapsedTime,
+        totalDuration: aggregate.totalDuration,
+        progress: aggregate.progress,
+        playbackRate,
+        playPreview,
+        playPersonal,
+        preparePersonal,
+        cancelPrepare,
+        prime,
+        pause,
+        resume,
+        seek,
+        setPlaybackRate,
+        stop,
+        clearAudioCache: clearNarrationAudioMemoryCache,
+        clearError: () => setError(null),
+      };
+    },
     [
       activeNarratorId,
       activePlaybackId,
@@ -796,12 +982,14 @@ export function NarrationProvider({ children }) {
       lastCompletedPlaybackId,
       pause,
       phase,
+      playbackRate,
       playPersonal,
       playPreview,
       preparePersonal,
       prime,
       resume,
       seek,
+      setPlaybackRate,
       status.currentTime,
       status.duration,
       stop,

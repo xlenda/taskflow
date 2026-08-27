@@ -7,16 +7,16 @@ const { transformSync } = require('@babel/core');
 const ROOT = path.resolve(__dirname, '..');
 const endpoint = require('../api/gerar-audio');
 const ENV_KEYS = [
-  'GEMINI_API_KEY',
-  'GEMINI_TTS_MODEL',
-  'GEMINI_TTS_TIMEOUT_MS',
-  'GEMINI_PAID_DATA_TERMS_ACCEPTED',
+  'ELEVENLABS_API_KEY',
+  'ELEVENLABS_TTS_MODEL',
+  'ELEVENLABS_TTS_TIMEOUT_MS',
   'CELESTE_ALLOWED_ORIGINS',
 ];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 const originalFetch = global.fetch;
+const originalWavLoader = Module._extensions['.wav'];
 
-function loadModule(relativePath) {
+function loadModule(relativePath, mocks = {}) {
   const filename = path.join(ROOT, relativePath);
   const compiled = transformSync(fs.readFileSync(filename, 'utf8'), {
     filename,
@@ -26,18 +26,31 @@ function loadModule(relativePath) {
   const loaded = new Module(filename, module);
   loaded.filename = filename;
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
-  loaded._compile(compiled, filename);
+  require.cache[filename] = loaded;
+  const originalLoad = Module._load;
+  Module._load = function mockedLoad(request, parent, isMain) {
+    if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  try {
+    loaded._compile(compiled, filename);
+  } finally {
+    Module._load = originalLoad;
+  }
   return loaded.exports;
 }
 
 function configure() {
-  process.env.GEMINI_API_KEY = 'gemini-audio-test-secret';
-  process.env.GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
-  process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
+  process.env.ELEVENLABS_API_KEY = 'elevenlabs-audio-test-secret';
+  process.env.ELEVENLABS_TTS_MODEL = 'eleven_multilingual_v2';
   process.env.CELESTE_ALLOWED_ORIGINS = 'https://celeste.example';
-  delete process.env.GEMINI_TTS_TIMEOUT_MS;
+  delete process.env.ELEVENLABS_TTS_TIMEOUT_MS;
   endpoint._internals.resetSecurityForTests();
   endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
+  endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
+    ok: true,
+    userId: '00000000-0000-4000-8000-000000000001',
+  }));
 }
 
 function restore() {
@@ -46,6 +59,8 @@ function restore() {
     else process.env[key] = originalEnv[key];
   }
   global.fetch = originalFetch;
+  if (originalWavLoader) Module._extensions['.wav'] = originalWavLoader;
+  else delete Module._extensions['.wav'];
   endpoint._internals.resetSecurityForTests();
 }
 
@@ -89,31 +104,20 @@ function res() {
   };
 }
 
-function pcmPayload(pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0])) {
-  return {
-    status: 'completed',
-    steps: [
-      {
-        type: 'model_output',
-        content: [
-          {
-            type: 'audio',
-            data: pcm.toString('base64'),
-            mime_type: 'audio/l16',
-            sample_rate: 24000,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function upstream(payload = pcmPayload()) {
+function upstream(pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]), overrides = {}) {
   return {
     ok: true,
     status: 200,
-    headers: { get: () => null },
-    json: async () => payload,
+    headers: {
+      get: (name) =>
+        name.toLowerCase() === 'content-type'
+          ? 'audio/pcm'
+          : name.toLowerCase() === 'content-length'
+            ? String(pcm.length)
+            : null,
+    },
+    arrayBuffer: async () => pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength),
+    ...overrides,
   };
 }
 
@@ -125,20 +129,30 @@ async function call(body, overrides) {
 
 async function main() {
   configure();
+  Module._extensions['.wav'] = (loaded, filename) => {
+    loaded.exports = filename;
+  };
   const narrators = loadModule('constants/narrators.js');
-  const service = loadModule('services/generateNarrationAudio.js');
+  let paidHeadersImpl = async () => ({});
+  const service = loadModule('services/generateNarrationAudio.js', {
+    './celesteApiSession': { celestePaidApiHeaders: (...args) => paidHeadersImpl(...args) },
+    'expo-asset': { Asset: { fromModule: () => ({ downloadAsync: async () => {} }) } },
+    'expo-file-system': { File: class TestFile {} },
+    'react-native': { Platform: { OS: 'web' } },
+  });
   const ids = narrators.NARRATORS.map(({ id }) => id);
-  assert.strictEqual(ids.length, 6, 'Celeste precisa de seis vozes Gemini curadas');
+  assert.strictEqual(ids.length, 6, 'Celeste precisa de seis vozes ElevenLabs curadas');
   assert.strictEqual(new Set(ids).size, 6, 'IDs de narrador duplicados');
   assert.strictEqual(new Set(narrators.NARRATORS.map(({ tts }) => tts.voice)).size, 6);
   for (const narrator of narrators.NARRATORS) {
-    assert.strictEqual(narrator.tts.provider, 'gemini');
+    assert.strictEqual(narrator.tts.provider, 'elevenlabs');
     assert.strictEqual(
       narrator.tts.voice,
-      endpoint._internals.NARRATOR_VOICES[narrator.id].voice,
+      endpoint._internals.NARRATOR_VOICES[narrator.id].voiceId,
       `Voz cliente/servidor divergente para ${narrator.id}`
     );
-    assert.strictEqual(narrators.narratorPreviewUrl(narrator.id, 'pt'), null);
+    assert.ok(narrators.narratorPreviewUrl(narrator.id, 'pt'));
+    assert.ok(narrators.narratorPreviewUrl(narrator.id, 'en'));
   }
 
   const longText = Array.from(
@@ -174,12 +188,8 @@ async function main() {
     return upstream();
   };
   const preview = await call({ mode: 'preview', narratorId: 'luma', lang: 'pt' });
-  assert.strictEqual(preview.statusCode, 200);
-  assert.ok(Buffer.isBuffer(preview.body));
-  assert.strictEqual(preview.body.toString('ascii', 0, 4), 'RIFF');
-  assert.strictEqual(preview.body.toString('ascii', 8, 12), 'WAVE');
-  assert.strictEqual(preview.body.readUInt32LE(24), 24000);
-  assert.strictEqual(preview.headers['content-type'], 'audio/wav');
+  assert.strictEqual(preview.statusCode, 410);
+  assert.strictEqual(preview.body.error, 'preview_is_bundled');
   assert.strictEqual(preview.headers['cache-control'], 'no-store, max-age=0');
   assert.strictEqual(preview.headers['cdn-cache-control'], 'no-store');
   assert.strictEqual(preview.headers['vercel-cdn-cache-control'], 'no-store');
@@ -189,15 +199,7 @@ async function main() {
     endpoint._internals.PREVIEW_TEXT.pt,
     'Respire com calma. A vida que você está construindo começa no próximo passo possível.'
   );
-  assert.match(sent.url, /\/v1beta\/interactions$/);
-  assert.strictEqual(sent.options.headers['Api-Revision'], '2026-05-20');
-  assert.strictEqual(sent.options.headers['x-goog-api-key'], process.env.GEMINI_API_KEY);
-  assert.strictEqual(sent.body.model, process.env.GEMINI_TTS_MODEL);
-  assert.strictEqual(sent.body.store, false);
-  assert.deepStrictEqual(sent.body.response_format, { type: 'audio', sample_rate: 24000 });
-  assert.deepStrictEqual(sent.body.generation_config.speech_config, [{ voice: 'Achird' }]);
-  assert.ok(sent.body.input.includes(endpoint._internals.PREVIEW_TEXT.pt));
-  assert.ok(!sent.options.body.includes(process.env.GEMINI_API_KEY));
+  assert.strictEqual(upstreamCalls, 0, 'preview empacotado nunca pode chegar ao provedor');
 
   const personalText = 'Eu caminho com calma na direcao do que importa para mim.';
   const personal = await call({
@@ -209,9 +211,26 @@ async function main() {
     adultConfirmed: true,
   });
   assert.strictEqual(personal.statusCode, 200);
-  assert.ok(sent.body.input.includes(personalText));
-  assert.deepStrictEqual(sent.body.generation_config.speech_config, [{ voice: 'Orus' }]);
-  assert.ok(!JSON.stringify(personal.body).includes(process.env.GEMINI_API_KEY));
+  const sentUrl = new URL(sent.url);
+  assert.strictEqual(sentUrl.origin, 'https://api.elevenlabs.io');
+  assert.strictEqual(
+    sentUrl.pathname,
+    `/v1/text-to-speech/${endpoint._internals.NARRATOR_VOICES.atlas.voiceId}`
+  );
+  assert.strictEqual(sentUrl.searchParams.get('output_format'), 'pcm_24000');
+  assert.strictEqual(sentUrl.searchParams.get('enable_logging'), 'false');
+  assert.strictEqual(sent.options.headers['xi-api-key'], process.env.ELEVENLABS_API_KEY);
+  assert.strictEqual(sent.options.headers.Accept, 'audio/pcm');
+  assert.deepStrictEqual(
+    sent.body,
+    endpoint._internals.buildElevenLabsRequest(
+      { mode: 'personal', narratorId: 'atlas', lang: 'pt', text: personalText },
+      'eleven_multilingual_v2'
+    )
+  );
+  assert.strictEqual(sent.body.text, personalText);
+  assert.strictEqual(sent.body.model_id, 'eleven_multilingual_v2');
+  assert.ok(!JSON.stringify(personal.body).includes(process.env.ELEVENLABS_API_KEY));
 
   assert.strictEqual(
     (await call({ mode: 'preview', narratorId: 'luma', lang: 'pt', text: 'nao aceitar' })).statusCode,
@@ -237,7 +256,7 @@ async function main() {
     (await call({ mode: 'preview', narratorId: 'luma', lang: 'pt' }, { headers: { origin: undefined } })).body.error,
     'origin_not_allowed'
   );
-  assert.strictEqual(upstreamCalls, 2, 'origem ausente nao pode consumir o Gemini');
+  assert.strictEqual(upstreamCalls, 1, 'origem ausente nao pode consumir o provedor');
 
   endpoint._internals.setBotVerifierForTests(async () => {
     throw new Error('verificador indisponivel');
@@ -245,7 +264,7 @@ async function main() {
   const botUnavailable = await call({ mode: 'preview', narratorId: 'luma', lang: 'pt' });
   assert.strictEqual(botUnavailable.statusCode, 503);
   assert.strictEqual(botUnavailable.body.error, 'bot_verification_unavailable');
-  assert.strictEqual(upstreamCalls, 2, 'falha fechada do BotID nao pode consumir o Gemini');
+  assert.strictEqual(upstreamCalls, 1, 'falha fechada do BotID nao pode consumir o provedor');
   endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
 
   const tooLarge = await call(
@@ -254,10 +273,17 @@ async function main() {
   );
   assert.strictEqual(tooLarge.statusCode, 413);
   assert.strictEqual(tooLarge.body.error, 'payload_too_large');
-  assert.strictEqual(upstreamCalls, 2, 'payload grande nao pode consumir o Gemini');
+  assert.strictEqual(upstreamCalls, 1, 'payload grande nao pode consumir o provedor');
 
-  global.fetch = async () => upstream({ status: 'completed', steps: [] });
-  const malformed = await call({ mode: 'preview', narratorId: 'aurora', lang: 'en' });
+  global.fetch = async () => upstream(Buffer.from([0, 0, 1]));
+  const malformed = await call({
+    mode: 'personal',
+    narratorId: 'aurora',
+    lang: 'en',
+    text: 'A valid personal narration.',
+    cloudConsent: true,
+    adultConfirmed: true,
+  });
   assert.strictEqual(malformed.statusCode, 502);
   assert.strictEqual(malformed.body.error, 'invalid_audio');
 
@@ -289,15 +315,16 @@ async function main() {
     narratorId: 'serena',
     lang: 'en',
     fetchImpl: clientFetch,
+    previewLoaderImpl: async () => new Uint8Array(wav),
   };
   const bytes = await service.requestNarrationAudio(previewRequest);
   const repeatedBytes = await service.requestNarrationAudio(previewRequest);
   assert.ok(bytes instanceof Uint8Array && bytes.length === wav.length);
   assert.ok(repeatedBytes instanceof Uint8Array && repeatedBytes.length === wav.length);
   assert.notStrictEqual(bytes, repeatedBytes, 'cache deve devolver uma copia privada do WAV');
-  assert.deepStrictEqual(clientBody, { mode: 'preview', narratorId: 'serena', lang: 'en' });
-  assert.strictEqual(clientOptions.cache, 'no-store');
-  assert.strictEqual(clientFetchCalls, 1, 'mesma voz/idioma/texto deve reutilizar cache da sessao');
+  assert.strictEqual(clientBody, undefined, 'preview local nao deve montar corpo de rede');
+  assert.strictEqual(clientOptions, undefined, 'preview local nao deve abrir requisicao');
+  assert.strictEqual(clientFetchCalls, 0, 'preview local nao deve consumir endpoint');
   assert.strictEqual(service.narrationAudioMemoryCacheSize(), 1);
 
   const cachedPersonalRequest = {
@@ -311,11 +338,11 @@ async function main() {
   };
   await service.requestNarrationAudio(cachedPersonalRequest);
   await service.requestNarrationAudio(cachedPersonalRequest);
-  assert.strictEqual(clientFetchCalls, 2, 'texto pessoal repetido deve gerar uma unica chamada');
+  assert.strictEqual(clientFetchCalls, 1, 'texto pessoal repetido deve gerar uma unica chamada');
   await service.requestNarrationAudio({ ...cachedPersonalRequest, narratorId: 'atlas' });
   await service.requestNarrationAudio({ ...cachedPersonalRequest, lang: 'en' });
   await service.requestNarrationAudio({ ...cachedPersonalRequest, text: 'Outro texto pessoal.' });
-  assert.strictEqual(clientFetchCalls, 5, 'voz, idioma e texto devem participar da chave privada');
+  assert.strictEqual(clientFetchCalls, 4, 'voz, idioma e texto devem participar da chave privada');
 
   const aborted = new AbortController();
   aborted.abort();
@@ -323,7 +350,7 @@ async function main() {
     () => service.requestNarrationAudio({ ...cachedPersonalRequest, signal: aborted.signal }),
     (requestError) => requestError && requestError.code === 'audio_cancelled'
   );
-  assert.strictEqual(clientFetchCalls, 5, 'requisicao cancelada nao deve consumir o endpoint');
+  assert.strictEqual(clientFetchCalls, 4, 'requisicao cancelada nao deve consumir o endpoint');
   await assert.rejects(
     () =>
       service.requestNarrationAudio({
@@ -332,7 +359,61 @@ async function main() {
       }),
     (requestError) => requestError && requestError.code === 'text_invalid'
   );
-  assert.strictEqual(clientFetchCalls, 5, 'texto grande nunca deve ser truncado silenciosamente');
+  assert.strictEqual(clientFetchCalls, 4, 'texto grande nunca deve ser truncado silenciosamente');
+
+  service.clearNarrationAudioMemoryCache();
+  const networkFetch = global.fetch;
+  let authorizationSignal;
+  let resolveAuthorization;
+  let authenticatedFetchCalls = 0;
+  paidHeadersImpl = ({ signal: nextSignal } = {}) => {
+    authorizationSignal = nextSignal;
+    return new Promise((resolve) => {
+      resolveAuthorization = resolve;
+    });
+  };
+  global.fetch = async () => {
+    authenticatedFetchCalls += 1;
+    return upstream();
+  };
+  try {
+    const timeoutStartedAt = Date.now();
+    await assert.rejects(
+      () => service.requestNarrationAudio({
+        ...cachedPersonalRequest,
+        text: 'Uma autenticacao travada deve liberar o estado de carregamento.',
+        fetchImpl: undefined,
+        timeoutMs: 20,
+      }),
+      (requestError) => requestError && requestError.code === 'audio_timeout'
+    );
+    assert.ok(Date.now() - timeoutStartedAt < 1000, 'autenticacao travada nao pode manter loading infinito');
+    assert.strictEqual(authorizationSignal?.aborted, true, 'timeout deve cancelar o sinal da autenticacao');
+    resolveAuthorization({ Authorization: 'Bearer late-test-token' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(authenticatedFetchCalls, 0, 'timeout na autenticacao nao pode iniciar o fetch pago');
+
+    const externalAbort = new AbortController();
+    const cancelledDuringAuthorization = service.requestNarrationAudio({
+      ...cachedPersonalRequest,
+      text: 'Uma autenticacao travada tambem deve respeitar o cancelamento externo.',
+      fetchImpl: undefined,
+      signal: externalAbort.signal,
+      timeoutMs: 5000,
+    });
+    externalAbort.abort();
+    await assert.rejects(
+      () => cancelledDuringAuthorization,
+      (requestError) => requestError && requestError.code === 'audio_cancelled'
+    );
+    assert.strictEqual(authorizationSignal?.aborted, true, 'cancelamento externo deve chegar a autenticacao');
+    resolveAuthorization({ Authorization: 'Bearer cancelled-test-token' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(authenticatedFetchCalls, 0, 'cancelamento na autenticacao nao pode iniciar o fetch pago');
+  } finally {
+    global.fetch = networkFetch;
+    paidHeadersImpl = async () => ({});
+  }
 
   const liveAbort = new AbortController();
   let liveAbortStarted = false;
@@ -415,22 +496,21 @@ async function main() {
 
   service.clearNarrationAudioMemoryCache();
   await service.requestNarrationAudio(previewRequest);
-  assert.strictEqual(clientFetchCalls, 6, 'limpar a cache deve exigir nova geracao');
+  assert.strictEqual(clientFetchCalls, 4, 'limpar preview local nao pode exigir rede');
 
   const contextSource = fs.readFileSync(path.join(ROOT, 'context/NarrationContext.js'), 'utf8');
   const serviceSource = fs.readFileSync(path.join(ROOT, 'services/generateNarrationAudio.js'), 'utf8');
   const apiSource = fs.readFileSync(path.join(ROOT, 'api/gerar-audio.js'), 'utf8');
-  assert.ok(
-    !fs.existsSync(path.join(ROOT, 'scripts', 'gerar-amostras-narradores.js')),
-    'gerador antigo de amostras voltou ao repositorio'
-  );
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'capture-narrator-previews.js')));
   const legacySamples = path.join(ROOT, 'scripts', 'amostras');
   assert.ok(
     !fs.existsSync(legacySamples) || fs.readdirSync(legacySamples).length === 0,
     'amostras antigas de voz continuam versionadas'
   );
-  for (const source of [contextSource, serviceSource, apiSource]) {
+  for (const source of [contextSource, serviceSource]) {
     assert.doesNotMatch(source, /elevenlabs|ELEVENLABS|expo-speech/i);
+  }
+  for (const source of [contextSource, serviceSource, apiSource]) {
     assert.doesNotMatch(source, /\bsk_[a-z0-9_-]{20,}/i);
     assert.doesNotMatch(source, /console\.(?:log|warn|error)/);
   }
@@ -449,10 +529,15 @@ async function main() {
   assert.match(contextSource, /requestChunk\(sequence, index \+ 1\)/);
   assert.match(contextSource, /chunkIndex:\s*chunkProgress\.index/);
   assert.match(contextSource, /chunkCount:\s*chunkProgress\.count/);
-  assert.match(contextSource, /progress:\s*\(\(\) =>/);
+  assert.match(contextSource, /function aggregatePlaybackMetrics\(/);
+  assert.match(contextSource, /progress:\s*aggregate\.progress/);
   assert.match(contextSource, /const audio = new Audio\(\)/);
   assert.match(contextSource, /new Blob\(/);
   assert.match(contextSource, /new File\(/);
+  assert.match(contextSource, /attemptWebPlayback/);
+  assert.match(contextSource, /webUnlockPromiseRef/);
+  assert.match(contextSource, /setPhase\(['"]ready['"]\)/);
+  assert.doesNotMatch(contextSource, /audio\.muted\s*=\s*true/);
   const startOffset = contextSource.indexOf('const start = useCallback');
   const directBlessOffset = contextSource.indexOf('webAudioReady = blessWebAudio();', startOffset);
   const firstPlaybackAwaitOffset = contextSource.indexOf('await playChunk(sequence, 0)', startOffset);
@@ -465,10 +550,15 @@ async function main() {
   assert.match(serviceSource, /cache:\s*'no-store'/);
   assert.match(serviceSource, /MAX_AUDIO_CHUNK_CHARS\s*=\s*800/);
   assert.match(serviceSource, /audioMemoryCache/);
-  assert.match(apiSource, /store:\s*false/);
+  assert.match(serviceSource, /loadNarratorPreview/);
+  assert.match(apiSource, /preview_is_bundled/);
+  assert.match(apiSource, /api\.elevenlabs\.io/);
+  assert.match(apiSource, /ELEVENLABS_API_KEY/);
+  assert.match(apiSource, /enable_logging:\s*'false'/);
+  assert.doesNotMatch(apiSource, /GEMINI_TTS|generativelanguage/);
 
   process.stdout.write(
-    'Gemini TTS OK: 6 vozes, blocos completos, cache privado, IDs e WAV sequencial.\n'
+    'ElevenLabs TTS OK: 6 vozes, blocos completos, cache privado, IDs e WAV sequencial.\n'
   );
 }
 

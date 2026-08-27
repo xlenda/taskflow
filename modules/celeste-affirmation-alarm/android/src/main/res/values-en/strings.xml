@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="celeste_alarm_channel_name">Affirmation alarms</string>
+  <string name="celeste_alarm_channel_description">Playback at the chosen time</string>
+</resources>

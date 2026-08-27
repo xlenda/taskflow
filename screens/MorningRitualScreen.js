@@ -505,6 +505,8 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
           wakeAffirmationId: id,
           wakeAffirmationText: text,
           wakeAffirmationLang: itemLang || lang,
+          wakeNarratorId: narration.narratorId || null,
+          wakeSoundSource: response.soundSource || 'local_speech',
         });
       } else {
         let scheduledAlarmIds = Array.isArray(response.scheduledAlarmIds)
@@ -560,7 +562,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
       alarmOperationRef.current = false;
       if (mountedRef.current) setAlarmBusy(false);
     }
-  }, [lang, saveMorningRitualPreferences, haptic]);
+  }, [lang, narration.narratorId, saveMorningRitualPreferences, haptic]);
 
   const setAlarmEnabled = useCallback(async (enabled) => {
     if (alarmBusy || alarmOperationRef.current || (enabled && !selectedWake)) return;
@@ -839,7 +841,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     if (!allowed) return;
 
     const usedByAlarm = ritual.wakeAffirmationId === `ritual:${entryId}`;
-    if (usedByAlarm && Platform.OS === 'ios') {
+    if (usedByAlarm && (Platform.OS === 'ios' || Platform.OS === 'android')) {
       const currentCapability = await getAffirmationAlarmCapability().catch(() => null);
       if (!currentCapability) {
         if (mountedRef.current) setDreamDeleteError(true);

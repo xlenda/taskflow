@@ -23,8 +23,12 @@ const visionPlayer = read('screens/VisionPlayerScreen.js');
 const visions = read('screens/VisionsScreen.js');
 const affirmations = read('screens/AffirmationsScreen.js');
 const context = read('context/AppContext.js');
+const gradientCover = read('components/GradientCover.js');
+const affirmationCard = read('components/AffirmationCard.js');
+const visualStorage = read('services/personalVisualStorage.js');
 const legal = read('constants/legal.js');
 const chat = read('screens/onboarding/ChatOnboardingScreen.js');
+const reveal = read('screens/onboarding/RevealScreen.js');
 
 for (const file of [
   'App.js',
@@ -37,8 +41,14 @@ for (const file of [
   'screens/VisionPlayerScreen.js',
   'screens/VisionsScreen.js',
   'screens/AffirmationsScreen.js',
+  'context/AppContext.js',
+  'components/GradientCover.js',
+  'components/AffirmationCard.js',
+  'services/personalVisualStorage.js',
+  'utils/usePersonalVisual.js',
   'screens/AffirmationAlarmScreen.js',
   'screens/onboarding/ChatOnboardingScreen.js',
+  'screens/onboarding/RevealScreen.js',
   'services/affirmationAlarm.js',
   'services/communityStories.js',
 ]) {
@@ -130,8 +140,9 @@ assert.ok(
   'recomecar deve esperar e conferir a limpeza local antes de confirmar sucesso'
 );
 assert.ok(
-  journey.includes('const MAX_BACKUP_BYTES = 2 * 1024 * 1024') &&
-    journey.includes('file.size > MAX_BACKUP_BYTES'),
+  journey.includes('CELESTE_BACKUP_MAX_BYTES, useApp') &&
+    journey.includes('file.size > CELESTE_BACKUP_MAX_BYTES') &&
+    journey.includes('const serialized = await exportStateJson()'),
   'backup gigante deve ser recusado antes do FileReader'
 );
 assert.ok(
@@ -195,6 +206,58 @@ assert.ok(
     context.includes('AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS)') &&
     context.includes('await writerRef.current.waitFor(revision'),
   'reset precisa invalidar geracoes, limpar chaves auxiliares e confirmar a gravacao principal'
+);
+assert.ok(
+  context.includes('const ensurePersonalVisual = useCallback') &&
+    context.includes('personalVisualRequestsRef') &&
+    context.includes('personalVisualFailuresRef') &&
+    context.includes('await acquirePersonalVisual(existingKey)') &&
+    context.includes("phase: 'pending'") &&
+    context.includes("phase: 'error'") &&
+    context.includes('savePersonalVisual') &&
+    context.includes('createPersonalVisualCacheKey') &&
+    context.includes('base64: visual.image.data') &&
+    context.includes('generationEpoch !== generationEpochRef.current'),
+  'visual pessoal precisa reparar cache, deduplicar, expor estado e respeitar reset tardio'
+);
+assert.ok(
+  context.includes('const editedSnapshot = snapshotManifestationContent(next)') &&
+    context.includes('...editedSnapshot.generation') &&
+    context.includes("source: 'user-edited'") &&
+    context.includes('changesVisualSubject') &&
+    context.includes('deletePersonalVisual(saved.visual.cacheKey)'),
+  'edicao pessoal deve preservar o recibo da base sem fingir que o texto continua remoto'
+);
+assert.ok(
+  context.includes('clearPersonalVisuals()') &&
+    context.includes("'generated-image-files'") &&
+    context.includes('visual: sanitizePersonalVisualReceipt(m.visual)'),
+  'reset, backup e hidratacao precisam tratar a imagem pessoal como arquivo privado do aparelho'
+);
+assert.ok(
+  visualStorage.includes("new Directory(Paths.document, NATIVE_DIRECTORY)") &&
+    visualStorage.includes("file.write(base64, { encoding: 'base64' })") &&
+    visualStorage.includes('indexedDB.open') &&
+    !visualStorage.includes('AsyncStorage'),
+  'imagem pessoal deve morar em arquivo/IndexedDB, nunca dentro do estado textual'
+);
+assert.ok(
+  gradientCover.includes("import { Image } from 'expo-image'") &&
+    gradientCover.includes('visualKey') &&
+    gradientCover.includes("'rgba(4,10,18,0.56)'") &&
+    affirmationCard.includes('visualKey={visualKey}') &&
+    affirmationCard.includes('personal-visual-retry') &&
+    affirmationCard.includes('textShadowColor'),
+  'cards pessoais precisam usar a foto com veu central, texto legivel e retry visivel'
+);
+assert.ok(
+  visions.includes('visualKey={vision.visualKey}') &&
+    visionPlayer.includes('visualKey={vision.visualKey}') &&
+    affirmations.includes('visualKey={current.visualKey}') &&
+    affirmations.includes('ensurePersonalVisual(current.manifestationId)') &&
+    reveal.includes('testID="reveal-personal-visual"') &&
+    reveal.includes('visualKey={m.visual.cacheKey}'),
+  'visual pessoal precisa aparecer e se autorreparar em afirmacoes, visoes e Reveal'
 );
 assert.ok(legal.includes('reconhecimento de voz') && legal.includes('afirmação escolhida como som do despertador'));
 

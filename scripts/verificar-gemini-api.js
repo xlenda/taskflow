@@ -43,6 +43,10 @@ function configure() {
   delete process.env.GEMINI_TIMEOUT_MS;
   endpoint._internals.resetSecurityForTests();
   endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
+  endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
+    ok: true,
+    userId: '00000000-0000-4000-8000-000000000001',
+  }));
 }
 
 function validBody(overrides = {}) {
@@ -545,10 +549,12 @@ test('Gemini scene API contract', async (t) => {
     }));
 
     assert.strictEqual(first.statusCode, 200);
-    assert.strictEqual(first.body.generation.source, 'gemini');
+    assert.strictEqual(first.body.generation.source, 'celeste-ai');
+    assert.strictEqual(first.body.generation.provider, 'gemini');
+    assert.strictEqual(first.body.generation.fallbackUsed, false);
     assert.strictEqual(first.body.generation.model, 'gemini-3.7-flash');
-    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v5');
-    assert.strictEqual(first.body.generation.knowledgeVersion, 'celeste-knowledge-v1');
+    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v7');
+    assert.strictEqual(first.body.generation.knowledgeVersion, 'celeste-knowledge-v2');
     assert.strictEqual(first.body.generation.seed, second.body.generation.seed);
     assert.deepStrictEqual(first.body.scene.affirmationPersonalizedWith, [
       'o que você quer viver',
@@ -575,7 +581,7 @@ test('Gemini scene API contract', async (t) => {
     const sent = seen[0];
     assert.ok(sent.options.body.includes('values-based reflection'));
     assert.ok(sent.options.body.includes('explicit if-then plan'));
-    assert.ok(sent.options.body.includes('celeste-knowledge-v1'));
+    assert.ok(sent.options.body.includes('celeste-knowledge-v2'));
     assert.ok(sent.options.body.includes('[mental_contrasting]'));
     assert.match(sent.url, /gemini-3\.7-flash:generateContent$/);
     assert.strictEqual(sent.options.headers['x-goog-api-key'], process.env.GEMINI_API_KEY);
@@ -655,6 +661,90 @@ test('Gemini scene API contract', async (t) => {
     res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.5' } }));
     assert.strictEqual(res.statusCode, 422);
     assert.deepStrictEqual(res.body, { error: 'generation_blocked' });
+  });
+
+  await t.test('does not start a repair when a slow invalid first attempt leaves too little budget', async () => {
+    configure();
+    let now = 1_000;
+    let calls = 0;
+    endpoint._internals.setGenerationClockForTests(() => now);
+    global.fetch = async () => {
+      calls += 1;
+      now += endpoint._internals.generationDeadlineMs() -
+        endpoint._internals.minimumRepairBudgetMs() + 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
+      };
+    };
+
+    try {
+      const res = await invoke(request(validBody()));
+      assert.strictEqual(res.statusCode, 504);
+      assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
+      assert.strictEqual(calls, 1, 'a late invalid response must not start a doomed repair');
+    } finally {
+      endpoint._internals.setGenerationClockForTests();
+    }
+  });
+
+  await t.test('repairs a fast invalid first attempt inside the shared deadline', async () => {
+    configure();
+    let now = 2_000;
+    const seen = [];
+    endpoint._internals.setGenerationClockForTests(() => now);
+    global.fetch = async (_url, options) => {
+      seen.push(JSON.parse(options.body));
+      now += 100;
+      return seen.length === 1
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
+          }
+        : { ok: true, status: 200, json: async () => generatedPayload() };
+    };
+
+    try {
+      const res = await invoke(request(validBody()));
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(seen.length, 2);
+      assert.match(
+        seen[1].systemInstruction.parts[0].text,
+        /QUALITY REPAIR FOR THIS RETRY/,
+        'the second attempt must carry the repair instruction'
+      );
+    } finally {
+      endpoint._internals.setGenerationClockForTests();
+    }
+  });
+
+  await t.test('rejects a response whose body completes after the total generation deadline', async () => {
+    configure();
+    let now = 3_000;
+    let calls = 0;
+    endpoint._internals.setGenerationClockForTests(() => now);
+    global.fetch = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => {
+          now += endpoint._internals.generationDeadlineMs() + 1;
+          return generatedPayload();
+        },
+      };
+    };
+
+    try {
+      const res = await invoke(request(validBody()));
+      assert.strictEqual(res.statusCode, 504);
+      assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
+      assert.strictEqual(calls, 1);
+    } finally {
+      endpoint._internals.setGenerationClockForTests();
+    }
   });
 
   await t.test('times out cleanly and never echoes network errors or secrets', async () => {

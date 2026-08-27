@@ -227,6 +227,7 @@ try {
 }
 
 const appConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'));
+const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 if (appConfig.expo.icon !== './assets/icon-celeste-v2.png') {
   fail('app.json is not using icon-celeste-v2.png');
 }
@@ -238,6 +239,75 @@ if (appConfig.expo.android?.adaptiveIcon?.foregroundImage !== './assets/mascot/c
   if (!foregroundSize || foregroundSize.type !== 'png' || foregroundSize.hasAlpha !== true) {
     fail('Android adaptive foreground must be a readable PNG with an alpha channel');
   }
+}
+
+if (!/^~57\./.test(packageJson.dependencies?.expo || '')) {
+  fail('package.json must use the supported Expo SDK 57 release line');
+}
+if (
+  packageJson.dependencies?.react !== '19.2.3' ||
+  packageJson.dependencies?.['react-native'] !== '0.86.3'
+) {
+  fail('React and React Native must match the Expo SDK 57 compatibility matrix');
+}
+if (!/^\d+(?:\.\d+){0,2}$/.test(appConfig.expo.ios?.buildNumber || '')) {
+  fail('iOS buildNumber must use a valid numeric version');
+}
+if (!Number.isInteger(appConfig.expo.android?.versionCode) || appConfig.expo.android.versionCode < 1) {
+  fail('Android versionCode must be a positive integer');
+}
+if (appConfig.expo.android?.allowBackup !== false) {
+  fail('Android backups must be disabled for local private app data');
+}
+const blockedAndroidPermissions = [
+  'android.permission.READ_EXTERNAL_STORAGE',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.WRITE_EXTERNAL_STORAGE',
+];
+for (const permission of blockedAndroidPermissions) {
+  if (!appConfig.expo.android?.blockedPermissions?.includes(permission)) {
+    fail(`unused Android permission must be blocked: ${permission}`);
+  }
+}
+if (appConfig.expo.ios?.config?.usesNonExemptEncryption !== false) {
+  fail('iOS export compliance must declare that the app does not use non-exempt encryption');
+}
+const audioPlugin = appConfig.expo.plugins?.find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-audio'
+);
+if (
+  !audioPlugin ||
+  audioPlugin[1]?.microphonePermission !== false ||
+  audioPlugin[1]?.recordAudioAndroid !== false
+) {
+  fail('expo-audio must be configured for playback without microphone permission');
+}
+if (!appConfig.expo.plugins?.includes('expo-notifications')) {
+  fail('expo-notifications config plugin is required for daily reminders');
+}
+const splashPlugin = appConfig.expo.plugins?.find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'
+);
+if (!splashPlugin || splashPlugin[1]?.backgroundColor !== '#E6EFF8') {
+  fail('expo-splash-screen must preserve the Celeste launch background');
+}
+
+try {
+  const eas = JSON.parse(fs.readFileSync(path.join(ROOT, 'eas.json'), 'utf8'));
+  if (eas.cli?.appVersionSource !== 'remote') fail('EAS appVersionSource must be remote');
+  if (eas.build?.preview?.distribution !== 'internal') {
+    fail('EAS preview build must use internal distribution');
+  }
+  if (eas.build?.production?.autoIncrement !== true) fail('EAS production build must auto-increment');
+  if (eas.build?.production?.distribution !== 'store') {
+    fail('EAS production build must use store distribution');
+  }
+  if (!eas.submit?.production || typeof eas.submit.production !== 'object') {
+    fail('EAS production submit profile is missing');
+  }
+} catch (error) {
+  fail(`eas.json is invalid: ${error.message}`);
 }
 
 if (consoleFields) {

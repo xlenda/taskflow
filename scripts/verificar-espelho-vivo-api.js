@@ -103,6 +103,10 @@ test('Espelho Vivo scene continuity contract', async (t) => {
     }
     endpoint._internals.resetSecurityForTests();
   });
+  endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
+    ok: true,
+    userId: '00000000-0000-4000-8000-000000000001',
+  }));
 
   await t.test('client sends only bounded structured continuity', async () => {
     const { generatePersonalizedScene } = loadClientModule();
@@ -144,7 +148,7 @@ test('Espelho Vivo scene continuity contract', async (t) => {
               anchorIdentity: 'Eu retorno ao meu processo criativo.',
               anchorStep: 'Vou escrever por dez minutos.',
             },
-            generation: { promptVersion: 'celeste-scene-v6' },
+            generation: { promptVersion: 'celeste-scene-v7' },
           }),
         };
       },
@@ -162,6 +166,62 @@ test('Espelho Vivo scene continuity contract', async (t) => {
     assert.ok(!JSON.stringify(sent).includes('private injected prompt'));
     assert.ok(!JSON.stringify(sent).includes('Joao'), 'nome de terceiro editado nao pode sair do aparelho');
     assert.ok(JSON.stringify(sent).includes('uma pessoa próxima'));
+  });
+
+  await t.test('client keeps redacted chronology below its byte budget', () => {
+    const { sanitizeContinuity } = loadClientModule();
+    const repeatedPrivateName = 'Joao '.repeat(1000);
+    const recentChapters = [1, 2, 3].map((chapter) => ({
+      chapter,
+      occurredAt: `2026-08-2${chapter}T10:00:00.000Z`,
+      lang: 'pt',
+      title: repeatedPrivateName,
+      intention: repeatedPrivateName,
+      affirmation: repeatedPrivateName,
+      anchorIdentity: repeatedPrivateName,
+      anchorStep: repeatedPrivateName,
+      memoryReceipt: ['desire'],
+    }));
+    const safe = sanitizeContinuity(
+      continuity({
+        previousKnowledgeCardIds: [
+          'VALUES_BASED_AFFIRMATION',
+          'values_based_affirmation',
+          'invalid id',
+          'a'.repeat(81),
+        ],
+        previousScene: {
+          intention: repeatedPrivateName,
+          affirmation: repeatedPrivateName,
+          story: repeatedPrivateName,
+          anchorIdentity: repeatedPrivateName,
+          anchorStep: repeatedPrivateName,
+        },
+        chronology: {
+          currentChapter: 2,
+          chapterCount: 2,
+          goalDays: 21,
+          recentChapters,
+          recentDreamSignals: [{
+            theme: 'clarity',
+            feeling: 'curious',
+            occurredAt: '2026-08-23T08:00:00.000Z',
+            lang: 'pt',
+            practiceCount: 1,
+            rawDream: 'must never cross the boundary',
+          }],
+          rawDreamTextIncluded: true,
+        },
+      }),
+      ['Joao'],
+      'pt'
+    );
+    const serialized = JSON.stringify(safe);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 12 * 1024);
+    assert.ok(!serialized.includes('Joao'));
+    assert.ok(!serialized.includes('must never cross the boundary'));
+    assert.strictEqual(safe.chronology.rawDreamTextIncluded, false);
+    assert.deepStrictEqual(safe.previousKnowledgeCardIds, ['values_based_affirmation']);
   });
 
   await t.test('server strictly rejects malformed or expanded continuity', () => {
@@ -190,6 +250,31 @@ test('Espelho Vivo scene continuity contract', async (t) => {
       assert.strictEqual(result.error, 'continuity_invalid', JSON.stringify(value));
       assert.strictEqual(result.status, 400);
     }
+    const wideText = '界'.repeat(500);
+    const oversizedChronology = continuity({
+      chronology: {
+        currentChapter: 2,
+        chapterCount: 2,
+        goalDays: 21,
+        rawDreamTextIncluded: false,
+        recentChapters: [1, 2, 3].map((chapter) => ({
+          chapter,
+          occurredAt: `2026-08-2${chapter}T10:00:00.000Z`,
+          lang: 'pt',
+          title: wideText.slice(0, 160),
+          intention: wideText,
+          affirmation: wideText,
+          anchorIdentity: wideText,
+          anchorStep: wideText.slice(0, 280),
+          memoryReceipt: ['desire'],
+        })),
+      },
+    });
+    const oversized = endpoint._internals.validateInput(
+      baseBody({ continuity: oversizedChronology })
+    );
+    assert.strictEqual(oversized.error, 'continuity_invalid');
+    assert.ok(Buffer.byteLength(JSON.stringify(oversizedChronology), 'utf8') > 12 * 1024);
     assert.ok(endpoint._internals.validateInput(baseBody()).value, 'legacy body must remain valid');
   });
 
@@ -238,6 +323,8 @@ test('Espelho Vivo scene continuity contract', async (t) => {
           calls === 1
             ? generatedPayload()
             : generatedPayload({
+                intention: 'Proteger um comeco pequeno para minha vida criativa e tranquila.',
+                affirmation: 'Eu escolho abrir espaco para uma vida criativa e tranquila enquanto avanco no meu trabalho de designer de produto com um passo pequeno.',
                 story: 'Em uma biblioteca clara, voce organiza tres notas do projeto e escolhe a primeira decisao do dia. A vida criativa e tranquila ganha forma quando o trabalho como designer de produto recebe um limite simples. Depois de uma pausa junto a janela, voce fecha as abas extras, registra o proximo ponto e encerra esse pequeno ciclo com presenca.',
                 anchorIdentity: 'Eu protejo espaco para escolhas criativas pequenas e consistentes.',
                 anchorStep: 'Vou organizar tres notas do projeto antes do almoco.',
@@ -255,7 +342,7 @@ test('Espelho Vivo scene continuity contract', async (t) => {
     assert.notStrictEqual(res.body.generation.seed, baseSeed);
   });
 
-  await t.test('evolved responses identify prompt v6', async () => {
+  await t.test('evolved responses identify prompt v7', async () => {
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
     process.env.CELESTE_ALLOWED_ORIGINS = 'https://celeste.example';
@@ -264,6 +351,6 @@ test('Espelho Vivo scene continuity contract', async (t) => {
 
     const res = await invoke(baseBody({ continuity: continuity() }));
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(res.body.generation.promptVersion, 'celeste-scene-v6');
+    assert.strictEqual(res.body.generation.promptVersion, 'celeste-scene-v7');
   });
 });

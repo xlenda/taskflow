@@ -6,7 +6,7 @@ afirmacao sintetizada no aparelho. Nao e um lembrete posterior ao despertar.
 ## O que esta implementado
 
 - `services/affirmationAlarm.js`: limite JavaScript usado pelo app.
-- `modules/celeste-affirmation-alarm`: modulo Expo local, somente Apple.
+- `modules/celeste-affirmation-alarm`: modulo Expo local para Apple e Android.
 - `CelesteAffirmationAlarmModule.swift`: contrato Expo com capability,
   autorizacao, agendamento, cancelamento e teste.
 - `AffirmationAlarmCoordinator.swift`: agenda recorrencia semanal ou um alarme
@@ -36,10 +36,11 @@ O pod mantem deployment target 15.1 para nao elevar o minimo do app inteiro. O
 codigo do AlarmKit usa `#if canImport(AlarmKit)` e `#available(iOS 26.0, *)`;
 em versoes antigas o modulo responde como indisponivel e nao agenda nada.
 
-Web e Android tambem retornam `supported: false` e `scheduled: false`. Nao ha
-fallback por timer de JavaScript, notificacao local ou reproducao em background,
-pois nenhum desses mecanismos equivale a um despertador que atravessa Foco e
-modo silencioso.
+Web retorna `supported: false` e `scheduled: false`. Nao ha fallback por timer
+de JavaScript. O Android usa uma implementacao nativa separada, documentada em
+`docs/ALARME-AFIRMACAO-ANDROID.md`, com permissao de notificacao, acesso especial
+a alarmes exatos e um foreground service curto no momento do alarme. Nenhuma
+plataforma promete atravessar preferencias de Foco/DND ou modo silencioso.
 
 ## Contrato JavaScript
 

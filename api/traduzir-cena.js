@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 const { checkBotId } = require('botid/server');
+const celesteBrain = require('./_celeste-brain');
+const paidAccess = require('./_paid-access');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const PROMPT_VERSION = 'celeste-translation-v1';
@@ -192,6 +194,8 @@ function validateTranslatedScene(raw, input) {
     ? /\b(eu|meu|minha|meus|minhas)\b/i
     : /\b(i|my|mine)\b/i;
   if (!firstPerson.test(scene.affirmation)) throw new TranslationError('invalid_translation');
+  const safety = celesteBrain.evaluateSceneSafety(scene, { lang: input.targetLang });
+  if (!safety.ok) throw new TranslationError('invalid_translation');
   return scene;
 }
 
@@ -269,7 +273,10 @@ function setResponseHeaders(req, res) {
   const allowed = Boolean(origin) && allowedOrigins().has(origin);
   if (origin && allowed) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Is-Human, X-Path, X-Method');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Authorization, Content-Type, X-Celeste-Client, X-Celeste-Request-Id, X-Is-Human, X-Path, X-Method'
+  );
   return allowed;
 }
 
@@ -303,7 +310,8 @@ function sendJson(res, status, code) {
 
 async function handler(req, res) {
   const originAllowed = setResponseHeaders(req, res);
-  if (!originAllowed) return sendJson(res, 403, 'origin_not_allowed');
+  const nativeRequest = paidAccess.isNativeRequest(req);
+  if (!originAllowed && !nativeRequest) return sendJson(res, 403, 'origin_not_allowed');
   const method = String(req.method || 'GET').toUpperCase();
   if (method === 'OPTIONS') return res.status(204).end();
   if (method !== 'POST') {
@@ -311,13 +319,21 @@ async function handler(req, res) {
     return sendJson(res, 405, 'method_not_allowed');
   }
 
-  const botError = await verifyHumanRequest(req);
-  if (botError) return sendJson(res, botError.status, botError.error);
+  if (originAllowed) {
+    const botError = await verifyHumanRequest(req);
+    if (botError) return sendJson(res, botError.status, botError.error);
+  }
 
   const parsedBody = parseBody(req);
   if (parsedBody.error) return sendJson(res, parsedBody.status, parsedBody.error);
   const validated = validateInput(parsedBody.body);
   if (validated.error) return sendJson(res, validated.status, validated.error);
+
+  const access = await paidAccess.authorizePaidRequest(req, {
+    operation: 'translation',
+    units: 3,
+  });
+  if (!access.ok) return sendJson(res, access.status, access.error);
 
   const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
   if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
@@ -351,8 +367,12 @@ module.exports._internals = {
   extractCandidatePayload,
   validateInput,
   validateTranslatedScene,
-  resetSecurityForTests: () => { botVerifier = checkBotId; },
+  resetSecurityForTests: () => {
+    botVerifier = checkBotId;
+    paidAccess.resetAuthorizerForTests();
+  },
   setBotVerifierForTests: (verifier) => {
     botVerifier = typeof verifier === 'function' ? verifier : checkBotId;
   },
+  setPaidAccessAuthorizerForTests: paidAccess.setAuthorizerForTests,
 };

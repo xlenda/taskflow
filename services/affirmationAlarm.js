@@ -3,6 +3,7 @@ import { NativeModules, Platform } from 'react-native';
 
 const AFFIRMATION_ALARM_NATIVE_MODULE = 'CelesteAffirmationAlarm';
 const AFFIRMATION_ALARM_MIN_IOS_VERSION = 26;
+const AFFIRMATION_ALARM_MIN_ANDROID_VERSION = 23;
 export const DEFAULT_AFFIRMATION_ALARM_ID = 'c31e57e0-75ee-4de2-9526-0cc321f55a11';
 export const AFFIRMATION_ALARM_MAX_WAV_BYTES = 1_500_000;
 export const AFFIRMATION_ALARM_MAX_WAV_BASE64_CHARS = 2_000_000;
@@ -27,6 +28,11 @@ function iosMajor(version) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function androidApiLevel(version) {
+  const parsed = Number.parseInt(String(version == null ? '' : version), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function nativeApiMajor(version) {
   const parsed = Number.parseInt(String(version == null ? '' : version), 10);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -46,6 +52,7 @@ function baseCapability(platform) {
   return {
     platform: platform.OS,
     minimumIOSVersion: AFFIRMATION_ALARM_MIN_IOS_VERSION,
+    minimumAndroidVersion: AFFIRMATION_ALARM_MIN_ANDROID_VERSION,
     nativeModuleAvailable: false,
     supported: false,
     canSchedule: false,
@@ -61,11 +68,18 @@ function baseCapability(platform) {
 function platformCapability(platform, nativeModule) {
   const capability = baseCapability(platform);
   if (platform.OS === 'web') return { ...capability, reason: 'web_unsupported' };
-  if (platform.OS !== 'ios') return capability;
-
-  const major = iosMajor(platform.Version);
-  if (major == null || major < AFFIRMATION_ALARM_MIN_IOS_VERSION) {
-    return { ...capability, reason: 'ios_version_unsupported' };
+  if (platform.OS === 'ios') {
+    const major = iosMajor(platform.Version);
+    if (major == null || major < AFFIRMATION_ALARM_MIN_IOS_VERSION) {
+      return { ...capability, reason: 'ios_version_unsupported' };
+    }
+  } else if (platform.OS === 'android') {
+    const apiLevel = androidApiLevel(platform.Version);
+    if (apiLevel == null || apiLevel < AFFIRMATION_ALARM_MIN_ANDROID_VERSION) {
+      return { ...capability, reason: 'android_version_unsupported' };
+    }
+  } else {
+    return capability;
   }
   if (!nativeModule) {
     return {
@@ -141,10 +155,10 @@ function normalizeNativeCapability(base, reported, nativeModule) {
     reason: authorized
       ? null
       : needsAuthorization
-      ? 'authorization_required'
+      ? cleanCode(reported.reason, 'authorization_required')
       : denied
-      ? 'authorization_denied'
-      : 'authorization_unknown',
+      ? cleanCode(reported.reason, 'authorization_denied')
+      : cleanCode(reported.reason, 'authorization_unknown'),
     nativeApiVersion: cleanText(reported.apiVersion, 20) || null,
     scheduledAlarmIds,
   };
@@ -354,7 +368,7 @@ function normalizeNativeResult(operation, response, capability, alarmId) {
 }
 
 /**
- * Adapter for an optional iOS bridge named `CelesteAffirmationAlarm`.
+ * Adapter for an optional native bridge named `CelesteAffirmationAlarm`.
  *
  * Native contract (all methods async):
  * - getCapability() -> { supported, authorization, apiVersion? }
@@ -365,9 +379,9 @@ function normalizeNativeResult(operation, response, capability, alarmId) {
  *
  * `schedule` receives a local weekly schedule (`time`, ISO weekdays 1...7) and
  * affirmation text. `audioBase64Wav` may carry a pre-generated neural WAV; when
- * omitted, the native side renders local speech. The native side owns the
- * Library/Sounds file, AlarmKit authorization and lifecycle. The web adapter
- * never creates a timer or claims that a browser can wake the user.
+ * omitted, the native side renders local speech. The native side owns its
+ * private sound file, authorization and lifecycle. The web adapter never
+ * creates a timer or claims that a browser can wake the user.
  */
 export function createAffirmationAlarmAdapter({
   platform = Platform,
@@ -406,6 +420,7 @@ export function createAffirmationAlarmAdapter({
         {
           supported: true,
           authorization: response && response.authorization,
+          reason: response && response.reason,
           apiVersion: capability.nativeApiVersion,
           scheduledAlarmIds: capability.scheduledAlarmIds,
         },
@@ -466,6 +481,25 @@ export function createAffirmationAlarmAdapter({
     return (await inspect()).capability;
   }
 
+  async function requestAuthorization() {
+    const inspected = await inspect();
+    if (!inspected.capability.supported) {
+      return failure('authorize', inspected.capability.reason, inspected.capability);
+    }
+    if (inspected.capability.authorization === 'authorized') {
+      return { ok: true, operation: 'authorize', capability: inspected.capability };
+    }
+    const capability = await authorizeIfNeeded(
+      inspected.nativeModule,
+      inspected.capability,
+      true
+    );
+    if (capability.authorization !== 'authorized') {
+      return failure('authorize', capability.reason || 'authorization_required', capability);
+    }
+    return { ok: true, operation: 'authorize', capability };
+  }
+
   async function schedule(input) {
     const normalized = normalizeScheduleInput(input);
     if (normalized.error) {
@@ -483,7 +517,11 @@ export function createAffirmationAlarmAdapter({
     if (!inspected.nativeModule || typeof inspected.nativeModule.cancel !== 'function') {
       return failure('cancel', inspected.capability.reason, inspected.capability, { alarmId: id });
     }
-    if (platform.OS !== 'ios' || iosMajor(platform.Version) < AFFIRMATION_ALARM_MIN_IOS_VERSION) {
+    const isSupportedIOS =
+      platform.OS === 'ios' && iosMajor(platform.Version) >= AFFIRMATION_ALARM_MIN_IOS_VERSION;
+    const isSupportedAndroid =
+      platform.OS === 'android' && androidApiLevel(platform.Version) >= AFFIRMATION_ALARM_MIN_ANDROID_VERSION;
+    if (!isSupportedIOS && !isSupportedAndroid) {
       return failure('cancel', inspected.capability.reason, inspected.capability, { alarmId: id });
     }
     try {
@@ -503,7 +541,7 @@ export function createAffirmationAlarmAdapter({
     return invoke('test', normalized.value);
   }
 
-  return { getCapability, schedule, cancel, test };
+  return { getCapability, requestAuthorization, schedule, cancel, test };
 }
 
 const affirmationAlarm = createAffirmationAlarmAdapter();
@@ -517,6 +555,11 @@ export function createSerializedAlarmController(adapter) {
   };
   return {
     getCapability: () => enqueue(() => adapter.getCapability()),
+    requestAuthorization: () => enqueue(() =>
+      typeof adapter.requestAuthorization === 'function'
+        ? adapter.requestAuthorization()
+        : failure('authorize', 'authorization_unavailable', null)
+    ),
     schedule: (input) => enqueue(() => adapter.schedule(input)),
     replaceScheduled: (input) => enqueue(async () => {
       const capability = await adapter.getCapability();
@@ -538,6 +581,7 @@ export function createSerializedAlarmController(adapter) {
 const serializedAlarm = createSerializedAlarmController(affirmationAlarm);
 
 export const getAffirmationAlarmCapability = serializedAlarm.getCapability;
+export const requestAffirmationAlarmAuthorization = serializedAlarm.requestAuthorization;
 export const scheduleAffirmationAlarm = serializedAlarm.schedule;
 export const replaceScheduledAffirmationAlarm = serializedAlarm.replaceScheduled;
 export const cancelAffirmationAlarm = serializedAlarm.cancel;

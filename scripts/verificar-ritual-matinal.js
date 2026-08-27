@@ -105,10 +105,16 @@ assert.ok(oversized.dream.length <= 1600, 'dream must be bounded before persiste
 
 const screenFile = path.join(root, 'screens', 'MorningRitualScreen.js');
 const appFile = path.join(root, 'App.js');
+const manifestationFile = path.join(root, 'screens', 'ManifestationScreen.js');
+const journeyFile = path.join(root, 'screens', 'JourneyScreen.js');
 compile(screenFile);
 compile(appFile);
+compile(manifestationFile);
+compile(journeyFile);
 const screen = fs.readFileSync(screenFile, 'utf8');
 const app = fs.readFileSync(appFile, 'utf8');
+const manifestation = fs.readFileSync(manifestationFile, 'utf8');
+const journey = fs.readFileSync(journeyFile, 'utf8');
 const alarmService = fs.readFileSync(path.join(root, 'services', 'affirmationAlarm.js'), 'utf8');
 assert.ok(screen.includes('SpeechRecognition'), 'voice bonus must use browser capability detection');
 assert.ok(screen.includes('No site você pode escolher'), 'web status must be honest about alarm support');
@@ -117,6 +123,11 @@ assert.ok(screen.includes('if (response.ok === true)'), 'alarm must only be acti
 assert.ok(
   /if \(response\.ok === true\) \{[\s\S]*reminderEnabled: true[\s\S]*wakeAffirmationId: id[\s\S]*wakeAffirmationText: text/.test(screen),
   'native alarm success and exact content must survive a screen pop'
+);
+assert.ok(
+  screen.includes("wakeSoundSource: response.soundSource || 'local_speech'") &&
+    screen.includes('wakeNarratorId: narration.narratorId || null'),
+  'fala local confirmada precisa persistir sua fonte sem virar falso erro de sincronizacao'
 );
 assert.ok(screen.includes('response.scheduledAlarmIds'), 'failed replacement must expose AlarmKit truth');
 assert.ok(
@@ -177,8 +188,8 @@ assert.ok(
   assert.ok(
     languageSyncBlock.includes('prepareNeuralAlarm') &&
       languageSyncBlock.includes('audioBase64Wav: neuralAudio.audioBase64Wav') &&
-      languageSyncBlock.includes("response.soundSource !== 'neural_wav'"),
-    'sincronizacao deve preparar e confirmar a mesma voz neural escolhida'
+      languageSyncBlock.includes("['neural_wav', 'local_speech'].includes(response.soundSource)"),
+    'sincronizacao deve aceitar a fonte que o AlarmKit confirmou'
   );
 assert.ok(
   /replaceScheduledAffirmationAlarm\(\{[\s\S]*if \(!response\.ok[\s\S]*saveMorningRitualPreferences\(\{/.test(
@@ -223,6 +234,14 @@ const selectWakeBlock = screen.slice(screen.indexOf('const selectWake'), screen.
 const selectTimeBlock = screen.slice(screen.indexOf('const selectAlarmTime'), screen.indexOf('const saveCustomWake'));
 const resultWakeBlock = screen.slice(screen.indexOf('const useResultAsWake'), screen.indexOf('const deleteCurrentDream'));
 const deleteDreamBlock = screen.slice(screen.indexOf('const deleteCurrentDream'), screen.indexOf('const renderOption'));
+const deleteManifestationBlock = manifestation.slice(
+  manifestation.indexOf('const confirmDelete'),
+  manifestation.indexOf('const playPct')
+);
+const resetJourneyBlock = journey.slice(
+  journey.indexOf('const confirmReset'),
+  journey.indexOf('// Web-only')
+);
 assert.ok(
   deleteDreamBlock.indexOf('await cancelAffirmationAlarm()') < deleteDreamBlock.indexOf('removeDreamRitual(entryId)'),
   'o alarme nativo deve ser cancelado antes de remover o sonho usado por ele'
@@ -231,6 +250,23 @@ assert.ok(
   deleteDreamBlock.indexOf('removeDreamRitual(entryId)') <
     deleteDreamBlock.indexOf('if (!mountedRef.current) return', deleteDreamBlock.indexOf('removeDreamRitual(entryId)')),
   'remover o sonho e reconciliar o provider deve sobreviver a um pop durante o cancelamento nativo'
+);
+for (const [name, block] of [
+  ['sonho', deleteDreamBlock],
+  ['manifestacao', deleteManifestationBlock],
+  ['jornada', resetJourneyBlock],
+]) {
+  assert.ok(
+    block.includes("Platform.OS === 'android'") && block.includes('cancelAffirmationAlarm'),
+    `${name} precisa cancelar o alarme nativo tambem no Android`
+  );
+}
+assert.ok(
+  languageSyncBlock.includes("Platform.OS !== 'android'") &&
+    app.slice(app.indexOf('const repairStorageAndAlarm'), app.indexOf('// O <html lang>')).includes(
+      "Platform.OS === 'android'"
+    ),
+  'reconciliacao global e reparo de armazenamento precisam cobrir alarmes Android'
 );
 for (const [name, block] of [
   ['wake phrase', selectWakeBlock],
@@ -278,7 +314,7 @@ assert.ok(
 
 const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
 
-async function verifyStaleAlarmFailureCannotCancelNewIntent() {
+async function verifyStaleAlarmFailureCannotCancelNewIntent(platformOS) {
   const componentStart = app.indexOf('function NativeAlarmContentSync()');
   const componentEnd = app.indexOf('\nfunction HomeStackNav', componentStart);
   assert.ok(componentStart >= 0 && componentEnd > componentStart, 'NativeAlarmContentSync must be extractable');
@@ -330,7 +366,7 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     `${componentSource}\nreturn NativeAlarmContentSync;`
   )(
     fakeReact,
-    { OS: 'ios' },
+    { OS: platformOS },
     () => ({
       state: currentState,
       saveMorningRitualPreferences: (patch) => savedPatches.push(patch),
@@ -409,9 +445,41 @@ async function verifyStaleAlarmFailureCannotCancelNewIntent() {
     savedPatches.some((patch) => patch.wakeAffirmationId === 'manifestation:b'),
     'the newer successful intent must remain authoritative'
   );
+
+  const replacementsBeforeLocalSpeech = replacements.length;
+  const patchesBeforeLocalSpeech = savedPatches.length;
+  await renderContentEffect({
+    morningRitual: {
+      ...ritual,
+      alarmSyncError: true,
+      wakeAffirmationId: 'manifestation:local',
+      wakeAffirmationText: 'Local speech remains valid',
+      wakeAffirmationLang: 'en',
+      wakeNarratorId: 'aurora',
+      wakeSoundSource: 'local_speech',
+    },
+    desired: {
+      id: 'manifestation:local',
+      text: 'Local speech remains valid',
+      lang: 'en',
+    },
+    narration: { narratorId: 'serena' },
+  });
+  assert.strictEqual(
+    replacements.length,
+    replacementsBeforeLocalSpeech,
+    'fala local ja confirmada nao pode exigir uma nova geracao neural'
+  );
+  assert.ok(
+    savedPatches.slice(patchesBeforeLocalSpeech).some((patch) => patch.alarmSyncError === false),
+    'estado antigo de fala local precisa remover o falso alarmSyncError'
+  );
 }
 
-verifyStaleAlarmFailureCannotCancelNewIntent()
+Promise.all([
+  verifyStaleAlarmFailureCannotCancelNewIntent('ios'),
+  verifyStaleAlarmFailureCannotCancelNewIntent('android'),
+])
   .then(() => {
     process.stdout.write('Ritual matinal: sonho pessoal, seguro, persistente e bilingue aprovado\n');
   })

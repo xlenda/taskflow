@@ -24,6 +24,20 @@ function loadClientModule(relativePath) {
 }
 
 function loadDreamClient() {
+  // Expo exposes this development-only virtual module as ESM. The verifier
+  // compiles the client modules to CommonJS, so provide the same env shape.
+  const virtualEnvPath = require.resolve('expo/virtual/env');
+  const virtualEnv = new Module(virtualEnvPath, module);
+  virtualEnv.filename = virtualEnvPath;
+  virtualEnv.loaded = true;
+  virtualEnv.exports = { env: process.env };
+  require.cache[virtualEnvPath] = virtualEnv;
+  const paidSessionPath = require.resolve('../services/celesteApiSession');
+  const paidSession = new Module(paidSessionPath, module);
+  paidSession.filename = paidSessionPath;
+  paidSession.loaded = true;
+  paidSession.exports = { celestePaidApiHeaders: async () => ({}) };
+  require.cache[paidSessionPath] = paidSession;
   loadClientModule('services/generatePersonalizedScene.js');
   return loadClientModule('services/transformDream.js');
 }
@@ -64,7 +78,7 @@ const validBody = {
 
 const validated = internals.validateInput(validBody);
 assert.ok(validated.value, 'entrada valida do sonho foi recusada');
-assert.strictEqual(internals.knowledgeVersion, 'celeste-knowledge-v1');
+assert.strictEqual(internals.knowledgeVersion, 'celeste-knowledge-v2');
 assert.deepStrictEqual(validated.value.profile, validBody.profile, 'perfil minimo foi alterado');
 assert.strictEqual(
   internals.validateInput({ ...validBody, cloudConsent: false }).error,
@@ -97,7 +111,7 @@ assert.deepStrictEqual(
 const geminiBody = internals.buildGeminiRequest(validated.value, 123);
 const instructions = geminiBody.systemInstruction.parts[0].text;
 assert.match(instructions, /never a decoding, prediction/i);
-assert.match(instructions, /celeste-knowledge-v1/);
+assert.match(instructions, /celeste-knowledge-v2/);
 assert.match(instructions, /first person, believable/i);
 assert.deepStrictEqual(
   internals.validateGeneratedDream({
@@ -115,9 +129,69 @@ assert.throws(
   }),
   /invalid_generation/
 );
+assert.throws(
+  () => internals.validateGeneratedDream({
+    reflection: 'Esse sonho confirma um diagnostico de ansiedade e mostra o que voce tem.',
+    affirmation: 'Eu aceito esse diagnostico como uma verdade sobre mim.',
+    basis: ['dream'],
+  }),
+  /invalid_generation/,
+  'uma conclusao clinica continua bloqueada mesmo quando a negacao segura e permitida'
+);
+
+const safeNightmareResponses = [
+  {
+    lang: 'pt',
+    reflection: 'O sonho trouxe uma imagem dificil e voce acordou ansiosa. Isso nao e uma previsao; agora voce pode voltar ao que e seguro e real.',
+    affirmation: 'Eu acolho o que senti e escolho um passo calmo e cuidadoso no presente.',
+  },
+  {
+    lang: 'en',
+    reflection: 'The dream brought difficult imagery and you woke up anxious. It is not a prediction; you can return to what is safe and real now.',
+    affirmation: 'I can welcome what I felt and choose one calm, careful step in the present.',
+  },
+];
+
+for (const response of safeNightmareResponses) {
+  assert.doesNotThrow(
+    () => internals.validateGeneratedDream({ ...response, basis: ['dream', 'feeling'] }),
+    `a grounded ${response.lang} nightmare response should be accepted`
+  );
+}
+
+assert.doesNotThrow(() => internals.validateGeneratedDream({
+  reflection: 'What you saw may have felt unsettling. It is not a prediction, and you can return to what feels safe and real now.',
+  affirmation: 'I can meet this moment with care and choose one grounded next step.',
+  basis: ['dream', 'feeling'],
+}));
+
+const graphicNightmareEchoes = [
+  {
+    lang: 'pt',
+    reflection: 'A serra eletrica me cortava ao meio, mas isso revela a minha forca.',
+    affirmation: 'Eu celebro ter sido cortada ao meio e sobrevivo a tudo.',
+  },
+  {
+    lang: 'en',
+    reflection: 'The electric saw cut me in half, and it reveals my strength.',
+    affirmation: 'I celebrate being cut in half and survive anything.',
+  },
+];
+
+for (const response of graphicNightmareEchoes) {
+  assert.throws(
+    () => internals.validateGeneratedDream({ ...response, basis: ['dream', 'feeling'] }),
+    /invalid_generation/,
+    `a graphic ${response.lang} nightmare echo must be rejected`
+  );
+}
 
 (async () => {
   const dreamClient = loadDreamClient();
+  internals.setPaidAccessAuthorizerForTests(async () => ({
+    ok: true,
+    userId: '00000000-0000-4000-8000-000000000001',
+  }));
   let outboundDream;
   const originalDream = 'Sonhei que caminhava com Bia e Leo perto do mar.';
   const transformed = await dreamClient.transformDreamWithKnowledge({
@@ -190,8 +264,8 @@ assert.throws(
           content: {
             parts: [{
               text: JSON.stringify({
-                reflection: 'Uma possibilidade e que o desejo de calma esteja pedindo atencao hoje, sem prever o futuro.',
-                affirmation: 'Eu posso escolher presenca e um passo calmo que depende de mim.',
+                reflection: 'Uma possibilidade e que a curiosidade ao acordar convide a olhar para a clareza que voce escolheu. Isso nao e uma previsao.',
+                affirmation: 'Eu posso agir como uma pessoa cuidadosa e escolher estar presente em um passo calmo que depende de mim hoje.',
                 basis: ['dream', 'feeling', 'theme'],
               }),
             }],
@@ -218,7 +292,8 @@ assert.throws(
     assert.strictEqual(res.headers['referrer-policy'], 'no-referrer');
     assert.strictEqual(res.headers.vary, 'Origin');
     assert.strictEqual(res.payload.generation.source, 'gemini-dream');
-    assert.strictEqual(res.payload.generation.knowledgeVersion, 'celeste-knowledge-v1');
+    assert.strictEqual(res.payload.generation.promptVersion, 'celeste-dream-v2');
+    assert.strictEqual(res.payload.generation.knowledgeVersion, 'celeste-knowledge-v2');
     assert.match(res.payload.dream.affirmation, /depende de mim/);
     assert.strictEqual(fetchCalls, 1);
     assert.match(sent.url, /\/v1beta\/models\/gemini-[^/]+:generateContent$/);
@@ -227,16 +302,135 @@ assert.throws(
     const personalPayload = JSON.parse(sent.body.contents[0].parts[0].text);
     assert.deepStrictEqual(Object.keys(personalPayload).sort(), [
       'exactRecall',
+      'knowledgeCardIds',
       'language',
+      'personalMap',
       'safeProfileContext',
       'task',
       'userChosenTheme',
       'wakingFeeling',
     ]);
     assert.deepStrictEqual(personalPayload.safeProfileContext, validBody.profile);
+    assert.ok(Array.isArray(personalPayload.knowledgeCardIds));
+    assert.ok(personalPayload.knowledgeCardIds.length >= 4 && personalPayload.knowledgeCardIds.length <= 8);
+    assert.deepStrictEqual(
+      personalPayload.personalMap.factKeys.sort(),
+      ['dreamRecall', 'selfDescription', 'userChosenTheme', 'wakingFeeling', 'whyItMatters'].sort()
+    );
     assert.ok(!sent.options.body.includes('historico privado'));
     assert.ok(!sent.options.body.includes('identificador que nao deve'));
     assert.ok(!JSON.stringify(res.payload).includes(process.env.GEMINI_API_KEY));
+
+    const validDreamPayload = () => ({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              reflection: 'Uma possibilidade e que a curiosidade ao acordar convide a olhar para a clareza que voce escolheu. Isso nao e uma previsao.',
+              affirmation: 'Eu posso agir como uma pessoa cuidadosa e escolher estar presente em um passo calmo que depende de mim hoje.',
+              basis: ['dream', 'feeling', 'theme'],
+            }),
+          }],
+        },
+      }],
+    });
+    const invalidDreamResponse = () => ({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
+    });
+
+    let now = 1_000;
+    let deadlineCalls = 0;
+    internals.setGenerationClockForTests(() => now);
+    global.fetch = async () => {
+      deadlineCalls += 1;
+      now += internals.generationDeadlineMs() - internals.minimumRepairBudgetMs() + 1;
+      return invalidDreamResponse();
+    };
+    res = responseMock();
+    await api(request(validBody), res);
+    assert.strictEqual(res.statusCode, 504);
+    assert.strictEqual(res.payload.error, 'generation_timeout');
+    assert.strictEqual(
+      deadlineCalls,
+      1,
+      'a late invalid dream must not start a repair without enough budget'
+    );
+
+    now = 2_000;
+    const repairRequests = [];
+    internals.setGenerationClockForTests(() => now);
+    global.fetch = async (_url, options) => {
+      repairRequests.push(JSON.parse(options.body));
+      now += 100;
+      return repairRequests.length === 1
+        ? invalidDreamResponse()
+        : { ok: true, json: async () => validDreamPayload() };
+    };
+    res = responseMock();
+    await api(request(validBody), res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(repairRequests.length, 2);
+    assert.match(
+      repairRequests[1].systemInstruction.parts[0].text,
+      /QUALITY REPAIR FOR THIS RETRY/,
+      'a fast invalid dream must receive one repaired attempt'
+    );
+
+    now = 3_000;
+    deadlineCalls = 0;
+    internals.setGenerationClockForTests(() => now);
+    global.fetch = async () => {
+      deadlineCalls += 1;
+      return {
+        ok: true,
+        json: async () => {
+          now += internals.generationDeadlineMs() + 1;
+          return validDreamPayload();
+        },
+      };
+    };
+    res = responseMock();
+    await api(request(validBody), res);
+    assert.strictEqual(res.statusCode, 504);
+    assert.strictEqual(res.payload.error, 'generation_timeout');
+    assert.strictEqual(deadlineCalls, 1);
+    internals.setGenerationClockForTests();
+
+    const graphicNightmareApiCases = [
+      {
+        lang: 'pt',
+        dream: 'Sonhei que uma serra eletrica me cortava ao meio.',
+        output: {
+          reflection: 'A serra eletrica me cortava ao meio, mas isso revela a minha forca.',
+          affirmation: 'Eu celebro ter sido cortada ao meio e sobrevivo a tudo.',
+          basis: ['dream', 'feeling'],
+        },
+      },
+      {
+        lang: 'en',
+        dream: 'I dreamed that an electric saw cut me in half.',
+        output: {
+          reflection: 'The electric saw cut me in half, and it reveals my strength.',
+          affirmation: 'I celebrate being cut in half and survive anything.',
+          basis: ['dream', 'feeling'],
+        },
+      },
+    ];
+    for (const nightmare of graphicNightmareApiCases) {
+      global.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: JSON.stringify(nightmare.output) }] } }],
+        }),
+      });
+      res = responseMock();
+      await api(request({ ...validBody, dream: nightmare.dream, lang: nightmare.lang }), res);
+      assert.strictEqual(res.statusCode, 502, `graphic ${nightmare.lang} output must not be returned`);
+      assert.strictEqual(res.payload.error, 'invalid_generation');
+      assert.ok(!JSON.stringify(res.payload).includes('serra'));
+      assert.ok(!JSON.stringify(res.payload).includes('saw'));
+    }
 
     res = responseMock();
     await api(request(validBody, { headers: {

@@ -3,6 +3,7 @@ import {
   redactThirdPartyNames,
   thirdPartyNames,
 } from './generatePersonalizedScene';
+import { celestePaidApiHeaders } from './celesteApiSession';
 
 const API_TIMEOUT_MS = 15000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
@@ -51,6 +52,21 @@ function validateResponse(payload, source) {
   const body = payload && typeof payload === 'object' ? payload : {};
   const generated = body.dream && typeof body.dream === 'object' ? body.dream : null;
   if (!generated) throw new Error('invalid_dream_response');
+  const generationSource = body.generation && typeof body.generation === 'object'
+    ? body.generation
+    : {};
+  const knowledgeCardIds = (Array.isArray(generationSource.knowledgeCardIds)
+    ? generationSource.knowledgeCardIds
+    : [])
+    .map((id) => cleanText(id, 80).toLowerCase())
+    .filter((id) => /^[a-z0-9][a-z0-9_-]{1,79}$/.test(id))
+    .filter((id, index, ids) => ids.indexOf(id) === index)
+    .slice(0, 8);
+  const hasKnowledgeReceipt = knowledgeCardIds.length > 0;
+  const declaredSource = cleanText(generationSource.source, 40);
+  const declaredPromptVersion = cleanText(generationSource.promptVersion, 80);
+  const declaredKnowledgeVersion = cleanText(generationSource.knowledgeVersion, 80);
+  const declaredBrainVersion = cleanText(generationSource.brainVersion, 80);
   const basis = Array.isArray(generated.basis)
     ? generated.basis.filter((item) => typeof item === 'string').slice(0, 4)
     : [];
@@ -69,14 +85,24 @@ function validateResponse(payload, source) {
     generatorVersion: cleanText(
       body.generation && body.generation.promptVersion,
       40
-    ) || 'celeste-dream-v1',
+    ) || (hasKnowledgeReceipt ? 'unknown' : 'legacy-dream-unknown'),
     generation: {
-      source: 'gemini-dream',
-      model: cleanText(body.generation && body.generation.model, 100) || 'gemini',
-      knowledgeVersion: cleanText(
-        body.generation && body.generation.knowledgeVersion,
-        80
-      ) || 'celeste-knowledge-v1',
+      source: hasKnowledgeReceipt ? declaredSource || 'gemini-dream' : 'legacy-remote',
+      model: cleanText(generationSource.model, 100) || 'unknown',
+      promptVersion:
+        declaredPromptVersion || (hasKnowledgeReceipt ? 'unknown' : 'legacy-dream-unknown'),
+      knowledgeVersion: declaredKnowledgeVersion || 'unknown',
+      brainVersion: declaredBrainVersion || 'unknown',
+      knowledgeCardIds,
+      qualityScore:
+        Number.isInteger(generationSource.qualityScore) &&
+        generationSource.qualityScore >= 0 &&
+        generationSource.qualityScore <= 100
+          ? generationSource.qualityScore
+          : undefined,
+      seed: Number.isInteger(generationSource.seed)
+        ? generationSource.seed
+        : undefined,
     },
   };
 }
@@ -113,9 +139,10 @@ export async function transformDreamWithKnowledge({
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
   try {
+    const authorization = fetchImpl ? {} : await celestePaidApiHeaders();
     const response = await request(apiEndpoint(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authorization },
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
       body: JSON.stringify({

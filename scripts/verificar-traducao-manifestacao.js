@@ -280,6 +280,21 @@ assert.ok(
     contextSource.includes('TRANSLATION_START_DELAY_MS'),
   'troca de idioma precisa cancelar lotes antigos e agrupar alternancias rapidas'
 );
+const translateStoreBlock = contextSource.slice(
+  contextSource.indexOf('const translateAndStoreVariant'),
+  contextSource.indexOf('const addManifestation')
+);
+assert.ok(
+  contextSource.includes('const translationRequestsRef = useRef(new Map())') &&
+    translateStoreBlock.includes('translationRequestsRef.current.get(requestKey)') &&
+    translateStoreBlock.includes('translationRequestsRef.current.set(requestKey, request)'),
+  'alternancia rapida precisa deduplicar a mesma traducao paga em voo'
+);
+assert.ok(
+  !translateStoreBlock.includes('languageEpoch !== translationLanguageEpochRef.current') &&
+    !translateStoreBlock.includes('currentState.lang !== targetLang'),
+  'resultado pago valido precisa ser salvo como variante mesmo se a tela voltou ao outro idioma'
+);
 assert.ok(
   contextSource.includes("source: 'user-edited'") && contextSource.includes('shouldTranslateManifestationVariant'),
   'edicoes ou idioma original nao estao protegidos contra retraducao'

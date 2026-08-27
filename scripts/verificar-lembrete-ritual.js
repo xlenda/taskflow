@@ -125,6 +125,42 @@ async function main() {
     'falha ao remover o antigo precisa desfazer o novo lembrete'
   );
 
+  const orphanCancelled = [];
+  service._dailyRitualReminderTest.setApiForTests({
+    ...mock,
+    async getAllScheduledNotificationsAsync() {
+      return [
+        {
+          identifier: 'daily-current',
+          content: { data: { kind: 'daily_ritual', url: 'celeste://ritual' } },
+        },
+        {
+          request: {
+            identifier: 'daily-legacy',
+            content: { data: { url: 'celeste://ritual' } },
+          },
+        },
+        {
+          identifier: 'unrelated-notification',
+          content: { data: { kind: 'something_else', url: 'celeste://other' } },
+        },
+      ];
+    },
+    async cancelScheduledNotificationAsync(identifier) {
+      orphanCancelled.push(identifier);
+    },
+  });
+  assert.deepStrictEqual(
+    await service.cancelOrphanedDailyRitualReminders(),
+    { ok: true, cancelled: 2 },
+    'recuperacao precisa cancelar todos os lembretes do ritual conhecidos'
+  );
+  assert.deepStrictEqual(
+    orphanCancelled,
+    ['daily-current', 'daily-legacy'],
+    'recuperacao nao pode cancelar notificacoes de outros recursos'
+  );
+
   let clearedResponse = 0;
   service._dailyRitualReminderTest.setApiForTests({
     ...mock,
@@ -155,6 +191,12 @@ async function main() {
   const appConfig = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
   assert.ok(app.includes('initialDailyRitualNotificationUrl'), 'cold start da notificacao precisa abrir o ritual');
   assert.ok(app.includes('subscribeDailyRitualNotificationUrls'), 'toque com app aberto precisa abrir o ritual');
+  assert.ok(
+    app.includes('cancelOrphanedDailyRitualReminders') &&
+      app.indexOf('await cancelOrphanedDailyRitualReminders()') <
+        app.indexOf('return repairCorruptedStorage()'),
+    'reparo de storage precisa cancelar lembretes orfaos antes de apagar o estado'
+  );
   assert.ok(screen.includes('daily-ritual-reminder-toggle'), 'permissao deve nascer de um gesto explicito');
   assert.ok(screen.includes('getDailyRitualReminderStatus'), 'estado visual precisa acompanhar a permissao nativa');
   assert.ok(screen.includes("Platform.OS === 'web'"), 'site precisa falhar de forma honesta');

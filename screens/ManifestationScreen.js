@@ -680,7 +680,7 @@ export default function ManifestationScreen() {
     try {
       const usedAsAlarm =
         state.morningRitual?.wakeAffirmationId === `manifestation:${saved.id}`;
-      if (usedAsAlarm && Platform.OS === 'ios') {
+      if (usedAsAlarm && (Platform.OS === 'ios' || Platform.OS === 'android')) {
         const capability = await getAffirmationAlarmCapability().catch(() => null);
         if (!capability) {
           setReleaseError(true);

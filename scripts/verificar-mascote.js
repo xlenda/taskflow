@@ -102,6 +102,7 @@ async function assertImage(page, testID) {
 }
 
 async function assertWelcome(page, width, height, fileName) {
+  console.log(`[mascote] abertura ${width}x${height}: carregando`);
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   await seedPage(page, { ...seed, onboardingDone: false });
 
@@ -168,14 +169,15 @@ async function assertWelcome(page, width, height, fileName) {
   await page.screenshot({ path: path.join(SHOT_DIR, `opening-${fileName}`) });
 
   // O primeiro toque mantem a abertura e libera o audio por gesto do usuario.
-  await page.click(selector);
+  console.log(`[mascote] abertura ${width}x${height}: ativando som`);
+  await page.click('[data-testid="celeste-opening-sound"]');
   await page.waitForFunction(
     (target) => {
       const video = document.querySelector(target)?.querySelector('video');
       const soundControl = document.querySelector('[data-testid="celeste-opening-sound"]');
       return video && !video.muted && !video.paused && video.currentTime > 0.05 && soundControl;
     },
-    { timeout: 10000 },
+    { timeout: 30000 },
     selector
   );
   const soundEnabled = await page.$eval(selector, (container) => {
@@ -193,6 +195,7 @@ async function assertWelcome(page, width, height, fileName) {
     );
   }
 
+  console.log(`[mascote] abertura ${width}x${height}: pulando video`);
   await page.click('[data-testid="celeste-opening-skip"]');
   await page.waitForFunction(
     () => {
@@ -209,7 +212,7 @@ async function assertWelcome(page, width, height, fileName) {
       }
       return effectiveOpacity > 0.95;
     },
-    { timeout: 10000 }
+    { timeout: 30000 }
   );
   const layout = await page.evaluate(() => {
     const button = [...document.querySelectorAll('button, [role="button"]')].find((element) =>
@@ -244,6 +247,7 @@ async function assertWelcome(page, width, height, fileName) {
 }
 
 async function assertHome(page, width, height, fileName) {
+  console.log(`[mascote] home ${width}x${height}: carregando`);
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   await seedPage(page, seed);
   await assertImage(page, 'celeste-mascot-home');

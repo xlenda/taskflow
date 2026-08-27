@@ -23,17 +23,20 @@ export default function WelcomeVideo({
   onFinished,
   onPlaybackIssue,
 }) {
+  const startsWithSound = Platform.OS !== 'web';
   const [firstFrame, setFirstFrame] = useState(false);
   const [motionOverride, setMotionOverride] = useState(false);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
-  const [soundOn, setSoundOn] = useState(false);
+  const [soundOn, setSoundOn] = useState(startsWithSound);
   const videoViewRef = useRef(null);
   // Native resolves this preference asynchronously. The source stays loaded so
   // a late preference result never has to recreate the web player.
   const [reduceMotion, setReduceMotion] = useState(initialReduceMotion);
   const player = useVideoPlayer(mediaUrl(VIDEO_PATH), (instance) => {
     instance.loop = loop;
-    instance.muted = true;
+    // Installed apps can start with the video's soundtrack. Browsers require
+    // a user gesture before unmuted playback, so web begins muted.
+    instance.muted = !startsWithSound;
     instance.keepScreenOnWhilePlaying = false;
   });
   const shouldPlay = reduceMotion === false || motionOverride;
@@ -143,17 +146,18 @@ export default function WelcomeVideo({
     player.muted = !nextSoundOn;
     if (Platform.OS === 'web') {
       const video = videoViewRef.current?.nativeRef?.current;
-      if (video) video.muted = !nextSoundOn;
+      if (video) {
+        video.muted = !nextSoundOn;
+        if (nextSoundOn) video.currentTime = 0;
+      }
     }
+    if (nextSoundOn) player.currentTime = 0;
     requestPlayback();
   };
 
   return (
-    <Pressable
+    <View
       testID="celeste-opening-video"
-      accessibilityRole="button"
-      accessibilityLabel={showPlayButton ? retryLabel : soundLabel}
-      onPress={toggleSoundAndPlay}
       style={[styles.frame, fullBleed && styles.fullBleed, { width, height }, style]}
     >
       <Image
@@ -167,21 +171,37 @@ export default function WelcomeVideo({
         nativeControls={false}
         contentFit={fullBleed ? mediaFit : 'cover'}
         playsInline
-        allowsFullscreen={false}
+        fullscreenOptions={{ enable: false }}
         allowsPictureInPicture={false}
         onFirstFrameRender={() => setFirstFrame(true)}
         pointerEvents="none"
         style={[styles.video, { opacity: revealVideo ? 1 : 0 }]}
       />
       {showPlayButton ? (
-        <View testID="celeste-video-play-retry" pointerEvents="none" style={styles.playButton}>
+        <Pressable
+          testID="celeste-video-play-retry"
+          accessibilityRole="button"
+          accessibilityLabel={retryLabel}
+          onPress={toggleSoundAndPlay}
+          style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
+        >
           <Ionicons name="play" size={22} color={ONB.inkOn} />
-        </View>
+        </Pressable>
       ) : null}
-      <View testID="celeste-opening-sound" pointerEvents="none" style={styles.soundButton}>
+      <Pressable
+        testID="celeste-opening-sound"
+        accessibilityRole="button"
+        accessibilityLabel={soundLabel}
+        onPress={toggleSoundAndPlay}
+        style={({ pressed }) => [
+          styles.soundButton,
+          Platform.OS === 'web' && !soundOn && styles.soundButtonAttention,
+          pressed && styles.pressed,
+        ]}
+      >
         <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={20} color={ONB.inkOn} />
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -226,5 +246,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(28,46,79,0.72)',
+  },
+  soundButtonAttention: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.88)',
+  },
+  pressed: {
+    opacity: 0.76,
   },
 });

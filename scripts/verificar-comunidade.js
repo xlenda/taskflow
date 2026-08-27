@@ -96,7 +96,7 @@ const fakeRequire = (name) => {
       },
     };
   }
-  if (name === '@supabase/supabase-js') return { createClient: () => { throw new Error('cloud should be off'); } };
+  if (name === './celesteSupabase') return { getCelesteSupabaseClient: () => null };
   throw new Error(`unexpected require: ${name}`);
 };
 new Function('require', 'module', 'exports', 'process', transformed)(
@@ -207,6 +207,41 @@ new Function('require', 'module', 'exports', 'process', transformed)(
     (await api.loadLocalCommunityStories()).length,
     0,
     'submit antigo nao pode recriar a chave local depois do reset'
+  );
+
+  storage.set(
+    api.COMMUNITY_STORAGE_KEY,
+    JSON.stringify([
+      {
+        id: 'backup-source',
+        body: 'Relato local que precisa fazer parte da copia versionada.',
+        status: 'local_draft',
+        locale: 'pt',
+      },
+    ])
+  );
+  const backupStories = await api.exportLocalCommunityStoriesForBackup();
+  assert.strictEqual(backupStories.length, 1, 'backup precisa incluir os relatos locais');
+  assert.strictEqual(backupStories[0].id, 'backup-source');
+  const restoreToken = await api.beginCommunityDataReset();
+  await api.restoreLocalCommunityStoriesFromBackup(restoreToken, [
+    {
+      id: 'backup-restored',
+      body: 'Relato restaurado deve substituir o conteudo local anterior.',
+      status: 'pending',
+      locale: 'pt',
+    },
+  ]);
+  const restoredStories = await api.loadLocalCommunityStories();
+  assert.deepStrictEqual(
+    restoredStories.map((item) => item.id),
+    ['backup-restored'],
+    'politica v2 precisa substituir, nao mesclar, os relatos locais'
+  );
+  assert.strictEqual(
+    api.validateLocalCommunityStoriesBackup(new Array(api.COMMUNITY_BACKUP_MAX_ITEMS + 1).fill({})),
+    null,
+    'quota de relatos precisa ser validada antes da restauracao'
   );
 
   storage.set(api.COMMUNITY_STORAGE_KEY, '{json-corrompido');

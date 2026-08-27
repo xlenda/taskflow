@@ -29,6 +29,11 @@ export function initCelesteBotProtection() {
         method: 'POST',
         advancedOptions: { checkLevel: 'basic' },
       },
+      {
+        path: '/api/gerar-visual',
+        method: 'POST',
+        advancedOptions: { checkLevel: 'basic' },
+      },
     ],
   });
 }

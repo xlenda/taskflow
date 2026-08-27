@@ -26,7 +26,10 @@ actor AffirmationAlarmCoordinator {
 
   private let alarmManager = AlarmManager.shared
   private let defaults = UserDefaults.standard
-  private let soundsDefaultsKey = "CelesteAffirmationAlarm.soundFiles.v1"
+  private let legacySoundsDefaultsKey = "CelesteAffirmationAlarm.soundFiles.v1"
+  private let soundsDefaultsKey = "CelesteAffirmationAlarm.soundFiles.v2"
+  private let systemIdsDefaultsKey = "CelesteAffirmationAlarm.systemIds.v1"
+  private let ownedFilesDefaultsKey = "CelesteAffirmationAlarm.ownedFiles.v1"
   private let isoFormatter = ISO8601DateFormatter()
 
   func capability() -> [String: Any] {
@@ -114,9 +117,9 @@ actor AffirmationAlarmCoordinator {
     let schedule = Alarm.Schedule.relative(.init(time: time, repeats: .weekly(weekdays)))
 
     do {
-      try cancelExistingAlarm(id: alarmId)
-      let alarm = try await alarmManager.schedule(
-        id: alarmId,
+      let alarm = try await install(
+        logicalId: alarmId,
+        preparedSound: preparedSound,
         configuration: configuration(
           schedule: schedule,
           title: payload.title,
@@ -125,12 +128,12 @@ actor AffirmationAlarmCoordinator {
           kind: "weekly"
         )
       )
-      rememberSound(preparedSound.fileName, for: alarmId)
 
       var result: [String: Any] = [
         "ok": true,
         "operation": "schedule",
-        "alarmId": alarm.id.uuidString,
+        "alarmId": alarmId.uuidString,
+        "systemAlarmId": alarm.id.uuidString,
         "soundFileName": preparedSound.fileName,
         "soundDurationSeconds": preparedSound.duration,
         "soundSource": preparedSound.source
@@ -144,7 +147,7 @@ actor AffirmationAlarmCoordinator {
       }
       return result
     } catch {
-      try? FileManager.default.removeItem(at: preparedSound.url)
+      discardPreparedSound(preparedSound)
       return failure(
         operation: "schedule",
         alarmId: payload.alarmId,
@@ -191,9 +194,9 @@ actor AffirmationAlarmCoordinator {
     let schedule = Alarm.Schedule.fixed(scheduledDate)
 
     do {
-      try cancelExistingAlarm(id: alarmId)
-      let alarm = try await alarmManager.schedule(
-        id: alarmId,
+      let alarm = try await install(
+        logicalId: alarmId,
+        preparedSound: preparedSound,
         configuration: configuration(
           schedule: schedule,
           title: payload.title,
@@ -202,18 +205,18 @@ actor AffirmationAlarmCoordinator {
           kind: "test"
         )
       )
-      rememberSound(preparedSound.fileName, for: alarmId)
       return [
         "ok": true,
         "operation": "test",
-        "alarmId": alarm.id.uuidString,
+        "alarmId": alarmId.uuidString,
+        "systemAlarmId": alarm.id.uuidString,
         "scheduledFor": isoFormatter.string(from: scheduledDate),
         "soundFileName": preparedSound.fileName,
         "soundDurationSeconds": preparedSound.duration,
         "soundSource": preparedSound.source
       ]
     } catch {
-      try? FileManager.default.removeItem(at: preparedSound.url)
+      discardPreparedSound(preparedSound)
       return failure(
         operation: "test",
         alarmId: payload.alarmId,
@@ -224,20 +227,26 @@ actor AffirmationAlarmCoordinator {
   }
 
   func cancel(_ alarmIdString: String) -> [String: Any] {
-    guard let alarmId = UUID(uuidString: alarmIdString) else {
+    guard let logicalId = UUID(uuidString: alarmIdString) else {
       return failure(operation: "cancel", alarmId: alarmIdString, reason: "invalid_alarm_id")
     }
 
     do {
-      let exists = try alarmManager.alarms.contains { $0.id == alarmId }
+      try reconcileTrackedAlarms()
+      var systemIds = loadSystemIds()
+      let systemId = systemIds[logicalId.uuidString].flatMap { UUID(uuidString: $0) } ?? logicalId
+      let exists = try alarmManager.alarms.contains { $0.id == systemId }
       if exists {
-        try alarmManager.cancel(id: alarmId)
+        try alarmManager.cancel(id: systemId)
       }
-      removeTrackedSound(for: alarmId)
+      systemIds.removeValue(forKey: logicalId.uuidString)
+      saveSystemIds(systemIds)
+      removeTrackedSound(forSystemId: systemId)
+      _ = try? reconcileTrackedAlarms()
       return [
         "ok": true,
         "operation": "cancel",
-        "alarmId": alarmId.uuidString,
+        "alarmId": logicalId.uuidString,
         "cancelled": exists
       ]
     } catch {
@@ -363,11 +372,57 @@ actor AffirmationAlarmCoordinator {
     }
   }
 
-  private func cancelExistingAlarm(id: UUID) throws {
-    let exists = try alarmManager.alarms.contains { $0.id == id }
-    guard exists else { return }
-    try alarmManager.cancel(id: id)
-    removeTrackedSound(for: id)
+  private func install(
+    logicalId: UUID,
+    preparedSound: PreparedAffirmationSound,
+    configuration: AlarmConfiguration
+  ) async throws -> Alarm {
+    try reconcileTrackedAlarms(preserving: [preparedSound.fileName])
+    var systemIds = loadSystemIds()
+    let activeIds = Set(try alarmManager.alarms.map { $0.id })
+    let mappedId = systemIds[logicalId.uuidString].flatMap { UUID(uuidString: $0) }
+    let previousId = mappedId.flatMap { activeIds.contains($0) ? $0 : nil }
+      ?? (activeIds.contains(logicalId) ? logicalId : nil)
+    let nextId = previousId == nil ? logicalId : UUID()
+
+    rememberSound(preparedSound.fileName, forSystemId: nextId)
+    let alarm: Alarm
+    do {
+      alarm = try await alarmManager.schedule(id: nextId, configuration: configuration)
+    } catch {
+      removeTrackedSound(forSystemId: nextId)
+      throw error
+    }
+
+    // Commit the replacement before removing the old physical alarm. If the
+    // process is interrupted here, reconciliation keeps the new alarm and
+    // removes the old duplicate on the next capability check.
+    systemIds[logicalId.uuidString] = nextId.uuidString
+    saveSystemIds(systemIds)
+
+    if let previousId, previousId != nextId {
+      do {
+        try alarmManager.cancel(id: previousId)
+        removeTrackedSound(forSystemId: previousId)
+      } catch let previousCancelError {
+        var candidateCancelled = false
+        do {
+          try alarmManager.cancel(id: nextId)
+          candidateCancelled = true
+        } catch {
+          // Both alarms still exist. Keep the new one canonical; a later
+          // reconciliation retries removal of the tracked old physical alarm.
+        }
+        if candidateCancelled {
+          removeTrackedSound(forSystemId: nextId)
+          systemIds[logicalId.uuidString] = previousId.uuidString
+          saveSystemIds(systemIds)
+          throw previousCancelError
+        }
+      }
+    }
+
+    return alarm
   }
 
   private func soundsDirectory() throws -> URL {
@@ -406,31 +461,164 @@ actor AffirmationAlarmCoordinator {
     return "\(stem)-\(alarmId.uuidString.lowercased())-\(revision).\(fileExtension)"
   }
 
-  private func rememberSound(_ fileName: String, for alarmId: UUID) {
-    var sounds = defaults.dictionary(forKey: soundsDefaultsKey) as? [String: String] ?? [:]
-    if let previous = sounds[alarmId.uuidString], previous != fileName {
-      removeSoundFile(named: previous)
-    }
-    sounds[alarmId.uuidString] = fileName
+  private func loadSystemIds() -> [String: String] {
+    defaults.dictionary(forKey: systemIdsDefaultsKey) as? [String: String] ?? [:]
+  }
+
+  private func saveSystemIds(_ systemIds: [String: String]) {
+    defaults.set(systemIds, forKey: systemIdsDefaultsKey)
+  }
+
+  private func loadSounds() -> [String: String] {
+    defaults.dictionary(forKey: soundsDefaultsKey) as? [String: String] ?? [:]
+  }
+
+  private func saveSounds(_ sounds: [String: String]) {
     defaults.set(sounds, forKey: soundsDefaultsKey)
   }
 
-  private func removeTrackedSound(for alarmId: UUID) {
-    var sounds = defaults.dictionary(forKey: soundsDefaultsKey) as? [String: String] ?? [:]
-    if let fileName = sounds.removeValue(forKey: alarmId.uuidString) {
-      removeSoundFile(named: fileName)
+  private func rememberSound(_ fileName: String, forSystemId systemId: UUID) {
+    var sounds = loadSounds()
+    if let previous = sounds[systemId.uuidString], previous != fileName {
+      _ = removeSoundFile(named: previous)
     }
-    defaults.set(sounds, forKey: soundsDefaultsKey)
+    sounds[systemId.uuidString] = fileName
+    saveSounds(sounds)
+    trackOwnedFile(fileName)
   }
 
-  private func removeSoundFile(named fileName: String) {
+  private func removeTrackedSound(forSystemId systemId: UUID) {
+    var sounds = loadSounds()
+    if let fileName = sounds.removeValue(forKey: systemId.uuidString) {
+      _ = removeSoundFile(named: fileName)
+    }
+    saveSounds(sounds)
+  }
+
+  private func discardPreparedSound(_ preparedSound: PreparedAffirmationSound) {
+    _ = removeSoundFile(named: preparedSound.fileName)
+  }
+
+  private func trackOwnedFile(_ fileName: String) {
+    var files = Set(defaults.stringArray(forKey: ownedFilesDefaultsKey) ?? [])
+    files.insert(fileName)
+    defaults.set(files.sorted(), forKey: ownedFilesDefaultsKey)
+  }
+
+  @discardableResult
+  private func removeSoundFile(named fileName: String) -> Bool {
     guard URL(fileURLWithPath: fileName).lastPathComponent == fileName,
           let directory = try? soundsDirectory() else {
-      return
+      return false
     }
-    try? FileManager.default.removeItem(
-      at: directory.appendingPathComponent(fileName, isDirectory: false)
+    let url = directory.appendingPathComponent(fileName, isDirectory: false)
+    do {
+      if FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.removeItem(at: url)
+      }
+      var files = Set(defaults.stringArray(forKey: ownedFilesDefaultsKey) ?? [])
+      files.remove(fileName)
+      defaults.set(files.sorted(), forKey: ownedFilesDefaultsKey)
+      return true
+    } catch {
+      trackOwnedFile(fileName)
+      return false
+    }
+  }
+
+  @discardableResult
+  private func reconcileTrackedAlarms(preserving: Set<String> = []) throws -> [String] {
+    let alarms = try alarmManager.alarms
+    var activeIds = Set(alarms.map { $0.id.uuidString })
+    var systemIds = loadSystemIds()
+    var sounds = loadSounds()
+
+    if let legacySounds = defaults.dictionary(forKey: legacySoundsDefaultsKey) as? [String: String] {
+      for (logicalId, fileName) in legacySounds {
+        let systemId = systemIds[logicalId] ?? logicalId
+        if activeIds.contains(systemId) {
+          systemIds[logicalId] = systemId
+          sounds[systemId] = fileName
+          trackOwnedFile(fileName)
+        } else {
+          _ = removeSoundFile(named: fileName)
+        }
+      }
+      defaults.removeObject(forKey: legacySoundsDefaultsKey)
+    }
+
+    for (logicalId, systemId) in Array(systemIds) where !activeIds.contains(systemId) {
+      systemIds.removeValue(forKey: logicalId)
+    }
+
+    let canonicalSystemIds = Set(systemIds.values)
+    for (systemId, fileName) in Array(sounds) {
+      guard activeIds.contains(systemId) else {
+        sounds.removeValue(forKey: systemId)
+        _ = removeSoundFile(named: fileName)
+        continue
+      }
+      guard !canonicalSystemIds.contains(systemId), let orphanId = UUID(uuidString: systemId) else {
+        continue
+      }
+      do {
+        try alarmManager.cancel(id: orphanId)
+        activeIds.remove(systemId)
+        sounds.removeValue(forKey: systemId)
+        _ = removeSoundFile(named: fileName)
+      } catch {
+        // Keep ownership metadata so a later foreground reconciliation retries.
+      }
+    }
+
+    saveSystemIds(systemIds)
+    saveSounds(sounds)
+    let trackedSystemIds = Set(sounds.keys)
+    let hasUntrackedActiveAlarm = activeIds.contains { !trackedSystemIds.contains($0) }
+    try? cleanupUnreferencedSoundFiles(
+      referenced: Set(sounds.values).union(preserving),
+      preserveGeneratedFiles: hasUntrackedActiveAlarm
     )
+
+    var logicalIds = systemIds.compactMap { logicalId, systemId in
+      activeIds.contains(systemId) ? logicalId : nil
+    }
+    let mappedSystemIds = Set(systemIds.values)
+    logicalIds.append(contentsOf: activeIds.filter { !mappedSystemIds.contains($0) })
+    return Array(Set(logicalIds)).sorted()
+  }
+
+  private func cleanupUnreferencedSoundFiles(
+    referenced: Set<String>,
+    preserveGeneratedFiles: Bool = false
+  ) throws {
+    let directory = try soundsDirectory()
+    let directoryFiles = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    ).map(\.lastPathComponent)
+    var candidates = Set(defaults.stringArray(forKey: ownedFilesDefaultsKey) ?? [])
+    candidates.formUnion(directoryFiles.filter(isCelesteGeneratedSoundFile))
+
+    var remaining = Set<String>()
+    for fileName in candidates {
+      if referenced.contains(fileName) || preserveGeneratedFiles {
+        remaining.insert(fileName)
+      } else if !removeSoundFile(named: fileName) {
+        remaining.insert(fileName)
+      }
+    }
+    defaults.set(remaining.sorted(), forKey: ownedFilesDefaultsKey)
+  }
+
+  private func isCelesteGeneratedSoundFile(_ fileName: String) -> Bool {
+    guard fileName.hasPrefix("celeste-affirmation-"),
+          fileName.hasSuffix(".wav") || fileName.hasSuffix(".caf") else {
+      return false
+    }
+    let pattern = #"^celeste-affirmation-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[0-9a-f]{8}\.(wav|caf)$"#
+    return fileName.range(of: pattern, options: .regularExpression) != nil
   }
 
   private func nextFireDate(hour: Int, minute: Int, isoWeekdays: [Int]) -> Date? {
@@ -472,11 +660,21 @@ actor AffirmationAlarmCoordinator {
     reason: String? = nil,
     error: Error? = nil
   ) -> [String: Any] {
+    let scheduledAlarmIds: [String]
+    do {
+      scheduledAlarmIds = try reconcileTrackedAlarms()
+    } catch {
+      let activeIds = Set((try? alarmManager.alarms.map { $0.id.uuidString }) ?? [])
+      let systemIds = loadSystemIds()
+      scheduledAlarmIds = systemIds.compactMap { logicalId, systemId in
+        activeIds.contains(systemId) ? logicalId : nil
+      }
+    }
     var result: [String: Any] = [
       "supported": true,
       "authorization": authorization,
       "apiVersion": "2",
-      "scheduledAlarmIds": (try? alarmManager.alarms.map { $0.id.uuidString }) ?? []
+      "scheduledAlarmIds": scheduledAlarmIds
     ]
     if let reason { result["reason"] = reason }
     if let error { result["nativeErrorCode"] = String(describing: type(of: error)) }
@@ -517,12 +715,7 @@ actor AffirmationAlarmCoordinator {
       "alarmId": alarmId,
       "reason": reason
     ]
-    // A replacement may have removed the previous alarm before a later step
-    // failed. Report the post-operation truth so JavaScript never displays a
-    // wake-up alarm that AlarmKit no longer owns.
-    if let alarms = try? alarmManager.alarms {
-      result["scheduledAlarmIds"] = alarms.map { $0.id.uuidString }
-    }
+    result["scheduledAlarmIds"] = (try? reconcileTrackedAlarms()) ?? []
     if let error { result["nativeErrorCode"] = String(describing: type(of: error)) }
     return result
   }

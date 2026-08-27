@@ -19,6 +19,7 @@ import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
 import { usePersonalNarration } from '../../utils/usePersonalNarration';
 import CelestialTrace from '../../components/CelestialTrace';
+import GradientCover from '../../components/GradientCover';
 import NarratorSelector from '../../components/NarratorSelector';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 
@@ -36,6 +37,9 @@ const S = {
   },
   listen: { en: 'Listen to my scene', pt: 'Ouvir minha cena' },
   stop: { en: 'Stop narration', pt: 'Parar narração' },
+  resume: { en: 'Play narration', pt: 'Tocar narração' },
+  preparing: { en: 'Preparing your audio', pt: 'Preparando seu áudio' },
+  ready: { en: 'Audio ready', pt: 'Áudio pronto' },
   listening: { en: 'Your scene is playing', pt: 'Sua cena está tocando' },
   voiceTitle: { en: 'Choose your narrator', pt: 'Escolha sua voz' },
   voiceHint: {
@@ -77,7 +81,7 @@ const RECIBO = {
 };
 
 export default function RevealScreen({ navigation, route }) {
-  const { state, setNarrator, updateManifestation } = useApp();
+  const { state, ensurePersonalVisual, setNarrator, updateManifestation } = useApp();
   const narration = usePersonalNarration();
   const { t } = useT();
   const [audioFailed, setAudioFailed] = useState(false);
@@ -96,6 +100,11 @@ export default function RevealScreen({ navigation, route }) {
   // Nunca usar list[0] como fallback: um link inválido não pode revelar a
   // história íntima de outra manifestação.
   const m = id ? list.find((x) => x.id === id) : null;
+
+  useEffect(() => {
+    if (!m?.id) return;
+    void ensurePersonalVisual(m.id);
+  }, [ensurePersonalVisual, m?.id]);
 
   const returnToWelcome = () => {
     navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
@@ -163,13 +172,20 @@ export default function RevealScreen({ navigation, route }) {
   );
   const lang = m.lang || (state && state.lang) || 'pt';
   const playbackId = `reveal:${m.id}`;
-  const playing =
-    narration.activePlaybackId === playbackId &&
-    (narration.isLoading || narration.isPlaying || narration.isPaused);
+  const ownsPlayback = narration.activePlaybackId === playbackId;
+  const loadingAudio = ownsPlayback && narration.isLoading;
+  const playingAudio = ownsPlayback && narration.isPlaying;
+  const pausedAudio = ownsPlayback && narration.isPaused;
+  const readyAudio = ownsPlayback && narration.isReady;
 
   const toggleAudio = async () => {
-    if (playing) {
+    if (loadingAudio || playingAudio) {
       narration.stop();
+      return;
+    }
+    if (pausedAudio || readyAudio) {
+      setAudioFailed(false);
+      await narration.resume();
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -261,27 +277,71 @@ export default function RevealScreen({ navigation, route }) {
               <Pressable
                 onPress={toggleAudio}
                 accessibilityRole="button"
-                accessibilityLabel={playing ? t(S.stop) : t(S.listen)}
+                accessibilityLabel={
+                  loadingAudio
+                    ? t(S.preparing)
+                    : playingAudio
+                    ? t(S.stop)
+                    : pausedAudio || readyAudio
+                    ? t(S.resume)
+                    : t(S.listen)
+                }
                 accessibilityState={{
-                  busy: narration.activePlaybackId === playbackId && narration.isLoading,
+                  busy: loadingAudio,
                 }}
                 style={({ pressed }) => [styles.audioButton, pressed && styles.pressed]}
               >
                 <View style={styles.audioIcon}>
-                  <Ionicons name={playing ? 'stop' : 'play'} size={20} color={ONB.ctaInk} />
+                  <Ionicons
+                    name={loadingAudio ? 'hourglass-outline' : playingAudio ? 'stop' : 'play'}
+                    size={20}
+                    color={ONB.ctaInk}
+                  />
                 </View>
                 <View style={styles.audioCopy}>
-                  <Text style={styles.audioLabel}>{playing ? t(S.stop) : t(S.listen)}</Text>
-                  <Text style={styles.audioState}>{playing ? t(S.listening) : m.title}</Text>
+                  <Text style={styles.audioLabel}>
+                    {loadingAudio
+                      ? t(S.preparing)
+                      : playingAudio
+                      ? t(S.stop)
+                      : pausedAudio || readyAudio
+                      ? t(S.resume)
+                      : t(S.listen)}
+                  </Text>
+                  <Text style={styles.audioState}>
+                    {loadingAudio
+                      ? t(S.preparing)
+                      : playingAudio
+                      ? t(S.listening)
+                      : readyAudio
+                      ? t(S.ready)
+                      : m.title}
+                  </Text>
                 </View>
                 <Ionicons name="headset-outline" size={21} color={ONB.surfaceSoft} />
               </Pressable>
               {audioFailed ? <Text style={styles.audioFail}>{t(S.audioFail)}</Text> : null}
 
+              {m.visual?.cacheKey ? (
+                <GradientCover
+                  testID="reveal-personal-visual"
+                  visualKey={m.visual.cacheKey}
+                  accent={m.accent}
+                  radius={22}
+                  style={styles.personalVisual}
+                >
+                  <View style={styles.personalVisualCopy}>
+                    <Text style={styles.personalVisualAffirmation}>“{m.affirmation}”</Text>
+                  </View>
+                </GradientCover>
+              ) : null}
+
               <View style={styles.scene}>
                 <View style={styles.sceneRule} />
                 <Text style={styles.sceneText}>{m.story}</Text>
-                <Text style={styles.affirmation}>“{m.affirmation}”</Text>
+                {!m.visual?.cacheKey ? (
+                  <Text style={styles.affirmation}>“{m.affirmation}”</Text>
+                ) : null}
               </View>
 
               <View style={styles.processBlock}>
@@ -394,6 +454,24 @@ const styles = StyleSheet.create({
   audioLabel: { color: ONB.surfaceInk, fontSize: 15, fontWeight: '700' },
   audioState: { color: ONB.surfaceSoft, fontSize: 12, marginTop: 3 },
   audioFail: { color: ONB.surfaceSoft, fontSize: 13, lineHeight: 19, marginTop: 9 },
+  personalVisual: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+    marginTop: 18,
+    padding: 24,
+  },
+  personalVisualCopy: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  personalVisualAffirmation: {
+    color: '#FFFFFF',
+    fontFamily: SERIF,
+    fontStyle: 'italic',
+    fontSize: 24,
+    lineHeight: 34,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.48)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 7,
+  },
   scene: {
     backgroundColor: ONB.card,
     borderRadius: 22,

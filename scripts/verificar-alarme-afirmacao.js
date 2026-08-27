@@ -15,6 +15,48 @@ const coordinatorSwiftFile = path.join(iosRoot, 'AffirmationAlarmCoordinator.swi
 const soundWriterSwiftFile = path.join(iosRoot, 'SpeechSoundWriter.swift');
 const neuralWriterSwiftFile = path.join(iosRoot, 'NeuralWavSoundWriter.swift');
 const podspecFile = path.join(iosRoot, 'CelesteAffirmationAlarm.podspec');
+const androidRoot = path.join(moduleRoot, 'android');
+const androidManifestFile = path.join(androidRoot, 'src', 'main', 'AndroidManifest.xml');
+const androidModuleFile = path.join(
+  androidRoot,
+  'src',
+  'main',
+  'java',
+  'expo',
+  'modules',
+  'celesteaffirmationalarm',
+  'CelesteAffirmationAlarmModule.kt'
+);
+const androidSchedulerFile = path.join(
+  androidRoot,
+  'src',
+  'main',
+  'java',
+  'expo',
+  'modules',
+  'celesteaffirmationalarm',
+  'AffirmationAlarmScheduler.kt'
+);
+const androidReceiverFile = path.join(
+  androidRoot,
+  'src',
+  'main',
+  'java',
+  'expo',
+  'modules',
+  'celesteaffirmationalarm',
+  'AffirmationAlarmReceiver.kt'
+);
+const androidServiceFile = path.join(
+  androidRoot,
+  'src',
+  'main',
+  'java',
+  'expo',
+  'modules',
+  'celesteaffirmationalarm',
+  'AffirmationPlaybackService.kt'
+);
 
 function makePCM16WavBase64({ sampleRate = 24_000, frameCount = 240 } = {}) {
   const dataBytes = frameCount * 2;
@@ -129,6 +171,9 @@ async function main() {
     { ok: false, scheduled: false, reason: 'web_unsupported' },
     'web must never claim that an alarm was scheduled'
   );
+  const webAuthorization = await web.requestAuthorization();
+  assert.strictEqual(webAuthorization.ok, false);
+  assert.strictEqual(webAuthorization.reason, 'web_unsupported');
 
   const oldIOS = service.createAffirmationAlarmAdapter({
     platform: { OS: 'ios', Version: '25.4' },
@@ -141,6 +186,77 @@ async function main() {
     getNativeModule: () => null,
   });
   assert.strictEqual((await missingBridge.getCapability()).status, 'native_module_missing');
+
+  const oldAndroid = service.createAffirmationAlarmAdapter({
+    platform: { OS: 'android', Version: 22 },
+    getNativeModule: () => null,
+  });
+  assert.strictEqual((await oldAndroid.getCapability()).reason, 'android_version_unsupported');
+
+  let androidAuthorization = 'not_determined';
+  const androidCalls = [];
+  const androidNativeModule = {
+    async getCapability() {
+      return {
+        supported: true,
+        authorization: androidAuthorization,
+        reason:
+          androidAuthorization === 'authorized'
+            ? null
+            : androidAuthorization === 'denied'
+              ? 'authorization_denied'
+              : 'exact_alarm_permission_required',
+        apiVersion: '3',
+        scheduledAlarmIds: [],
+      };
+    },
+    async requestAuthorization() {
+      androidCalls.push('requestAuthorization');
+      androidAuthorization = 'authorized';
+      return { authorization: androidAuthorization };
+    },
+    async schedule(payload) {
+      androidCalls.push(['schedule', payload]);
+      return { ok: true, alarmId: payload.alarmId, soundSource: 'neural_wav' };
+    },
+    async cancel(payload) {
+      androidCalls.push(['cancel', payload]);
+      return { ok: true, alarmId: payload.alarmId };
+    },
+    async test(payload) {
+      androidCalls.push(['test', payload]);
+      return { ok: true, alarmId: payload.alarmId, soundSource: 'local_speech' };
+    },
+  };
+  const android = service.createAffirmationAlarmAdapter({
+    platform: { OS: 'android', Version: 35 },
+    getNativeModule: () => androidNativeModule,
+  });
+  const androidWaiting = await android.getCapability();
+  assert.strictEqual(androidWaiting.status, 'authorization_required');
+  assert.strictEqual(androidWaiting.reason, 'exact_alarm_permission_required');
+  const androidPermission = await android.requestAuthorization();
+  assert.strictEqual(androidPermission.ok, true);
+  const androidScheduled = await android.schedule({
+    time: '06:20',
+    affirmation: 'I wake with my selected voice.',
+    audioBase64Wav: makePCM16WavBase64(),
+  });
+  assert.strictEqual(androidScheduled.ok, true);
+  assert.strictEqual(androidScheduled.soundSource, 'neural_wav');
+  assert.strictEqual(androidCalls[0], 'requestAuthorization');
+  assert.strictEqual((await android.cancel(androidScheduled.alarmId)).ok, true);
+
+  androidAuthorization = 'denied';
+  const androidDenied = await android.getCapability();
+  assert.strictEqual(androidDenied.authorization, 'denied');
+  assert.strictEqual(androidDenied.status, 'authorization_denied');
+  assert.strictEqual(androidDenied.canRequestAuthorization, false);
+  assert.strictEqual(
+    (await android.requestAuthorization()).reason,
+    'authorization_denied',
+    'a permissao Android bloqueada deve continuar recuperavel pelos Ajustes'
+  );
 
   const calls = [];
   let authorization = 'notDetermined';
@@ -186,6 +302,8 @@ async function main() {
   assert.strictEqual(waiting.status, 'authorization_required');
   assert.strictEqual(waiting.canRequestAuthorization, true);
   assert.deepStrictEqual(waiting.scheduledAlarmIds, []);
+  const iosPermission = await ios.requestAuthorization();
+  assert.strictEqual(iosPermission.ok, true);
 
   const scheduled = await ios.schedule({
     time: '06:30',
@@ -327,9 +445,12 @@ async function main() {
   );
 
   const moduleConfig = JSON.parse(fs.readFileSync(moduleConfigFile, 'utf8'));
-  assert.deepStrictEqual(moduleConfig.platforms, ['apple']);
+  assert.deepStrictEqual(moduleConfig.platforms, ['apple', 'android']);
   assert.deepStrictEqual(moduleConfig.apple.modules, ['CelesteAffirmationAlarmModule']);
   assert.strictEqual(moduleConfig.apple.podspecPath, './ios/CelesteAffirmationAlarm.podspec');
+  assert.deepStrictEqual(moduleConfig.android.modules, [
+    'expo.modules.celesteaffirmationalarm.CelesteAffirmationAlarmModule',
+  ]);
 
   const moduleSwift = fs.readFileSync(moduleSwiftFile, 'utf8');
   for (const method of ['getCapability', 'requestAuthorization', 'schedule', 'cancel', 'test']) {
@@ -348,6 +469,18 @@ async function main() {
   assert.match(coordinatorSwift, /Alarm\.Schedule\.fixed/);
   assert.match(coordinatorSwift, /try await alarmManager\.schedule/);
   assert.match(coordinatorSwift, /try alarmManager\.cancel/);
+  assert.doesNotMatch(coordinatorSwift, /cancelExistingAlarm/);
+  assert.match(coordinatorSwift, /private func install\(/);
+  assert.match(coordinatorSwift, /systemIdsDefaultsKey/);
+  assert.match(coordinatorSwift, /reconcileTrackedAlarms/);
+  const installBlock = coordinatorSwift.slice(
+    coordinatorSwift.indexOf('private func install('),
+    coordinatorSwift.indexOf('private func soundsDirectory()')
+  );
+  assert.ok(
+    installBlock.indexOf('alarmManager.schedule') < installBlock.indexOf('alarmManager.cancel(id: previousId)'),
+    'a substituicao precisa confirmar o novo alarme antes de cancelar o anterior'
+  );
   assert.match(coordinatorSwift, /result\["scheduledAlarmIds"\]/);
   assert.match(coordinatorSwift, /sound: \.named\(soundFileName\)/);
   assert.match(coordinatorSwift, /let localizedStopLabel = LocalizedStringResource/);
@@ -358,6 +491,9 @@ async function main() {
   assert.match(coordinatorSwift, /usesNeuralWav \? "wav" : "caf"/);
   assert.match(coordinatorSwift, /source: "neural_wav"/);
   assert.match(coordinatorSwift, /source: "local_speech"/);
+  assert.match(coordinatorSwift, /contentsOfDirectory/);
+  assert.match(coordinatorSwift, /isCelesteGeneratedSoundFile/);
+  assert.match(coordinatorSwift, /removeTrackedSound\(forSystemId:/);
   assert.match(coordinatorSwift, /"apiVersion": "2"/);
   assert.doesNotMatch(coordinatorSwift, /UNUserNotificationCenter|UNNotificationRequest/);
 
@@ -388,7 +524,59 @@ async function main() {
   assert.match(serviceSource, /requireOptionalNativeModule/);
   assert.doesNotMatch(serviceSource, /setTimeout|UNUserNotificationCenter/);
 
-  process.stdout.write('Alarme de afirmacao: contrato JS e scaffold iOS aprovados\n');
+  const androidManifest = fs.readFileSync(androidManifestFile, 'utf8');
+  for (const permission of [
+    'SCHEDULE_EXACT_ALARM',
+    'POST_NOTIFICATIONS',
+    'FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+    'RECEIVE_BOOT_COMPLETED',
+    'WAKE_LOCK',
+  ]) {
+    assert.match(androidManifest, new RegExp(permission));
+  }
+  assert.match(androidManifest, /AffirmationAlarmReceiver/);
+  assert.match(androidManifest, /AffirmationAlarmRestoreReceiver/);
+  assert.match(androidManifest, /AffirmationPlaybackService/);
+  assert.doesNotMatch(androidManifest, /<uses-permission[^>]+USE_EXACT_ALARM/);
+
+  const androidModule = fs.readFileSync(androidModuleFile, 'utf8');
+  for (const method of ['getCapability', 'requestAuthorization', 'schedule', 'cancel', 'test']) {
+    assert.match(androidModule, new RegExp(`AsyncFunction\\("${method}"\\)`));
+  }
+  assert.match(androidModule, /ACTION_REQUEST_SCHEDULE_EXACT_ALARM/);
+  assert.match(androidModule, /POST_NOTIFICATIONS/);
+  assert.match(androidModule, /canScheduleExactAlarms/);
+  assert.match(androidModule, /PermissionsResponse/);
+  assert.match(androidModule, /notificationPermission\.canAskAgain == false/);
+  assert.match(androidModule, /notificationNeedsSettings -> "denied"/);
+  assert.match(androidModule, /notificationNeedsSettings -> "authorization_denied"/);
+  assert.match(androidModule, /"apiVersion" to API_VERSION/);
+
+  const androidScheduler = fs.readFileSync(androidSchedulerFile, 'utf8');
+  assert.match(androidScheduler, /setAlarmClock/);
+  assert.match(androidScheduler, /filesDir, "affirmation-alarms"/);
+  assert.match(androidScheduler, /FileOutputStream\(temporary\)/);
+  assert.match(androidScheduler, /temporary\.renameTo\(destination\)/);
+  assert.match(androidScheduler, /previous\?\.let/);
+  assert.match(androidScheduler, /record\.token/);
+  assert.match(androidScheduler, /WavValidator/);
+  assert.match(androidScheduler, /MAX_DURATION_SECONDS = 29\.0/);
+  assert.doesNotMatch(androidScheduler, /http:|https:|upload/i);
+
+  const androidReceiver = fs.readFileSync(androidReceiverFile, 'utf8');
+  assert.match(androidReceiver, /record\.token != token/);
+  assert.match(androidReceiver, /startForegroundService/);
+  const androidService = fs.readFileSync(androidServiceFile, 'utf8');
+  assert.match(androidService, /AudioAttributes\.USAGE_ALARM/);
+  assert.match(androidService, /MediaPlayer/);
+  assert.match(androidService, /TextToSpeech/);
+  assert.match(androidService, /ACTION_STOP/);
+  assert.match(androidService, /PowerManager\.PARTIAL_WAKE_LOCK/);
+  assert.match(androidService, /MAX_PLAYBACK_MILLIS = 35_000L/);
+  assert.match(androidService, /postDelayed\(stopAfterMaximumDuration/);
+  assert.doesNotMatch(androidService, /setFullScreenIntent/);
+
+  process.stdout.write('Alarme de afirmacao: contrato JS e scaffolds nativos aprovados\n');
 }
 
 main().catch((error) => {

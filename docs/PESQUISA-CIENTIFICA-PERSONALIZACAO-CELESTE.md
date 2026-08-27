@@ -24,7 +24,11 @@ O ciclo de conhecimento é:
 7. retorno sem culpa para observar fricção e ajustar o passo.
 
 A implementação versionada usada pelo gerador está em
-[`knowledge/celeste-core-v1.json`](../knowledge/celeste-core-v1.json).
+[`knowledge/celeste-core-v2.json`](../knowledge/celeste-core-v2.json). A V2 tem
+39 cartões atômicos e 27 entradas no registro de fontes. Ela foi sintetizada
+somente a partir da V1 e dos dois documentos autorizados do projeto; não contém
+livros integrais nem representa todo o corpus de dezenas de livros citado em
+conversa.
 
 ## 2. Autoafirmação não é frase positiva absoluta
 
@@ -246,17 +250,23 @@ foram realmente usados.
 
 ## 13. Arquitetura de conhecimento
 
-A base tem quatro camadas:
+A arquitetura atual separa cinco responsabilidades:
 
-1. **conceitos versionados:** princípio, uso, limite e fonte;
-2. **regras editoriais:** credibilidade, autonomia, privacidade e segurança;
-3. **pares bons/ruins:** ensinam regra, não apenas estilo;
-4. **validadores:** fundamentação nos campos, promessa, terceiro, ação e idioma.
+1. **registro de fontes:** origem e papel de cada referência autorizada;
+2. **cartões versionados:** sinais, princípio, aplicação, limites, proibições e
+   pista curta para o prompt;
+3. **recuperação:** escolhe somente os cartões relevantes ao escopo e ao momento;
+4. **contratos editoriais:** credibilidade, autonomia, privacidade e segurança;
+5. **validadores:** fundamentação, promessa, terceiros, ação, continuidade e
+   dependência.
 
 Livros não são colocados integralmente no prompt. Artigos, diretrizes e sínteses
 próprias formam a base científica; livros de hábito e negócios são heurísticas;
 livros espirituais são apenas estilo opcional. Conteúdo protegido só entra com
 direito de uso.
+
+O fluxo completo de Base + Memória + Jornada está resumido em
+[`ARQUITETURA-CEREBRO-CELESTE.md`](./ARQUITETURA-CEREBRO-CELESTE.md).
 
 ## 14. Contrato de geração
 
@@ -307,19 +317,22 @@ Imagem literal segura
 
 ## 16. Uso real no produto
 
-Em 25/08/2026:
+No código-fonte de 27/08/2026:
 
-- a base `celeste-knowledge-v1` passou a ser carregada no servidor em cada nova
+- a base `celeste-knowledge-v2` é carregada no servidor em cada nova
   Cena-Âncora criada com Gemini, inclusive depois do onboarding;
-- o prompt `celeste-scene-v5` recebe apenas os conceitos com escopo de cena;
+- o prompt `celeste-scene-v7` recebe uma seleção de quatro a oito cartões, nunca
+  os 39 cartões ou os documentos completos;
+- o prompt de sonho em nuvem `celeste-dream-v2` recebe somente cartões do escopo
+  e os dados mínimos autorizados;
 - frases locais deixaram de declarar que o resultado já existe ou está a caminho;
 - obstáculo gera Ponte `se–então` no gerador local e é validado na nuvem;
 - `dream-local-v3` usa imagem literal, sentimento e escolha, sem dicionário de
-  símbolos;
+  símbolos; essa versão local é independente do prompt de nuvem V2;
 - a resposta do servidor registra `promptVersion` e `knowledgeVersion`;
 - o deploy empacota e verifica a mesma base usada nos testes;
-- mudanças futuras para companheiro e check-in já possuem escopos separados,
-  mas não são apresentadas como funções prontas antes de existirem.
+- afirmação, cena, sonho e check-in possuem escopos e contratos separados dentro
+  da mesma cronologia, sem criar um catálogo de novas funções na interface.
 
 ## 17. Métricas honestas
 

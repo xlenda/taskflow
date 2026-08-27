@@ -12,6 +12,7 @@ const RULE_NAME = 'Celeste Gemini API rate limit';
 const EXPECTED_PATHS = [
   '/api/gerar-audio',
   '/api/gerar-cena',
+  '/api/gerar-visual',
   '/api/traduzir-cena',
   '/api/transformar-sonho',
 ];
@@ -135,7 +136,7 @@ async function main() {
     0,
     `WAF ativo diverge do contrato: ${differences.join('; ')}`
   );
-  process.stdout.write('WAF Vercel ativo: quatro APIs Gemini, 12/min, IP + JA4.\n');
+  process.stdout.write('WAF Vercel ativo: cinco APIs Gemini, 12/min, IP + JA4.\n');
 }
 
 main().catch((error) => {

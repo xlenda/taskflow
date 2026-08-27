@@ -1,8 +1,11 @@
 {
-  "platforms": ["apple"],
+  "platforms": ["apple", "android"],
   "apple": {
     "modules": ["CelesteAffirmationAlarmModule"],
     "podspecPath": "./ios/CelesteAffirmationAlarm.podspec",
     "swiftModuleName": "CelesteAffirmationAlarm"
+  },
+  "android": {
+    "modules": ["expo.modules.celesteaffirmationalarm.CelesteAffirmationAlarmModule"]
   }
 }

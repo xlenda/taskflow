@@ -20,6 +20,11 @@ function cleanIdentifier(value) {
   return typeof value === 'string' ? value.trim().slice(0, 240) : '';
 }
 
+function isDailyRitualNotification(item) {
+  const data = item?.content?.data || item?.request?.content?.data;
+  return data?.kind === 'daily_ritual' || data?.url === DAILY_RITUAL_URL;
+}
+
 function parseTime(value) {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
   if (!match) return null;
@@ -125,6 +130,41 @@ export async function cancelDailyRitualReminder(identifier) {
   }
 }
 
+export async function cancelOrphanedDailyRitualReminders() {
+  if (Platform.OS === 'web') return { ok: true, cancelled: 0 };
+  const client = api();
+  if (
+    !client ||
+    typeof client.getAllScheduledNotificationsAsync !== 'function' ||
+    typeof client.cancelScheduledNotificationAsync !== 'function'
+  ) {
+    return { ok: false, error: 'unsupported' };
+  }
+  try {
+    const scheduled = await client.getAllScheduledNotificationsAsync();
+    const identifiers = [
+      ...new Set(
+        (Array.isArray(scheduled) ? scheduled : [])
+          .filter(isDailyRitualNotification)
+          .map((item) => cleanIdentifier(item?.identifier || item?.request?.identifier))
+          .filter(Boolean)
+      ),
+    ];
+    let cancelled = 0;
+    for (const identifier of identifiers) {
+      try {
+        await client.cancelScheduledNotificationAsync(identifier);
+        cancelled += 1;
+      } catch (_error) {
+        return { ok: false, error: 'cancel_failed', cancelled };
+      }
+    }
+    return { ok: true, cancelled };
+  } catch (_error) {
+    return { ok: false, error: 'status_failed', cancelled: 0 };
+  }
+}
+
 export async function getDailyRitualReminderStatus(identifier) {
   const id = cleanIdentifier(identifier);
   if (Platform.OS === 'web') {
@@ -208,6 +248,7 @@ export function subscribeDailyRitualNotificationUrls(listener) {
 export const _dailyRitualReminderTest = {
   parseTime,
   responseUrl,
+  isDailyRitualNotification,
   setApiForTests(value) {
     notificationApi = value;
   },

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Linking,
@@ -22,6 +23,7 @@ import { useApp } from '../context/AppContext';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
+  requestAffirmationAlarmAuthorization,
   scheduleAffirmationAlarm,
 } from '../services/affirmationAlarm';
 import { useTheme } from '../ui/theme';
@@ -37,8 +39,8 @@ const COPY = {
   saveChoice: { pt: 'Salvar minha escolha', en: 'Save my choice' },
   confirmTitle: { pt: 'Confirmar este despertador?', en: 'Confirm this alarm?' },
   confirmBody: {
-    pt: 'Acordar às {time} com “{phrase}” nos dias escolhidos? O iPhone pedirá permissão em seguida.',
-    en: 'Wake at {time} with “{phrase}” on the selected days? Your iPhone will ask for permission next.',
+    pt: 'Acordar às {time} com “{phrase}” nos dias escolhidos? O aparelho pedirá permissão em seguida.',
+    en: 'Wake at {time} with “{phrase}” on the selected days? Your device will ask for permission next.',
   },
   confirmAction: { pt: 'Confirmar e ativar', en: 'Confirm and turn on' },
   savedDraft: {
@@ -75,7 +77,7 @@ const COPY = {
   deactivateConfirm: { pt: 'Desativar', en: 'Turn off' },
   cancel: { pt: 'Cancelar', en: 'Cancel' },
   checking: { pt: 'Verificando este aparelho…', en: 'Checking this device…' },
-  scheduling: { pt: 'Confirmando com o iPhone…', en: 'Confirming with your iPhone…' },
+  scheduling: { pt: 'Confirmando com o aparelho…', en: 'Confirming with your device…' },
   active: { pt: 'Ativo às {time}.', en: 'Active at {time}.' },
   ready: {
     pt: 'A permissão será solicitada somente quando você tocar em Ativar despertador.',
@@ -89,10 +91,14 @@ const COPY = {
     pt: 'O acesso aos Alarmes foi negado. O despertador não foi alterado.',
     en: 'Alarm access was denied. Your alarm was not changed.',
   },
+  permissionRequired: {
+    pt: 'Conclua a permissão de Alarmes e Notificações que o aparelho abriu. Ao voltar, toque em Ativar novamente.',
+    en: 'Complete the Alarm and Notification permission opened by your device. When you return, tap Turn on again.',
+  },
   openSettings: { pt: 'Abrir Ajustes', en: 'Open Settings' },
   failed: {
-    pt: 'O iPhone não confirmou o agendamento. Nada foi salvo; tente novamente.',
-    en: 'Your iPhone did not confirm the schedule. Nothing was saved; try again.',
+    pt: 'O aparelho não confirmou o agendamento. Nada foi salvo; tente novamente.',
+    en: 'Your device did not confirm the schedule. Nothing was saved; try again.',
   },
   voiceFailed: {
     pt: 'Não foi possível criar a voz escolhida. O despertador não foi alterado.',
@@ -100,12 +106,12 @@ const COPY = {
   },
   cancelled: { pt: 'Despertador desativado.', en: 'Alarm turned off.' },
   cancelFailed: {
-    pt: 'O iPhone não confirmou a desativação. O despertador continua marcado como ativo.',
-    en: 'Your iPhone did not confirm cancellation. The alarm remains marked as active.',
+    pt: 'O aparelho não confirmou a desativação. O despertador continua marcado como ativo.',
+    en: 'Your device did not confirm cancellation. The alarm remains marked as active.',
   },
   webUnsupported: {
-    pt: 'No site você pode preparar e ouvir a frase. Para acordar com um alarme real, use o app instalado em um iPhone compatível.',
-    en: 'On the website you can prepare and preview the phrase. For a real wake-up alarm, use the installed app on a compatible iPhone.',
+    pt: 'No site você pode preparar e ouvir a frase. Para acordar com um alarme real, use o app instalado em um iPhone ou Android compatível.',
+    en: 'On the website you can prepare and preview the phrase. For a real wake-up alarm, use the installed app on a compatible iPhone or Android device.',
   },
   nativeMissing: {
     pt: 'Este app ainda não tem o módulo nativo necessário para criar um despertador real.',
@@ -221,23 +227,31 @@ export default function AffirmationAlarmScreen({ route }) {
     };
   }, [narration.stop]);
 
+  const refreshCapability = useCallback(async () => {
+    try {
+      const result = await getAffirmationAlarmCapability();
+      if (mountedRef.current) setCapability(result);
+    } catch (_error) {
+      if (mountedRef.current) setCapability({ supported: false, reason: 'capability_error' });
+    }
+  }, []);
+
   useEffect(() => {
     if (!focused) {
       narration.stop();
-      return;
+      return undefined;
     }
-    let active = true;
-    getAffirmationAlarmCapability()
-      .then((result) => {
-        if (active) setCapability(result);
-      })
-      .catch(() => {
-        if (active) setCapability({ supported: false, reason: 'capability_error' });
-      });
-    return () => {
-      active = false;
-    };
-  }, [focused, narration.stop]);
+    refreshCapability();
+    return undefined;
+  }, [focused, narration.stop, refreshCapability]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && focused) refreshCapability();
+    });
+    return () => subscription.remove();
+  }, [focused, refreshCapability]);
 
   useEffect(() => {
     const preselectId = clean(route?.params?.preselectId, 160);
@@ -326,6 +340,24 @@ export default function AffirmationAlarmScreen({ route }) {
     setFeedback(null);
     try {
       narration.stop();
+      const authorization = await requestAffirmationAlarmAuthorization();
+      if (authorization.capability && mountedRef.current) {
+        setCapability(authorization.capability);
+      }
+      if (authorization.ok !== true) {
+        if (mountedRef.current) {
+          setFeedback(
+            authorization.reason === 'authorization_denied'
+              ? 'denied'
+              : authorization.reason === 'exact_alarm_permission_required' ||
+                authorization.reason === 'notification_permission_required' ||
+                authorization.reason === 'authorization_required'
+              ? 'permission_required'
+              : 'failed'
+          );
+        }
+        return;
+      }
       const prepared = await narration.preparePersonal({
         text: selected.text,
         lang: selected.lang || lang,
@@ -340,7 +372,7 @@ export default function AffirmationAlarmScreen({ route }) {
         weekdays,
         affirmation: selected.text,
         locale: selected.lang === 'en' ? 'en-US' : 'pt-BR',
-        requestAuthorization: true,
+        requestAuthorization: false,
         audioBase64Wav,
       });
       if (response.ok === true) {
@@ -364,7 +396,15 @@ export default function AffirmationAlarmScreen({ route }) {
       }
       if (mountedRef.current) {
         if (response.capability) setCapability(response.capability);
-        setFeedback(response.reason === 'authorization_denied' ? 'denied' : 'failed');
+        setFeedback(
+          response.reason === 'authorization_denied'
+            ? 'denied'
+            : response.reason === 'exact_alarm_permission_required' ||
+              response.reason === 'notification_permission_required' ||
+              response.reason === 'authorization_required'
+            ? 'permission_required'
+            : 'failed'
+        );
       }
     } catch (_error) {
       if (mountedRef.current) setFeedback('voice_failed');
@@ -444,6 +484,8 @@ export default function AffirmationAlarmScreen({ route }) {
     ? t(COPY.savedDraft)
     : feedback === 'denied' || capability?.authorization === 'denied'
     ? t(COPY.denied)
+    : feedback === 'permission_required'
+    ? t(COPY.permissionRequired)
     : feedback === 'failed'
     ? t(COPY.failed)
     : feedback === 'voice_failed'
@@ -708,7 +750,8 @@ export default function AffirmationAlarmScreen({ route }) {
               />
               <Text style={[styles.statusText, { color: theme.textMuted }]}>{status}</Text>
             </View>
-            {(feedback === 'denied' || capability?.authorization === 'denied') && Platform.OS === 'ios' ? (
+            {(feedback === 'denied' || capability?.authorization === 'denied') &&
+            Platform.OS !== 'web' ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => Linking.openSettings().catch(() => {})}

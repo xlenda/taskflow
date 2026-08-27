@@ -1,3 +1,9 @@
+import { celestePaidApiHeaders } from './celesteApiSession';
+import { Asset } from 'expo-asset';
+import { File } from 'expo-file-system';
+import { Platform } from 'react-native';
+import { narratorPreviewUrl } from '../constants/narrators';
+
 const API_TIMEOUT_MS = 35000;
 const MAX_AUDIO_BYTES = 4_100_000;
 const MAX_PERSONAL_REQUEST_CHARS = 1800;
@@ -191,65 +197,126 @@ function waitForConsumer(promise, signal) {
   });
 }
 
-async function fetchNarrationAudio({ body, fetchImpl, signal }) {
+function normalizedRequestTimeout(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return API_TIMEOUT_MS;
+  return Math.max(10, Math.min(API_TIMEOUT_MS, Math.floor(parsed)));
+}
+
+async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  let timedOut = false;
   const abort = () => controller && controller.abort();
-  const timeout = () => {
-    timedOut = true;
-    abort();
-  };
   if (signal && signal.aborted) {
     throw new NarrationRequestError('audio_cancelled');
   }
-  if (signal && typeof signal.addEventListener === 'function') {
-    signal.addEventListener('abort', abort, { once: true });
-  }
-  const timer = controller ? setTimeout(timeout, API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
+  const requestSignal = controller ? controller.signal : signal;
+  let timer = null;
+  let onExternalAbort = null;
+  let timedOut = false;
+  let externallyCancelled = false;
 
   try {
-    const response = await request(apiEndpoint(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      signal: controller ? controller.signal : signal,
-      body: JSON.stringify(body),
+    const timeoutPromise = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        abort();
+        reject(new NarrationRequestError('audio_timeout'));
+      }, normalizedRequestTimeout(timeoutMs));
     });
-    if (!response || !response.ok) throw await responseError(response || {});
-    const contentType = response.headers && response.headers.get
-      ? response.headers.get('content-type') || ''
-      : '';
-    if (!/^audio\/wav(?:;|$)/i.test(contentType)) {
-      throw new NarrationRequestError('invalid_audio_response', response.status || 0);
-    }
-    const declaredLength = Number(
-      response.headers && response.headers.get ? response.headers.get('content-length') : NaN
+    const cancellationPromise = signal && typeof signal.addEventListener === 'function'
+      ? new Promise((_resolve, reject) => {
+        onExternalAbort = () => {
+          externallyCancelled = true;
+          abort();
+          reject(new NarrationRequestError('audio_cancelled'));
+        };
+        signal.addEventListener('abort', onExternalAbort, { once: true });
+      })
+      : null;
+    const operation = (async () => {
+      const authorization = fetchImpl ? {} : await celestePaidApiHeaders({ signal: requestSignal });
+      if (externallyCancelled || (signal && signal.aborted)) {
+        throw new NarrationRequestError('audio_cancelled');
+      }
+      if (timedOut || (requestSignal && requestSignal.aborted)) {
+        throw new NarrationRequestError('audio_timeout');
+      }
+      const response = await request(apiEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authorization },
+        cache: 'no-store',
+        signal: requestSignal,
+        body: JSON.stringify(body),
+      });
+      if (!response || !response.ok) throw await responseError(response || {});
+      const contentType = response.headers && response.headers.get
+        ? response.headers.get('content-type') || ''
+        : '';
+      if (!/^audio\/wav(?:;|$)/i.test(contentType)) {
+        throw new NarrationRequestError('invalid_audio_response', response.status || 0);
+      }
+      const declaredLength = Number(
+        response.headers && response.headers.get ? response.headers.get('content-length') : NaN
+      );
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES) {
+        throw new NarrationRequestError('audio_response_too_large', response.status || 0);
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > MAX_AUDIO_BYTES) {
+        throw new NarrationRequestError('audio_response_too_large', response.status || 0);
+      }
+      if (!isWave(bytes)) {
+        throw new NarrationRequestError('invalid_audio_response', response.status || 0);
+      }
+      return bytes;
+    })();
+    return await Promise.race(
+      cancellationPromise ? [operation, timeoutPromise, cancellationPromise] : [operation, timeoutPromise]
     );
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_AUDIO_BYTES) {
-      throw new NarrationRequestError('audio_response_too_large', response.status || 0);
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length > MAX_AUDIO_BYTES) {
-      throw new NarrationRequestError('audio_response_too_large', response.status || 0);
-    }
-    if (!isWave(bytes)) {
-      throw new NarrationRequestError('invalid_audio_response', response.status || 0);
-    }
-    return bytes;
   } catch (error) {
     if (error instanceof NarrationRequestError) throw error;
     if ((controller && controller.signal.aborted) || (error && error.name === 'AbortError')) {
       throw new NarrationRequestError(
-        signal && signal.aborted ? 'audio_cancelled' : timedOut ? 'audio_timeout' : 'audio_cancelled'
+        externallyCancelled || (signal && signal.aborted) ? 'audio_cancelled' : 'audio_timeout'
       );
     }
     throw new NarrationRequestError('audio_unavailable');
   } finally {
     if (timer) clearTimeout(timer);
-    if (signal && typeof signal.removeEventListener === 'function') {
-      signal.removeEventListener('abort', abort);
+    if (signal && onExternalAbort && typeof signal.removeEventListener === 'function') {
+      signal.removeEventListener('abort', onExternalAbort);
     }
+  }
+}
+
+async function loadNarratorPreview({ narratorId, lang, signal }) {
+  if (signal && signal.aborted) throw new NarrationRequestError('audio_cancelled');
+  const moduleId = narratorPreviewUrl(narratorId, lang);
+  if (!moduleId) throw new NarrationRequestError('preview_unavailable');
+  try {
+    const asset = Asset.fromModule(moduleId);
+    await asset.downloadAsync();
+    if (signal && signal.aborted) throw new NarrationRequestError('audio_cancelled');
+    const uri = asset.localUri || asset.uri;
+    let bytes;
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri, { cache: 'force-cache', signal });
+      if (!response.ok) throw new NarrationRequestError('preview_unavailable');
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } else {
+      bytes = await new File(uri).bytes();
+    }
+    if (bytes.length > MAX_AUDIO_BYTES || !isWave(bytes)) {
+      throw new NarrationRequestError('invalid_audio_response');
+    }
+    return bytes;
+  } catch (error) {
+    if (error instanceof NarrationRequestError) throw error;
+    if ((signal && signal.aborted) || (error && error.name === 'AbortError')) {
+      throw new NarrationRequestError('audio_cancelled');
+    }
+    throw new NarrationRequestError('preview_unavailable');
   }
 }
 
@@ -261,7 +328,9 @@ export async function requestNarrationAudio({
   cloudConsent = false,
   adultConfirmed = false,
   fetchImpl,
+  previewLoaderImpl,
   signal,
+  timeoutMs,
 }) {
   const requestMode = mode === 'preview' ? 'preview' : mode === 'personal' ? 'personal' : '';
   if (!requestMode) throw new NarrationRequestError('mode_invalid');
@@ -311,11 +380,18 @@ export async function requestNarrationAudio({
       settled: false,
       promise: null,
     };
-    pending.promise = fetchNarrationAudio({
-      body,
-      fetchImpl,
-      signal: controller ? controller.signal : undefined,
-    })
+    pending.promise = (requestMode === 'preview'
+      ? (previewLoaderImpl || loadNarratorPreview)({
+        narratorId: narrator,
+        lang: locale,
+        signal: controller ? controller.signal : undefined,
+      })
+      : fetchNarrationAudio({
+        body,
+        fetchImpl,
+        signal: controller ? controller.signal : undefined,
+        timeoutMs,
+      }))
       .then((bytes) => {
         rememberAudio(key, bytes);
         return bytes;

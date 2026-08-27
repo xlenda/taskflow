@@ -20,6 +20,13 @@ const cleanText = (value, max) =>
 
 const cleanScalar = (value, max) => cleanText(value, max).replace(/\s+/g, ' ');
 
+const cleanKnowledgeIds = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((id) => cleanScalar(id, 80).toLowerCase())
+    .filter((id) => /^[a-z0-9][a-z0-9_-]{1,79}$/.test(id))
+    .filter((id, index, ids) => ids.indexOf(id) === index)
+    .slice(0, 8);
+
 const normalizeGeneration = (value, fallback) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = {
@@ -28,11 +35,59 @@ const normalizeGeneration = (value, fallback) => {
   };
   const model = cleanScalar(source.model, 100);
   const knowledgeVersion = cleanScalar(source.knowledgeVersion, 80);
+  const brainVersion = cleanScalar(source.brainVersion, 80);
+  const providerCandidate = cleanScalar(source.provider, 20).toLowerCase();
+  const provider = ['anthropic', 'openai', 'gemini'].includes(providerCandidate)
+    ? providerCandidate
+    : '';
+  const knowledgeCardIds = cleanKnowledgeIds(source.knowledgeCardIds);
   if (model) out.model = model;
   if (knowledgeVersion) out.knowledgeVersion = knowledgeVersion;
+  if (brainVersion) out.brainVersion = brainVersion;
+  if (provider) out.provider = provider;
+  if (typeof source.fallbackUsed === 'boolean') out.fallbackUsed = source.fallbackUsed;
+  if (knowledgeCardIds.length) out.knowledgeCardIds = knowledgeCardIds;
+  if (Number.isInteger(source.qualityScore) && source.qualityScore >= 0 && source.qualityScore <= 100) {
+    out.qualityScore = source.qualityScore;
+  }
   if (Number.isInteger(source.seed)) out.seed = source.seed;
   return out;
 };
+
+function inheritKnowledgeReceipt(generation, candidates, fallback) {
+  const out = normalizeGeneration(generation, fallback);
+  if (out.knowledgeCardIds && out.knowledgeCardIds.length) return out;
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const source = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      ? candidate
+      : {};
+    const knowledgeCardIds = cleanKnowledgeIds(source.knowledgeCardIds);
+    if (!knowledgeCardIds.length) continue;
+    out.knowledgeCardIds = knowledgeCardIds;
+    const knowledgeVersion = cleanScalar(source.knowledgeVersion, 80);
+    const brainVersion = cleanScalar(source.brainVersion, 80);
+    if (knowledgeVersion && !out.knowledgeVersion) out.knowledgeVersion = knowledgeVersion;
+    if (brainVersion && !out.brainVersion) out.brainVersion = brainVersion;
+    break;
+  }
+  return out;
+}
+
+function manifestationGenerationCandidates(source) {
+  const item = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+  const variants = item.contentByLang && typeof item.contentByLang === 'object' && !Array.isArray(item.contentByLang)
+    ? item.contentByLang
+    : {};
+  const order = [item.lang, item.originLang, 'pt', 'en']
+    .filter((lang, index, values) =>
+      (lang === 'pt' || lang === 'en') && values.indexOf(lang) === index
+    );
+  return [
+    item.generation,
+    ...order.map((lang) => variants[lang] && variants[lang].generation),
+  ];
+}
 
 const cleanLabels = (value) =>
   (Array.isArray(value) ? value : [])
@@ -48,10 +103,12 @@ export function snapshotManifestationContent(item) {
     if (value) out[field] = value;
   });
   out.personalizedWith = cleanLabels(source.personalizedWith);
-  out.generation = normalizeGeneration(source.generation, {
-    source: 'local',
-    promptVersion: 'local-v1',
-  });
+  const fallback = { source: 'local', promptVersion: 'local-v1' };
+  out.generation = inheritKnowledgeReceipt(
+    source.generation,
+    manifestationGenerationCandidates(source),
+    fallback
+  );
   return out;
 }
 
@@ -142,9 +199,18 @@ export function applyTranslatedManifestationVariant(item, {
     return item;
   }
 
-  const contentByLang = { ...stored, [targetLang]: translatedVariant };
+  const safeTranslatedVariant = cleanVariant(translatedVariant, {
+    source: 'gemini-translation',
+    promptVersion: 'celeste-translation-v1',
+  });
+  safeTranslatedVariant.generation = inheritKnowledgeReceipt(
+    safeTranslatedVariant.generation,
+    [sourceVariant && sourceVariant.generation],
+    { source: 'gemini-translation', promptVersion: 'celeste-translation-v1' }
+  );
+  const contentByLang = { ...stored, [targetLang]: safeTranslatedVariant };
   return item.lang === targetLang
-    ? { ...item, ...translatedVariant, contentByLang }
+    ? { ...item, ...safeTranslatedVariant, contentByLang }
     : { ...item, contentByLang };
 }
 
@@ -228,12 +294,26 @@ export function localizeManifestation(item, profile, activeLang) {
   const current = cleanVariant(snapshotManifestationContent(item), fallback);
   variants[sourceLang] = mergeVariant(variants[sourceLang], current, fallback);
 
+  const receiptCandidates = [
+    ...manifestationGenerationCandidates(item),
+    variants[sourceLang] && variants[sourceLang].generation,
+    variants.pt && variants.pt.generation,
+    variants.en && variants.en.generation,
+  ];
+  LANGS.forEach((lang) => {
+    variants[lang].generation = inheritKnowledgeReceipt(
+      variants[lang].generation,
+      receiptCandidates,
+      fallback
+    );
+  });
+
   const declaredOrigin = item.originLang === 'en' || item.originLang === 'pt'
     ? item.originLang
     : null;
   const originalCandidates = LANGS.filter((lang) => {
     const source = variants[lang] && variants[lang].generation && variants[lang].generation.source;
-    return source === 'gemini' || source === 'local';
+    return source === 'celeste-ai' || source === 'gemini' || source === 'local';
   });
   const originLang = declaredOrigin ||
     (originalCandidates.length === 1 ? originalCandidates[0] : sourceLang);

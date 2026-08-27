@@ -1,13 +1,11 @@
 const { checkBotId } = require('botid/server');
+const paidAccess = require('./_paid-access');
 
-const DEFAULT_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
-const GEMINI_INTERACTIONS_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/interactions';
-const GEMINI_API_REVISION = '2026-05-20';
+const DEFAULT_TTS_MODEL = 'eleven_multilingual_v2';
+const ELEVENLABS_TTS_ENDPOINT = 'https://api.elevenlabs.io/v1/text-to-speech';
 const MAX_BODY_BYTES = 12 * 1024;
 const MAX_TEXT_CHARS = 1800;
 const MAX_PCM_BYTES = 4_000_000;
-const MAX_UPSTREAM_BYTES = 6_000_000;
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
 const PCM_BITS_PER_SAMPLE = 16;
@@ -21,28 +19,34 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 const NARRATOR_VOICES = Object.freeze({
   aurora: Object.freeze({
-    voice: 'Sulafat',
-    direction: 'Warm, confident, luminous, and intimate. Keep a calm natural pace.',
+    voiceId: 'UZ8QqWVrz7tMdxiglcLh',
+    voiceName: 'Livia - Warmth You Can Hear',
+    settings: Object.freeze({ stability: 0.62, similarityBoost: 0.78, style: 0.12, speed: 0.94 }),
   }),
   rio: Object.freeze({
-    voice: 'Callirrhoe',
-    direction: 'Calm, neutral, contemplative, and unhurried. Keep the delivery natural.',
+    voiceId: 'SAz9YHcvj6GT2YYXdXww',
+    voiceName: 'River - Relaxed, Neutral, Informative',
+    settings: Object.freeze({ stability: 0.78, similarityBoost: 0.72, style: 0.03, speed: 0.9 }),
   }),
   atlas: Object.freeze({
-    voice: 'Orus',
-    direction: 'Deep, warm, grounded, and immersive. Speak slowly without sounding theatrical.',
+    voiceId: 'nPczCjzI2devNBz1zQrb',
+    voiceName: 'Brian - Deep, Resonant and Comforting',
+    settings: Object.freeze({ stability: 0.72, similarityBoost: 0.78, style: 0.08, speed: 0.88 }),
   }),
   serena: Object.freeze({
-    voice: 'Vindemiatrix',
-    direction: 'Soft, intimate, serene, and reassuring. Use a gentle natural pace.',
+    voiceId: 'MA970ZNagubdplnfHEiJ',
+    voiceName: 'Melodie narradora',
+    settings: Object.freeze({ stability: 0.82, similarityBoost: 0.74, style: 0.02, speed: 0.9 }),
   }),
   luma: Object.freeze({
-    voice: 'Achird',
-    direction: 'Friendly, light, close, and welcoming. Sound sincere rather than promotional.',
+    voiceId: '33B4UnXyTNbgLmdEDh5P',
+    voiceName: 'Keren - Young Brazilian Female',
+    settings: Object.freeze({ stability: 0.58, similarityBoost: 0.75, style: 0.12, speed: 0.97 }),
   }),
   nilo: Object.freeze({
-    voice: 'Charon',
-    direction: 'Clear, centered, composed, and assured. Keep an even natural rhythm.',
+    voiceId: 'onwK4e9ZLuTAKqWW03F9',
+    voiceName: 'Daniel - Steady Broadcaster',
+    settings: Object.freeze({ stability: 0.76, similarityBoost: 0.76, style: 0.03, speed: 0.92 }),
   }),
 });
 
@@ -163,112 +167,30 @@ function validateInput(body) {
   };
 }
 
-function languageDirection(lang) {
-  return lang === 'en'
-    ? 'Speak in natural English.'
-    : 'Speak in natural Brazilian Portuguese.';
-}
-
-function buildGeminiRequest(input) {
+function buildElevenLabsRequest(input, model = configuredModel()) {
   const narrator = NARRATOR_VOICES[input.narratorId];
-  const prompt = [
-    languageDirection(input.lang),
-    narrator.direction,
-    'Read only the passage below exactly as written. Do not add, remove, explain, or repeat words.',
-    '--- BEGIN PASSAGE ---',
-    input.text,
-    '--- END PASSAGE ---',
-  ].join('\n');
   return {
-    model: null,
-    input: prompt,
-    store: false,
-    response_format: {
-      type: 'audio',
-      sample_rate: PCM_SAMPLE_RATE,
-    },
-    generation_config: {
-      speech_config: [{ voice: narrator.voice }],
+    text: input.text,
+    model_id: model,
+    voice_settings: {
+      stability: narrator.settings.stability,
+      similarity_boost: narrator.settings.similarityBoost,
+      style: narrator.settings.style,
+      use_speaker_boost: true,
+      speed: narrator.settings.speed,
     },
   };
 }
 
 function configuredModel() {
-  const value = cleanText(process.env.GEMINI_TTS_MODEL || DEFAULT_TTS_MODEL, 100);
-  return /^gemini-[a-z0-9._-]*tts[a-z0-9._-]*$/i.test(value) ? value : DEFAULT_TTS_MODEL;
+  const value = cleanText(process.env.ELEVENLABS_TTS_MODEL || DEFAULT_TTS_MODEL, 100);
+  return /^eleven_[a-z0-9._-]+$/i.test(value) ? value : DEFAULT_TTS_MODEL;
 }
 
 function timeoutMs() {
-  const configured = Number(process.env.GEMINI_TTS_TIMEOUT_MS);
-  if (!Number.isFinite(configured)) return 30_000;
-  return Math.min(60_000, Math.max(20, Math.floor(configured)));
-}
-
-function base64Buffer(value) {
-  if (typeof value !== 'string') throw new AudioGenerationError('invalid_audio');
-  const encoded = value.replace(/\s+/g, '');
-  const maxEncodedLength = Math.ceil(MAX_PCM_BYTES / 3) * 4 + 4;
-  if (!encoded || encoded.length > maxEncodedLength || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
-    throw new AudioGenerationError('invalid_audio');
-  }
-  const decoded = Buffer.from(encoded, 'base64');
-  const normalizedInput = encoded.replace(/=+$/, '');
-  const normalizedOutput = decoded.toString('base64').replace(/=+$/, '');
-  if (normalizedInput !== normalizedOutput) throw new AudioGenerationError('invalid_audio');
-  return decoded;
-}
-
-function isWave(buffer) {
-  return (
-    buffer.length >= 44 &&
-    buffer.toString('ascii', 0, 4) === 'RIFF' &&
-    buffer.toString('ascii', 8, 12) === 'WAVE'
-  );
-}
-
-function audioParts(payload) {
-  const parts = [];
-  if (isPlainObject(payload && payload.output_audio)) parts.push(payload.output_audio);
-  for (const step of Array.isArray(payload && payload.steps) ? payload.steps : []) {
-    if (!isPlainObject(step)) continue;
-    if (step.type === 'audio') parts.push(step);
-    for (const part of Array.isArray(step.content) ? step.content : []) {
-      if (isPlainObject(part) && part.type === 'audio') parts.push(part);
-    }
-  }
-  for (const output of Array.isArray(payload && payload.outputs) ? payload.outputs : []) {
-    if (!isPlainObject(output)) continue;
-    if (output.type === 'audio') parts.push(output);
-    for (const part of Array.isArray(output.content) ? output.content : []) {
-      if (isPlainObject(part) && part.type === 'audio') parts.push(part);
-    }
-  }
-  return parts;
-}
-
-function extractAudio(payload) {
-  if (!isPlainObject(payload)) throw new AudioGenerationError('invalid_upstream_json');
-  if (payload.status && payload.status !== 'completed') {
-    throw new AudioGenerationError('invalid_audio');
-  }
-  const part = audioParts(payload).find((candidate) => typeof candidate.data === 'string');
-  if (!part) throw new AudioGenerationError('invalid_audio');
-
-  const sampleRate = Number(part.sample_rate || part.sampleRate || PCM_SAMPLE_RATE);
-  if (sampleRate !== PCM_SAMPLE_RATE) throw new AudioGenerationError('invalid_audio');
-  const mimeType = cleanText(part.mime_type || part.mimeType || 'audio/l16', 120).toLowerCase();
-  const audio = base64Buffer(part.data);
-  if (!audio.length || audio.length > MAX_PCM_BYTES) {
-    throw new AudioGenerationError('audio_too_large');
-  }
-  if (/^audio\/(?:wav|x-wav)(?:;|$)/.test(mimeType)) {
-    if (!isWave(audio)) throw new AudioGenerationError('invalid_audio');
-    return audio;
-  }
-  if (!/^audio\/(?:l16|pcm|raw)(?:;|$)/.test(mimeType) || audio.length % 2 !== 0) {
-    throw new AudioGenerationError('invalid_audio');
-  }
-  return pcmToWav(audio);
+  const configured = Number(process.env.ELEVENLABS_TTS_TIMEOUT_MS);
+  if (!Number.isFinite(configured)) return 20_000;
+  return Math.min(30_000, Math.max(2_000, Math.floor(configured)));
 }
 
 function pcmToWav(pcm) {
@@ -294,42 +216,61 @@ function pcmToWav(pcm) {
   return Buffer.concat([header, pcm]);
 }
 
-async function requestGemini(input, model, apiKey) {
+async function requestElevenLabs(input, model, apiKey) {
   if (typeof fetch !== 'function') throw new AudioGenerationError('audio_unavailable');
-  const request = buildGeminiRequest(input);
-  request.model = model;
+  const narrator = NARRATOR_VOICES[input.narratorId];
+  const query = new URLSearchParams({
+    output_format: `pcm_${PCM_SAMPLE_RATE}`,
+    enable_logging: 'false',
+  });
+  const endpoint = `${ELEVENLABS_TTS_ENDPOINT}/${encodeURIComponent(narrator.voiceId)}?${query}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
-  let response;
   try {
-    response = await fetch(GEMINI_INTERACTIONS_ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-        'Api-Revision': GEMINI_API_REVISION,
+        Accept: 'audio/pcm',
+        'xi-api-key': apiKey,
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(buildElevenLabsRequest(input, model)),
       signal: controller.signal,
     });
+    if (!response || !response.ok) {
+      if (response && response.status === 429) {
+        throw new AudioGenerationError('audio_rate_limited');
+      }
+      if (response && (response.status === 401 || response.status === 403)) {
+        throw new AudioGenerationError('audio_not_configured');
+      }
+      throw new AudioGenerationError('audio_unavailable');
+    }
+    const contentType = cleanText(
+      response.headers && response.headers.get ? response.headers.get('content-type') || '' : '',
+      120
+    ).toLowerCase();
+    if (!/^audio\/(?:pcm|l16|raw)(?:;|$)/.test(contentType)) {
+      throw new AudioGenerationError('invalid_audio');
+    }
+    const declaredLength = Number(
+      response.headers && response.headers.get ? response.headers.get('content-length') : NaN
+    );
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_PCM_BYTES) {
+      throw new AudioGenerationError('audio_too_large');
+    }
+    const pcm = Buffer.from(await response.arrayBuffer());
+    if (!pcm.length || pcm.length > MAX_PCM_BYTES) {
+      throw new AudioGenerationError('audio_too_large');
+    }
+    return pcmToWav(pcm);
   } catch (error) {
+    if (error instanceof AudioGenerationError) throw error;
     if (error && error.name === 'AbortError') throw new AudioGenerationError('audio_timeout');
     throw new AudioGenerationError('audio_unavailable');
   } finally {
     clearTimeout(timer);
   }
-  if (!response || !response.ok) throw new AudioGenerationError('audio_unavailable');
-  const declaredLength = Number(response.headers && response.headers.get('content-length'));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_UPSTREAM_BYTES) {
-    throw new AudioGenerationError('audio_too_large');
-  }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch (_error) {
-    throw new AudioGenerationError('invalid_upstream_json');
-  }
-  return extractAudio(payload);
 }
 
 function allowedOrigins() {
@@ -354,7 +295,10 @@ function setResponseHeaders(req, res) {
   const allowed = Boolean(origin) && allowedOrigins().has(origin);
   if (origin && allowed) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Is-Human, X-Path, X-Method');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Authorization, Content-Type, X-Celeste-Client, X-Celeste-Request-Id, X-Is-Human, X-Path, X-Method'
+  );
   return allowed;
 }
 
@@ -388,7 +332,8 @@ function sendJson(res, status, code) {
 
 async function handler(req, res) {
   const originAllowed = setResponseHeaders(req, res);
-  if (!originAllowed) return sendJson(res, 403, 'origin_not_allowed');
+  const nativeRequest = paidAccess.isNativeRequest(req);
+  if (!originAllowed && !nativeRequest) return sendJson(res, 403, 'origin_not_allowed');
 
   const method = String(req.method || 'GET').toUpperCase();
   if (method === 'OPTIONS') return res.status(204).end();
@@ -397,29 +342,47 @@ async function handler(req, res) {
     return sendJson(res, 405, 'method_not_allowed');
   }
 
-  const botError = await verifyHumanRequest(req);
-  if (botError) return sendJson(res, botError.status, botError.error);
+  if (originAllowed) {
+    const botError = await verifyHumanRequest(req);
+    if (botError) return sendJson(res, botError.status, botError.error);
+  }
 
   const parsed = parseBody(req);
   if (parsed.error) return sendJson(res, parsed.status, parsed.error);
   const validated = validateInput(parsed.body);
   if (validated.error) return sendJson(res, validated.status, validated.error);
 
-  const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
-  if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
+  const localPreviewCapture =
+    process.env.CELESTE_ALLOW_PREVIEW_CAPTURE === '1' &&
+    process.env.VERCEL_ENV !== 'production' &&
+    process.env.VERCEL_ENV !== 'preview';
+  if (validated.value.mode === 'preview' && !localPreviewCapture) {
+    return sendJson(res, 410, 'preview_is_bundled');
+  }
+
+  const apiKey = cleanText(process.env.ELEVENLABS_API_KEY || '', 512);
+  if (!apiKey) {
     return sendJson(res, 503, 'audio_not_configured');
   }
 
+  const access = await paidAccess.authorizePaidRequest(req, {
+    operation: 'audio',
+    units: validated.value.mode === 'preview' ? 1 : 4,
+  });
+  if (!access.ok) return sendJson(res, access.status, access.error);
+
   try {
-    const wav = await requestGemini(validated.value, configuredModel(), apiKey);
+    const wav = await requestElevenLabs(validated.value, configuredModel(), apiKey);
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', String(wav.length));
     return res.status(200).send(wav);
   } catch (error) {
     if (error && error.code === 'audio_timeout') return sendJson(res, 504, error.code);
+    if (error && error.code === 'audio_rate_limited') return sendJson(res, 429, error.code);
+    if (error && error.code === 'audio_not_configured') return sendJson(res, 503, error.code);
     if (
       error &&
-      ['invalid_audio', 'invalid_upstream_json', 'audio_too_large'].includes(error.code)
+      ['invalid_audio', 'audio_too_large'].includes(error.code)
     ) {
       return sendJson(res, 502, error.code);
     }
@@ -433,13 +396,18 @@ module.exports.handler = handler;
 module.exports._internals = {
   NARRATOR_VOICES,
   PREVIEW_TEXT,
-  buildGeminiRequest,
-  extractAudio,
+  buildElevenLabsRequest,
+  configuredModel,
   parseBody,
   pcmToWav,
+  requestElevenLabs,
   validateInput,
-  resetSecurityForTests: () => { botVerifier = checkBotId; },
+  resetSecurityForTests: () => {
+    botVerifier = checkBotId;
+    paidAccess.resetAuthorizerForTests();
+  },
   setBotVerifierForTests: (verifier) => {
     botVerifier = typeof verifier === 'function' ? verifier : checkBotId;
   },
+  setPaidAccessAuthorizerForTests: paidAccess.setAuthorizerForTests,
 };

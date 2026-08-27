@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { initialState } from '../constants/content';
 import { detectLang } from '../constants/i18n';
 import { isNarratorId } from '../constants/narrators';
@@ -13,7 +14,16 @@ import {
   snapshotManifestationContent,
 } from '../utils/manifestationLanguage';
 import { generatePersonalizedScene } from '../services/generatePersonalizedScene';
+import { generatePersonalizedVisual } from '../services/generatePersonalizedVisual';
 import { translateManifestationScene } from '../services/translateManifestationScene';
+import {
+  acquirePersonalVisual,
+  clearPersonalVisuals,
+  createPersonalVisualCacheKey,
+  deletePersonalVisual,
+  isPersonalVisualCacheKey,
+  savePersonalVisual,
+} from '../services/personalVisualStorage';
 import { createSerialStorageWriter } from '../utils/serialStorageWriter';
 import { alarmWeekdaysOrDefault, normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 import {
@@ -28,9 +38,16 @@ import {
 import {
   beginCommunityDataReset,
   cancelCommunityDataReset,
+  exportLocalCommunityStoriesForBackup,
   finishCommunityDataReset,
+  restoreLocalCommunityStoriesFromBackup,
+  validateLocalCommunityStoriesBackup,
 } from '../services/communityStories';
 import { cancelDailyRitualReminder } from '../services/dailyRitualReminder';
+import {
+  cancelAffirmationAlarm,
+  getAffirmationAlarmCapability,
+} from '../services/affirmationAlarm';
 
 const STORAGE_KEY = '@stella_state_v2';
 const AUXILIARY_STORAGE_KEYS = [
@@ -43,6 +60,12 @@ const STORAGE_WRITE_TIMEOUT_MS = 6000;
 const TRANSLATION_BATCH_SIZE = 8;
 const TRANSLATION_BATCH_DELAY_MS = 61000;
 const TRANSLATION_START_DELAY_MS = 350;
+const PERSONAL_VISUAL_RETRY_BASE_MS = 15_000;
+const PERSONAL_VISUAL_RETRY_MAX_MS = 5 * 60_000;
+export const CELESTE_BACKUP_FORMAT = 'celeste-backup';
+export const CELESTE_BACKUP_VERSION = 2;
+export const CELESTE_BACKUP_MAX_BYTES = 8 * 1024 * 1024;
+const CELESTE_BACKUP_RESTORE_POLICY = 'replace-local-device-data';
 const AppCtx = createContext(null);
 
 function settleWithin(promise, timeoutMs) {
@@ -74,6 +97,17 @@ const RITUAL_THEMES = ['clarity', 'courage', 'peace', 'connection', 'abundance',
 const RITUAL_FEELINGS = ['calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful'];
 const RITUAL_DETAIL_KEYS = ['dream_anchor', 'feeling', 'theme'];
 const VISUAL_MOODS = ['midnight', 'violet', 'ember', 'forest', 'paper', 'cloud', 'blossom', 'mono'];
+const PERSONAL_VISUAL_SOURCE_FIELDS = ['desire', 'dreamLocation', 'dreamHome', 'work', 'whyMatters'];
+const PERSONAL_VISUAL_MOOD_MAP = {
+  midnight: 'serene',
+  violet: 'romantic',
+  ember: 'abundant',
+  forest: 'grounded',
+  paper: 'focused',
+  cloud: 'luminous',
+  blossom: 'romantic',
+  mono: 'focused',
+};
 const validTime = (value) => {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
   return !!match && Number(match[1]) < 24 && Number(match[2]) < 60;
@@ -92,6 +126,189 @@ const uniqueShortStrings = (values, maxLength, maxItems) =>
         .filter(Boolean)
     )
   ).slice(0, maxItems);
+const normalizeKnowledgeCardIds = (values) =>
+  Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) =>
+          typeof value === 'string'
+            ? value
+                .replace(/[\u0000-\u001f\u007f]/g, '')
+                .trim()
+                .toLowerCase()
+            : ''
+        )
+        .filter((id) => id.length <= 80 && /^[a-z0-9][a-z0-9_-]{1,79}$/.test(id))
+    )
+  ).slice(0, 8);
+
+const sanitizeGenerationReceipt = (value, fallbackSource, fallbackPromptVersion) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const out = {
+    source: shortText(source.source, 40) || fallbackSource,
+    promptVersion: shortText(source.promptVersion, 80) || fallbackPromptVersion,
+  };
+  const model = shortText(source.model, 100);
+  const knowledgeVersion = shortText(source.knowledgeVersion, 80);
+  const brainVersion = shortText(source.brainVersion, 80);
+  const providerCandidate = shortText(source.provider, 20).toLowerCase();
+  const provider = ['anthropic', 'openai', 'gemini'].includes(providerCandidate)
+    ? providerCandidate
+    : '';
+  const knowledgeCardIds = normalizeKnowledgeCardIds(source.knowledgeCardIds);
+  if (model) out.model = model;
+  if (knowledgeVersion) out.knowledgeVersion = knowledgeVersion;
+  if (brainVersion) out.brainVersion = brainVersion;
+  if (provider) out.provider = provider;
+  if (typeof source.fallbackUsed === 'boolean') out.fallbackUsed = source.fallbackUsed;
+  if (knowledgeCardIds.length) out.knowledgeCardIds = knowledgeCardIds;
+  if (Number.isInteger(source.qualityScore) && source.qualityScore >= 0 && source.qualityScore <= 100) {
+    out.qualityScore = source.qualityScore;
+  }
+  if (Number.isInteger(source.seed)) out.seed = source.seed;
+  return out;
+};
+
+const sanitizePersonalVisualReceipt = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const cacheKey = shortText(source.cacheKey, 140).toLowerCase();
+  if (!isPersonalVisualCacheKey(cacheKey)) return null;
+  const out = {
+    cacheKey,
+    mimeType: 'image/jpeg',
+    aspectRatio: '4:5',
+    sourceFields: uniqueShortStrings(source.sourceFields, 40, 4).filter((field) =>
+      PERSONAL_VISUAL_SOURCE_FIELDS.includes(field)
+    ),
+  };
+  const model = shortText(source.model, 100);
+  const promptVersion = shortText(source.promptVersion, 80);
+  const visualMood = shortText(source.visualMood, 40);
+  if (model) out.model = model;
+  if (promptVersion) out.promptVersion = promptVersion;
+  if (['serene', 'luminous', 'grounded', 'romantic', 'abundant', 'focused'].includes(visualMood)) {
+    out.visualMood = visualMood;
+  }
+  if (typeof source.createdAt === 'string' && !Number.isNaN(Date.parse(source.createdAt))) {
+    out.createdAt = source.createdAt;
+  }
+  return out;
+};
+
+const personalVisualMood = (mood, category) => {
+  if (PERSONAL_VISUAL_MOOD_MAP[mood]) return PERSONAL_VISUAL_MOOD_MAP[mood];
+  if (category === 'Love') return 'romantic';
+  if (category === 'Wealth') return 'abundant';
+  if (category === 'Career') return 'focused';
+  if (category === 'Health') return 'grounded';
+  if (category === 'Confidence') return 'luminous';
+  return 'serene';
+};
+
+const personalVisualSourceFields = (profile) =>
+  PERSONAL_VISUAL_SOURCE_FIELDS.filter(
+    (field) => field === 'desire' || shortText(profile && profile[field], 600)
+  );
+
+function utf8ByteLength(value) {
+  const text = String(value || '');
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+function compactFingerprint(value) {
+  const serialized = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash ^= serialized.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function personalVisualSubjectFingerprint(item) {
+  return compactFingerprint({
+    title: shortText(item && item.title, 240),
+    category: shortText(item && item.category, 40),
+    lang: item && item.lang === 'en' ? 'en' : 'pt',
+  });
+}
+
+function personalVisualRetryDelay(attempt) {
+  const exponent = Math.max(0, Math.min(8, Number(attempt || 1) - 1));
+  return Math.min(PERSONAL_VISUAL_RETRY_MAX_MS, PERSONAL_VISUAL_RETRY_BASE_MS * 2 ** exponent);
+}
+
+function personalVisualErrorCode(error) {
+  const raw = shortText(error && (error.code || error.message), 80).toLowerCase();
+  return /^[a-z0-9_-]+$/.test(raw) ? raw : 'visual_unavailable';
+}
+
+function translationRequestKey({ id, sourceLang, targetLang, sourceVariant, profile, generationEpoch }) {
+  return [
+    generationEpoch,
+    id,
+    sourceLang,
+    targetLang,
+    compactFingerprint({ sourceVariant: snapshotManifestationContent(sourceVariant), profile }),
+  ].join(':');
+}
+
+function decodeBackupPayload(str) {
+  if (typeof str !== 'string' || !str.length || utf8ByteLength(str) > CELESTE_BACKUP_MAX_BYTES) {
+    return { error: 'invalid_size' };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(str);
+  } catch (_error) {
+    return { error: 'invalid_json' };
+  }
+  const isObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+  if (isObject && parsed.format === CELESTE_BACKUP_FORMAT) {
+    const data = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
+      ? parsed.data
+      : null;
+    const communityStories = data
+      ? validateLocalCommunityStoriesBackup(data.communityStories)
+      : null;
+    if (
+      parsed.version !== CELESTE_BACKUP_VERSION ||
+      parsed.restorePolicy !== CELESTE_BACKUP_RESTORE_POLICY ||
+      typeof parsed.exportedAt !== 'string' ||
+      Number.isNaN(Date.parse(parsed.exportedAt)) ||
+      !data ||
+      !data.state ||
+      !Array.isArray(data.state.manifestations) ||
+      !communityStories
+    ) {
+      return { error: 'invalid_shape' };
+    }
+    return {
+      state: data.state,
+      communityStories,
+      replaceCommunityStories: true,
+    };
+  }
+  if (!isObject || Object.prototype.hasOwnProperty.call(parsed, 'format') || !Array.isArray(parsed.manifestations)) {
+    return { error: 'invalid_shape' };
+  }
+  return { state: parsed, communityStories: null, replaceCommunityStories: false };
+}
 const isKnownMinor = (profile) => {
   const age = shortText(profile && profile.age, 40)
     .toLocaleLowerCase('en-US')
@@ -221,6 +438,7 @@ function mergeDefensivo(parsed) {
       anchorIdentity: textOr(cameFromCatalog ? null : m.anchorIdentity, generated.anchorIdentity, 600),
       anchorStep: textOr(cameFromCatalog ? null : m.anchorStep, generated.anchorStep, 280),
       livingMirror: normalizeLivingMirror(m.livingMirror),
+      visual: sanitizePersonalVisualReceipt(m.visual),
       generation: cameFromCatalog
         ? { source: 'local', promptVersion: 'personal-catalog-migration-v1' }
         : m.generation,
@@ -268,6 +486,11 @@ function mergeDefensivo(parsed) {
           .filter((key) => RITUAL_DETAIL_KEYS.includes(key))
           .filter((key, index, values) => values.indexOf(key) === index),
         generatorVersion: shortText(entry.generatorVersion, 40) || 'dream-local-v1',
+        generation: sanitizeGenerationReceipt(
+          entry.generation,
+          'local-dream',
+          'dream-local-v2'
+        ),
         lang: entry.lang === 'en' ? 'en' : 'pt',
         createdAt:
           typeof entry.createdAt === 'string' && !Number.isNaN(Date.parse(entry.createdAt))
@@ -352,6 +575,7 @@ export function AppProvider({ children }) {
   const [storageLoadError, setStorageLoadError] = useState(false);
   const [storageCorrupt, setStorageCorrupt] = useState(false);
   const [storageMutation, setStorageMutation] = useState(null);
+  const [personalVisualStatus, setPersonalVisualStatus] = useState({});
   const stateRef = useRef(null);
   const pendingOnboardingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -361,9 +585,12 @@ export function AppProvider({ children }) {
   const storageRepairRef = useRef(false);
   const generationEpochRef = useRef(0);
   const translationLanguageEpochRef = useRef(0);
+  const translationRequestsRef = useRef(new Map());
   const desiredLanguageRef = useRef(null);
   const lastDreamSaveRef = useRef({ epoch: -1, signature: '', id: null, at: 0 });
   const evolutionRequestsRef = useRef(new Set());
+  const personalVisualRequestsRef = useRef(new Map());
+  const personalVisualFailuresRef = useRef(new Map());
   const resetInProgressRef = useRef(false);
   const storageMutationRef = useRef(null);
   const pendingResetRevisionRef = useRef(0);
@@ -373,6 +600,28 @@ export function AppProvider({ children }) {
   const pendingStoragePreparationRef = useRef(null);
   const writerRef = useRef(null);
   stateRef.current = state;
+
+  const setPersonalVisualPhase = useCallback((id, nextStatus) => {
+    setPersonalVisualStatus((current) => {
+      if (!nextStatus) {
+        if (!Object.prototype.hasOwnProperty.call(current, id)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      }
+      const previous = current[id];
+      if (
+        previous &&
+        previous.phase === nextStatus.phase &&
+        previous.error === nextStatus.error &&
+        previous.retryAt === nextStatus.retryAt &&
+        previous.fingerprint === nextStatus.fingerprint
+      ) {
+        return current;
+      }
+      return { ...current, [id]: nextStatus };
+    });
+  }, []);
 
   if (!writerRef.current) {
     writerRef.current = createSerialStorageWriter({
@@ -475,6 +724,18 @@ export function AppProvider({ children }) {
     };
   }, [loadStoredState]);
 
+  useEffect(() => {
+    if (!state) return;
+    const ids = new Set(state.manifestations.map((item) => item.id));
+    setPersonalVisualStatus((current) => {
+      const entries = Object.entries(current).filter(([id]) => ids.has(id));
+      return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+    });
+    for (const id of personalVisualFailuresRef.current.keys()) {
+      if (!ids.has(id)) personalVisualFailuresRef.current.delete(id);
+    }
+  }, [state && state.manifestations]);
+
   const retryLoad = useCallback(() => {
     loadStoredState();
   }, [loadStoredState]);
@@ -490,9 +751,14 @@ export function AppProvider({ children }) {
       );
     });
     try {
-      await Promise.race([AsyncStorage.removeItem(STORAGE_KEY), timeout]);
+      await Promise.race([
+        Promise.all([AsyncStorage.removeItem(STORAGE_KEY), clearPersonalVisuals()]),
+        timeout,
+      ]);
       if (!mountedRef.current) return false;
       generationEpochRef.current += 1;
+      personalVisualFailuresRef.current.clear();
+      setPersonalVisualStatus({});
       setStorageCorrupt(false);
       setStorageLoadError(false);
       loadStoredState();
@@ -597,26 +863,48 @@ export function AppProvider({ children }) {
     expectedTargetVariant,
     profile,
     generationEpoch,
-    languageEpoch,
   }) => {
-    let remote;
-    try {
-      remote = await translateManifestationScene({
+    const requestKey = translationRequestKey({
+      id,
+      sourceLang,
+      targetLang,
+      sourceVariant,
+      profile,
+      generationEpoch,
+    });
+    let request = translationRequestsRef.current.get(requestKey);
+    if (!request) {
+      request = translateManifestationScene({
         sourceLang,
         targetLang,
         scene: sourceVariant,
         profile,
       });
+      translationRequestsRef.current.set(requestKey, request);
+      void request.then(
+        () => {
+          setTimeout(() => {
+            if (translationRequestsRef.current.get(requestKey) === request) {
+              translationRequestsRef.current.delete(requestKey);
+            }
+          }, 0);
+        },
+        () => {
+          if (translationRequestsRef.current.get(requestKey) === request) {
+            translationRequestsRef.current.delete(requestKey);
+          }
+        }
+      );
+    }
+    let remote;
+    try {
+      remote = await request;
     } catch (_error) {
       // The language-native local fallback remains usable. Personal text and
       // network errors are deliberately never logged.
       return;
     }
-    if (
-      !mountedRef.current ||
-      generationEpoch !== generationEpochRef.current ||
-      languageEpoch !== translationLanguageEpochRef.current
-    ) return;
+    if (!mountedRef.current || generationEpoch !== generationEpochRef.current) return;
 
     const translated = manifestationVariantFromScene({
       title: remote.scene.title,
@@ -626,9 +914,7 @@ export function AppProvider({ children }) {
     setState((currentState) => {
       if (
         !currentState ||
-        currentState.lang !== targetLang ||
-        generationEpoch !== generationEpochRef.current ||
-        languageEpoch !== translationLanguageEpochRef.current
+        generationEpoch !== generationEpochRef.current
       ) return currentState;
       const index = currentState.manifestations.findIndex((item) => item.id === id);
       if (index < 0) return currentState;
@@ -646,6 +932,207 @@ export function AppProvider({ children }) {
       return { ...currentState, manifestations };
     });
   }, []);
+
+  const ensurePersonalVisual = useCallback((manifestationId, options = {}) => {
+    const id = shortText(manifestationId, 120);
+    if (!id) return Promise.resolve({ ok: false, error: 'manifestation_not_found' });
+
+    const snapshot = stateRef.current || initialState();
+    const suppliedManifestation =
+      options.manifestation && typeof options.manifestation === 'object'
+        ? options.manifestation
+        : null;
+    const manifestation =
+      snapshot.manifestations.find((item) => item.id === id) || suppliedManifestation;
+    if (!manifestation) {
+      setPersonalVisualPhase(id, null);
+      return Promise.resolve({ ok: false, error: 'manifestation_not_found' });
+    }
+
+    const fingerprint = personalVisualSubjectFingerprint(manifestation);
+    const running = personalVisualRequestsRef.current.get(id);
+    if (running) {
+      if (running.fingerprint === fingerprint) return running.promise;
+      return running.promise.then(() => ensurePersonalVisual(id, options));
+    }
+
+    const force = options.force === true;
+    const previousFailure = personalVisualFailuresRef.current.get(id);
+    if (
+      !force &&
+      previousFailure &&
+      previousFailure.fingerprint === fingerprint &&
+      previousFailure.retryAt > Date.now()
+    ) {
+      setPersonalVisualPhase(id, {
+        phase: 'error',
+        error: previousFailure.error,
+        retryAt: previousFailure.retryAt,
+        fingerprint,
+      });
+      return Promise.resolve({
+        ok: false,
+        error: 'visual_backoff',
+        retryAt: previousFailure.retryAt,
+      });
+    }
+
+    const generationEpoch = generationEpochRef.current;
+    const suppliedProfile =
+      options.profile && typeof options.profile === 'object' ? options.profile : {};
+    const profile = { ...(snapshot.profile || {}), ...suppliedProfile };
+    const mood = shortText(options.mood, 40) || snapshot.mood;
+
+    const fail = (error) => {
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      const errorCode = personalVisualErrorCode(error);
+      const lastFailure = personalVisualFailuresRef.current.get(id);
+      const attempt =
+        lastFailure && lastFailure.fingerprint === fingerprint ? lastFailure.attempt + 1 : 1;
+      const retryAt = Date.now() + personalVisualRetryDelay(attempt);
+      personalVisualFailuresRef.current.set(id, {
+        attempt,
+        error: errorCode,
+        retryAt,
+        fingerprint,
+      });
+      setPersonalVisualPhase(id, {
+        phase: 'error',
+        error: errorCode,
+        retryAt,
+        fingerprint,
+      });
+      return { ok: false, error: errorCode, retryAt };
+    };
+
+    const task = (async () => {
+      const existingKey = manifestation.visual && manifestation.visual.cacheKey;
+      if (existingKey) {
+        let resource;
+        try {
+          resource = await acquirePersonalVisual(existingKey);
+        } catch (error) {
+          return fail(error);
+        }
+        if (resource) {
+          try {
+            resource.release();
+          } catch (_error) {
+            // Releasing an object URL is best effort and does not invalidate the asset.
+          }
+          personalVisualFailuresRef.current.delete(id);
+          setPersonalVisualPhase(id, null);
+          return { ok: true, status: 'ready', cacheKey: existingKey };
+        }
+
+        setState((currentState) => {
+          if (!currentState) return currentState;
+          const index = currentState.manifestations.findIndex((item) => item.id === id);
+          if (index < 0 || currentState.manifestations[index].visual?.cacheKey !== existingKey) {
+            return currentState;
+          }
+          const manifestations = [...currentState.manifestations];
+          manifestations[index] = { ...manifestations[index], visual: null };
+          return { ...currentState, manifestations };
+        });
+        void deletePersonalVisual(existingKey).catch(() => {});
+      }
+
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      if (
+        isKnownMinor(profile) ||
+        profile.cloudPersonalization !== true ||
+        profile.cloudAdultConfirmed !== true
+      ) {
+        personalVisualFailuresRef.current.delete(id);
+        setPersonalVisualPhase(id, null);
+        return { ok: false, error: 'visual_consent_required' };
+      }
+
+      setPersonalVisualPhase(id, { phase: 'pending', fingerprint });
+      let visual;
+      try {
+        visual = await generatePersonalizedVisual({
+          desire: manifestation.title,
+          category: manifestation.category || 'Wealth',
+          lang: manifestation.lang,
+          profile,
+          visualMood: personalVisualMood(mood, manifestation.category),
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const cacheKey = createPersonalVisualCacheKey(id);
+      try {
+        await savePersonalVisual({
+          cacheKey,
+          base64: visual.image.data,
+          mimeType: visual.image.mimeType,
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const currentManifestation = stateRef.current?.manifestations?.find(
+        (item) => item.id === id
+      );
+      if (
+        !mountedRef.current ||
+        generationEpoch !== generationEpochRef.current ||
+        !currentManifestation ||
+        personalVisualSubjectFingerprint(currentManifestation) !== fingerprint
+      ) {
+        void deletePersonalVisual(cacheKey).catch(() => {});
+        return { ok: false, error: 'visual_cancelled' };
+      }
+
+      const visualMood = personalVisualMood(mood, manifestation.category);
+      const sourceFields = personalVisualSourceFields(profile);
+      setState((currentState) => {
+        if (!currentState || generationEpoch !== generationEpochRef.current) return currentState;
+        const index = currentState.manifestations.findIndex((item) => item.id === id);
+        if (
+          index < 0 ||
+          personalVisualSubjectFingerprint(currentState.manifestations[index]) !== fingerprint
+        ) {
+          return currentState;
+        }
+        const manifestations = [...currentState.manifestations];
+        manifestations[index] = {
+          ...manifestations[index],
+          visual: {
+            cacheKey,
+            mimeType: 'image/jpeg',
+            aspectRatio: '4:5',
+            model: visual.generation.model,
+            promptVersion: visual.generation.promptVersion,
+            visualMood,
+            sourceFields,
+            createdAt: new Date().toISOString(),
+          },
+        };
+        return { ...currentState, manifestations };
+      });
+      personalVisualFailuresRef.current.delete(id);
+      setPersonalVisualPhase(id, null);
+      return { ok: true, status: 'generated', cacheKey };
+    })().catch(fail);
+
+    const tracked = { promise: task, fingerprint };
+    personalVisualRequestsRef.current.set(id, tracked);
+    const release = () => {
+      if (personalVisualRequestsRef.current.get(id) === tracked) {
+        personalVisualRequestsRef.current.delete(id);
+      }
+    };
+    task.then(release, release);
+    return task;
+  }, [setPersonalVisualPhase]);
 
   const addManifestation = useCallback(async (data) => {
     const generationEpoch = generationEpochRef.current;
@@ -717,8 +1204,16 @@ export function AppProvider({ children }) {
       return { ...s, manifestations: [visibleItem, ...s.manifestations] };
     });
 
+    setTimeout(() => {
+      void ensurePersonalVisual(id, {
+        manifestation: bilingualItem,
+        profile,
+        mood: snapshot.mood,
+      });
+    }, 0);
+
     return id;
-  }, [translateAndStoreVariant]);
+  }, [ensurePersonalVisual, translateAndStoreVariant]);
 
   // Regra ÚNICA de marcar/desmarcar prática por data (sessions = lista de ISO).
   // `on`: true marca, false desmarca, undefined alterna. Não confirma nada —
@@ -930,11 +1425,26 @@ export function AppProvider({ children }) {
   }, []);
 
   const updateManifestation = useCallback((id, patch) => {
+    const saved = stateRef.current?.manifestations?.find((item) => item.id === id);
+    const changesVisualSubject =
+      !!saved &&
+      Object.prototype.hasOwnProperty.call(patch, 'title') &&
+      shortText(patch.title, 160) !== shortText(saved.title, 160);
+    if (changesVisualSubject && saved.visual?.cacheKey) {
+      void deletePersonalVisual(saved.visual.cacheKey).catch(() => {});
+    }
+    if (changesVisualSubject) {
+      personalVisualFailuresRef.current.delete(id);
+      setPersonalVisualPhase(id, null);
+    }
     setState((s) => ({
       ...s,
       manifestations: s.manifestations.map((m) => {
         if (m.id !== id) return m;
-        const next = { ...m, ...patch };
+        const itemChangesVisualSubject =
+          Object.prototype.hasOwnProperty.call(patch, 'title') &&
+          shortText(patch.title, 160) !== shortText(m.title, 160);
+        const next = { ...m, ...patch, ...(itemChangesVisualSubject ? { visual: null } : {}) };
         const contentFields = [
           'title',
           'intention',
@@ -948,9 +1458,11 @@ export function AppProvider({ children }) {
           Object.prototype.hasOwnProperty.call(patch, field)
         );
         if (!editsContent) return next;
+        const editedSnapshot = snapshotManifestationContent(next);
         const editedVariant = {
-          ...snapshotManifestationContent(next),
+          ...editedSnapshot,
           generation: {
+            ...editedSnapshot.generation,
             source: 'user-edited',
             promptVersion: 'user-edit-v1',
           },
@@ -966,7 +1478,12 @@ export function AppProvider({ children }) {
         };
       }),
     }));
-  }, []);
+    if (changesVisualSubject) {
+      setTimeout(() => {
+        void ensurePersonalVisual(id, { force: true });
+      }, 0);
+    }
+  }, [ensurePersonalVisual, setPersonalVisualPhase]);
 
   const addEvidence = useCallback((id, text) => {
     const body = String(text || '').trim().slice(0, 280);
@@ -1012,6 +1529,11 @@ export function AppProvider({ children }) {
   }, []);
 
   const removeManifestation = useCallback((id) => {
+    const visualKey = stateRef.current?.manifestations?.find((item) => item.id === id)?.visual
+      ?.cacheKey;
+    if (visualKey) void deletePersonalVisual(visualKey).catch(() => {});
+    personalVisualFailuresRef.current.delete(id);
+    setPersonalVisualPhase(id, null);
     setState((s) => {
       const alarmId = `manifestation:${id}`;
       const usedAsAlarm = s.morningRitual?.wakeAffirmationId === alarmId;
@@ -1036,7 +1558,7 @@ export function AppProvider({ children }) {
           : {}),
       };
     });
-  }, []);
+  }, [setPersonalVisualPhase]);
 
   const toggleFavoriteAffirmation = useCallback((id) => {
     setState((s) => ({
@@ -1087,6 +1609,8 @@ export function AppProvider({ children }) {
     storageMutationRef.current = 'reset';
     setStorageMutation('reset');
     generationEpochRef.current += 1;
+    personalVisualFailuresRef.current.clear();
+    setPersonalVisualStatus({});
     pendingOnboardingRef.current = false;
     const current = stateRef.current || initialState();
     // Reset apaga os dados, não as preferências: idioma e clima ficam
@@ -1100,6 +1624,7 @@ export function AppProvider({ children }) {
         // Privacy-sensitive auxiliary records must be gone before the empty
         // onboarding can ever become visible again.
         await AsyncStorage.multiRemove(AUXILIARY_STORAGE_KEYS);
+        await clearPersonalVisuals();
         const revision = writerRef.current.enqueue(JSON.stringify(next));
         if (!revision) throw new Error('storage_writer_unavailable');
         pendingResetRevisionRef.current = revision;
@@ -1312,6 +1837,11 @@ export function AppProvider({ children }) {
         .filter((key) => RITUAL_DETAIL_KEYS.includes(key))
         .filter((key, index, values) => values.indexOf(key) === index),
       generatorVersion: shortText(data.generatorVersion, 40) || 'dream-local-v2',
+      generation: sanitizeGenerationReceipt(
+        data.generation,
+        'local-dream',
+        'dream-local-v2'
+      ),
       lang,
       createdAt: now,
       practiceCount: 0,
@@ -1397,21 +1927,55 @@ export function AppProvider({ children }) {
     });
   }, []);
 
-  const exportStateJson = useCallback(() => JSON.stringify(state || initialState()), [state]);
+  const exportStateJson = useCallback(async () => {
+    if (
+      storageMutationRef.current ||
+      pendingResetRevisionRef.current ||
+      pendingImportRevisionRef.current
+    ) {
+      const error = new Error('backup_storage_unavailable');
+      error.code = 'backup_storage_unavailable';
+      throw error;
+    }
+    const communityStories = await exportLocalCommunityStoriesForBackup();
+    const envelope = {
+      format: CELESTE_BACKUP_FORMAT,
+      version: CELESTE_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      restorePolicy: CELESTE_BACKUP_RESTORE_POLICY,
+      includes: ['app-state', 'local-community-stories'],
+      excludes: [
+        'cloud-community-posts',
+        'device-consents',
+        'scheduled-notifications',
+        'generated-image-files',
+      ],
+      data: {
+        state: {
+          ...(stateRef.current || initialState()),
+          manifestations: ((stateRef.current || initialState()).manifestations || []).map(
+            ({ visual: _deviceOnlyVisual, ...manifestation }) => manifestation
+          ),
+        },
+        communityStories,
+      },
+    };
+    const serialized = JSON.stringify(envelope);
+    if (utf8ByteLength(serialized) > CELESTE_BACKUP_MAX_BYTES) {
+      const error = new Error('backup_too_large');
+      error.code = 'backup_too_large';
+      throw error;
+    }
+    return serialized;
+  }, []);
 
   // Import valida (JSON parseável + shape mínimo) e passa pelo mesmo merge
   // defensivo do load. `erro` é código de máquina — a tela traduz via i18n.
   const importStateJson = useCallback(async (str) => {
-    let parsed;
-    try {
-      parsed = JSON.parse(str);
-    } catch (e) {
-      return { ok: false, erro: 'invalid_json' };
-    }
-    if (!parsed || !Array.isArray(parsed.manifestations)) {
-      return { ok: false, erro: 'invalid_shape' };
-    }
-    const restored = mergeDefensivo(parsed);
+    const backup = decodeBackupPayload(str);
+    if (backup.error) return { ok: false, erro: backup.error };
+    const restored = mergeDefensivo(backup.state);
+    restored.manifestations = restored.manifestations.map(({ visual: _visual, ...item }) => item);
     // Consentimento para enviar respostas ao Gemini pertence a este aparelho e
     // a esta instalação. Um arquivo de backup nunca pode reativá-lo sozinho.
     restored.profile = {
@@ -1429,6 +1993,13 @@ export function AppProvider({ children }) {
     };
     restored.morningRitual = {
       ...(restored.morningRitual || initialState().morningRitual),
+      reminderEnabled: false,
+      alarmSyncError: false,
+      wakeAffirmationId: null,
+      wakeAffirmationText: '',
+      wakeAffirmationLang: restored.lang === 'en' ? 'en' : 'pt',
+      wakeNarratorId: null,
+      wakeSoundSource: null,
       entries: (restored.morningRitual?.entries || []).map((entry) => ({
         ...entry,
         useInLivingMirror: false,
@@ -1443,54 +2014,107 @@ export function AppProvider({ children }) {
     ) {
       return { ok: false, erro: 'storage_unavailable' };
     }
-    const reminderCancelled = await cancelDailyRitualReminder(
-      stateRef.current?.dailyRitual?.notificationId
-    );
-    if (!reminderCancelled.ok) {
-      return { ok: false, erro: 'reminder_cancel_failed' };
-    }
-    generationEpochRef.current += 1;
     storageMutationRef.current = 'import';
     setStorageMutation('import');
-    const revision = writerRef.current.enqueue(JSON.stringify(restored));
-    if (!revision) {
-      storageMutationRef.current = null;
-      setStorageMutation(null);
-      return { ok: false, erro: 'storage_unavailable' };
-    }
-    pendingImportRevisionRef.current = revision;
-    writerRef.current.resume();
-
-    let finalizePromise = null;
-    const finalizeImport = () => {
-      if (pendingImportRevisionRef.current !== revision) return Promise.resolve(false);
-      if (finalizePromise) return finalizePromise;
-      finalizePromise = Promise.resolve().then(() => {
-        if (mountedRef.current) {
-          skipNextPersistRef.current = true;
-          desiredLanguageRef.current = restored.lang;
-          setState(restored);
-          setStorageError(false);
+    let communityToken = null;
+    try {
+      if (backup.replaceCommunityStories) {
+        communityToken = await beginCommunityDataReset();
+      }
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        const alarmCapability = await getAffirmationAlarmCapability().catch(() => null);
+        if (!alarmCapability) {
+          cancelCommunityDataReset(communityToken);
+          storageMutationRef.current = null;
           setStorageMutation(null);
+          return { ok: false, erro: 'alarm_cancel_failed' };
         }
+        if (alarmCapability.supported === true || alarmCapability.nativeModuleAvailable === true) {
+          const alarmCancelled = await cancelAffirmationAlarm().catch(() => null);
+          if (!alarmCancelled || alarmCancelled.ok !== true) {
+            cancelCommunityDataReset(communityToken);
+            storageMutationRef.current = null;
+            setStorageMutation(null);
+            return { ok: false, erro: 'alarm_cancel_failed' };
+          }
+        }
+      }
+      const reminderCancelled = await cancelDailyRitualReminder(
+        stateRef.current?.dailyRitual?.notificationId
+      );
+      if (!reminderCancelled.ok) {
+        cancelCommunityDataReset(communityToken);
         storageMutationRef.current = null;
-        pendingImportRevisionRef.current = 0;
-        pendingImportFinalizeRef.current = null;
-        return true;
-      });
-      return finalizePromise;
-    };
-    pendingImportFinalizeRef.current = finalizeImport;
+        setStorageMutation(null);
+        return { ok: false, erro: 'reminder_cancel_failed' };
+      }
+      const revision = writerRef.current.enqueue(JSON.stringify(restored));
+      if (!revision) {
+        cancelCommunityDataReset(communityToken);
+        storageMutationRef.current = null;
+        setStorageMutation(null);
+        return { ok: false, erro: 'storage_unavailable' };
+      }
+      generationEpochRef.current += 1;
+      personalVisualFailuresRef.current.clear();
+      setPersonalVisualStatus({});
+      pendingImportRevisionRef.current = revision;
+      writerRef.current.resume();
 
-    const saved = await writerRef.current.waitFor(revision, STORAGE_WRITE_TIMEOUT_MS);
-    if (!saved) {
+      let finalizePromise = null;
+      const finalizeImport = () => {
+        if (pendingImportRevisionRef.current !== revision) return Promise.resolve(false);
+        if (finalizePromise) return finalizePromise;
+        finalizePromise = (async () => {
+          try {
+            if (backup.replaceCommunityStories) {
+              await restoreLocalCommunityStoriesFromBackup(
+                communityToken,
+                backup.communityStories
+              );
+            }
+            // Keep the current visual files until the replacement state is
+            // durably persisted. A failed import must leave the old state usable.
+            await clearPersonalVisuals();
+            if (mountedRef.current) {
+              skipNextPersistRef.current = true;
+              desiredLanguageRef.current = restored.lang;
+              setState(restored);
+              setStorageError(false);
+              setStorageMutation(null);
+            }
+            storageMutationRef.current = null;
+            pendingImportRevisionRef.current = 0;
+            pendingImportFinalizeRef.current = null;
+            return true;
+          } catch (_error) {
+            finalizePromise = null;
+            if (mountedRef.current) setStorageError(true);
+            return false;
+          }
+        })();
+        return finalizePromise;
+      };
+      pendingImportFinalizeRef.current = finalizeImport;
+
+      const saved = await writerRef.current.waitFor(revision, STORAGE_WRITE_TIMEOUT_MS);
+      if (!saved) {
+        if (mountedRef.current) setStorageError(true);
+        return { ok: false, erro: 'storage_unavailable' };
+      }
+      const finalized = await finalizeImport();
+      return finalized
+        ? { ok: true, erro: null }
+        : { ok: false, erro: 'storage_unavailable' };
+    } catch (_error) {
+      if (!pendingImportRevisionRef.current) {
+        cancelCommunityDataReset(communityToken);
+        storageMutationRef.current = null;
+        if (mountedRef.current) setStorageMutation(null);
+      }
       if (mountedRef.current) setStorageError(true);
       return { ok: false, erro: 'storage_unavailable' };
     }
-    const finalized = await finalizeImport();
-    return finalized
-      ? { ok: true, erro: null }
-      : { ok: false, erro: 'storage_unavailable' };
   }, []);
 
   // ── Onboarding ────────────────────────────────────────────────────────────
@@ -1544,6 +2168,8 @@ export function AppProvider({ children }) {
 
   const resetOnboarding = useCallback(() => {
     generationEpochRef.current += 1;
+    personalVisualFailuresRef.current.clear();
+    setPersonalVisualStatus({});
     setState((s) => ({ ...s, onboardingDone: false }));
   }, []);
 
@@ -1608,7 +2234,6 @@ export function AppProvider({ children }) {
           expectedTargetVariant: item.contentByLang[nextLang],
           profile: latest.profile,
           generationEpoch,
-          languageEpoch,
         });
       });
       const nextOffset = offset + TRANSLATION_BATCH_SIZE;
@@ -1643,11 +2268,13 @@ export function AppProvider({ children }) {
       storageMutation,
       storageLoadError,
       storageCorrupt,
+      personalVisualStatus,
       retryLoad,
       repairCorruptedStorage,
       retryPersist,
       derived,
       addManifestation,
+      ensurePersonalVisual,
       updateManifestation,
       addEvidence,
       updateEvidence,
@@ -1686,11 +2313,13 @@ export function AppProvider({ children }) {
       storageMutation,
       storageLoadError,
       storageCorrupt,
+      personalVisualStatus,
       retryLoad,
       repairCorruptedStorage,
       retryPersist,
       derived,
       addManifestation,
+      ensurePersonalVisual,
       updateManifestation,
       addEvidence,
       updateEvidence,

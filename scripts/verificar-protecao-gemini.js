@@ -8,6 +8,8 @@ const generation = read('api/gerar-cena.js');
 const translation = read('api/traduzir-cena.js');
 const dream = read('api/transformar-sonho.js');
 const audio = read('api/gerar-audio.js');
+const visual = read('api/gerar-visual.js');
+const paidAccess = read('api/_paid-access.js');
 const client = read('utils/botProtection.web.js');
 const deploy = read('scripts/deploy-celeste.js');
 const vercel = JSON.parse(read('vercel.json'));
@@ -28,6 +30,7 @@ for (const [name, source] of [
   ['traduzir-cena', translation],
   ['transformar-sonho', dream],
   ['gerar-audio', audio],
+  ['gerar-visual', visual],
 ]) {
   assert.match(source, /Boolean\(origin\)\s*&&\s*allowedOrigins\(\)\.has\(origin\)/, `${name} aceita Origin ausente`);
   assert.doesNotMatch(source, /!origin\s*\|\|/, `${name} reintroduziu bypass sem Origin`);
@@ -45,22 +48,42 @@ for (const [name, source] of [
     `${name} reintroduziu bypass em todo deploy nao produtivo`
   );
   assert.match(source, /bot_verification_unavailable/, `${name} nao fecha em falha do BotID`);
+  assert.match(source, /paidAccess\.isNativeRequest\(req\)/, `${name} nao usa a politica nativa fechada`);
   assert.match(source, /Cache-Control',\s*'no-store, max-age=0'/, `${name} permite cache de resposta pessoal`);
   assert.doesNotMatch(source, /console\.(?:log|warn|error)/, `${name} pode registrar conteudo pessoal`);
 }
 
-for (const [name, source] of [['transformar-sonho', dream], ['gerar-audio', audio]]) {
+for (const [name, source] of [['transformar-sonho', dream], ['gerar-audio', audio], ['gerar-visual', visual]]) {
   assert.match(source, /CDN-Cache-Control',\s*'no-store'/, `${name} nao fecha o cache do CDN`);
   assert.match(source, /Vercel-CDN-Cache-Control',\s*'no-store'/, `${name} nao fecha o cache da Vercel`);
   assert.match(source, /Surrogate-Control',\s*'no-store'/, `${name} nao fecha caches intermediarios`);
   assert.match(source, /Referrer-Policy',\s*'no-referrer'/, `${name} nao fecha referrer`);
 }
-assert.match(audio, /store:\s*false/, 'TTS nao desativa armazenamento na requisicao Gemini');
+assert.match(audio, /api\.elevenlabs\.io/, 'TTS nao usa ElevenLabs no servidor');
+assert.match(audio, /enable_logging:\s*'false'/, 'TTS nao desativa armazenamento na requisicao ElevenLabs');
+assert.match(audio, /ELEVENLABS_API_KEY/, 'TTS nao le a chave ElevenLabs no servidor');
+assert.doesNotMatch(audio, /EXPO_PUBLIC_ELEVENLABS/, 'TTS usa uma chave ElevenLabs publica');
+assert.match(visual, /store:\s*false/, 'visual nao desativa armazenamento na requisicao Gemini');
+assert.match(visual, /ALLOWED_BODY_KEYS/, 'visual nao usa allowlist de payload');
+assert.match(visual, /sanitizeProfile/, 'visual nao minimiza o perfil');
+assert.match(visual, /cloud_consent_required/, 'visual nao exige consentimento');
+assert.match(visual, /adult_confirmation_required/, 'visual nao exige confirmacao adulta');
 assert.match(audio, /cloudConsent[^\]]*adultConfirmed/s, 'TTS pessoal nao exige consentimento e idade');
 assert.match(dream, /ALLOWED_BODY_KEYS/, 'sonho nao usa allowlist de payload');
 assert.match(dream, /sanitizeProfile/, 'sonho nao minimiza o perfil');
 assert.match(dream, /cloud_consent_required/, 'sonho nao exige consentimento');
 assert.match(dream, /adult_confirmation_required/, 'sonho nao exige confirmacao adulta');
+assert.match(paidAccess, /native_attestation_required/, 'cliente nativo sem atestacao nao fecha antes da cota');
+assert.match(
+  paidAccess,
+  /CELESTE_ALLOW_LOCAL_NATIVE_BYPASS\s*===\s*'1'[\s\S]*?VERCEL_ENV\s*===\s*'development'[\s\S]*?NODE_ENV\s*!==\s*'production'/,
+  'bypass nativo nao esta restrito ao desenvolvimento local'
+);
+assert.match(
+  paidAccess,
+  /hasNativeClientClaim\(req\)\s*&&\s*!isNativeRequest\(req\)/,
+  'claim nativo autodeclarado ainda pode chegar a reserva de credito'
+);
 
 const clientFiles = [path.join(root, 'App.js')].concat(
   ['components', 'constants', 'context', 'screens', 'services', 'utils']
@@ -78,6 +101,7 @@ for (const pathname of [
   '/api/traduzir-cena',
   '/api/transformar-sonho',
   '/api/gerar-audio',
+  '/api/gerar-visual',
 ]) {
   assert.ok(client.includes(`path: '${pathname}'`), `cliente BotID nao protege ${pathname}`);
 }
@@ -110,6 +134,7 @@ const protectedPaths = firewall.value.conditionGroup.map((group) => {
 assert.deepStrictEqual(protectedPaths, [
   '/api/gerar-audio',
   '/api/gerar-cena',
+  '/api/gerar-visual',
   '/api/traduzir-cena',
   '/api/transformar-sonho',
 ]);
@@ -118,6 +143,7 @@ assert.ok(packageJson.dependencies && packageJson.dependencies.botid, 'botid aus
 assert.match(deploy, /dependencies:\s*\{\s*botid:\s*botidVersion\s*\}/, 'deploy nao empacota BotID');
 assert.match(deploy, /apiTarget, 'transformar-sonho\.js'/, 'deploy nao valida a funcao de sonho');
 assert.match(deploy, /apiTarget, 'gerar-audio\.js'/, 'deploy nao valida a funcao de audio');
+assert.match(deploy, /apiTarget, 'gerar-visual\.js'/, 'deploy nao valida a funcao visual');
 assert.match(deploy, /automated_request_blocked/, 'deploy nao testa bloqueio de cliente nu');
 assert.match(deploy, /verificar-waf-vercel\.js/, 'deploy nao confere o WAF ativo antes da publicacao');
 assert.strictEqual(
@@ -126,4 +152,4 @@ assert.strictEqual(
   'verificador do WAF ativo nao esta exposto no package.json'
 );
 
-console.log('Protecao Gemini OK: Origin/BotID/no-store, payload minimo e WAF 12/min em quatro rotas.');
+console.log('Protecao Gemini OK: Origin/BotID/no-store, payload minimo e WAF 12/min em cinco rotas.');

@@ -91,6 +91,7 @@ function toPersonalVision(item, fallbackLang) {
     category: item.category || 'Wealth',
     accent: Number.isInteger(item.accent) ? item.accent : categoryMeta(item.category).accent,
     lang: itemLang,
+    visualKey: item.visual && item.visual.cacheKey,
   };
 }
 
@@ -479,6 +480,7 @@ function PersonalVisionPlayer({
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <GradientCover
           accent={vision.accent}
+          visualKey={vision.visualKey}
           radius={26}
           style={[styles.stage, compact && styles.stageCompact]}
         >

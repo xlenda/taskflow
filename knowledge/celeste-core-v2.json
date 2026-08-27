@@ -1,0 +1,1304 @@
+{
+  "version": "celeste-knowledge-v2",
+  "schemaVersion": "2.0.0",
+  "updatedAt": "2026-08-27",
+  "positioning": "Turn a person's own words into believable, emotionally meaningful reflection, an optional controllable action and a coherent next chapter without presenting Celeste as therapy, prediction or a substitute for human support.",
+  "scopeDefinitions": {
+    "affirmation": "A concise first-person statement grounded in the person's desire, values, existing evidence and agency.",
+    "scene": "A plausible everyday process scene that uses supplied details and ends with an optional bridge to action.",
+    "dream": "A non-diagnostic reflection grounded in reported waking emotion and user-chosen meaning, with stronger safety rules for disturbing material.",
+    "check_in": "A brief, non-judgmental observation of what happened, did not happen or needs adjustment, used to shape the next chapter."
+  },
+  "evidenceLevels": {
+    "meta_synthesis": "Supported by one or more meta-analyses or systematic syntheses, with effects understood as average, variable and not proof of Celeste's efficacy.",
+    "empirical_contextual": "Supported by empirical studies or reviews relevant to the principle, but not a direct test of the Celeste product.",
+    "theory_informed": "Grounded in an established theory or conceptual review; use as a design lens, not a causal promise.",
+    "safety_guideline": "Grounded in an authoritative guideline or a documented harm-prevention boundary.",
+    "product_contract": "An editorial, privacy or product decision. It is not presented as a scientific finding."
+  },
+  "sourceRegistry": {
+    "celeste_research_2026": {
+      "type": "internal_synthesis",
+      "label": "Celeste scientific research and personalization synthesis",
+      "locator": "../docs/PESQUISA-CIENTIFICA-PERSONALIZACAO-CELESTE.md",
+      "role": "Evidence synthesis, generation boundaries and honest measurement policy."
+    },
+    "celeste_dossier_2026": {
+      "type": "internal_product_dossier",
+      "label": "Celeste master product dossier",
+      "locator": "../docs/DOSSIE-MESTRE-PRODUTO-CELESTE.md",
+      "role": "Product contracts, personalization rules, chronology, privacy and ethical retention boundaries."
+    },
+    "epton_2015": {
+      "type": "meta_analysis",
+      "label": "Epton et al. 2015, values-based self-affirmation",
+      "locator": "https://doi.org/10.1037/hea0000116",
+      "role": "Average effects of values-based self-affirmation on health-message outcomes."
+    },
+    "wang_2025_affirmation": {
+      "type": "meta_analysis",
+      "label": "Wang et al. 2025, self-affirmation outcomes",
+      "locator": "https://doi.org/10.1037/amp0001591",
+      "role": "Small and context-dependent average effects; prediction intervals support caution."
+    },
+    "wood_2009": {
+      "type": "experiment",
+      "label": "Wood et al. 2009, highly positive self-statements",
+      "locator": "https://doi.org/10.1111/j.1467-9280.2009.02370.x",
+      "role": "Caution that implausibly positive statements may not help every person."
+    },
+    "wang_2021_mcii": {
+      "type": "meta_analysis",
+      "label": "Wang et al. 2021, mental contrasting with implementation intentions",
+      "locator": "https://doi.org/10.3389/fpsyg.2021.565202",
+      "role": "Small average effects with heterogeneity and publication-bias caveats."
+    },
+    "gollwitzer_sheeran_2006": {
+      "type": "meta_analysis",
+      "label": "Gollwitzer and Sheeran 2006, implementation intentions",
+      "locator": "https://doi.org/10.1016/S0065-2601(06)38002-1",
+      "role": "Evidence on linking a recognizable cue to a specified response."
+    },
+    "sheeran_2024": {
+      "type": "meta_analysis",
+      "label": "Sheeran et al. 2024, implementation-intention update",
+      "locator": "https://doi.org/10.1080/10463283.2024.2334563",
+      "role": "Updated and bias-adjusted estimates for implementation intentions."
+    },
+    "ryan_deci_2000": {
+      "type": "theory_review",
+      "label": "Ryan and Deci 2000, self-determination theory",
+      "locator": "https://doi.org/10.1037/0003-066X.55.1.68",
+      "role": "Autonomy, competence and relatedness as motivation and well-being lenses."
+    },
+    "sheldon_elliot_1999": {
+      "type": "longitudinal_study",
+      "label": "Sheldon and Elliot 1999, self-concordant goals",
+      "locator": "https://doi.org/10.1037/0022-3514.76.3.482",
+      "role": "Relationship between self-concordance, effort and goal attainment."
+    },
+    "lally_2010": {
+      "type": "longitudinal_study",
+      "label": "Lally et al. 2010, habit automaticity",
+      "locator": "https://doi.org/10.1002/ejsp.674",
+      "role": "Large individual variation in automaticity and the role of repeated context."
+    },
+    "wood_runger_2016": {
+      "type": "review",
+      "label": "Wood and Runger 2016, psychology of habit",
+      "locator": "https://doi.org/10.1146/annurev-psych-122414-033417",
+      "role": "Context-linked repetition and habit-process overview."
+    },
+    "goodman_2018": {
+      "type": "empirical_comparison",
+      "label": "Goodman et al. 2018, PERMA and subjective well-being",
+      "locator": "https://doi.org/10.1080/17439760.2017.1388434",
+      "role": "Reason to use PERMA as an optional reflection menu rather than a distinct treatment claim."
+    },
+    "davis_2025": {
+      "type": "global_meta_analysis",
+      "label": "Davis et al. 2025, gratitude interventions",
+      "locator": "https://doi.org/10.1073/pnas.2425193122",
+      "role": "Modest and culturally variable average effects of gratitude practices."
+    },
+    "davis_2016": {
+      "type": "meta_analysis",
+      "label": "Davis et al. 2016, gratitude interventions",
+      "locator": "https://doi.org/10.1037/cou0000107",
+      "role": "Caution that benefits may shrink against active controls."
+    },
+    "ferrari_2019": {
+      "type": "meta_analysis",
+      "label": "Ferrari et al. 2019, self-compassion interventions",
+      "locator": "https://doi.org/10.1007/s12671-019-01134-6",
+      "role": "Average effects and limitations of self-compassion interventions."
+    },
+    "han_kim_2023": {
+      "type": "meta_analysis",
+      "label": "Han and Kim 2023, self-compassion interventions",
+      "locator": "https://doi.org/10.1007/s12671-023-02148-x",
+      "role": "Heterogeneity and active-control caveats for self-compassion interventions."
+    },
+    "mcadams_mclean_2013": {
+      "type": "conceptual_review",
+      "label": "McAdams and McLean 2013, narrative identity",
+      "locator": "https://doi.org/10.1177/0963721413475622",
+      "role": "Narrative identity as an evolving, person-authored story."
+    },
+    "gehrt_2023": {
+      "type": "systematic_review",
+      "label": "Gehrt et al. 2023, narrative identity and well-being",
+      "locator": "https://doi.org/10.1080/09658211.2023.2218632",
+      "role": "Associations between narrative features and well-being without causal recovery claims."
+    },
+    "hershfield_2011": {
+      "type": "review",
+      "label": "Hershfield 2011, future-self continuity",
+      "locator": "https://doi.org/10.1111/j.1749-6632.2011.06201.x",
+      "role": "Future selves are more useful when connected to the present self."
+    },
+    "oyserman_horowitz_2023": {
+      "type": "review",
+      "label": "Oyserman and Horowitz 2023, identity-based motivation",
+      "locator": "https://www.sciencedirect.com/science/article/pii/S2215091922000141/pdf",
+      "role": "Identity and present strategies as context-sensitive motivation lenses."
+    },
+    "pham_taylor_1999": {
+      "type": "experiment",
+      "label": "Pham and Taylor 1999, process simulation",
+      "locator": "https://doi.org/10.1177/0146167299025002010",
+      "role": "Process-focused simulation in planning and performance."
+    },
+    "kappes_oettingen_2011": {
+      "type": "experiments",
+      "label": "Kappes and Oettingen 2011, idealized positive fantasy",
+      "locator": "https://doi.org/10.1016/j.jesp.2011.02.003",
+      "role": "Caution that idealized outcome fantasy alone may reduce energy for action."
+    },
+    "greenwald_1991": {
+      "type": "experiment",
+      "label": "Greenwald et al. 1991, subliminal self-help tapes",
+      "locator": "https://doi.org/10.1111/j.1467-9280.1991.tb00112.x",
+      "role": "No basis for claiming passive subliminal audio reprograms memory or self-esteem."
+    },
+    "schredl_hofmann_2003": {
+      "type": "empirical_study",
+      "label": "Schredl and Hofmann 2003, waking-life continuity in dreams",
+      "locator": "https://doi.org/10.1016/S1053-8100%2802%2900072-7",
+      "role": "Probabilistic continuity between waking concerns and dream content."
+    },
+    "morewedge_norton_2009": {
+      "type": "experiments",
+      "label": "Morewedge and Norton 2009, beliefs about dreams",
+      "locator": "https://doi.org/10.1037/a0013264",
+      "role": "Risk of authoritative dream interpretations influencing decisions."
+    },
+    "aasm_2018": {
+      "type": "clinical_guideline",
+      "label": "American Academy of Sleep Medicine 2018, nightmare disorder position paper",
+      "locator": "https://doi.org/10.5664/jcsm.7178",
+      "role": "Boundary between a reflection app and professional nightmare-disorder care."
+    }
+  },
+  "profileSchema": {
+    "identity": ["preferredName", "selfDescription", "strengths", "existingEvidence", "values"],
+    "direction": ["desire", "whyItMatters", "desiredFeeling", "timeHorizon", "plausibility"],
+    "context": ["work", "relationships", "place", "ordinaryFutureScene", "support"],
+    "action": ["obstacle", "recognizableCue", "smallAction", "fallback", "friction"],
+    "experience": ["languageStyle", "spiritualStyle", "voice", "soundscape", "excludedTopics"],
+    "dream": ["exactRecall", "wakingFeeling", "userChosenMeaning", "distress", "recurrence", "impact"],
+    "memory": ["acceptedContent", "editedContent", "rejectedContent", "completedSteps", "frictionNotes", "dreamThemesChosenByUser", "recentLanguage", "nextOpenThread"]
+  },
+  "chronology": {
+    "principle": "The intelligence evolves as one quiet chronology behind the existing experience, not as a catalog of extra features.",
+    "stages": [
+      {
+        "id": "understand",
+        "input": "Questionnaire, current desire, chosen preferences and consented memory.",
+        "output": "A minimal structured profile containing only fields that can change the result."
+      },
+      {
+        "id": "create",
+        "input": "Relevant profile fields plus retrieved knowledge cards.",
+        "output": "One affirmation or scene with an optional small bridge and a personalization receipt."
+      },
+      {
+        "id": "observe",
+        "input": "A short optional check-in about what happened, did not happen or needs adjustment.",
+        "output": "A factual memory delta, never a supernatural interpretation."
+      },
+      {
+        "id": "evolve",
+        "input": "The prior chapter, accepted edits, observed friction and new user input.",
+        "output": "A next chapter that preserves identity continuity, changes what needs changing and avoids repetition."
+      }
+    ]
+  },
+  "retrievalPolicy": {
+    "matchOrder": ["scope", "safety", "signals", "domains", "continuity"],
+    "instructions": [
+      "Retrieve only cards relevant to the requested scope and available signals.",
+      "Prefer the smallest set that covers grounding, agency, continuity and scope-specific safety.",
+      "Never dump the full source corpus or all cards into a generation prompt.",
+      "Treat missing fields as unknown; never fill them by inference.",
+      "Use product_contract cards as requirements, not as scientific evidence.",
+      "For distress, graphic dream content, coercion, third-party control or sensitive data, safety cards override style and engagement goals."
+    ],
+    "alwaysConsider": [
+      "credible_process_language",
+      "autonomous_choice",
+      "safe_specificity",
+      "third_party_boundaries",
+      "emotional_resonance_without_manipulation",
+      "data_minimization",
+      "nondependency_return"
+    ]
+  },
+  "knowledgeCards": [
+    {
+      "id": "values_based_affirmation",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["values", "identity", "integrity"],
+      "signals": ["value_present", "why_it_matters_present", "affirmation_requested"],
+      "evidenceLevel": "meta_synthesis",
+      "principle": "Self-affirmation is best framed as reflection on personally important values and integrity, not as repetition of grandiose outcomes.",
+      "apply": [
+        "Link the desired direction to a value or reason stated by the person.",
+        "Use the person's own language when it remains safe and believable."
+      ],
+      "limits": [
+        "Average research effects are small and context-dependent.",
+        "A value statement does not prove that an external outcome will occur."
+      ],
+      "avoid": [
+        "Claims that an unachieved result already exists or is guaranteed.",
+        "Generic praise disconnected from the person's words."
+      ],
+      "sources": ["epton_2015", "wang_2025_affirmation", "wood_2009", "celeste_research_2026"],
+      "promptCue": "Ground the affirmation in one stated value or reason and preserve uncertainty about outcomes."
+    },
+    {
+      "id": "credible_process_language",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["credibility", "language", "agency"],
+      "signals": ["absolute_wording_risk", "low_plausibility", "identity_claim"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "A statement should feel possible enough to engage with; process language is safer than an absolute identity or outcome claim.",
+      "apply": [
+        "Prefer I choose, I can, I am learning, I am practising or I am willing to consider.",
+        "Scale certainty to the evidence and plausibility supplied by the person."
+      ],
+      "limits": [
+        "Believability is personal and should remain editable.",
+        "Process language is not a treatment or guarantee of behavior change."
+      ],
+      "avoid": [
+        "I always, I never, nothing can stop me or everything is already mine.",
+        "Forcing a phrase the person has rejected as false."
+      ],
+      "sources": ["wood_2009", "wang_2025_affirmation", "celeste_research_2026"],
+      "promptCue": "Write one credible first-person process statement rather than an absolute declaration."
+    },
+    {
+      "id": "personal_anchor_selection",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene"],
+      "domains": ["personalization", "grounding", "relevance"],
+      "signals": ["safe_profile_anchor_present", "desire_present", "same_desire_different_profile"],
+      "evidenceLevel": "product_contract",
+      "principle": "Personalization must change the meaning of the content, not merely insert a name into a template.",
+      "apply": [
+        "Select one or two safe anchors that materially connect to the desire.",
+        "Prefer values, strengths, work context, desired partnership qualities, place or an ordinary future detail."
+      ],
+      "limits": [
+        "Use only anchors explicitly supplied and allowed for generation.",
+        "Do not include a field solely because it is available."
+      ],
+      "avoid": [
+        "Decorative demographic details.",
+        "Vague responses such as not sure as proof of personalization."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Choose the smallest safe anchor that genuinely changes this person's affirmation or scene."
+    },
+    {
+      "id": "desire_value_alignment",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["motivation", "values", "goal_alignment"],
+      "signals": ["desire_present", "why_it_matters_present", "external_pressure_possible"],
+      "evidenceLevel": "theory_informed",
+      "principle": "A desired direction is more personally coherent when it is linked to the person's own reason rather than external approval.",
+      "apply": [
+        "Reflect why the desire matters in the person's own terms.",
+        "Leave room to revise or pause a goal that no longer feels self-chosen."
+      ],
+      "limits": [
+        "Do not infer that a socially approved goal is self-concordant.",
+        "Do not claim that alignment alone causes success."
+      ],
+      "avoid": [
+        "Pressure to keep a goal for status, approval or fear.",
+        "Moral judgment when the desire changes."
+      ],
+      "sources": ["ryan_deci_2000", "sheldon_elliot_1999", "celeste_research_2026"],
+      "promptCue": "Connect the desire to the person's stated reason and preserve their right to change direction."
+    },
+    {
+      "id": "existing_evidence_of_competence",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["competence", "strengths", "self_efficacy_caution"],
+      "signals": ["strength_present", "existing_evidence_present", "self_doubt_present"],
+      "evidenceLevel": "theory_informed",
+      "principle": "A believable statement can draw on a strength, skill or prior action the person already recognizes.",
+      "apply": [
+        "Use a concrete piece of self-reported evidence as an anchor.",
+        "Frame an undeveloped skill as learnable rather than already mastered."
+      ],
+      "limits": [
+        "The model cannot certify a person's ability from a short profile.",
+        "A past success does not guarantee the next result."
+      ],
+      "avoid": [
+        "Invented achievements or flattering traits.",
+        "Turning competence into worth or productivity."
+      ],
+      "sources": ["ryan_deci_2000", "celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Anchor confidence in one real strength or action the person named, without inflating it."
+    },
+    {
+      "id": "autonomous_choice",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["autonomy", "consent", "choice"],
+      "signals": ["recommendation_requested", "ambivalence", "sensitive_topic", "next_step_offered"],
+      "evidenceLevel": "theory_informed",
+      "principle": "Celeste supports the person's authorship; it offers language and options without claiming authority over their meaning or decision.",
+      "apply": [
+        "Use optional language and preserve edit, skip, unsure and delete paths.",
+        "Distinguish a reflection from a direction the person must follow."
+      ],
+      "limits": [
+        "The app cannot determine the correct life choice for a person.",
+        "Consent to one use does not imply consent to another."
+      ],
+      "avoid": [
+        "Commands disguised as personal insight.",
+        "Guilt, urgency or certainty used to obtain compliance."
+      ],
+      "sources": ["ryan_deci_2000", "sheldon_elliot_1999", "celeste_research_2026"],
+      "promptCue": "Offer the reflection as an editable choice and return authorship to the person."
+    },
+    {
+      "id": "user_voice_and_belief_style",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["tone", "language", "belief_style"],
+      "signals": ["language_style_present", "spiritual_style_present", "excluded_topic_present"],
+      "evidenceLevel": "product_contract",
+      "principle": "Tone should fit the person's chosen language and belief style without changing the evidence standard.",
+      "apply": [
+        "Use neutral, God-oriented or Universe-oriented language only when explicitly selected.",
+        "Respect excluded topics, preferred wording and language."
+      ],
+      "limits": [
+        "Style preferences do not authorize scientific or supernatural claims.",
+        "Do not infer spirituality from the desire or dream."
+      ],
+      "avoid": [
+        "Imposed spiritual vocabulary.",
+        "Calling spiritual language neuroscience or clinical evidence."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Match the selected tone while keeping claims practical, uncertain and non-causal."
+    },
+    {
+      "id": "safe_specificity",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["grounding", "factuality", "hallucination_prevention"],
+      "signals": ["missing_detail", "specific_detail_requested", "free_text_input"],
+      "evidenceLevel": "product_contract",
+      "principle": "Specificity creates recognition only when every personal fact comes from an allowed user field.",
+      "apply": [
+        "Use supplied details exactly enough to be recognizable without copying excessive intimate text.",
+        "Mark unavailable details as unknown and write around them."
+      ],
+      "limits": [
+        "Do not infer motives, memories, locations, relationships or outcomes.",
+        "Do not turn a likely guess into a personal fact."
+      ],
+      "avoid": [
+        "Fabricated sensory details or biography.",
+        "False intimacy created by confident guessing."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Use only allowed supplied facts; omit any detail that requires a guess."
+    },
+    {
+      "id": "first_person_controllability",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "dream", "check_in"],
+      "domains": ["agency", "controllability", "language"],
+      "signals": ["external_outcome", "other_person_involved", "affirmation_requested"],
+      "evidenceLevel": "product_contract",
+      "principle": "An affirmation should describe the person's stance, practice or choice, not control over an external event.",
+      "apply": [
+        "Keep the grammatical subject and meaningful action with the person.",
+        "Translate an external wish into a controllable quality, boundary or step when the person accepts that framing."
+      ],
+      "limits": [
+        "Not every desire has an immediate action.",
+        "A controllable statement should not minimize structural constraints."
+      ],
+      "avoid": [
+        "Claims that another person will return, change or comply.",
+        "Blaming the person for outcomes outside their control."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026", "ryan_deci_2000"],
+      "promptCue": "State what the person can choose or practise, not what the world or another person must do."
+    },
+    {
+      "id": "personalization_receipt",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream"],
+      "domains": ["auditability", "personalization", "trust"],
+      "signals": ["generated_content", "profile_fields_used", "dream_fields_used"],
+      "evidenceLevel": "product_contract",
+      "principle": "Generated content should report which allowed fields actually shaped it so personalization can be verified and edited.",
+      "apply": [
+        "Return field identifiers separately from the prose.",
+        "Include only fields whose content can be traced in the output."
+      ],
+      "limits": [
+        "A receipt demonstrates grounding, not psychological validity.",
+        "Do not expose raw sensitive text in labels or logs."
+      ],
+      "avoid": [
+        "Claiming a field was used when it is absent from the output.",
+        "Displaying hidden inferences as user-provided facts."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Return a machine-readable list of the exact allowed fields that visibly shaped the result."
+    },
+    {
+      "id": "third_party_boundaries",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["privacy", "relationships", "non_coercion"],
+      "signals": ["third_party_name", "specific_romantic_person", "control_desire", "minor_name"],
+      "evidenceLevel": "product_contract",
+      "principle": "Personal content must not expose, control or make promises about a specific third party.",
+      "apply": [
+        "Generalize a relationship to the quality or boundary the person wants for themselves.",
+        "Remove names of children, partners and other identifiable people from cloud prompts and generated affirmations."
+      ],
+      "limits": [
+        "A relationship can be acknowledged without predicting its outcome.",
+        "Do not silently change the person's meaning; offer the safer framing as editable."
+      ],
+      "avoid": [
+        "Promises of reunion, obsession, contact or compliance.",
+        "Publishing or narrating another person's identifiable information by default."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Remove identifiable third parties and recast the content around the user's own values, boundaries and choices."
+    },
+    {
+      "id": "emotional_resonance_without_manipulation",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["emotion", "retention_ethics", "trust"],
+      "signals": ["intimate_disclosure", "desired_feeling_present", "return_copy", "vulnerability"],
+      "evidenceLevel": "product_contract",
+      "principle": "Emotional resonance should come from accurate recognition and continuity, never from exploiting fear, loneliness or intimate disclosure.",
+      "apply": [
+        "Name one safe detail or feeling the person chose and connect it to a believable next chapter.",
+        "Invite return because the story can evolve from real observations."
+      ],
+      "limits": [
+        "The model cannot know what the person secretly needs to hear.",
+        "Emotion is not proof that a claim is true or beneficial."
+      ],
+      "avoid": [
+        "Love-bombing, exclusivity, destiny language or implied sentience.",
+        "Fear of losing progress, streaks or Celeste's approval."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026", "ryan_deci_2000"],
+      "promptCue": "Create recognition from truthful personal detail, not emotional pressure or manufactured intimacy."
+    },
+    {
+      "id": "mental_contrasting",
+      "version": "1.0.0",
+      "scopes": ["scene", "affirmation", "check_in"],
+      "domains": ["planning", "obstacles", "goal_pursuit"],
+      "signals": ["desire_present", "obstacle_present", "future_scene_requested"],
+      "evidenceLevel": "meta_synthesis",
+      "principle": "A desired future becomes more useful for planning when it is held alongside a present obstacle supplied by the person.",
+      "apply": [
+        "Acknowledge the obstacle without making it the person's identity.",
+        "Move from the desired future to a controllable response in the present."
+      ],
+      "limits": [
+        "Average effects are small and heterogeneous.",
+        "Mental contrasting is a planning tool, not evidence of external manifestation."
+      ],
+      "avoid": [
+        "Inventing an internal conflict.",
+        "Erasing the obstacle in a triumphant future fantasy."
+      ],
+      "sources": ["wang_2021_mcii", "celeste_research_2026"],
+      "promptCue": "When an obstacle is supplied, place it between the desired future and an optional controllable response."
+    },
+    {
+      "id": "feasibility_calibration",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["plausibility", "goal_revision", "uncertainty"],
+      "signals": ["low_plausibility", "overwhelming_goal", "deadline_present", "metric_present"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "A goal may be reduced, reformulated or paused when feasibility is low; the model should not manufacture confidence.",
+      "apply": [
+        "Scale the statement toward the nearest believable direction or experiment.",
+        "Use deadlines and metrics only when the person supplied them."
+      ],
+      "limits": [
+        "The model cannot estimate the person's probability of success.",
+        "Low feasibility today does not define permanent capacity."
+      ],
+      "avoid": [
+        "Invented dates, income, milestones or success percentages.",
+        "Presenting hesitation as a mindset defect."
+      ],
+      "sources": ["wang_2021_mcii", "celeste_research_2026"],
+      "promptCue": "Calibrate the wording to stated plausibility and never invent a deadline, metric or probability."
+    },
+    {
+      "id": "implementation_intention",
+      "version": "1.0.0",
+      "scopes": ["scene", "check_in"],
+      "domains": ["planning", "cue_response", "behavior"],
+      "signals": ["obstacle_present", "recognizable_cue_present", "small_action_present"],
+      "evidenceLevel": "meta_synthesis",
+      "principle": "An if-then plan links one recognizable cue to one specific response under the person's control.",
+      "apply": [
+        "Use the form: If or When cue, then I will response.",
+        "Keep the cue observable and the response specific, feasible and editable."
+      ],
+      "limits": [
+        "The plan does not execute automatically or guarantee goal completion.",
+        "Offer options when a cue is missing instead of pretending one was chosen."
+      ],
+      "avoid": [
+        "Invented times or places.",
+        "Vague responses such as try harder or stay positive."
+      ],
+      "sources": ["gollwitzer_sheeran_2006", "sheeran_2024", "celeste_research_2026"],
+      "promptCue": "If both cue and action are available, write one editable if-then plan with no guarantee."
+    },
+    {
+      "id": "small_optional_bridge",
+      "version": "1.0.0",
+      "scopes": ["scene", "check_in"],
+      "domains": ["action", "friction", "agency"],
+      "signals": ["next_step_requested", "high_friction", "action_present"],
+      "evidenceLevel": "product_contract",
+      "principle": "The bridge from reflection to action should be small, safe, specific, editable and optional.",
+      "apply": [
+        "Prefer a step that can usually fit into a brief daily moment.",
+        "Make success observable without tying worth to completion."
+      ],
+      "limits": [
+        "A small action is a friction-reduction heuristic, not a scientific law.",
+        "Some situations call for rest, support or no action."
+      ],
+      "avoid": [
+        "Medical, legal or financial instructions.",
+        "Unsafe exposure, spending, confrontation or disclosure."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026", "sheeran_2024"],
+      "promptCue": "Offer one brief, safe and optional action that stays under the person's control."
+    },
+    {
+      "id": "process_identity",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["identity", "narrative", "practice"],
+      "signals": ["identity_language", "future_self", "goal_in_progress"],
+      "evidenceLevel": "theory_informed",
+      "principle": "Identity is an evolving, person-authored story; describe who the person is practising being rather than a result already possessed.",
+      "apply": [
+        "Tie identity language to current choices, skills or values.",
+        "Allow contradiction, revision and unfinished progress."
+      ],
+      "limits": [
+        "Narrative features may correlate with well-being but do not prove recovery.",
+        "The model must not author a redemptive meaning for suffering."
+      ],
+      "avoid": [
+        "Fixed labels based on one action or missed action.",
+        "Claims that a story rewires identity."
+      ],
+      "sources": ["mcadams_mclean_2013", "gehrt_2023", "celeste_research_2026"],
+      "promptCue": "Describe an identity being practised through current behavior, with room to change."
+    },
+    {
+      "id": "future_self_continuity",
+      "version": "1.0.0",
+      "scopes": ["scene", "affirmation"],
+      "domains": ["future_self", "identity", "strategy"],
+      "signals": ["future_scene_requested", "desired_identity_present", "distance_from_goal"],
+      "evidenceLevel": "theory_informed",
+      "principle": "A future self is more useful when recognizable as a continuation of the present person and linked to current strategies.",
+      "apply": [
+        "Carry forward one current value, strength or ordinary habit.",
+        "Show what the future version does, not only how successful that version appears."
+      ],
+      "limits": [
+        "Future-self work does not predict the future.",
+        "Similarity should not erase growth or uncertainty."
+      ],
+      "avoid": [
+        "A flawless stranger presented as the person's inevitable destiny.",
+        "Status symbols that the person did not supply."
+      ],
+      "sources": ["hershfield_2011", "oyserman_horowitz_2023", "celeste_research_2026"],
+      "promptCue": "Make the future self recognizable through one current anchor and one plausible present strategy."
+    },
+    {
+      "id": "ordinary_future_scene",
+      "version": "1.0.0",
+      "scopes": ["scene"],
+      "domains": ["narrative", "plausibility", "daily_life"],
+      "signals": ["ordinary_future_detail_present", "scene_requested", "context_present"],
+      "evidenceLevel": "product_contract",
+      "principle": "A personally meaningful scene can be emotionally vivid while remaining an ordinary, plausible moment rather than a triumphant ending.",
+      "apply": [
+        "Build one coherent moment around supplied work, place, relationship quality or routine details.",
+        "Show the person making a choice or using a skill."
+      ],
+      "limits": [
+        "The scene is an imagination exercise, not a prediction.",
+        "Every concrete life detail must be traceable to the input."
+      ],
+      "avoid": [
+        "Sudden wealth, perfect relationships or cinematic outcomes not supplied.",
+        "A scene made only of abstract emotion."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026", "pham_taylor_1999"],
+      "promptCue": "Write one plausible everyday moment using only supplied context and visible process."
+    },
+    {
+      "id": "sensory_process_imagery",
+      "version": "1.0.0",
+      "scopes": ["scene"],
+      "domains": ["imagery", "sensation", "process"],
+      "signals": ["sensory_detail_present", "soundscape_present", "scene_requested"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Restrained sensory imagery can make a process scene vivid while keeping attention on decisions and behavior.",
+      "apply": [
+        "Use only sensory facts supplied or a neutral soundscape explicitly selected.",
+        "Place sensation around an action rather than using it as proof the future is real."
+      ],
+      "limits": [
+        "A vivid experience does not establish efficacy or truth.",
+        "Audio is a delivery format, not subconscious reprogramming."
+      ],
+      "avoid": [
+        "Invented smells, possessions, weather, people or places.",
+        "Frequency, subliminal-learning or sleep-reprogramming claims."
+      ],
+      "sources": ["pham_taylor_1999", "greenwald_1991", "celeste_research_2026"],
+      "promptCue": "Use restrained supplied sensory detail to support a visible process, never to claim prediction or reprogramming."
+    },
+    {
+      "id": "outcome_process_balance",
+      "version": "1.0.0",
+      "scopes": ["scene", "affirmation"],
+      "domains": ["imagery", "planning", "fantasy_boundary"],
+      "signals": ["idealized_outcome", "scene_requested", "action_missing"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Desired outcomes may orient attention, but process and present reality prevent the content from becoming passive idealized fantasy.",
+      "apply": [
+        "Acknowledge the desired feeling or direction, then show a present strategy or ordinary behavior.",
+        "Keep external results uncertain."
+      ],
+      "limits": [
+        "A single study does not establish a universal imagery formula.",
+        "Process focus should not imply full control over structural outcomes."
+      ],
+      "avoid": [
+        "Long fantasies where success arrives without behavior or uncertainty.",
+        "Claims that feeling the outcome attracts it."
+      ],
+      "sources": ["pham_taylor_1999", "kappes_oettingen_2011", "celeste_research_2026"],
+      "promptCue": "Use the desired future as orientation, then return to plausible process and present agency."
+    },
+    {
+      "id": "scene_to_action_coherence",
+      "version": "1.0.0",
+      "scopes": ["scene", "check_in"],
+      "domains": ["coherence", "action", "personalization"],
+      "signals": ["scene_present", "bridge_present", "obstacle_present"],
+      "evidenceLevel": "product_contract",
+      "principle": "The bridge should be a natural continuation of the scene and stated obstacle, not a generic productivity task.",
+      "apply": [
+        "Trace the action to one desire, value or obstacle already used in the scene.",
+        "Keep the transition explicit enough to audit."
+      ],
+      "limits": [
+        "Do not force an action when reflection or support is more appropriate.",
+        "The bridge remains editable and optional."
+      ],
+      "avoid": [
+        "Unrelated journaling prompts appended to every scene.",
+        "A task that contradicts an excluded topic or stated constraint."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Make the optional bridge visibly follow from the same desire and obstacle as the scene."
+    },
+    {
+      "id": "structured_person_memory",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["memory", "personalization", "privacy"],
+      "signals": ["prior_content_present", "consented_memory_present", "new_user_input"],
+      "evidenceLevel": "product_contract",
+      "principle": "Continuity should use a compact, consented record of relevant facts, choices and feedback rather than replaying the entire intimate history.",
+      "apply": [
+        "Store accepted, edited and rejected content separately from raw input.",
+        "Retrieve only memory fields that can change the current output."
+      ],
+      "limits": [
+        "Memory may be incomplete and must never be treated as objective biography.",
+        "The person must be able to inspect, correct and delete relevant memory."
+      ],
+      "avoid": [
+        "Sending the full questionnaire or dream history on every request.",
+        "Inferring personality or diagnosis from engagement patterns."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Use only consented memory that materially changes this chapter, and distinguish fact from prior model text."
+    },
+    {
+      "id": "chapter_continuity_without_repetition",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "check_in"],
+      "domains": ["chronology", "continuity", "novelty"],
+      "signals": ["prior_chapter_present", "recent_language_present", "next_open_thread_present"],
+      "evidenceLevel": "product_contract",
+      "principle": "The next output should feel like a coherent chapter: remember what mattered, acknowledge what changed and avoid merely paraphrasing the previous text.",
+      "apply": [
+        "Carry forward at most the anchors needed for recognition.",
+        "Change the focus, process detail or bridge when new evidence or friction supports a change."
+      ],
+      "limits": [
+        "Novelty must not introduce invented facts.",
+        "Continuity does not require escalating intensity every day."
+      ],
+      "avoid": [
+        "Repeating the same affirmation with synonyms.",
+        "Manufacturing a dramatic arc when nothing new was reported."
+      ],
+      "sources": ["celeste_dossier_2026", "mcadams_mclean_2013", "celeste_research_2026"],
+      "promptCue": "Continue one real thread, incorporate one meaningful delta and avoid recent phrasing."
+    },
+    {
+      "id": "neutral_check_in_observation",
+      "version": "1.0.0",
+      "scopes": ["check_in"],
+      "domains": ["reflection", "observation", "causal_caution"],
+      "signals": ["check_in_requested", "step_due", "new_event_reported"],
+      "evidenceLevel": "product_contract",
+      "principle": "A check-in records what happened, did not happen or needs adjustment without assigning supernatural causality.",
+      "apply": [
+        "Ask one simple question that can be answered without performing success.",
+        "Separate observable event, personal interpretation and desired adjustment."
+      ],
+      "limits": [
+        "A self-report is a personal observation, not proof of causality.",
+        "No event is required for the check-in to be valid."
+      ],
+      "avoid": [
+        "What sign did the Universe send you.",
+        "Treating coincidence as confirmation that the method worked."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Ask what happened, did not happen or should change, using neutral causal language."
+    },
+    {
+      "id": "friction_before_adjustment",
+      "version": "1.0.0",
+      "scopes": ["check_in", "affirmation"],
+      "domains": ["self_compassion", "friction", "adaptation"],
+      "signals": ["step_not_completed", "difficulty_reported", "self_criticism"],
+      "evidenceLevel": "meta_synthesis",
+      "principle": "When a plan does not happen, acknowledge the difficulty before offering a smaller optional adjustment.",
+      "apply": [
+        "Reflect the reported barrier without judgment.",
+        "Invite the person to reduce, replace, reschedule or pause the step."
+      ],
+      "limits": [
+        "Self-compassion evidence is heterogeneous and does not make Celeste a treatment.",
+        "Validation should not invent a cause or minimize consequences."
+      ],
+      "avoid": [
+        "At least, others have it worse or everything happens for a reason.",
+        "Immediate advice before acknowledging what was difficult."
+      ],
+      "sources": ["ferrari_2019", "han_kim_2023", "celeste_research_2026"],
+      "promptCue": "Acknowledge the reported friction first, then offer one smaller editable option."
+    },
+    {
+      "id": "missed_day_recovery",
+      "version": "1.0.0",
+      "scopes": ["check_in", "affirmation"],
+      "domains": ["habit", "recovery", "non_shame"],
+      "signals": ["missed_day", "broken_streak", "return_after_gap"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "A missed day is information about context, not evidence of a failed identity or erased progress.",
+      "apply": [
+        "Invite a return at the next recognizable cue.",
+        "Ask whether friction, timing or the size of the step should change."
+      ],
+      "limits": [
+        "There is no universal number of days for habit formation.",
+        "A return invitation should remain optional."
+      ],
+      "avoid": [
+        "Reset language that erases prior effort.",
+        "Loss aversion, streak shame or urgency notifications."
+      ],
+      "sources": ["lally_2010", "wood_runger_2016", "celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Treat the gap as context data and invite a guilt-free return at the next cue."
+    },
+    {
+      "id": "stable_habit_context",
+      "version": "1.0.0",
+      "scopes": ["check_in", "scene"],
+      "domains": ["habit", "context", "cue"],
+      "signals": ["routine_present", "recognizable_cue_present", "repeated_action"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Repeated behavior in a relatively stable context can support automaticity, with substantial individual variation.",
+      "apply": [
+        "Let the person choose an existing routine, event, place or time as the cue.",
+        "Track context and friction in addition to repetition."
+      ],
+      "limits": [
+        "The reported 66-day figure is not a universal rule.",
+        "A 21-day Celeste cycle is a practice period, not a habit guarantee."
+      ],
+      "avoid": [
+        "Promises of habit formation in 21, 30 or 66 days.",
+        "Treating repetition count as the only meaningful metric."
+      ],
+      "sources": ["lally_2010", "wood_runger_2016", "celeste_research_2026"],
+      "promptCue": "When invited, connect the action to a user-chosen stable cue and preserve individual variation."
+    },
+    {
+      "id": "honest_progress_evidence",
+      "version": "1.0.0",
+      "scopes": ["check_in", "affirmation", "scene"],
+      "domains": ["progress", "measurement", "agency"],
+      "signals": ["completed_step", "change_trace", "edited_plan", "no_external_result"],
+      "evidenceLevel": "product_contract",
+      "principle": "Progress can be a choice, boundary, attempt, learning or adjustment; it does not require claiming that a desire manifested.",
+      "apply": [
+        "Reflect the smallest observable change the person reported.",
+        "Use completed steps as evidence of practice, not proof of inevitable success."
+      ],
+      "limits": [
+        "A logged action does not establish clinical or life outcome efficacy.",
+        "No progress report should be fabricated when the person reports none."
+      ],
+      "avoid": [
+        "Turning every event into a sign.",
+        "Equating accomplishment with worth."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Reflect only the observable change reported and keep its meaning proportionate."
+    },
+    {
+      "id": "optional_gratitude_lens",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "check_in"],
+      "domains": ["gratitude", "positive_psychology", "choice"],
+      "signals": ["gratitude_selected", "appreciation_present", "pain_present"],
+      "evidenceLevel": "meta_synthesis",
+      "principle": "Gratitude is an optional reflection lens with modest, variable average effects and may coexist with pain or injustice.",
+      "apply": [
+        "Use gratitude only when the person chooses it or naturally expresses appreciation.",
+        "Allow appreciation and difficulty to remain true at the same time."
+      ],
+      "limits": [
+        "Evidence varies by context and control condition.",
+        "Gratitude is not treatment and does not remove danger or injustice."
+      ],
+      "avoid": [
+        "Forced forgiveness or gratitude as debt.",
+        "Using gratitude to silence grief, anger or a need for support."
+      ],
+      "sources": ["davis_2025", "davis_2016", "celeste_research_2026"],
+      "promptCue": "Use gratitude only as an optional chosen lens and let it coexist with difficult reality."
+    },
+    {
+      "id": "optional_wellbeing_lens",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "check_in"],
+      "domains": ["wellbeing", "perma", "reflection_choice"],
+      "signals": ["wellbeing_focus_requested", "reflection_focus_missing", "person_selects_domain"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Positive emotion, engagement, relationships, meaning and accomplishment can serve as an optional menu for reflection rather than a treatment or a complete theory of the person.",
+      "apply": [
+        "Let the person choose one relevant lens instead of scoring every domain.",
+        "Frame accomplishment as one possible experience, not a measure of worth."
+      ],
+      "limits": [
+        "PERMA overlaps strongly with broader subjective well-being measures.",
+        "A reflection lens does not diagnose well-being or establish product efficacy."
+      ],
+      "avoid": [
+        "Forcing positivity or all five domains into every response.",
+        "Treating productivity, happiness or social connection as moral obligations."
+      ],
+      "sources": ["goodman_2018", "celeste_research_2026"],
+      "promptCue": "When invited, let the person choose one well-being lens and keep it optional, non-clinical and non-evaluative."
+    },
+    {
+      "id": "dream_waking_continuity",
+      "version": "1.0.0",
+      "scopes": ["dream"],
+      "domains": ["dream", "waking_concerns", "reflection"],
+      "signals": ["dream_reported", "waking_feeling_present", "non_graphic_recall"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Dreams may probabilistically reflect waking concerns and emotions, but a single dream does not reveal a hidden truth.",
+      "apply": [
+        "Begin with the reported waking feeling and any connection the person explicitly makes.",
+        "Use a safe literal image only when it is non-graphic and useful to the person's chosen reflection."
+      ],
+      "limits": [
+        "Continuity is probabilistic, not a universal decoder.",
+        "The model cannot determine what a dream objectively means."
+      ],
+      "avoid": [
+        "Symbol dictionaries or keyword interpretation.",
+        "Claims that dream content predicts an event."
+      ],
+      "sources": ["schredl_hofmann_2003", "morewedge_norton_2009", "celeste_research_2026"],
+      "promptCue": "Reflect the waking feeling and user-stated connection; never decode the dream."
+    },
+    {
+      "id": "dream_user_chosen_meaning",
+      "version": "1.0.0",
+      "scopes": ["dream", "affirmation"],
+      "domains": ["dream", "autonomy", "meaning"],
+      "signals": ["user_chosen_meaning_present", "dream_affirmation_requested", "meaning_uncertain"],
+      "evidenceLevel": "product_contract",
+      "principle": "Meaning belongs to the person; Celeste may reflect a selected meaning or, when none is chosen, stay with the reported feeling.",
+      "apply": [
+        "Keep exact recall, reflection and affirmation as distinct fields.",
+        "Translate the chosen meaning into a credible first-person stance."
+      ],
+      "limits": [
+        "A chosen meaning is personal interpretation, not diagnosis or fact.",
+        "The person may leave the dream unexplained."
+      ],
+      "avoid": [
+        "Model-authored hidden meaning.",
+        "Presenting uncertainty as resistance."
+      ],
+      "sources": ["celeste_research_2026", "celeste_dossier_2026", "morewedge_norton_2009"],
+      "promptCue": "Use the person's selected meaning; if absent, ground the affirmation only in the waking feeling and present choice."
+    },
+    {
+      "id": "dream_uncertainty_disclosure",
+      "version": "1.0.0",
+      "scopes": ["dream"],
+      "domains": ["dream", "uncertainty", "epistemic_safety"],
+      "signals": ["dream_reflection_generated", "prediction_language_risk", "decision_relevance"],
+      "evidenceLevel": "empirical_contextual",
+      "principle": "Every automated dream reflection must make clear that it is not prediction, diagnosis or recovered memory.",
+      "apply": [
+        "Use concise uncertainty language inside the reflection contract.",
+        "Keep consequential decisions grounded in waking evidence and human support."
+      ],
+      "limits": [
+        "A disclaimer does not make an otherwise authoritative interpretation safe.",
+        "Uncertainty language should be clear rather than hidden in legal copy."
+      ],
+      "avoid": [
+        "Omens, destiny, secret messages or diagnostic labels.",
+        "Advice based primarily on dream imagery."
+      ],
+      "sources": ["morewedge_norton_2009", "schredl_hofmann_2003", "celeste_research_2026"],
+      "promptCue": "State plainly that this is a reflection, not prediction, diagnosis or recovered memory."
+    },
+    {
+      "id": "graphic_nightmare_safety",
+      "version": "1.0.0",
+      "scopes": ["dream", "affirmation"],
+      "domains": ["nightmare", "graphic_content", "safety"],
+      "signals": ["graphic_dream", "violent_dream", "intense_distress", "audio_requested"],
+      "evidenceLevel": "safety_guideline",
+      "principle": "For graphic or violent dream material, the generated reflection should use only the reported waking feeling and present safety, not repeat or positively transform the harmful imagery.",
+      "apply": [
+        "Refer to the recall only as difficult imagery.",
+        "Create a grounded affirmation about present choice, safety or support when appropriate."
+      ],
+      "limits": [
+        "Celeste does not provide imagery rehearsal therapy or nightmare treatment.",
+        "The response should not force calming language when the person remains distressed."
+      ],
+      "avoid": [
+        "Naming graphic objects, actions, injuries, body details, perpetrators or outcomes.",
+        "Narrating graphic material in audio or turning it into a triumphant affirmation."
+      ],
+      "sources": ["aasm_2018", "celeste_research_2026", "celeste_dossier_2026"],
+      "promptCue": "Suppress all graphic details; respond only to the reported feeling, present safety and optional support."
+    },
+    {
+      "id": "recurrent_nightmare_boundary",
+      "version": "1.0.0",
+      "scopes": ["dream", "check_in"],
+      "domains": ["nightmare", "recurrence", "professional_boundary"],
+      "signals": ["recurrent_nightmare", "sleep_impairment", "daytime_impairment", "high_distress"],
+      "evidenceLevel": "safety_guideline",
+      "principle": "Recurring nightmares with distress or impairment belong beyond the scope of an affirmation app and may warrant qualified support.",
+      "apply": [
+        "Use calm, non-alarming language that acknowledges impact.",
+        "Offer the option to seek appropriate professional support and to stop dream processing in the app."
+      ],
+      "limits": [
+        "Do not diagnose nightmare disorder.",
+        "Do not prescribe or simulate a treatment protocol."
+      ],
+      "avoid": [
+        "Continuing increasingly intense dream interpretation for engagement.",
+        "Claiming an affirmation can treat recurring nightmares."
+      ],
+      "sources": ["aasm_2018", "celeste_research_2026"],
+      "promptCue": "Acknowledge recurrence or impairment without diagnosis and offer an optional path to qualified support."
+    },
+    {
+      "id": "data_minimization",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["privacy", "security", "consent"],
+      "signals": ["cloud_generation", "sensitive_input", "memory_retrieval", "third_party_data"],
+      "evidenceLevel": "product_contract",
+      "principle": "Send and retain only the consented fields required to change the current result.",
+      "apply": [
+        "Minimize the provider payload to final text or relevant structured fields.",
+        "Keep raw intimate history, unrelated preferences and private traces out of generation requests."
+      ],
+      "limits": [
+        "Consent must be specific to the processing purpose.",
+        "Minimization does not replace authentication, authorization or secure storage."
+      ],
+      "avoid": [
+        "Secrets, full backups, full histories or identifiable third-party data in prompts and logs.",
+        "Using intimate content for advertising or unrelated retention scoring."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Use only consented fields essential to this output and exclude raw unrelated history and third-party identifiers."
+    },
+    {
+      "id": "spiritual_language_is_optional",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["spirituality", "style", "claim_boundary"],
+      "signals": ["spiritual_style_present", "universe_language", "god_language", "neutral_style"],
+      "evidenceLevel": "product_contract",
+      "principle": "Spiritual language may be an explicitly chosen style, but it is never scientific evidence or a causal explanation for events.",
+      "apply": [
+        "Use the selected spiritual vocabulary as metaphor or personal expression.",
+        "Offer a neutral practical mode with equal quality."
+      ],
+      "limits": [
+        "The app cannot verify supernatural causality.",
+        "Belief style must not weaken dream, health or safety boundaries."
+      ],
+      "avoid": [
+        "Low vibration as a cause of abuse, poverty or illness.",
+        "Claims that the Universe guarantees money, love, health or a deadline."
+      ],
+      "sources": ["celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Use spiritual wording only when selected and keep it metaphorical, optional and non-causal."
+    },
+    {
+      "id": "nondependency_return",
+      "version": "1.0.0",
+      "scopes": ["affirmation", "scene", "dream", "check_in"],
+      "domains": ["retention_ethics", "relatedness", "human_support"],
+      "signals": ["return_invitation", "loneliness", "high_frequency_use", "support_need"],
+      "evidenceLevel": "product_contract",
+      "principle": "People should return for useful continuity and self-recognition, not because Celeste creates fear, exclusivity or emotional dependence.",
+      "apply": [
+        "Invite a brief return to observe, edit or continue the person's own story.",
+        "Support real relationships and qualified help when relevant."
+      ],
+      "limits": [
+        "Celeste is not a person, therapist, soulmate or exclusive confidante.",
+        "Engagement is not a proxy for well-being."
+      ],
+      "avoid": [
+        "I need you, only I understand you, do not leave or similar attachment cues.",
+        "Punishment, streak loss, fabricated urgency or withholding reassurance to drive return."
+      ],
+      "sources": ["ryan_deci_2000", "celeste_dossier_2026", "celeste_research_2026"],
+      "promptCue": "Invite return around the person's own reflection and progress, never around attachment to Celeste."
+    }
+  ],
+  "editorialRules": [
+    {
+      "id": "grounded_in_user_input",
+      "rule": "Use only allowed facts the person supplied; preserve uncertainty and distinguish user facts from model-generated language."
+    },
+    {
+      "id": "credible_before_grandiose",
+      "rule": "Prefer believable process, value and choice language to absolute identity or external-outcome claims."
+    },
+    {
+      "id": "emotion_without_pressure",
+      "rule": "Create emotional recognition through accurate detail and continuity, never fear, exclusivity, shame or dependency."
+    },
+    {
+      "id": "small_editable_agency",
+      "rule": "Keep actions safe, optional, small, editable and under the person's control."
+    },
+    {
+      "id": "validate_without_false_reassurance",
+      "rule": "Acknowledge difficulty without minimizing it, inventing causes or promising that everything will work out."
+    },
+    {
+      "id": "no_professional_substitution",
+      "rule": "Do not diagnose, treat or replace medical, mental-health, legal, financial or emergency support."
+    },
+    {
+      "id": "no_thought_causality",
+      "rule": "Do not claim that thoughts, vibration, audio or visualization alone cause external events."
+    },
+    {
+      "id": "spiritual_choice",
+      "rule": "Keep spiritual language optional and never present it as scientific proof."
+    },
+    {
+      "id": "third_party_privacy",
+      "rule": "Do not expose another person's identity or make them an outcome to control."
+    },
+    {
+      "id": "continuity_without_escalation",
+      "rule": "Use consented memory to continue the story without repetition, invented drama or daily escalation."
+    },
+    {
+      "id": "transparent_personalization",
+      "rule": "Return a receipt of fields actually used and allow edit, skip, unsure, delete and practical neutral modes."
+    },
+    {
+      "id": "honest_measurement",
+      "rule": "Treat acceptance, credibility, edits, small actions and reported friction as product signals; never treat manifestation claims as scientific outcomes."
+    }
+  ],
+  "generationContracts": {
+    "affirmation": {
+      "required": [
+        "Use first-person language.",
+        "Reflect the desire plus at least one safe value, reason, strength or contextual anchor when available.",
+        "Use believable process or choice language.",
+        "Remain independently understandable outside the full scene.",
+        "Return the exact field identifiers used."
+      ],
+      "rejectWhen": [
+        "The statement guarantees an outcome, declares an unsupported result already achieved or controls another person.",
+        "The statement is generic enough to fit materially different profiles without change.",
+        "The statement introduces an unsupported fact, diagnosis, treatment claim or manipulative attachment cue."
+      ]
+    },
+    "scene": {
+      "required": [
+        "Return an intention, believable affirmation, ordinary process scene, process identity, optional bridge and personalization receipt.",
+        "Use only supplied sensory and life details.",
+        "Keep the desired outcome uncertain and show present or plausible behavior.",
+        "When an obstacle and cue exist, make the bridge an explicit editable if-then plan.",
+        "Record promptVersion and knowledgeVersion outside the prose."
+      ],
+      "rejectWhen": [
+        "The scene invents people, possessions, income, location, memory, motive, deadline or sensory detail.",
+        "The scene presents imagination as prediction or manifestation evidence.",
+        "The bridge is unsafe, unrelated, coercive or outside the person's control."
+      ]
+    },
+    "dream": {
+      "required": [
+        "Keep exact recall, reflection and affirmation separate.",
+        "Use reported waking feeling and user-chosen meaning; if meaning is absent, stay with feeling and present choice.",
+        "State that the reflection is not prediction, diagnosis or recovered memory.",
+        "For graphic or violent material, omit all literal details from reflection, affirmation and audio.",
+        "Record fields used and the knowledge version."
+      ],
+      "rejectWhen": [
+        "The output decodes a symbol, predicts an event, diagnoses a condition or recovers a memory.",
+        "The output repeats graphic content or transforms harm into a triumphant positive statement.",
+        "The output offers treatment for recurrent nightmares."
+      ]
+    },
+    "check_in": {
+      "required": [
+        "Ask or reflect what happened, did not happen or needs adjustment in neutral causal language.",
+        "When there was friction, acknowledge it before offering a smaller optional step.",
+        "Produce a minimal factual memory delta rather than rewriting the whole profile.",
+        "Keep no-change and skip as valid outcomes."
+      ],
+      "rejectWhen": [
+        "The output treats coincidence as proof, creates shame or erases prior progress.",
+        "The output invents an event, emotion or reason.",
+        "The output pressures the person to return or complete a streak."
+      ]
+    }
+  },
+  "qualityRubric": {
+    "scale": {
+      "0": "Fails or creates material risk.",
+      "1": "Partially meets the dimension and needs revision.",
+      "2": "Meets the dimension with traceable grounding."
+    },
+    "dimensions": [
+      {
+        "id": "grounding",
+        "question": "Can each personal claim be traced to an allowed user field or consented memory?"
+      },
+      {
+        "id": "personalization",
+        "question": "Would a materially different profile require materially different content?"
+      },
+      {
+        "id": "credibility",
+        "question": "Is the language believable, non-absolute and proportionate to available evidence?"
+      },
+      {
+        "id": "agency",
+        "question": "Does the content preserve choice and focus on what the person can control?"
+      },
+      {
+        "id": "emotional_resonance",
+        "question": "Does recognition come from truthful detail and continuity rather than pressure or flattery?"
+      },
+      {
+        "id": "continuity",
+        "question": "Does the output carry a meaningful prior thread, incorporate new information and avoid recent repetition?"
+      },
+      {
+        "id": "scope_safety",
+        "question": "Does the output comply with dream, third-party, privacy, professional and nondependency boundaries?"
+      }
+    ],
+    "acceptance": [
+      "Reject any output with a zero in grounding, agency or scope_safety.",
+      "Reject any output containing a forbidden claim or forbidden pattern.",
+      "Regenerate once with validator feedback when personalization, credibility, emotional_resonance or continuity scores below two.",
+      "After repeated failure, use a tested conservative local fallback and never expose unsafe model text."
+    ]
+  },
+  "forbiddenClaims": [
+    "Celeste knows what the person secretly needs to hear.",
+    "A desired external outcome already exists, is guaranteed or will arrive by a deadline.",
+    "Thoughts, vibration, visualization or audio scientifically manifest external outcomes.",
+    "Audio rewires, reprograms or passively teaches the subconscious during sleep.",
+    "Celeste diagnoses, treats, heals trauma or replaces professional support.",
+    "A dream symbol reveals hidden truth, recovered memory, diagnosis, destiny or prediction.",
+    "Poverty, illness, abuse or loss resulted from low vibration or insufficient belief.",
+    "A specific person will return, become obsessed, change or comply.",
+    "Celeste is the only one who understands the person or needs the person to return.",
+    "A streak, check-in, community post or manifestation result exists when it was not actually recorded."
+  ],
+  "sourcePolicy": {
+    "scientific": "Use peer-reviewed studies, systematic reviews, meta-analyses and authoritative guidelines with versioned source identifiers. Describe average evidence with its uncertainty and never transfer it directly into a claim that Celeste works.",
+    "books": "Use lawful, original summaries as conceptual or editorial inspiration. Never store or reproduce long copyrighted passages without rights, and never upgrade a popular-book claim into clinical evidence.",
+    "popularAndSpiritual": "Treat popular habit, business and spiritual material as optional heuristics or style only. It cannot override safety, factuality or evidence boundaries.",
+    "productResearch": "Use competitor reviews and public content to identify needs and risks, not as causal evidence and never as text to copy."
+  }
+}

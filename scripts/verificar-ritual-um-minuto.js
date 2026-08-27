@@ -18,8 +18,9 @@ function load(file, mocks = {}) {
   const loaded = new Module(file, module);
   loaded.filename = file;
   loaded.paths = Module._nodeModulePaths(path.dirname(file));
+  const nativeRequire = Module.createRequire(file);
   loaded.require = (request) =>
-    Object.prototype.hasOwnProperty.call(mocks, request) ? mocks[request] : require(request);
+    Object.prototype.hasOwnProperty.call(mocks, request) ? mocks[request] : nativeRequire(request);
   loaded._compile(compile(file), file);
   return loaded.exports;
 }

@@ -793,20 +793,27 @@ apenas o próximo bloco e reutiliza o WAV em memória quando texto, idioma e voz
 iguais. Ao fechar a sessão ou trocar qualquer um desses elementos, não há arquivo
 pessoal persistente a reaproveitar. Clonagem de voz não entra no MVP.
 
-## 19. Base científica e conhecimento usado dentro do app — 25/08/2026
+## 19. Base científica e conhecimento usado dentro do app — 27/08/2026
 
-Os dois materiais entregues sobre manifestação personalizada, contraste mental,
-hábitos, autodeterminação, identidade narrativa, sonhos e segurança foram
-consolidados em dois artefatos permanentes:
+O precursor V1 e os dois documentos autorizados sobre manifestação
+personalizada, contraste mental, hábitos, autodeterminação, identidade
+narrativa, sonhos e segurança foram consolidados na Base Celeste V2:
 
 - [`PESQUISA-CIENTIFICA-PERSONALIZACAO-CELESTE.md`](./PESQUISA-CIENTIFICA-PERSONALIZACAO-CELESTE.md): revisão de evidências, limites, decisões de produto e métricas;
-- [`celeste-core-v1.json`](../knowledge/celeste-core-v1.json): base estruturada que o gerador carrega em tempo de execução.
+- [`DOSSIE-MESTRE-PRODUTO-CELESTE.md`](./DOSSIE-MESTRE-PRODUTO-CELESTE.md): contratos de produto, personalização, continuidade e retenção ética;
+- [`celeste-core-v2.json`](../knowledge/celeste-core-v2.json): base estruturada que o gerador carrega em tempo de execução.
 
-Essa base não fica apenas como documentação. O endpoint `api/gerar-cena.js` a
-carrega para produzir as cenas criadas depois do questionário e também as novas
-cenas solicitadas dentro do app. Cada resposta registra
-`knowledgeVersion: celeste-knowledge-v1` e `promptVersion: celeste-scene-v5`, o
-que permite auditar qual conjunto de regras gerou cada conteúdo.
+A V2 contém 39 cartões atômicos e 27 entradas rastreáveis no `sourceRegistry`.
+Esses números não significam 39 livros nem 27 livros: a base não contém textos
+integrais e ainda não representa todo o corpus de dezenas de livros mencionado
+em conversa. Novas sínteses só entram com origem, direitos e versão verificáveis.
+
+Essa base não fica apenas como documentação. O cérebro recupera de quatro a oito
+cartões relevantes por pedido, em vez de enviar toda a base ao modelo. Cena usa
+`promptVersion: celeste-scene-v7`, sonho em nuvem usa
+`promptVersion: celeste-dream-v2` e ambos registram
+`knowledgeVersion: celeste-knowledge-v2`, os cartões selecionados e a avaliação
+de qualidade.
 
 Contrato atual: usar apenas detalhes fornecidos pela pessoa, ligar o desejo a um
 valor pessoal e a um futuro plausível, reconhecer o obstáculo sem apagá-lo,
@@ -819,5 +826,8 @@ proibidos.
 As rotas locais seguem o mesmo princípio: `dreamToAffirmation` gera frases
 críveis e, quando há obstáculo, uma Ponte condicional; `morningRitual` usa o
 sentimento que a própria pessoa selecionou e nunca apresenta sonho como
-previsão ou diagnóstico. Versões atuais: cena Gemini `v5`, base `v1` e sonho
-local `v3`.
+previsão ou diagnóstico. `dream-local-v3` identifica esse fallback local e não
+deve ser confundido com o prompt de nuvem `celeste-dream-v2`.
+
+A relação entre Base, Memória e Jornada está documentada em
+[`ARQUITETURA-CEREBRO-CELESTE.md`](./ARQUITETURA-CEREBRO-CELESTE.md).

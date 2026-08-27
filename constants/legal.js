@@ -2,8 +2,8 @@
 // hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
 // serem ativados.
 export const LEGAL_UPDATED = {
-  en: 'Updated August 26, 2026',
-  pt: 'Atualizado em 26 de agosto de 2026',
+  en: 'Updated August 27, 2026',
+  pt: 'Atualizado em 27 de agosto de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -11,8 +11,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'In short', pt: 'Em resumo' },
     paragraphs: [
       {
-        en: 'Celeste stores your practice on this device. There is no account, active subscription or public community in this version.',
-        pt: 'O Celeste guarda sua prática neste aparelho. Não há conta, assinatura ativa nem comunidade pública nesta versão.',
+        en: 'Celeste stores your practice on this device. There is no personal sign-in or active subscription in this version. When cloud personalization is enabled, Celeste creates an anonymous technical session used only to authorize requests and enforce generation limits.',
+        pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Quando a personalização em nuvem é ativada, o Celeste cria uma sessão técnica anônima usada somente para autorizar pedidos e aplicar limites de geração.',
       },
       {
         en: 'Your onboarding answers personalize the experience. Selected answers are sent to Google Gemini only when an adult explicitly enables Gemini personalization. Profiles marked Under 18 always use the on-device generator.',
@@ -62,16 +62,16 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Voice and media', pt: 'Voz e mídia' },
     paragraphs: [
       {
-        en: 'With explicit adult consent, pressing Play sends the selected personal text, language and narrator choice to Gemini text-to-speech. Gemini returns audio for that request; Celeste does not publish it or use it as a shared voice catalog. Voice previews use fixed sample text and contain no questionnaire answers.',
-        pt: 'Com consentimento adulto explícito, tocar em Reproduzir envia ao Gemini de texto para fala o texto pessoal selecionado, o idioma e a voz escolhida. O Gemini devolve o áudio daquela solicitação; o Celeste não o publica nem o usa como catálogo compartilhado. As prévias de voz usam um texto fixo e não contêm respostas do questionário.',
+        en: 'With explicit adult consent, pressing Play sends the selected personal text, language and narrator choice to Gemini text-to-speech. Gemini returns audio for that request; Celeste does not publish it or use it as a shared voice catalog. Narrator previews are fixed samples bundled with the app, contain no questionnaire answers and do not make a cloud request when played.',
+        pt: 'Com consentimento adulto explícito, tocar em Reproduzir envia ao Gemini de texto para fala o texto pessoal selecionado, o idioma e a voz escolhida. O Gemini devolve o áudio daquela solicitação; o Celeste não o publica nem o usa como catálogo compartilhado. As prévias dos narradores são amostras fixas incluídas no app, não contêm respostas do questionário e não fazem uma solicitação à nuvem quando são reproduzidas.',
       },
       {
         en: 'If you dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives only the transcript, never uploads the recording itself, and sends the transcript to Gemini only when you request cloud reflection with consent; otherwise it uses the local fallback.',
         pt: 'Se você ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe apenas a transcrição, nunca envia a gravação por conta própria e só envia o texto ao Gemini quando você pedir a reflexão em nuvem com consentimento; caso contrário, usa a alternativa local.',
       },
       {
-        en: 'In a compatible installed iPhone app, Celeste may request Alarm access and create an on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
-        pt: 'No app instalado em um iPhone compatível, o Celeste pode pedir acesso aos Alarmes e criar um áudio no aparelho para usar a afirmação escolhida como som do despertador. O site não consegue agendar esse alarme do sistema.',
+        en: 'In a compatible installed iPhone or Android app, Celeste may request Alarm and Notification access and create a private on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
+        pt: 'No app instalado em um iPhone ou Android compatível, o Celeste pode pedir acesso aos Alarmes e às Notificações e criar um áudio privado no aparelho para usar a afirmação escolhida como som do despertador. O site não consegue agendar esse alarme do sistema.',
       },
       {
         en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream or affirmation. The website cannot schedule this system reminder.',

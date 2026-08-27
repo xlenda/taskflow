@@ -3,7 +3,7 @@
   "id": "rule_celeste_gemini_api_rate_limit_o1N0Tn",
   "value": {
     "name": "Celeste Gemini API rate limit",
-    "description": "Protege cenas, sonhos, traducao e voz Gemini contra abuso distribuido",
+    "description": "Protege cenas, sonhos, traducao, voz e visuais Gemini contra abuso distribuido",
     "active": true,
     "conditionGroup": [
       {
@@ -54,6 +54,20 @@
             "type": "path",
             "op": "eq",
             "value": "/api/gerar-audio"
+          },
+          {
+            "type": "method",
+            "op": "eq",
+            "value": "POST"
+          }
+        ]
+      },
+      {
+        "conditions": [
+          {
+            "type": "path",
+            "op": "eq",
+            "value": "/api/gerar-visual"
           },
           {
             "type": "method",

@@ -413,7 +413,7 @@ let browser;
         anchorIdentity: 'Eu protejo minha atencao e escolho o que merece entrar no meu dia.',
         anchorStep: 'Quando o medo aparecer, entao vou respirar por dois minutos.',
         personalizedWith: ['onde quer morar'],
-        generation: { source: 'gemini', model: 'qa-source', promptVersion: 'celeste-scene-v5' },
+        generation: { source: 'gemini', model: 'qa-source', promptVersion: 'celeste-scene-v7' },
         goalDays: 21,
         createdAt: '2026-08-25',
         sessions: [],

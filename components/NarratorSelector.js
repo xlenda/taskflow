@@ -22,6 +22,11 @@ const FALLBACK_THEME = {
   danger: '#D9544E',
   accents: ['#3B6EF6', '#7B5CE8', '#2E9E68', '#D08E23'],
 };
+const PREVIEW_PLAYBACK_PREFIX = 'narrator-preview:';
+
+function previewPlaybackId(narratorId, locale) {
+  return `${PREVIEW_PLAYBACK_PREFIX}${narratorId}:${locale}`;
+}
 
 const COPY = {
   pt: {
@@ -63,11 +68,19 @@ export default function NarratorSelector({
   const handlePreview = useCallback(
     async (narratorId) => {
       if (disabled) return;
+      const playbackId = previewPlaybackId(narratorId, locale);
       if (
-        narration.activeNarratorId === narratorId &&
-        (narration.isLoading || narration.isPlaying || narration.isPaused)
+        narration.activePlaybackId === playbackId &&
+        (narration.isLoading || narration.isPlaying)
       ) {
-        narration.stop();
+        narration.stop(playbackId);
+        return;
+      }
+      if (
+        narration.activePlaybackId === playbackId &&
+        (narration.isPaused || narration.isReady)
+      ) {
+        await narration.resume();
         return;
       }
       setErrorId(null);
@@ -76,7 +89,7 @@ export default function NarratorSelector({
       if (narratorId !== selectedId && typeof onChange === 'function') {
         onChange(narratorId);
       }
-      const result = await narration.playPreview(narratorId, locale);
+      const result = await narration.playPreview(narratorId, locale, playbackId);
       if (!result.ok && result.error !== 'audio_cancelled') setErrorId(narratorId);
     },
     [disabled, locale, narration, onChange, selectedId]
@@ -109,9 +122,9 @@ export default function NarratorSelector({
     >
       {NARRATORS.map((narrator) => {
         const selected = narrator.id === selectedId;
-        const active = narrator.id === narration.activeNarratorId;
+        const active = narration.activePlaybackId === previewPlaybackId(narrator.id, locale);
         const loading = active && narration.isLoading;
-        const playing = active && (narration.isPlaying || narration.isPaused);
+        const playing = active && (narration.isPlaying || narration.isPaused || narration.isReady);
         const failed = narrator.id === errorId;
         const name = narratorText(narrator.name, locale);
         const description = narratorText(narrator.description, locale);

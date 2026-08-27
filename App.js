@@ -28,7 +28,9 @@ import { alarmAffirmationText } from './utils/personalAffirmations';
 import { detectLang } from './constants/i18n';
 import { initCelesteBotProtection } from './utils/botProtection';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
+import NarrationPlaybackControls from './components/NarrationPlaybackControls';
 import {
+  cancelOrphanedDailyRitualReminders,
   configureDailyRitualNotifications,
   initialDailyRitualNotificationUrl,
   subscribeDailyRitualNotificationUrls,
@@ -332,7 +334,7 @@ function NativeAlarmContentSync() {
   stateRef.current = state;
 
   React.useEffect(() => {
-    if (Platform.OS !== 'ios' || !state) return undefined;
+    if ((Platform.OS !== 'ios' && Platform.OS !== 'android') || !state) return undefined;
     let alive = true;
     const reconcile = async () => {
       const attempt = capabilityAttemptRef.current + 1;
@@ -347,7 +349,7 @@ function NativeAlarmContentSync() {
 
       // A legacy catalog alarm can outlive the local card that created it.
       // Never resurrect that orphan from native state: cancel it, or surface a
-      // sync error honestly if iOS refuses the cancellation.
+      // sync error honestly if the native platform refuses the cancellation.
       if (scheduled && !desired) {
         const cancelled = await cancelAffirmationAlarm().catch(() => null);
         if (!alive || capabilityAttemptRef.current !== attempt) return;
@@ -392,7 +394,11 @@ function NativeAlarmContentSync() {
             requestAuthorization: true,
           }).catch(() => null);
           if (!alive || capabilityAttemptRef.current !== attempt) return;
-          if (!restored || !restored.ok || restored.soundSource !== 'neural_wav') {
+          if (
+            !restored ||
+            !restored.ok ||
+            !['neural_wav', 'local_speech'].includes(restored.soundSource)
+          ) {
             failedDesiredRef.current = restoreSignature;
             saveMorningRitualPreferences({ alarmSyncError: true });
             return;
@@ -452,17 +458,24 @@ function NativeAlarmContentSync() {
   React.useEffect(() => {
     const ritual = state && state.morningRitual;
     const desired = alarmContentForState(state);
-    if (Platform.OS !== 'ios' || !ritual?.reminderEnabled || !desired) {
+    if (
+      (Platform.OS !== 'ios' && Platform.OS !== 'android') ||
+      !ritual?.reminderEnabled ||
+      !desired
+    ) {
       latestDesiredRef.current = '';
       return;
     }
     const narratorId = state?.narration?.narratorId;
-    const signature = alarmSyncSignature(desired, ritual, narratorId);
+    const savedSoundSource = ritual.wakeSoundSource;
+    const soundSourceConfirmed = ['neural_wav', 'local_speech'].includes(savedSoundSource);
+    const signatureNarratorId = savedSoundSource === 'local_speech' ? 'local_speech' : narratorId;
+    const signature = alarmSyncSignature(desired, ritual, signatureNarratorId);
     latestDesiredRef.current = signature;
     const cachedSignature =
       ritual.wakeAffirmationId &&
       ritual.wakeAffirmationText &&
-      ritual.wakeSoundSource === 'neural_wav'
+      soundSourceConfirmed
       ? alarmSyncSignature(
           {
             id: ritual.wakeAffirmationId,
@@ -470,7 +483,7 @@ function NativeAlarmContentSync() {
             lang: ritual.wakeAffirmationLang,
           },
           ritual,
-          ritual.wakeNarratorId
+          savedSoundSource === 'local_speech' ? 'local_speech' : ritual.wakeNarratorId
         )
       : '';
     if (!ritual.alarmSyncError && !confirmedNativeRef.current && cachedSignature) {
@@ -480,11 +493,14 @@ function NativeAlarmContentSync() {
       ritual.wakeAffirmationId === desired.id &&
       ritual.wakeAffirmationText === desired.text &&
       ritual.wakeAffirmationLang === desired.lang &&
-      ritual.wakeNarratorId === narratorId &&
-      ritual.wakeSoundSource === 'neural_wav';
-    if (localMatches && !ritual.alarmSyncError && pendingRef.current === 0) {
+      soundSourceConfirmed &&
+      (savedSoundSource === 'local_speech' || ritual.wakeNarratorId === narratorId);
+    if (localMatches && pendingRef.current === 0) {
       confirmedNativeRef.current = signature;
       failedDesiredRef.current = '';
+      if (ritual.alarmSyncError) {
+        saveMorningRitualPreferences({ alarmSyncError: false });
+      }
       return;
     }
     if (lastQueuedRef.current === signature) return;
@@ -557,7 +573,7 @@ function NativeAlarmContentSync() {
           saveMorningRitualPreferences({ alarmSyncError: true });
           return;
         }
-        if (response.soundSource !== 'neural_wav') {
+        if (!['neural_wav', 'local_speech'].includes(response.soundSource)) {
           if (latestDesiredRef.current !== signature) return;
           failedDesiredRef.current = signature;
           saveMorningRitualPreferences({ alarmSyncError: true });
@@ -777,19 +793,23 @@ function RootNav() {
     repairCorruptedStorage,
   } = useApp();
   const repairStorageAndAlarm = React.useCallback(async () => {
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       const capability = await getAffirmationAlarmCapability().catch(() => null);
       const scheduledIds = capability && capability.scheduledAlarmIds;
       if (!Array.isArray(scheduledIds)) {
-        // iOS versions without AlarmKit cannot have created this alarm. Every
+        // Unsupported OS versions cannot have created this native alarm. Every
         // other unknown capability state stays fail-closed so a real alarm is
         // never orphaned when the corrupt local record is repaired.
-        if (capability?.reason !== 'ios_version_unsupported') return false;
+        const unsupportedReason =
+          Platform.OS === 'ios' ? 'ios_version_unsupported' : 'android_version_unsupported';
+        if (capability?.reason !== unsupportedReason) return false;
       } else if (scheduledIds.includes(DEFAULT_AFFIRMATION_ALARM_ID)) {
         const cancelled = await cancelAffirmationAlarm();
         if (!cancelled.ok) return false;
       }
     }
+    const reminders = await cancelOrphanedDailyRitualReminders();
+    if (!reminders.ok) return false;
     return repairCorruptedStorage();
   }, [repairCorruptedStorage]);
   // O <html lang> vem "en" do export do Expo. Com o app em português isso faz
@@ -910,11 +930,16 @@ export default function App() {
               <PersistedTheme />
               <NativeAlarmContentSync />
               <StatusBar style="dark" />
-              <NavigationContainer linking={linking}>
-                <RootNav />
-              </NavigationContainer>
-              <StorageMutationGuard />
-              <PersistenceNotice />
+              <View testID="celeste-application-layout" style={styles.applicationLayout}>
+                <View testID="celeste-navigation-frame" style={styles.navigationFrame}>
+                  <NavigationContainer linking={linking}>
+                    <RootNav />
+                  </NavigationContainer>
+                </View>
+                <NarrationPlaybackControls />
+                <StorageMutationGuard />
+                <PersistenceNotice />
+              </View>
             </NarrationProvider>
           </AppProvider>
         </ThemeProvider>
@@ -924,6 +949,15 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  applicationLayout: {
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  navigationFrame: {
+    flex: 1,
+    minHeight: 0,
+  },
   bootScreen: {
     flex: 1,
     minHeight: 0,

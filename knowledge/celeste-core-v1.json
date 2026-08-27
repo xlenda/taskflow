@@ -129,11 +129,14 @@
       "principle": "Dream material may be reflected in the user's own waking concerns, but symbols do not provide a universal prediction or diagnosis.",
       "apply": [
         "Use exact safe imagery, the waking feeling and the meaning explicitly chosen by the user.",
-        "When suggesting automatically, use only the selected feeling and disclose that basis."
+        "When suggesting automatically, use only the selected feeling and disclose that basis.",
+        "For graphic or violent nightmares, use only the reported waking feeling and present safety; refer to the recall as difficult imagery."
       ],
       "limits": [
         "Never decode a symbol, recover a memory, predict an event or diagnose from a dream.",
-        "Do not repeat graphic nightmare content in audio by default."
+        "Do not repeat graphic nightmare content in audio by default.",
+        "Do not name a graphic object, action, injury, body detail, perpetrator or outcome from a nightmare in the reflection or affirmation.",
+        "Never turn harmful dream material into a literal, triumphant or positive affirmation."
       ],
       "evidence": ["https://doi.org/10.1037/a0013264", "https://doi.org/10.5664/jcsm.7178"]
     },
@@ -174,7 +177,8 @@
     "dream": [
       "Keep exact recall separate from reflection.",
       "Use safe literal imagery, waking feeling and user-chosen meaning.",
-      "State that the result is not prediction or diagnosis."
+      "State that the result is not prediction or diagnosis.",
+      "For graphic or violent nightmare recall, avoid literal imagery entirely and ground the response in the reported feeling and present safety."
     ],
     "check_in": [
       "Ask what happened, did not happen or needs adjustment without implying supernatural causality.",

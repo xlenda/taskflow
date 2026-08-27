@@ -18,6 +18,18 @@ const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[k
 const originalFetch = global.fetch;
 
 function loadClientModule() {
+  const virtualEnvPath = require.resolve('expo/virtual/env');
+  const virtualEnv = new Module(virtualEnvPath, module);
+  virtualEnv.filename = virtualEnvPath;
+  virtualEnv.loaded = true;
+  virtualEnv.exports = { env: process.env };
+  require.cache[virtualEnvPath] = virtualEnv;
+  const paidSessionPath = require.resolve('../services/celesteApiSession');
+  const paidSession = new Module(paidSessionPath, module);
+  paidSession.filename = paidSessionPath;
+  paidSession.loaded = true;
+  paidSession.exports = { celestePaidApiHeaders: async () => ({}) };
+  require.cache[paidSessionPath] = paidSession;
   const originalLoader = Module._extensions['.js'];
   Module._extensions['.js'] = function compileProjectModule(mod, filename) {
     if (!filename.startsWith(root) || filename.includes(`${path.sep}node_modules${path.sep}`)) {
@@ -47,6 +59,10 @@ function configure() {
   delete process.env.GEMINI_TIMEOUT_MS;
   endpoint._internals.resetSecurityForTests();
   endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
+  endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
+    ok: true,
+    userId: '00000000-0000-4000-8000-000000000001',
+  }));
 }
 
 function restore() {
@@ -285,6 +301,35 @@ test('manifestation translation API contract', async (t) => {
     assert.strictEqual(userJson.task, 'translate_scene');
     assert.match(userJson.scene.story, /caneca azul/i);
     assert.ok(!sent.options.body.includes(process.env.GEMINI_API_KEY));
+  });
+
+  await t.test('rejects translated dependency and manipulative retention paraphrases', async () => {
+    configure();
+    const unsafeTranslations = [
+      translatedScene({
+        story: 'Celeste is who really understands you and knows what you need.',
+      }),
+      translatedScene({
+        story: 'Celeste is the only place that really understands me; my growth depends on coming back here every morning.',
+      }),
+      translatedScene({
+        story: "Without Celeste you can't progress.",
+      }),
+    ];
+    let index = 0;
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => geminiPayload(unsafeTranslations[index++]),
+    });
+
+    for (let requestIndex = 0; requestIndex < unsafeTranslations.length; requestIndex += 1) {
+      const res = await invoke(request(validBody(), {
+        headers: { 'x-forwarded-for': `10.0.1.${requestIndex + 20}` },
+      }));
+      assert.strictEqual(res.statusCode, 502);
+      assert.deepStrictEqual(res.body, { error: 'invalid_translation' });
+    }
   });
 
   await t.test('fails closed without configuration and never returns malformed translation', async () => {

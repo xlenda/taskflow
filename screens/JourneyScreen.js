@@ -15,7 +15,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Screen, Header, Card, pct } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { useApp } from '../context/AppContext';
+import { CELESTE_BACKUP_MAX_BYTES, useApp } from '../context/AppContext';
 import { useNarration } from '../context/NarrationContext';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -32,8 +32,6 @@ import WeekChart from '../components/WeekChart';
 import SectionHeading from '../components/SectionHeading';
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
-
-const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 
 // Dicionário local da tela (o portão scripts/i18n-parity.js exige en + pt).
 const S = {
@@ -128,15 +126,15 @@ const S = {
 
   backupTitle: { en: 'Backup', pt: 'Cópia de segurança' },
   backupNote: {
-    en: 'Your saved practice is stored in this browser. Download a copy to keep your own backup.',
-    pt: 'Sua prática salva fica neste navegador. Baixe uma cópia para manter seu próprio backup.',
+    en: 'Your practice and local Community stories stay in this browser. Download a copy to keep your own backup.',
+    pt: 'Sua prática e seus relatos locais da Comunidade ficam neste navegador. Baixe uma cópia para guardar seu backup.',
   },
   saveCopy: { en: 'Save a copy', pt: 'Salvar uma cópia' },
   restoreCopy: { en: 'Restore from a file', pt: 'Restaurar de um arquivo' },
   restoreTitle: { en: 'Restore this copy?', pt: 'Restaurar esta cópia?' },
   restoreMessage: {
-    en: 'This replaces your current practice with the one in the file. There is no way back.',
-    pt: 'Isso troca sua prática atual pela do arquivo. Isso não tem volta.',
+    en: 'This replaces your current practice and, in new copies, your local Community stories. Older copies keep current Community stories. There is no way back.',
+    pt: 'Isso troca sua prática atual e, nas cópias novas, seus relatos locais da Comunidade. Cópias antigas mantêm os relatos atuais. Isso não tem volta.',
   },
   restoreConfirm: { en: 'Restore', pt: 'Restaurar' },
   restoreFail: {
@@ -148,8 +146,16 @@ const S = {
     pt: 'O aparelho ainda não confirmou a restauração. Mantenha o Celeste aberto e tente novamente.',
   },
   restoreReminderFail: {
-    en: 'The daily reminder could not be turned off. Review it and try the restore again.',
-    pt: 'Não foi possível desligar o lembrete diário. Revise-o e tente restaurar novamente.',
+    en: 'The alarm or daily reminder could not be turned off. Review them and try the restore again.',
+    pt: 'Não foi possível desligar o despertador ou o lembrete diário. Revise-os e tente restaurar novamente.',
+  },
+  backupSaveFail: {
+    en: 'The backup could not be prepared. Keep Celeste open and try again.',
+    pt: 'Não foi possível preparar a cópia. Mantenha o Celeste aberto e tente novamente.',
+  },
+  backupTooLarge: {
+    en: 'This practice is too large for a safe browser backup.',
+    pt: 'Esta prática ficou grande demais para uma cópia segura no navegador.',
   },
 
   footer: {
@@ -299,12 +305,13 @@ export default function JourneyScreen() {
     setResetBusy(true);
     try {
       const alarmCapability = await getAffirmationAlarmCapability().catch(() => null);
-      if (Platform.OS === 'ios' && !alarmCapability) {
+      const nativeAlarmPlatform = Platform.OS === 'ios' || Platform.OS === 'android';
+      if (nativeAlarmPlatform && !alarmCapability) {
         setResetError('alarm');
         return;
       }
       if (
-        Platform.OS === 'ios' &&
+        nativeAlarmPlatform &&
         (alarmCapability?.supported === true || alarmCapability?.nativeModuleAvailable === true)
       ) {
         const cancelled = await cancelAffirmationAlarm();
@@ -335,10 +342,17 @@ export default function JourneyScreen() {
 
   // Web-only de propósito: no export estático a prática vive no navegador.
   // Blob + clique DENTRO do gesto é o que o navegador aceita para baixar.
-  const saveBackup = () => {
+  const saveBackup = async () => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    setBackupErro(false);
     try {
-      const blob = new Blob([exportStateJson()], { type: 'application/json' });
+      const serialized = await exportStateJson();
+      const blob = new Blob([serialized], { type: 'application/json' });
+      if (blob.size > CELESTE_BACKUP_MAX_BYTES) {
+        const error = new Error('backup_too_large');
+        error.code = 'backup_too_large';
+        throw error;
+      }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `${APP_NAME.toLowerCase()}-${todayISO()}.json`;
@@ -347,7 +361,9 @@ export default function JourneyScreen() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    } catch (e) {}
+    } catch (error) {
+      setBackupErro(error && error.code === 'backup_too_large' ? 'too_large' : 'save');
+    }
   };
 
   const restoreBackup = () => {
@@ -359,7 +375,7 @@ export default function JourneyScreen() {
     input.onchange = () => {
       const file = input.files && input.files[0];
       if (!file) return;
-      if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_BACKUP_BYTES) {
+      if (!Number.isFinite(file.size) || file.size <= 0 || file.size > CELESTE_BACKUP_MAX_BYTES) {
         setBackupErro('invalid');
         return;
       }
@@ -380,12 +396,13 @@ export default function JourneyScreen() {
           setBackupErro(
             r && r.erro === 'storage_unavailable'
               ? 'storage'
-              : r && r.erro === 'reminder_cancel_failed'
+              : r && (r.erro === 'alarm_cancel_failed' || r.erro === 'reminder_cancel_failed')
                 ? 'reminder'
                 : 'invalid'
           );
         }
       };
+      reader.onerror = () => setBackupErro('invalid');
       reader.readAsText(file);
     };
     input.click();
@@ -708,7 +725,11 @@ export default function JourneyScreen() {
                     ? S.restoreStorageFail
                     : backupErro === 'reminder'
                       ? S.restoreReminderFail
-                      : S.restoreFail,
+                      : backupErro === 'save'
+                        ? S.backupSaveFail
+                        : backupErro === 'too_large'
+                          ? S.backupTooLarge
+                          : S.restoreFail,
                   { app: APP_NAME }
                 )}
               </Text>

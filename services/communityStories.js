@@ -1,13 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+import { getCelesteSupabaseClient } from './celesteSupabase';
 
 export const COMMUNITY_STORAGE_KEY = '@celeste_community_stories_v1';
 export const COMMUNITY_BODY_MIN = 10;
 export const COMMUNITY_BODY_MAX = 600;
 export const COMMUNITY_STORAGE_ERROR_CODE = 'community_storage_unreadable';
-
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+export const COMMUNITY_BACKUP_MAX_ITEMS = 50;
 
 const CATEGORY_CIRCLES = {
   Love: 'amor-reciproco',
@@ -18,7 +16,6 @@ const CATEGORY_CIRCLES = {
   Peace: 'paz-presenca',
 };
 
-let client;
 let localMutationTail = Promise.resolve();
 let communityGeneration = 0;
 let communityResetToken = 0;
@@ -59,29 +56,12 @@ export async function beginCommunityDataReset() {
 }
 
 export async function finishCommunityDataReset(token) {
-  if (!token || communityResetToken !== token) throw communityResetError();
-  await serializeLocalMutation(() => AsyncStorage.removeItem(COMMUNITY_STORAGE_KEY));
-  if (communityResetToken === token) communityResetToken = 0;
+  await restoreLocalCommunityStoriesFromBackup(token, []);
   return true;
 }
 
 export function cancelCommunityDataReset(token) {
   if (token && communityResetToken === token) communityResetToken = 0;
-}
-
-function getClient() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  if (!client) {
-    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-    });
-  }
-  return client;
 }
 
 function makeId() {
@@ -152,6 +132,12 @@ function sanitizeLocalItem(raw, index = 0) {
   };
 }
 
+export function validateLocalCommunityStoriesBackup(value) {
+  if (!Array.isArray(value) || value.length > COMMUNITY_BACKUP_MAX_ITEMS) return null;
+  const safe = value.map((item, index) => sanitizeLocalItem(item, index));
+  return safe.every(Boolean) ? safe : null;
+}
+
 export async function loadLocalCommunityStories() {
   try {
     const raw = await AsyncStorage.getItem(COMMUNITY_STORAGE_KEY);
@@ -171,9 +157,43 @@ async function persistLocalCommunityStories(items) {
   const safe = (Array.isArray(items) ? items : [])
     .map((item, index) => sanitizeLocalItem(item, index))
     .filter(Boolean)
-    .slice(0, 50);
+    .slice(0, COMMUNITY_BACKUP_MAX_ITEMS);
   await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(safe));
   return safe;
+}
+
+export async function exportLocalCommunityStoriesForBackup() {
+  const expectedGeneration = communityGeneration;
+  return serializeLocalMutation(async () => {
+    assertCommunityGeneration(expectedGeneration);
+    const safe = validateLocalCommunityStoriesBackup(await loadLocalCommunityStories());
+    if (!safe) {
+      const error = new Error('community_backup_invalid');
+      error.code = 'community_backup_invalid';
+      throw error;
+    }
+    return safe;
+  });
+}
+
+export async function restoreLocalCommunityStoriesFromBackup(token, items) {
+  const safe = validateLocalCommunityStoriesBackup(items);
+  if (!safe) {
+    const error = new Error('community_backup_invalid');
+    error.code = 'community_backup_invalid';
+    throw error;
+  }
+  if (!token || communityResetToken !== token) throw communityResetError();
+  return serializeLocalMutation(async () => {
+    if (communityResetToken !== token) throw communityResetError();
+    if (safe.length) {
+      await AsyncStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(safe));
+    } else {
+      await AsyncStorage.removeItem(COMMUNITY_STORAGE_KEY);
+    }
+    if (communityResetToken === token) communityResetToken = 0;
+    return safe;
+  });
 }
 
 async function upsertLocalCommunityStory(item, expectedGeneration = communityGeneration) {
@@ -273,7 +293,7 @@ function remotePostToItem(post, localReceipt) {
 
 export async function loadCommunityState() {
   const local = await loadLocalCommunityStories();
-  const supabase = getClient();
+  const supabase = getCelesteSupabaseClient();
   if (!supabase) return { feed: [], own: local, mode: 'local', reason: 'not_configured' };
 
   const user = await getAuthenticatedUser(supabase);
@@ -335,7 +355,7 @@ export async function submitCommunityStory(input) {
   // sent to the community backend. Corruption therefore fails closed.
   await upsertLocalCommunityStory(localDraft, operationGeneration);
 
-  const supabase = getClient();
+  const supabase = getCelesteSupabaseClient();
   if (!supabase) {
     const item = await upsertLocalCommunityStory(
       { ...localDraft, syncReason: 'not_configured' },
@@ -439,7 +459,7 @@ export async function deleteCommunityStory(item) {
     return { ok: true, remoteDeleted: false };
   }
 
-  const supabase = getClient();
+  const supabase = getCelesteSupabaseClient();
   if (!supabase) return { ok: false, reason: 'not_configured' };
   const user = await getAuthenticatedUser(supabase);
   if (!user) return { ok: false, reason: 'sign_in_required' };

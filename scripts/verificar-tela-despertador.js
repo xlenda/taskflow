@@ -85,7 +85,14 @@ for (let day = 1; day <= 7; day += 1) {
   assert.ok(screen.includes(`value: ${day}`), `dia ISO ${day} ausente`);
 }
 assert.ok(screen.includes('<FlatList'), 'seletor de afirmações deve continuar virtualizado');
-assert.ok(screen.includes('requestAuthorization: true'), 'autorização precisa nascer do CTA explícito');
+assert.ok(
+  activation.includes('await requestAffirmationAlarmAuthorization()'),
+  'autorizacao precisa nascer do CTA explicito antes de gerar voz'
+);
+assert.ok(
+  activation.includes('requestAuthorization: false'),
+  'agendamento deve reutilizar a permissao ja confirmada'
+);
 assert.ok(
   activation.indexOf('await scheduleAffirmationAlarm') < activation.indexOf('saveMorningRitualPreferences'),
   'o agendamento nativo precisa ser confirmado antes da persistência'
@@ -105,7 +112,16 @@ assert.ok(
   'cancelamento também precisa ser confirmado antes de esconder o alarme'
 );
 assert.ok(screen.includes('Linking.openSettings()'), 'permissão negada precisa oferecer Ajustes');
-assert.ok(screen.includes('O iPhone não confirmou o agendamento. Nada foi salvo'), 'erro honesto ausente');
+assert.ok(
+  /\(feedback === 'denied' \|\| capability\?\.authorization === 'denied'\)[\s\S]{0,100}Platform\.OS !== 'web'/.test(
+    screen
+  ) &&
+    !/\(feedback === 'denied' \|\| capability\?\.authorization === 'denied'\)[\s\S]{0,100}Platform\.OS === 'ios'/.test(
+      screen
+    ),
+  'Abrir Ajustes precisa ficar disponível para permissão negada no Android e no iOS'
+);
+assert.ok(screen.includes('O aparelho não confirmou o agendamento. Nada foi salvo'), 'erro honesto ausente');
 assert.ok(
   activation.includes('narration.preparePersonal') &&
     activation.includes('wavBytesToBase64(prepared.bytes)') &&
@@ -116,11 +132,22 @@ assert.ok(
   activation.indexOf('narration.preparePersonal') < activation.indexOf('await scheduleAffirmationAlarm'),
   'a voz neural precisa estar pronta antes de tocar no agendamento nativo'
 );
+assert.ok(
+  activation.indexOf('await requestAffirmationAlarmAuthorization()') <
+    activation.indexOf('narration.preparePersonal'),
+  'permissao negada nao pode consumir uma geracao de voz paga'
+);
 assert.ok(!/elevenlabs|voiceIdentifier|EXPO_PUBLIC_ELEVEN/i.test(screen), 'despertador não pode expor segredo de voz');
 
 assert.ok(
   activation.indexOf('await confirmAsync') < activation.indexOf('narration.preparePersonal'),
   'ativacao nativa deve pedir confirmacao antes de gerar audio ou solicitar permissao'
+);
+assert.ok(
+  screen.includes("AppState.addEventListener('change'") &&
+    screen.includes("nextState === 'active'") &&
+    screen.includes('refreshCapability()'),
+  'voltar dos ajustes precisa atualizar a permissao do aparelho'
 );
 assert.ok(
   webSave.includes('saveMorningRitualPreferences') &&

@@ -3,6 +3,7 @@ import {
   redactThirdPartyNames,
   thirdPartyNames,
 } from './generatePersonalizedScene';
+import { celestePaidApiHeaders } from './celesteApiSession';
 
 const API_TIMEOUT_MS = 15000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
@@ -97,9 +98,10 @@ export async function translateManifestationScene({
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
   try {
+    const authorization = fetchImpl ? {} : await celestePaidApiHeaders();
     const response = await request(apiEndpoint(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authorization },
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
       body: JSON.stringify({

@@ -34,6 +34,9 @@ const S = {
   fromDream: { en: 'From your dream', pt: 'Do seu sonho' },
   fromIntention: { en: 'From your intention', pt: 'Da sua intenção' },
   listen: { en: 'Listen to this affirmation', pt: 'Ouvir esta afirmação' },
+  preparingAudio: { en: 'Preparing audio', pt: 'Preparando áudio' },
+  playReadyAudio: { en: 'Play the audio', pt: 'Tocar o áudio' },
+  resumeAudio: { en: 'Resume the audio', pt: 'Continuar o áudio' },
   stopListen: { en: 'Stop the audio', pt: 'Parar o áudio' },
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
   copied: { en: 'Copied ✓', pt: 'Copiado ✓' },
@@ -87,12 +90,20 @@ const seedIndex = (len) => (len > 0 ? dayHash(todayISO()) % len : 0);
 export default function AffirmationsScreen() {
   const theme = useTheme();
   const { t, lang } = useT();
-  const { state, loading, toggleFavoriteAffirmation, markAffirmationRead } = useApp();
+  const {
+    state,
+    loading,
+    personalVisualStatus,
+    ensurePersonalVisual,
+    toggleFavoriteAffirmation,
+    markAffirmationRead,
+  } = useApp();
   const {
     activePlaybackId,
     lastCompletedPlaybackId,
     phase: narrationPhase,
     playPersonal,
+    resume: resumeNarration,
     stop: stopNarration,
   } = usePersonalNarration();
   // `null` significa "a pessoa ainda não escolheu um filtro". Todo deck desta
@@ -166,6 +177,7 @@ export default function AffirmationsScreen() {
           accent: m.accent,
           text: m.affirmation.trim(),
           speechLang: m.lang,
+          visualKey: m.visual && m.visual.cacheKey,
           personalized: true,
           source: 'manifestation',
         })),
@@ -236,6 +248,14 @@ export default function AffirmationsScreen() {
   const safeIndex = selectedIndex >= 0 ? selectedIndex : seededIndex;
   const current = list[safeIndex];
   const currentId = current && current.id;
+  const currentVisualStatus = current?.manifestationId
+    ? personalVisualStatus[current.manifestationId]
+    : null;
+
+  useEffect(() => {
+    if (!isFocused || !current?.manifestationId) return;
+    void ensurePersonalVisual(current.manifestationId);
+  }, [current?.manifestationId, ensurePersonalVisual, isFocused]);
 
   // Se uma manifestação for criada, removida ou reordenada enquanto a aba
   // continua montada, a frase visível não pode trocar por baixo de um áudio ou
@@ -278,11 +298,11 @@ export default function AffirmationsScreen() {
       : `${t(S.fromIntention)} · ${catLabel(current.category)}`
     : '';
   const playbackId = current ? `${PLAYBACK_PREFIX}${current.id}` : null;
-  const speaking =
-    playbackId === activePlaybackId &&
-    (narrationPhase === 'loading' ||
-      narrationPhase === 'playing' ||
-      narrationPhase === 'paused');
+  const ownsPlayback = playbackId === activePlaybackId;
+  const loadingAudio = ownsPlayback && narrationPhase === 'loading';
+  const playingAudio = ownsPlayback && narrationPhase === 'playing';
+  const pausedAudio = ownsPlayback && narrationPhase === 'paused';
+  const readyAudio = ownsPlayback && narrationPhase === 'ready';
   const canHear = !!current;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
@@ -324,8 +344,13 @@ export default function AffirmationsScreen() {
   };
 
   const toggleSpeak = async () => {
-    if (speaking) {
+    if (loadingAudio || playingAudio) {
       stopSpeech();
+      return;
+    }
+    if (pausedAudio || readyAudio) {
+      setAudioFailed(false);
+      await resumeNarration();
       return;
     }
     const body = currentLoc && currentLoc.text;
@@ -412,6 +437,16 @@ export default function AffirmationsScreen() {
               affirmation={currentLoc}
               categoryLabel={currentCategoryLabel}
               accent={meta.accent}
+              visualKey={current.visualKey}
+              visualStatus={currentVisualStatus}
+              onRetryVisual={
+                current.manifestationId
+                  ? () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      void ensurePersonalVisual(current.manifestationId, { force: true });
+                    }
+                  : undefined
+              }
               favorite={state.favoriteAffirmations.includes(current.id)}
               onToggleFavorite={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -455,8 +490,18 @@ export default function AffirmationsScreen() {
                 um ícone cinza de 20px enquanto o botão dourado compartilhava. */}
             {canHear ? (
               <PrimaryButton
-                label={speaking ? t(S.stopListen) : t(S.listen)}
-                icon={speaking ? 'stop' : 'volume-high'}
+                label={
+                  loadingAudio
+                    ? t(S.preparingAudio)
+                    : playingAudio
+                    ? t(S.stopListen)
+                    : readyAudio
+                    ? t(S.playReadyAudio)
+                    : pausedAudio
+                    ? t(S.resumeAudio)
+                    : t(S.listen)
+                }
+                icon={loadingAudio ? 'hourglass-outline' : playingAudio ? 'stop' : 'volume-high'}
                 accent={meta.accent}
                 onPress={toggleSpeak}
                 style={{ marginTop: 16 }}

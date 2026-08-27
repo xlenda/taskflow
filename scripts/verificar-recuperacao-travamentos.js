@@ -215,10 +215,67 @@ async function run() {
       importBlock.includes('if (finalizePromise) return finalizePromise'),
     'restauracao de backup precisa aguardar o ack antes de confirmar sucesso'
   );
+  const importFinalizeBlock = importBlock.slice(
+    importBlock.indexOf('const finalizeImport'),
+    importBlock.indexOf('pendingImportFinalizeRef.current = finalizeImport')
+  );
+  assert.ok(
+    !importBlock
+      .slice(0, importBlock.indexOf('const finalizeImport'))
+      .includes('await clearPersonalVisuals()') &&
+      importFinalizeBlock.includes('await clearPersonalVisuals()') &&
+      importFinalizeBlock.indexOf('await clearPersonalVisuals()') <
+        importFinalizeBlock.indexOf('setState(restored)'),
+    'importacao so pode limpar os visuais antigos depois do ack e antes de publicar o novo estado'
+  );
   assert.ok(
     journey.includes("const r = await importStateJson(String(reader.result || ''))"),
     'Jornada precisa aguardar a restauracao persistida'
   );
+  assert.ok(
+    context.includes("export const CELESTE_BACKUP_FORMAT = 'celeste-backup'") &&
+      context.includes('export const CELESTE_BACKUP_VERSION = 2') &&
+      context.includes('exportLocalCommunityStoriesForBackup') &&
+      context.includes("restorePolicy: CELESTE_BACKUP_RESTORE_POLICY") &&
+      context.includes("replaceCommunityStories: false"),
+    'backup precisa ser versionado, incluir Comunidade e manter compatibilidade legada'
+  );
+  assert.ok(
+    context.includes('utf8ByteLength(serialized) > CELESTE_BACKUP_MAX_BYTES') &&
+      context.includes('utf8ByteLength(str) > CELESTE_BACKUP_MAX_BYTES') &&
+      journey.includes('blob.size > CELESTE_BACKUP_MAX_BYTES') &&
+      journey.includes('file.size > CELESTE_BACKUP_MAX_BYTES'),
+    'exportacao e importacao precisam compartilhar a mesma quota em bytes'
+  );
+  assert.ok(
+    importBlock.includes('communityToken = await beginCommunityDataReset()') &&
+      importBlock.includes('await restoreLocalCommunityStoriesFromBackup(') &&
+      importBlock.indexOf('await restoreLocalCommunityStoriesFromBackup(') <
+        importBlock.indexOf('setState(restored)'),
+    'relatos locais precisam ser substituidos antes de confirmar a restauracao v2'
+  );
+  assert.ok(
+    importBlock.includes("Platform.OS === 'android'") &&
+      importBlock.includes('await getAffirmationAlarmCapability()') &&
+      importBlock.indexOf('await cancelAffirmationAlarm()') <
+        importBlock.indexOf('writerRef.current.enqueue') &&
+      importBlock.includes("erro: 'alarm_cancel_failed'"),
+    'importacao precisa confirmar o cancelamento do despertador Android antes de persistir o backup'
+  );
+  for (const resetField of [
+    'reminderEnabled: false',
+    'alarmSyncError: false',
+    'wakeAffirmationId: null',
+    "wakeAffirmationText: ''",
+    'wakeNarratorId: null',
+    'wakeSoundSource: null',
+  ]) {
+    assert.ok(
+      importBlock.indexOf(resetField) >= 0 &&
+        importBlock.indexOf(resetField) < importBlock.indexOf('writerRef.current.enqueue'),
+      `backup importado nao pode restaurar agenda nativa: ${resetField}`
+    );
+  }
 
   assert.ok(chat.includes('try {') && chat.includes('catch (_error)'), 'criacao nao captura falha');
   assert.ok(chat.includes('retry-scene-creation'), 'criacao falha nao oferece nova tentativa');

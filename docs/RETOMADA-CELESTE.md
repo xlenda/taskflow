@@ -1,7 +1,10 @@
 # Retomada da Celeste
 
-Atualizado em 25/08/2026. Este arquivo registra a investigação e a correção
-publicada para que o problema não precise ser redescoberto.
+Atualizado em 27/08/2026. Este arquivo registra investigações e publicações
+anteriores para que os problemas não precisem ser redescobertos. IDs de deploy e
+resultados ao vivo abaixo são históricos; a arquitetura vigente no código usa
+`celeste-knowledge-v2`, `celeste-scene-v7` e `celeste-dream-v2`. Isso não prova,
+por si só, que uma nova publicação já tenha ocorrido.
 
 ## Conteúdo pessoal e narradores
 
@@ -56,7 +59,7 @@ Portões desta publicação:
 
 - tradução local PT/EN, legado e edições preservadas;
 - API privada de tradução: `6/6`;
-- Gemini ao vivo: `gemini-3.7-flash` com `celeste-knowledge-v1`;
+- contrato atual do Gemini: `gemini-3.7-flash` com `celeste-knowledge-v2`;
 - tradução ao vivo preservando o detalhe sentinela `blue mug 27`;
 - E2E completo local e em produção;
 - QA responsivo local e em produção: sonho em um toque, manifestação PT/EN
@@ -85,7 +88,7 @@ os seguintes bugs confirmados:
 Portões aprovados no deployment:
 
 - Expo Doctor: `18/18`;
-- Gemini: `14/14` e `celeste-knowledge-v1` ao vivo;
+- contrato atual dos testes Gemini: `celeste-knowledge-v2`;
 - Cena-Âncora: `25` casos;
 - paridade PT/EN: `46` arquivos e auditoria visual sem vazamentos;
 - QA Zeus da Comunidade: `99` verificações, zero falhas e zero erros de console,
@@ -153,8 +156,8 @@ alcance em telas pequenas. A correção foi concluída e publicada em
 - Produção: https://celeste-jet-two.vercel.app
 - A raiz, `/bem-vindo` e a base de conhecimento responderam HTTP 200.
 - Uma abertura nova chegou a `/bem-vindo` sem erros de página ou console.
-- A API Gemini respondeu em produção e continua usando `celeste-scene-v5` com
-  `celeste-knowledge-v1`.
+- No código atual, a API de cena usa `celeste-scene-v7` com
+  `celeste-knowledge-v2`; o prompt de sonho em nuvem usa `celeste-dream-v2`.
 - O problema não é uma queda geral do servidor.
 
 ## Pontos que podem parecer ou ficar travados

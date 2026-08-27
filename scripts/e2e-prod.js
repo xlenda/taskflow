@@ -347,7 +347,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
       const source = saved.manifestations?.[0]?.generation?.source;
       if (source === 'local') return source;
-      if (allowGemini && source === 'gemini') return source;
+      if (allowGemini && source === 'celeste-ai') return source;
       return false;
     },
     { timeout: 30000, polling: 300 },

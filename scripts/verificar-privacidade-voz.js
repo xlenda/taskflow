@@ -7,7 +7,7 @@ const { parse } = require('@babel/parser');
 const traverse = require('@babel/traverse').default;
 
 const ROOT = path.resolve(__dirname, '..');
-const PUBLIC = path.join(ROOT, 'public');
+const PREVIEW_ROOT = path.join(ROOT, 'assets', 'audio', 'previews');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
@@ -34,16 +34,24 @@ function relative(filename) {
 
 function loadModule(relativePath) {
   const filename = path.join(ROOT, relativePath);
-  const compiled = transformSync(fs.readFileSync(filename, 'utf8'), {
-    filename,
-    presets: ['babel-preset-expo'],
-    sourceType: 'module',
-  }).code;
-  const loaded = new Module(filename, module);
-  loaded.filename = filename;
-  loaded.paths = Module._nodeModulePaths(path.dirname(filename));
-  loaded._compile(compiled, filename);
-  return loaded.exports;
+  const originalWavLoader = Module._extensions['.wav'];
+  Module._extensions['.wav'] = (assetModule, assetFilename) => {
+    assetModule.exports = assetFilename;
+  };
+  try {
+    const compiled = transformSync(fs.readFileSync(filename, 'utf8'), {
+      filename,
+      presets: ['babel-preset-expo'],
+      sourceType: 'module',
+    }).code;
+    const loaded = new Module(filename, module);
+    loaded.filename = filename;
+    loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+    loaded._compile(compiled, filename);
+    return loaded.exports;
+  } finally {
+    Module._extensions['.wav'] = originalWavLoader;
+  }
 }
 
 function parseModule(source, filename) {
@@ -60,16 +68,25 @@ const runtimeFiles = [path.join(ROOT, 'App.js')].concat(
     walkFiles(path.join(ROOT, folder), (filename) => /\.[cm]?[jt]sx?$/.test(filename))
   )
 );
+const audioApiPath = path.join(ROOT, 'api', 'gerar-audio.js');
 
-// Secrets and the ElevenLabs client must never ship in either browser or API runtime code.
+// Secrets must never be literal. ElevenLabs credentials and calls belong only to the server route.
 for (const filename of runtimeFiles) {
   const source = fs.readFileSync(filename, 'utf8');
   const label = relative(filename);
   assert.doesNotMatch(source, /\bsk_[a-z0-9_-]{20,}/i, `Possible API secret exposed in ${label}`);
-  assert.doesNotMatch(source, /api\.elevenlabs\.io/i, `ElevenLabs client found in ${label}`);
-  assert.doesNotMatch(source, /ELEVENLABS(?:_API)?_KEY/i, `ElevenLabs secret name found in ${label}`);
-  assert.doesNotMatch(source, /['"]xi-api-key['"]/i, `ElevenLabs authorization header found in ${label}`);
+  if (filename !== audioApiPath) {
+    assert.doesNotMatch(source, /api\.elevenlabs\.io/i, `ElevenLabs client found in ${label}`);
+    assert.doesNotMatch(source, /ELEVENLABS(?:_API)?_KEY/i, `ElevenLabs secret name found in ${label}`);
+    assert.doesNotMatch(source, /['"]xi-api-key['"]/i, `ElevenLabs authorization header found in ${label}`);
+  }
 }
+const audioApiSource = fs.readFileSync(audioApiPath, 'utf8');
+assert.match(audioApiSource, /api\.elevenlabs\.io/i, 'Audio API must call ElevenLabs server-side');
+assert.match(audioApiSource, /ELEVENLABS_API_KEY/, 'Audio API must read the server-side secret');
+assert.match(audioApiSource, /['"]xi-api-key['"]/i, 'Audio API must authenticate server-side');
+assert.match(audioApiSource, /enable_logging:\s*'false'/, 'Audio API must disable provider request logging');
+assert.doesNotMatch(audioApiSource, /EXPO_PUBLIC_ELEVENLABS/i, 'Audio API must not use a public secret');
 
 assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'audioBank.js')), 'Fixed audio bank still exists');
 assert.ok(
@@ -79,18 +96,19 @@ assert.ok(
 assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'speech.js')), 'Robotic speech facade still exists');
 assert.ok(!fs.existsSync(path.join(ROOT, 'utils', 'voicePicker.js')), 'Legacy device voice picker still exists');
 
-// Gemini previews are requested on demand; the old provider samples are not named in the catalog.
+// Narrator samples are bundled assets. They must not contain personal content or cloud requests.
 const narrators = loadModule('constants/narrators.js');
-const previewUrls = narrators.NARRATORS.flatMap((narrator) =>
+const previewAssets = narrators.NARRATORS.flatMap((narrator) =>
   ['pt', 'en'].map((lang) => narrators.narratorPreviewUrl(narrator.id, lang))
 ).filter(Boolean).sort();
-assert.deepStrictEqual(previewUrls, [], 'Catalog still exposes legacy narrator samples');
-
-const audioRoot = path.join(PUBLIC, 'audio');
-const shippedAudio = walkFiles(audioRoot).map(
-  (filename) => `/${path.relative(PUBLIC, filename).replaceAll(path.sep, '/')}`
-).sort();
-assert.ok(Array.isArray(shippedAudio));
+assert.strictEqual(previewAssets.length, 12, 'Catalog must expose 12 bundled narrator previews');
+for (const preview of previewAssets) {
+  assert.strictEqual(path.dirname(preview), PREVIEW_ROOT, 'Narrator preview must stay in the bundled preview directory');
+  const bytes = fs.readFileSync(preview);
+  assert.ok(bytes.length > 4096, `Narrator preview is too small: ${path.basename(preview)}`);
+  assert.strictEqual(bytes.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.strictEqual(bytes.subarray(8, 12).toString('ascii'), 'WAVE');
+}
 
 const selectorPath = path.join(ROOT, 'components', 'NarratorSelector.js');
 const narrationContextPath = path.join(ROOT, 'context', 'NarrationContext.js');
@@ -106,7 +124,7 @@ for (const filename of runtimeFiles) {
 }
 const selectorSource = fs.readFileSync(selectorPath, 'utf8');
 assert.match(selectorSource, /useNarration/, 'Narrator selector must use the shared neural player');
-assert.match(selectorSource, /playPreview/, 'Narrator selector must request a fixed-text preview');
+assert.match(selectorSource, /playPreview/, 'Narrator selector must request the shared preview player');
 assert.doesNotMatch(selectorSource, /narratorPreviewUrl|new\s+Audio\s*\(|expo-audio/, 'Narrator selector still owns local audio');
 assert.doesNotMatch(
   selectorSource,
@@ -115,7 +133,7 @@ assert.doesNotMatch(
 );
 const narrationContextSource = fs.readFileSync(narrationContextPath, 'utf8');
 assert.match(narrationContextSource, /requestNarrationAudio/, 'Cloud narration must use the private server facade');
-assert.match(narrationContextSource, /playPreview/, 'Shared player lacks remote preview support');
+assert.match(narrationContextSource, /playPreview/, 'Shared player lacks bundled preview support');
 assert.match(narrationContextSource, /playPersonal/, 'Shared player lacks personal narration support');
 assert.doesNotMatch(narrationContextSource, /expo-speech/, 'Cloud narration silently falls back to a device voice');
 
