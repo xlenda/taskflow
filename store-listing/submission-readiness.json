@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "checks": {
+    "nativeApiAccess": {
+      "ready": false,
+      "evidence": null,
+      "note": "Authenticate native requests without weakening the web origin policy."
+    },
+    "nativeScreenshots": {
+      "ready": false,
+      "evidence": null,
+      "note": "Replace web drafts with captures from signed iOS and Android builds."
+    },
+    "nativeFeatureValidation": {
+      "ready": false,
+      "evidence": null,
+      "note": "Validate voice, notifications, fallback and any platform-specific feature on devices."
+    },
+    "aiContentReporting": {
+      "ready": false,
+      "evidence": null,
+      "note": "Provide a user path to report inappropriate generated content."
+    },
+    "communityReleaseBoundary": {
+      "ready": false,
+      "evidence": null,
+      "note": "Hide public Community in the store build or complete its trust and safety stack."
+    },
+    "privacyFormsFinal": {
+      "ready": false,
+      "evidence": null,
+      "note": "Complete App Privacy and Data Safety from the signed binaries and provider contracts."
+    },
+    "ownerAndReviewFields": {
+      "ready": false,
+      "evidence": null,
+      "note": "Add legal owner, copyright, support contact, review contact, territories and release choices."
+    },
+    "assetRightsRecorded": {
+      "ready": false,
+      "evidence": null,
+      "note": "Record licenses and provenance for mascot, video, fonts, icons, voices and audio."
+    }
+  }
+}

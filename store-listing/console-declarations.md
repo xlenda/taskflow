@@ -1,0 +1,123 @@
+# Declarações dos consoles
+
+Guia de preenchimento para a versão `1.0.0`. Respostas marcadas como
+`confirmar` não devem ser copiadas para produção sem comparar com o binário e
+os contratos vigentes dos provedores.
+
+## Identidade e distribuição
+
+| Campo | Resposta preparada | Estado |
+|---|---|---|
+| Tipo | App | pronto |
+| Idioma principal | Português (Brasil) | pronto |
+| Idioma adicional | Inglês (Estados Unidos) | pronto |
+| Bundle ID / package | `com.lenda.celeste` | pronto |
+| Versão | `1.0.0` | pronto |
+| Categoria | Saúde e fitness / Health & Fitness | pronto |
+| Categoria Apple secundária | Estilo de vida / Lifestyle | pronto |
+| Login obrigatório | Não, na versão atual | pronto |
+| Anúncios | Nenhum SDK de anúncios identificado | confirmar no binário |
+| Compra ou assinatura | Não ativa nesta versão | confirmar antes do envio |
+| Público inicial | Recomendação: somente 18 anos ou mais | decisão do titular |
+| Países, preço e liberação | Não definidos | conta da loja |
+| Direitos e copyright | Titular ainda não informado | bloqueado |
+
+## Classificação indicativa
+
+Respostas candidatas para o questionário vigente de cada console:
+
+- violência, conteúdo sexual, drogas, apostas e linguagem imprópria: não há
+  conteúdo editorial desse tipo no produto atual;
+- comunicação direta entre pessoas: não;
+- conteúdo público criado por usuários: não nesta submissão; a Comunidade deve
+  permanecer privada/desativada;
+- conteúdo gerado por IA: sim, opcional, com fallback local e controles de
+  consentimento separados;
+- saúde: reflexão e bem-estar, sem diagnóstico, tratamento ou aconselhamento
+  médico;
+- acesso irrestrito à web: não;
+- compras, ativos financeiros, empréstimos ou negociação: não;
+- anúncios: não no código auditado.
+
+O console pode usar rótulos diferentes. Responda pelo comportamento do binário,
+não apenas pelo texto desta lista.
+
+## Google Play: declarações adicionais
+
+| Declaração | Resposta candidata | Verificação final |
+|---|---|---|
+| Público-alvo | 18+ | titular e política da conta |
+| App de notícias | Não | binário final |
+| App governamental | Não | binário final |
+| Recursos financeiros | Não | binário final |
+| Criação de conta | Não | manter Supabase social desativado |
+| Exclusão de conta | Não se aplica enquanto não houver conta | revisar se autenticação entrar |
+| Health Apps Declaration | Bem-estar/reflexão; não médico | conferir opções atuais do formulário |
+| Acesso do revisor | Fluxo inteiro sem login | testar build de produção |
+| IARC | Sem categorias maduras conhecidas | preencher no console |
+
+Tags candidatas: `Personal growth`, `Mindfulness`, `Journal`, `Meditation` e
+`Well-being`. A taxonomia disponível varia no console; selecionar somente tags
+que apareçam e descrevam o app real.
+
+## Apple App Privacy e Google Data Safety
+
+### Dados transmitidos fora do aparelho
+
+| Tipo provável | Quando | Finalidade | Obrigatório | Tracking | Estado |
+|---|---|---|---|---|---|
+| Nome próprio | personalização Gemini autorizada | funcionalidade do app | opcional | não identificado | confirmar retenção |
+| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | confirmar retenção |
+| Texto da narração | toque em Play com consentimento | gerar áudio | opcional | não identificado | Gemini TTS |
+| Relato de sonho | reflexão em nuvem autorizada | gerar afirmação | opcional | não identificado | fallback local disponível |
+| Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |
+| Cena anterior e contagens de progresso | novo capítulo do Espelho Vivo | personalização | opcional | não identificado | texto de Rastro não é enviado |
+| IP, sinais de abuso e logs técnicos | chamadas ao backend | segurança e operação | técnico | não identificado | confirmar Vercel/BotID |
+
+### Dados que permanecem locais no desenho atual
+
+- manifestações, afirmações e histórico de prática;
+- relato completo dos Rastros de Mudança;
+- favoritos e visões salvas;
+- configuração local do lembrete e do alarme;
+- nomes de filhos, pessoas importantes e pessoa específica nos campos próprios;
+- áudio bruto de ditado: a Celeste recebe a transcrição fornecida pelo sistema,
+  não envia a gravação por conta própria.
+
+### Respostas que ainda dependem de contrato ou binário
+
+- se cada dado é retido pelo Gemini, Vercel ou BotID e por quanto tempo;
+- se o processamento pode ser marcado como efêmero;
+- se a transferência ao provedor se qualifica como compartilhamento em cada
+  loja;
+- se dados técnicos ou identificadores são vinculados à pessoa;
+- confirmação de criptografia em trânsito em todas as rotas;
+- SDKs efetivamente incluídos no binário e suas coletas automáticas;
+- política de exclusão quando contas ou comunidade pública forem ativadas.
+
+Não marcar `dados não coletados`, `dados não compartilhados` ou
+`processamento efêmero` por inferência. A revisão final deve usar o binário
+assinado e os contratos ativos.
+
+## Acessibilidade Apple
+
+Preparar evidência no build nativo antes de selecionar os rótulos:
+
+- VoiceOver e nomes acessíveis nos controles;
+- Voice Control;
+- texto ampliado sem corte;
+- contraste suficiente;
+- redução de movimento respeitada na abertura;
+- legendas no preview da loja;
+- áudio não ser o único meio de receber uma afirmação.
+
+## Acesso para revisão
+
+1. Escolher português ou inglês e concluir o questionário.
+2. Usar a opção local para testar sem Gemini.
+3. Abrir Cena-Âncora, Ponte de Hoje e Ritual de Um Minuto.
+4. Registrar um sonho curto e gerar a afirmação local.
+5. Ativar consentimento adulto separado para testar cena, sonho e narração em
+   nuvem.
+6. Testar notificações no app instalado.
+7. Testar o despertador somente em iPhone compatível com o módulo nativo.

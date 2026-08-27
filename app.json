@@ -5,7 +5,7 @@
     "scheme": "celeste",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-celeste-v2.png",
     "userInterfaceStyle": "automatic",
     "splash": {
       "backgroundColor": "#E6EFF8"
@@ -19,6 +19,7 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/mascot/celi.png",
         "backgroundColor": "#AFC8E7"
       },
       "package": "com.lenda.celeste"

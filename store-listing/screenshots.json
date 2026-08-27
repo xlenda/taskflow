@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "sourceNotice": "Drafts use controlled synthetic data rendered by the real Celeste web interface. Replace raw captures with native build screenshots before submission.",
+  "items": [
+    {
+      "order": 1,
+      "id": "anchor-scene",
+      "source": "manifestation-top",
+      "accent": "#EBAE43",
+      "pt-BR": {
+        "headline": "Uma cena feita das suas palavras",
+        "alt": "Cena-Âncora personalizada criada com as respostas da pessoa e uma afirmação em destaque."
+      },
+      "en-US": {
+        "headline": "A scene made from your words",
+        "alt": "A personalized Anchor Scene shaped by the person's answers, with their affirmation highlighted."
+      }
+    },
+    {
+      "order": 2,
+      "id": "chosen-voice",
+      "source": "narrators",
+      "accent": "#6F63D9",
+      "pt-BR": {
+        "headline": "Ouça na voz que combina com você",
+        "alt": "Seletor de narradores da Celeste com estilos de voz e controles para ouvir uma prévia."
+      },
+      "en-US": {
+        "headline": "Listen in a voice that feels right",
+        "alt": "Celeste narrator selector with voice styles and controls to hear a preview."
+      }
+    },
+    {
+      "order": 3,
+      "id": "personal-affirmations",
+      "source": "affirmations",
+      "accent": "#D86483",
+      "pt-BR": {
+        "headline": "Afirmações feitas com suas respostas",
+        "alt": "Afirmação pessoal baseada na história da pessoa, com opção de ouvir e guardar."
+      },
+      "en-US": {
+        "headline": "Affirmations shaped by your answers",
+        "alt": "A personal affirmation based on the person's story, with options to listen and save."
+      }
+    },
+    {
+      "order": 4,
+      "id": "bridge-today",
+      "source": "manifestation-bridge",
+      "accent": "#4A80C9",
+      "pt-BR": {
+        "headline": "Um passo possível para hoje",
+        "alt": "Ponte de Hoje com uma ação pequena e editável ligada à manifestação pessoal."
+      },
+      "en-US": {
+        "headline": "One possible step for today",
+        "alt": "Bridge for Today with one small editable action connected to a personal intention."
+      }
+    },
+    {
+      "order": 5,
+      "id": "one-minute-ritual",
+      "source": "daily-ritual",
+      "accent": "#42B8AA",
+      "pt-BR": {
+        "headline": "Seu ritual em apenas um minuto",
+        "alt": "Ritual de Um Minuto com afirmação pessoal, progresso do capítulo e ação para começar."
+      },
+      "en-US": {
+        "headline": "Your ritual in just one minute",
+        "alt": "One-Minute Ritual with a personal affirmation, chapter progress, and a start action."
+      }
+    },
+    {
+      "order": 6,
+      "id": "dream-affirmation",
+      "source": "dream-result",
+      "accent": "#EBAE43",
+      "pt-BR": {
+        "headline": "Transforme sonhos em afirmações",
+        "alt": "Relato de sonho transformado em reflexão e afirmação pessoal sem previsão ou diagnóstico."
+      },
+      "en-US": {
+        "headline": "Turn dreams into affirmations",
+        "alt": "A dream reflection turned into a personal affirmation without prediction or diagnosis."
+      }
+    },
+    {
+      "order": 7,
+      "id": "living-mirror",
+      "source": "home",
+      "sources": {
+        "apple": "manifestation-progress",
+        "google-play": "manifestation-progress"
+      },
+      "accent": "#4A80C9",
+      "pt-BR": {
+        "headline": "Veja seu caminho evoluir",
+        "alt": "Tela inicial da Celeste com capítulo atual, prática concluída e próximos passos pessoais."
+      },
+      "en-US": {
+        "headline": "Watch your journey evolve",
+        "alt": "Celeste home screen with the current chapter, completed practice, and personal next steps."
+      }
+    },
+    {
+      "order": 8,
+      "id": "private-traces",
+      "source": "journey",
+      "accent": "#4F9A73",
+      "pt-BR": {
+        "headline": "Registre o que mudou de verdade",
+        "alt": "Jornada pessoal com dias praticados e Rastros de Mudança privados registrados pela pessoa."
+      },
+      "en-US": {
+        "headline": "Record what truly changed",
+        "alt": "Personal journey with practice days and private Traces of Change recorded by the person."
+      }
+    }
+  ]
+}

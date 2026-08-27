@@ -1,0 +1,31 @@
+locale,term,intent,fit,primary_placement,priority,volume_status
+pt-BR,afirmações diárias,hábito diário,alta,título,principal,medir após lançamento
+pt-BR,afirmações positivas,bem-estar,alta,keywords Apple e descrição,principal,medir após lançamento
+pt-BR,manifestação,categoria,alta,subtítulo e descrição,principal,medir após lançamento
+pt-BR,visualização,prática,alta,keywords Apple e descrição,principal,medir após lançamento
+pt-BR,sonhos,recurso,alta,subtítulo e descrição,principal,medir após lançamento
+pt-BR,afirmações personalizadas,diferencial,alta,descrição,principal,medir após lançamento
+pt-BR,diário de sonhos,recurso,alta,descrição,secundária,medir após lançamento
+pt-BR,prosperidade,intenção,alta,keywords Apple e conteúdo,secundária,medir após lançamento
+pt-BR,amor,intenção,alta,keywords Apple e conteúdo,secundária,medir após lançamento
+pt-BR,autoestima,intenção,alta,keywords Apple e conteúdo,secundária,medir após lançamento
+pt-BR,metas,ação,alta,keywords Apple e descrição,secundária,medir após lançamento
+pt-BR,bem-estar,categoria,alta,keywords Apple e descrição,secundária,medir após lançamento
+pt-BR,gratidão,hábito,média,keywords Apple,exploratória,medir após lançamento
+pt-BR,motivação,hábito,média,keywords Apple,exploratória,medir após lançamento
+pt-BR,ritual diário,hábito,alta,descrição,secundária,medir após lançamento
+en-US,daily affirmations,daily habit,high,title,primary,measure after launch
+en-US,positive affirmations,wellbeing,high,Apple keywords and description,primary,measure after launch
+en-US,manifestation,category,high,subtitle and description,primary,measure after launch
+en-US,visualization,practice,high,Apple keywords and description,primary,measure after launch
+en-US,dreams,feature,high,subtitle and description,primary,measure after launch
+en-US,personalized affirmations,differentiator,high,description,primary,measure after launch
+en-US,dream journal,feature,high,description,secondary,measure after launch
+en-US,self care,need,high,Apple keywords and description,secondary,measure after launch
+en-US,motivation,habit,medium,Apple keywords,exploratory,measure after launch
+en-US,gratitude,habit,medium,Apple keywords,exploratory,measure after launch
+en-US,mindset,need,medium,Apple keywords,exploratory,measure after launch
+en-US,goals,action,high,Apple keywords and description,secondary,measure after launch
+en-US,wellbeing,category,high,Apple keywords and description,secondary,measure after launch
+en-US,one minute ritual,habit,high,description,secondary,measure after launch
+en-US,21 day journey,habit,high,description,secondary,measure after launch

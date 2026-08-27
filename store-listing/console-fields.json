@@ -1,0 +1,50 @@
+{
+  "app": {
+    "brand": "Celeste",
+    "version": "1.0.0",
+    "defaultLocale": "pt-BR",
+    "secondaryLocale": "en-US",
+    "businessModel": "free_without_active_purchases",
+    "ownerConfirmationRequired": true
+  },
+  "apple": {
+    "bundleId": "com.lenda.celeste",
+    "skuSuggestion": "celeste-ios-001",
+    "primaryCategory": "Health & Fitness",
+    "secondaryCategory": "Lifestyle",
+    "supportsTablet": false,
+    "marketingUrl": "https://celeste-jet-two.vercel.app",
+    "privacyUrl": null,
+    "supportUrl": null,
+    "copyrightOwner": null,
+    "reviewContact": null,
+    "releaseMode": null,
+    "territories": null
+  },
+  "googlePlay": {
+    "packageName": "com.lenda.celeste",
+    "appOrGame": "app",
+    "category": "Health & Fitness",
+    "tagCandidates": [
+      "Personal growth",
+      "Mindfulness",
+      "Journal",
+      "Meditation",
+      "Well-being"
+    ],
+    "containsAds": false,
+    "loginRequired": false,
+    "marketingUrl": "https://celeste-jet-two.vercel.app",
+    "privacyUrl": null,
+    "supportEmail": null,
+    "targetAudienceRecommendation": "18_and_over_owner_must_confirm",
+    "territories": null
+  },
+  "releaseBoundaries": {
+    "publicCommunity": false,
+    "accounts": false,
+    "paidSubscription": false,
+    "androidSystemAlarm": false,
+    "iosAlarm": "advertise_only_after_native_device_validation"
+  }
+}
