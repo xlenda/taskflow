@@ -292,6 +292,12 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'utilitarios usados pelas funcoes precisam entrar no pacote da Vercel'
   );
   assert.match(deploySource, /fs\.copyFileSync\(source, path\.join\(utilsTarget, name\)\)/);
+  assert.match(
+    deploySource,
+    /SERVER_CONSTANT_FILES = \['cloudConsent\.js'\]/,
+    'consentimento compartilhado precisa entrar no pacote da Vercel'
+  );
+  assert.match(deploySource, /fs\.copyFileSync\(source, path\.join\(constantsTarget, name\)\)/);
 
   const candidateIndex = main.indexOf('const candidate = await createProductionCandidate');
   const candidateCheckIndex = main.indexOf('await candidateChecks(vercelCli, candidate, deployEnv)');

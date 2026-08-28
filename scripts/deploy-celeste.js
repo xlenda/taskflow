@@ -21,6 +21,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.resolve(ROOT, 'dist');
 const PROD = 'https://celeste-jet-two.vercel.app';
 const VERCEL_SCOPE = 'xlendas-projects';
+const SERVER_CONSTANT_FILES = ['cloudConsent.js'];
 const SERVER_UTIL_FILES = ['profileSemantics.js', 'selfDescription.js'];
 const VERCEL_PROJECT = 'celeste';
 const VERCEL_ORG_ID = 'team_cFfjLrJklzEd8k1IOcGcBjXv';
@@ -233,6 +234,15 @@ function copyDeployInputs() {
   assert(fs.existsSync(knowledgeSource), 'Base de conhecimento versionada ausente');
   fs.mkdirSync(knowledgeTarget, { recursive: true });
   fs.copyFileSync(knowledgeSource, path.join(knowledgeTarget, 'celeste-core-v2.json'));
+
+  const constantsSource = path.join(ROOT, 'constants');
+  const constantsTarget = path.join(DIST, 'constants');
+  fs.mkdirSync(constantsTarget, { recursive: true });
+  for (const name of SERVER_CONSTANT_FILES) {
+    const source = path.join(constantsSource, name);
+    assert(fs.existsSync(source), `Constante do backend ausente: ${name}`);
+    fs.copyFileSync(source, path.join(constantsTarget, name));
+  }
 
   const utilsSource = path.join(ROOT, 'utils');
   const utilsTarget = path.join(DIST, 'utils');
