@@ -606,17 +606,36 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitAndClick(page, 'Manifestar');
   await waitForHome(page, 20000);
 
-  // O desejo respondido no onboarding precisa chegar à prática diária: a aba
-  // abre no deck pessoal e mostra exatamente a afirmação salva, não um card
-  // genérico do catálogo.
-  const personalAffirmation = await page.evaluate(() => {
+  // A Âncora, as seis afirmações presentes e a reflexão do sonho têm papéis
+  // distintos. O deck deve usar a suíte 6+6 pessoal e manter o sonho separado.
+  const personalDeck = await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
-    return saved.manifestations && saved.manifestations[0] && saved.manifestations[0].affirmation;
+    const manifestations = Array.isArray(saved.manifestations) ? saved.manifestations : [];
+    const anchor = manifestations.find((item) => item?.id === saved.anchorSceneId) ||
+      manifestations.find((item) => item?.origin === 'onboarding-anchor');
+    const lang = saved.lang === 'en' ? 'en' : 'pt';
+    const affirmations = anchor?.journeySuiteByLang?.[lang]?.affirmations || [];
+    const dreamAffirmation = saved.morningRitual?.entries?.[0]?.affirmation || '';
+    return {
+      affirmations: affirmations.map((item) => ({ category: item.category, text: item.text })),
+      dreamAffirmation,
+    };
   });
-  if (!personalAffirmation) throw new Error('Onboarding não salvou a afirmação derivada do sonho');
+  const expectedCategories = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
+  if (
+    personalDeck.affirmations.length !== expectedCategories.length ||
+    personalDeck.affirmations.some(
+      (item, index) => item.category !== expectedCategories[index] || !item.text
+    )
+  ) {
+    throw new Error(`Suíte pessoal 6+6 inválida: ${JSON.stringify(personalDeck.affirmations)}`);
+  }
+  if (!personalDeck.dreamAffirmation) throw new Error('Sonho não salvou sua afirmação própria');
   await waitAndClick(page, 'Afirmações');
   await waitForText(page, 'Dos seus sonhos');
-  await waitForAffirmationInDeck(page, personalAffirmation);
+  await waitForAffirmationInDeck(page, personalDeck.affirmations[0].text);
+  await waitAndClick(page, 'Dos seus sonhos');
+  await waitForText(page, personalDeck.dreamAffirmation, 20000);
   await waitAndClick(page, 'Manifestar');
   await waitForHome(page, 20000);
 
