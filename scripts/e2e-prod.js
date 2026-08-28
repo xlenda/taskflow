@@ -495,7 +495,10 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Manifestar', 20000);
   await clickTestId(page, 'open-dream-journal');
   await waitForText(page, 'Meus sonhos', 20000);
-  await clickTestId(page, 'open-dream-bonus');
+  await page.waitForSelector('[data-testid="dream-report-input"]', {
+    visible: true,
+    timeout: 20000,
+  });
   const dreamReport = 'Eu estava em uma casa perto do mar.';
   await page.type('[data-testid="dream-report-input"]', dreamReport, { delay: 12 });
   await clickTestId(page, 'dream-feeling-calm');
