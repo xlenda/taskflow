@@ -33,7 +33,7 @@ const visibleLeafFn = `
   }
 `;
 
-async function waitAndClick(page, text, timeout = 30000) {
+async function waitAndClick(page, text, timeout = 30000, hooks = {}) {
   await page.waitForFunction(`(${visibleLeafFn})(${JSON.stringify(text)}) !== null`, {
     timeout,
     polling: 300,
@@ -45,7 +45,9 @@ async function waitAndClick(page, text, timeout = 30000) {
   const box = await page.evaluate(
     `(() => { const el = (${visibleLeafFn})(${JSON.stringify(text)}); const r = el.getBoundingClientRect(); return { x: r.x + r.width/2, y: r.y + r.height/2 }; })()`
   );
+  if (typeof hooks.beforeClick === 'function') await hooks.beforeClick();
   await page.mouse.click(box.x, box.y);
+  if (typeof hooks.afterClick === 'function') await hooks.afterClick();
   console.log(`  [click] ${text}`);
 }
 
@@ -558,9 +560,15 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     await waitForText(page, 'Processamento em nuvem', 20000);
     await clickTestId(page, 'profile-gemini-switch');
     await waitForText(page, 'Confirme que você tem 18 anos ou mais', 15000);
-    assertNoPaidAttemptBeforeConsent();
-    uiSmokeCloudPhase = 'after-consent';
-    await waitAndClick(page, 'Tenho 18+ · Permitir');
+    await waitAndClick(page, 'Tenho 18+ · Permitir', 30000, {
+      beforeClick: () => {
+        assertNoPaidAttemptBeforeConsent();
+        uiSmokeCloudPhase = 'confirming-consent';
+      },
+      afterClick: () => {
+        uiSmokeCloudPhase = 'after-consent';
+      },
+    });
     await page.waitForFunction(
       `(version) => { const p = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {}; return p.cloudConsentVersion === version && p.cloudPersonalization === true && p.cloudDreamConsent === true && p.cloudAdultConfirmed === true; }`,
       { timeout: 15000, polling: 200 },

@@ -294,6 +294,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);
+  assert.match(e2eSource, /afterClick: \(\) => \{\s*uiSmokeCloudPhase = 'after-consent'/);
   assert.match(e2eSource, /clickTestId\(page, 'retry-dream-cloud'\)/);
   assert.match(e2eSource, /entries\[0\]\?\.generatorVersion === 'celeste-dream-v3'/);
   const blockedUiSmokeRoutes = e2eSource.slice(
