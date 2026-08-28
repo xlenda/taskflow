@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
+const { buildPersonalJourneySuites } = require('../utils/personalJourney');
 
 const URL = process.env.TARGET_URL || 'https://celeste-jet-two.vercel.app';
 const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(URL);
@@ -14,14 +15,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Estado já onboardado + idioma PT, injetado direto para pular o funil.
 const TODAY = new Date().toISOString().slice(0, 10);
+const QA_PROFILE = { name: 'Ana', city: 'Guarulhos' };
+const QA_JOURNEY = buildPersonalJourneySuites({
+  desire: 'Meu caminho',
+  profile: QA_PROFILE,
+  originLang: 'pt',
+});
+const QA_AFFIRMATION_TEXTS = QA_JOURNEY.pt.affirmations.map((item) => item.text);
 const SEED = {
   name: 'Ana',
   lang: 'pt',
   onboardingDone: true,
-  profile: { name: 'Ana', city: 'Guarulhos' },
+  profile: QA_PROFILE,
+  anchorSceneId: 'm-qa-active',
   manifestations: [
     {
       id: 'm-qa-active',
+      origin: 'onboarding-anchor',
       title: 'Meu caminho',
       category: 'Career',
       accent: 2,
@@ -34,6 +44,7 @@ const SEED = {
       goalDays: 21,
       createdAt: TODAY,
       sessions: [TODAY],
+      journeySuiteByLang: QA_JOURNEY,
       evidence: [
         null,
         { id: 'e-invalid-without-text' },
@@ -170,26 +181,24 @@ const ENGLISH_LEAKS = [
   // ---- botão de ouvir: precisa estar NA tela de Afirmações e VISÍVEL ----
   await tapText('Afirmações');
   await sleep(2500);
-  const personalSet = await page.evaluate(() => {
+  const personalSet = await page.evaluate((expectedAffirmations) => {
     const text = document.body.innerText;
     return {
       dreamChip: text.includes('Dos seus sonhos'),
-      personalText:
-        text.includes('Eu abro espaço para o meu trabalho ser visto.') ||
-        text.includes('Eu escolho o que merece entrar no meu dia.'),
-      counter: /\b[12]\s*\/\s*2\b/.test(text),
+      personalText: expectedAffirmations.some((affirmation) => text.includes(affirmation)),
+      counter: /\b[1-6]\s*\/\s*6\b/.test(text),
       objectLeak: text.includes('[object Object]'),
     };
-  });
+  }, QA_AFFIRMATION_TEXTS);
   if (personalSet.dreamChip) failures.push('chip "Dos seus sonhos" apareceu sem relato de sonho');
-  if (!personalSet.personalText) failures.push('aba não abriu com uma afirmação pessoal da manifestação');
-  if (!personalSet.counter) failures.push('conjunto pessoal não contém as 2 afirmações do estado');
+  if (!personalSet.personalText) failures.push('aba não abriu com uma das seis afirmações pessoais da Âncora');
+  if (!personalSet.counter) failures.push('conjunto pessoal não contém as seis afirmações da jornada 6+6');
   if (personalSet.objectLeak) failures.push('conjunto pessoal renderizou [object Object]');
 
   await tapText('Todas');
   await sleep(350);
-  const allCounter = await page.evaluate(() => /\b[12]\s*\/\s*2\b/.test(document.body.innerText));
-  if (!allCounter) failures.push('filtro Todas não reuniu as 2 manifestações pessoais');
+  const allCounter = await page.evaluate(() => /\b[1-6]\s*\/\s*6\b/.test(document.body.innerText));
+  if (!allCounter) failures.push('filtro Todas não reuniu as seis afirmações pessoais');
 
   const audio = await page.evaluate(() => {
     const visible = [...document.querySelectorAll('[aria-label]')].filter((e) => e.offsetParent !== null);
@@ -271,10 +280,7 @@ const ENGLISH_LEAKS = [
   );
   if (desktopAffirmationsOverflow) failures.push('Afirmações tem rolagem horizontal no desktop');
   const desktopAffirmationsText = await page.evaluate(() => document.body.innerText);
-  if (
-    !desktopAffirmationsText.includes('Eu abro espaço para o meu trabalho ser visto.') &&
-    !desktopAffirmationsText.includes('Eu escolho o que merece entrar no meu dia.')
-  ) {
+  if (!QA_AFFIRMATION_TEXTS.some((affirmation) => desktopAffirmationsText.includes(affirmation))) {
     failures.push('afirmação pessoal sumiu em Afirmações no desktop');
   }
   if (desktopAffirmationsText.includes('Dos seus sonhos')) {
