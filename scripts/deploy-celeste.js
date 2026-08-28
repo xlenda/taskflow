@@ -19,6 +19,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.resolve(ROOT, 'dist');
 const PROD = 'https://celeste-jet-two.vercel.app';
 const VERCEL_SCOPE = 'xlendas-projects';
+const SERVER_UTIL_FILES = ['profileSemantics.js', 'selfDescription.js'];
 const VERCEL_PROJECT = 'celeste';
 const VERCEL_ORG_ID = 'team_cFfjLrJklzEd8k1IOcGcBjXv';
 const VERCEL_PROJECT_ID = 'prj_MlPNJAFLd3AtJdafeqwcLzFs6xBA';
@@ -224,6 +225,15 @@ function copyDeployInputs() {
   assert(fs.existsSync(knowledgeSource), 'Base de conhecimento versionada ausente');
   fs.mkdirSync(knowledgeTarget, { recursive: true });
   fs.copyFileSync(knowledgeSource, path.join(knowledgeTarget, 'celeste-core-v2.json'));
+
+  const utilsSource = path.join(ROOT, 'utils');
+  const utilsTarget = path.join(DIST, 'utils');
+  fs.mkdirSync(utilsTarget, { recursive: true });
+  for (const name of SERVER_UTIL_FILES) {
+    const source = path.join(utilsSource, name);
+    assert(fs.existsSync(source), `Utilitario do backend ausente: ${name}`);
+    fs.copyFileSync(source, path.join(utilsTarget, name));
+  }
 }
 
 function patchExportHtml() {
@@ -698,8 +708,8 @@ async function liveGeminiChecks(
     'Celeste AI nao devolveu scene/source=celeste-ai'
   );
   assert(
-    ['anthropic', 'openai', 'gemini'].includes(generation.generation?.provider),
-    'Celeste AI nao informou um provider valido'
+    generation.generation?.provider === 'anthropic',
+    `Celeste AI nao confirmou Anthropic como provider primario: ${generation.generation?.provider || 'ausente'}`
   );
   assert(generation.generation.promptVersion === 'celeste-scene-v7', 'Celeste AI nao confirmou o prompt de cena esperado');
   assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v2', 'Celeste AI nao confirmou a base esperada');

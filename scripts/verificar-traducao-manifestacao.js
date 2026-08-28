@@ -24,12 +24,16 @@ let localizeManifestation;
 let applyTranslatedManifestationVariant;
 let manifestationVariantFromScene;
 let shouldTranslateManifestationVariant;
+let repairLegacyLocalManifestation;
+let localInterpretedUpgradeCandidate;
 try {
   ({
     localizeManifestation,
     applyTranslatedManifestationVariant,
     manifestationVariantFromScene,
     shouldTranslateManifestationVariant,
+    repairLegacyLocalManifestation,
+    localInterpretedUpgradeCandidate,
   } = require(path.join(root, 'utils', 'manifestationLanguage.js')));
 } finally {
   Module._extensions['.js'] = originalLoader;
@@ -248,6 +252,90 @@ assert.doesNotMatch(
   'item pessoal legado caiu em conteudo editorial'
 );
 
+const legacyRawCopy = {
+  id: 'm-legacy-raw-copy',
+  title: 'construir uma familia nova',
+  category: 'Love',
+  lang: 'pt',
+  intention: 'Construir uma familia nova.',
+  affirmation: 'Eu honro o que sei sobre mim: pro ativo bondoso.',
+  story: 'Eu reconheco o que contei sobre mim: pro ativo bondoso.',
+  anchorIdentity: 'Eu ajo com presenca.',
+  anchorStep: 'Quando eu hesitar, entao vou escolher um passo possivel.',
+  personalizedWith: ['quem voce e'],
+  generation: { source: 'local', promptVersion: 'local-v1' },
+  sessions: ['2026-08-27'],
+  evidence: [{ id: 'e-1', text: 'Uma conversa honesta.' }],
+  visual: { cacheKey: 'pv2:kept', mimeType: 'image/jpeg' },
+  contentByLang: {
+    pt: {
+      affirmation: 'Eu honro o que sei sobre mim: pro ativo bondoso.',
+      story: 'Eu reconheco o que contei sobre mim: pro ativo bondoso.',
+      generation: { source: 'local', promptVersion: 'local-v1' },
+    },
+  },
+};
+const repairedLegacyCopy = repairLegacyLocalManifestation(
+  legacyRawCopy,
+  { aboutYou: 'pro ativo bondoso', obstacle: 'medo de recomecar' }
+);
+assert.match(repairedLegacyCopy.affirmation, /minha proatividade e minha bondade/i);
+assert.doesNotMatch(repairedLegacyCopy.affirmation, /pro ativo bondoso|sei sobre mim\s*:/i);
+assert.strictEqual(repairedLegacyCopy.generation.promptVersion, 'local-interpreted-v2');
+assert.deepStrictEqual(repairedLegacyCopy.sessions, legacyRawCopy.sessions, 'migracao apagou pratica');
+assert.deepStrictEqual(repairedLegacyCopy.evidence, legacyRawCopy.evidence, 'migracao apagou evidencia');
+assert.strictEqual(repairedLegacyCopy.visual, legacyRawCopy.visual, 'migracao apagou imagem');
+assert.deepStrictEqual(
+  localInterpretedUpgradeCandidate(repairedLegacyCopy),
+  { id: legacyRawCopy.id, lang: 'pt' },
+  'copia local reparada nao entrou na fila de aprimoramento remoto'
+);
+
+const repairedBackgroundLanguage = repairLegacyLocalManifestation(
+  {
+    ...legacyRawCopy,
+    lang: 'en',
+    title: 'build a new family',
+    generation: { source: 'user-edited', promptVersion: 'user-edit-v1' },
+    contentByLang: {
+      pt: {
+        title: 'construir uma familia nova',
+        affirmation: 'Eu honro o que sei sobre mim: pro ativo bondoso.',
+        story: 'Eu reconheco o que contei sobre mim: pro ativo bondoso.',
+        generation: { source: 'local', promptVersion: 'local-v1' },
+      },
+    },
+  },
+  { aboutYou: 'pro ativo bondoso' }
+);
+assert.strictEqual(
+  repairedBackgroundLanguage.contentByLang.pt.title,
+  'construir uma familia nova',
+  'reparo em segundo plano nao pode trocar o titulo PT pelo titulo visivel EN'
+);
+assert.strictEqual(
+  repairedBackgroundLanguage.title,
+  'build a new family',
+  'reparo de outra variante nao pode mudar o idioma atualmente visivel'
+);
+
+const protectedLegacyEdit = {
+  ...legacyRawCopy,
+  affirmation: 'Eu escrevi esta frase e quero preserva-la.',
+  generation: { source: 'user-edited', promptVersion: 'user-edit-v1' },
+  contentByLang: {
+    pt: {
+      affirmation: 'Eu escrevi esta frase e quero preserva-la.',
+      generation: { source: 'user-edited', promptVersion: 'user-edit-v1' },
+    },
+  },
+};
+assert.strictEqual(
+  repairLegacyLocalManifestation(protectedLegacyEdit, { aboutYou: 'pro ativo bondoso' }),
+  protectedLegacyEdit,
+  'edicao da pessoa nao pode ser tratada como copia local antiga'
+);
+
 const contextSource = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
 const chatSource = fs.readFileSync(path.join(root, 'screens', 'onboarding', 'ChatOnboardingScreen.js'), 'utf8');
 const addManifestationSource = contextSource.match(
@@ -262,6 +350,23 @@ assert.doesNotMatch(
 assert.ok(contextSource.includes('contentByLang'), 'contexto nao preserva variantes bilingues');
 assert.ok(contextSource.includes('translateManifestationScene'), 'contexto nao aciona traducao privada');
 assert.ok(contextSource.includes('generationEpoch'), 'traducao tardia nao respeita reset/import');
+assert.ok(
+  contextSource.includes('localInterpretedUpgradeCandidate') &&
+    contextSource.includes('localSceneUpgradeEpochRef') &&
+    contextSource.includes('manifestations[index] = localizeManifestation') &&
+    contextSource.includes('desire: candidateTitle') &&
+    contextSource.includes('currentVariant && currentVariant.title'),
+  'card local reparado precisa ser aprimorado no mesmo id sem duplicar a jornada'
+);
+assert.ok(
+  contextSource.includes('const profileFingerprint = JSON.stringify(state.profile || {})') &&
+    contextSource.includes('JSON.stringify(currentState.profile || {}) !== profileFingerprint'),
+  'aprimoramento remoto tardio nao pode sobrescrever conteudo criado antes de uma edicao de perfil'
+);
+assert.ok(
+  addManifestationSource[0].includes('localSceneUpgradeEpochRef.current = generationEpoch'),
+  'fallback local novo nao pode disparar uma segunda geracao remota na mesma abertura do app'
+);
 assert.ok(
   contextSource.includes('TRANSLATION_BATCH_SIZE') &&
     contextSource.includes('TRANSLATION_BATCH_DELAY_MS') &&

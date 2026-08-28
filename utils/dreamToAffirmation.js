@@ -15,6 +15,8 @@
 
 const norm = (s) => String(s || '').trim();
 const lower = (s) => norm(s).toLowerCase();
+const { interpretSelfDescription } = require('./selfDescription');
+const { isNonInformativeProfileAnswer } = require('./profileSemantics');
 
 // Escolhe determinístico pelo texto do desejo: a mesma pessoa com o mesmo desejo
 // recebe sempre a mesma afirmação (previsível e testável), mas desejos
@@ -277,20 +279,9 @@ const ROTULOS_PERFIL = {
   },
 };
 
-const RESPOSTAS_SEM_DETALHE = new Set([
-  "i'm not sure yet",
-  'i’m not sure yet',
-  'not sure yet',
-  'ainda não sei',
-  'ainda nao sei',
-  'prefer not to say',
-  'prefiro não responder',
-  'prefiro nao responder',
-]);
-
 function valorInformativo(valor) {
   const texto = norm(valor);
-  return texto && !RESPOSTAS_SEM_DETALHE.has(texto.toLocaleLowerCase()) ? texto : '';
+  return texto && !isNonInformativeProfileAnswer(texto) ? texto : '';
 }
 
 function rotuloPerfil(L, key) {
@@ -308,8 +299,14 @@ function selecionaAncoraPessoal(perfil, L, category) {
   if (category === 'Career') candidatas.push(candidata('work', perfil.work));
   if (category === 'Love') candidatas.push(candidata('partnerDesire', perfil.partnerDesire));
 
+  const descricaoPessoal = interpretSelfDescription(
+    semNomesDeTerceiros(valorInformativo(perfil.aboutYou), perfil, L),
+    L
+  );
   candidatas.push(
-    candidata('aboutYou', perfil.aboutYou),
+    descricaoPessoal
+      ? candidata('aboutYou', descricaoPessoal.affirmationFragment)
+      : null,
     candidata('whyMatters', perfil.whyMatters),
     candidata('location', norm(perfil.dreamLocation) || norm(perfil.city)),
     candidata('dreamHome', casaEmIdioma(perfil.dreamHome, L)),
@@ -331,7 +328,7 @@ const OBJETIVOS_PESSOAIS = {
 
 const FRASES_ANCORA = {
   pt: {
-    aboutYou: (a) => `Eu honro o que sei sobre mim: ${a}.`,
+    aboutYou: (a) => `Eu reconheço ${a}, e deixo essas qualidades orientarem meus próximos passos.`,
     whyMatters: (a) => `Eu mantenho claro o meu motivo: ${a}.`,
     hopedChange: (a) => `Eu mantenho claro o que quero transformar: ${a}.`,
     work: (a) => `Eu reconheço meu caminho profissional: ${a}.`,
@@ -340,7 +337,7 @@ const FRASES_ANCORA = {
     dreamHome: (a) => `Eu abro espaço para a casa que imagino: ${a}.`,
   },
   en: {
-    aboutYou: (a) => `I honor what I know about myself: ${a}.`,
+    aboutYou: (a) => `I recognize ${a}, and let those qualities guide my next steps.`,
     whyMatters: (a) => `I keep my reason clear: ${a}.`,
     hopedChange: (a) => `I stay clear about what I want to change: ${a}.`,
     work: (a) => `I recognize my professional path: ${a}.`,
@@ -448,7 +445,10 @@ export function dreamToAffirmation(desejo, perfil = {}, lang = 'pt', category = 
   const sentimentoTrabalho = norm(perfil.workFeeling);
   const relacao = norm(perfil.relationshipStatus);
   const parceiro = norm(perfil.partnerDesire).slice(0, 220);
-  const sobre = norm(perfil.aboutYou).slice(0, 220);
+  const sobre = interpretSelfDescription(
+    semNomesDeTerceiros(valorInformativo(perfil.aboutYou), perfil, L),
+    L
+  );
   const passado = norm(perfil.pastInfluence).slice(0, 220);
   const addDetalhe = (label, text) => {
     if (text) detalhes.push({ label, text });
@@ -479,8 +479,8 @@ export function dreamToAffirmation(desejo, perfil = {}, lang = 'pt', category = 
     addDetalhe(
       rotuloPerfil(L, 'aboutYou'),
       L === 'pt'
-        ? `Você se reconhece no que contou sobre si: ${lower(sobre)}.`
-        : `You recognize yourself in what you shared: ${lower(sobre)}.`
+        ? `Você reconhece ${sobre.storyFragment} nas pequenas escolhas do dia.`
+        : `You recognize ${sobre.storyFragment} in the small choices you make today.`
     );
   }
   if (passado) {

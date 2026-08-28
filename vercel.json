@@ -1,6 +1,7 @@
 {
   "functions": {
-    "api/gerar-visual.js": { "maxDuration": 45 }
+    "api/gerar-cena.js": { "maxDuration": 60 },
+    "api/gerar-visual.js": { "maxDuration": 60 }
   },
   "rewrites": [
     {

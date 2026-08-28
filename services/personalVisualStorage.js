@@ -11,6 +11,13 @@ const CACHE_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{5,139}$/;
 
 let databasePromise = null;
 
+function storageError(code = 'personal_visual_storage_unavailable') {
+  const error = new Error(code);
+  error.code = code;
+  error.stage = 'storage';
+  return error;
+}
+
 function cleanCacheKey(value) {
   const key = typeof value === 'string' ? value.trim().toLowerCase() : '';
   return CACHE_KEY_PATTERN.test(key) ? key : '';
@@ -33,7 +40,7 @@ function estimatedBase64Bytes(value) {
 
 function openDatabase() {
   if (Platform.OS !== 'web' || typeof indexedDB === 'undefined') {
-    return Promise.reject(new Error('personal_visual_storage_unavailable'));
+    return Promise.reject(storageError());
   }
   if (databasePromise) return databasePromise;
   databasePromise = new Promise((resolve, reject) => {
@@ -45,8 +52,8 @@ function openDatabase() {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(new Error('personal_visual_storage_unavailable'));
-    request.onblocked = () => reject(new Error('personal_visual_storage_unavailable'));
+    request.onerror = () => reject(storageError());
+    request.onblocked = () => reject(storageError());
   }).catch((error) => {
     databasePromise = null;
     throw error;
@@ -63,12 +70,12 @@ async function webOperation(mode, operation) {
     try {
       result = operation(store);
     } catch (_error) {
-      reject(new Error('personal_visual_storage_unavailable'));
+      reject(storageError());
       return;
     }
     transaction.oncomplete = () => resolve(result && result.result);
-    transaction.onerror = () => reject(new Error('personal_visual_storage_unavailable'));
-    transaction.onabort = () => reject(new Error('personal_visual_storage_unavailable'));
+    transaction.onerror = () => reject(storageError());
+    transaction.onabort = () => reject(storageError());
   });
 }
 
@@ -80,14 +87,25 @@ function nativeFile(cacheKey) {
   return new File(nativeDirectory(), `${cacheKey}.jpg`);
 }
 
-function base64ToBlob(base64) {
-  if (typeof atob !== 'function') throw new Error('personal_visual_storage_unavailable');
+function base64ToBytes(base64) {
+  if (typeof atob !== 'function') throw storageError();
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
-  return new Blob([bytes], { type: 'image/jpeg' });
+  return bytes;
+}
+
+function bytesFromRecord(record) {
+  const value = record && record.bytes;
+  if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return null;
 }
 
 export function createPersonalVisualCacheKey(manifestationId) {
@@ -108,14 +126,17 @@ export async function savePersonalVisual({ cacheKey, base64, mimeType }) {
     !validBase64(base64) ||
     estimatedBase64Bytes(base64) > MAX_IMAGE_BYTES
   ) {
-    throw new Error('invalid_personal_visual');
+    throw storageError('invalid_personal_visual');
   }
 
   if (Platform.OS === 'web') {
-    const blob = base64ToBlob(base64);
-    if (!blob.size || blob.size > MAX_IMAGE_BYTES) throw new Error('invalid_personal_visual');
+    const bytes = base64ToBytes(base64);
+    if (!bytes.byteLength || bytes.byteLength > MAX_IMAGE_BYTES) {
+      throw storageError('invalid_personal_visual');
+    }
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await webOperation('readwrite', (store) =>
-      store.put({ blob, mimeType: 'image/jpeg', createdAt: new Date().toISOString() }, key)
+      store.put({ bytes: buffer, mimeType: 'image/jpeg', createdAt: new Date().toISOString() }, key)
     );
     return key;
   }
@@ -127,7 +148,7 @@ export async function savePersonalVisual({ cacheKey, base64, mimeType }) {
   file.write(base64, { encoding: 'base64' });
   if (!file.exists || file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
     if (file.exists) file.delete();
-    throw new Error('invalid_personal_visual');
+    throw storageError('invalid_personal_visual');
   }
   return key;
 }
@@ -138,7 +159,12 @@ export async function acquirePersonalVisual(cacheKey) {
 
   if (Platform.OS === 'web') {
     const record = await webOperation('readonly', (store) => store.get(key));
-    const blob = record && record.blob;
+    const storedBytes = bytesFromRecord(record);
+    const blob = storedBytes
+      ? new Blob([storedBytes], { type: 'image/jpeg' })
+      : record && record.blob instanceof Blob
+      ? record.blob
+      : null;
     if (
       !(blob instanceof Blob) ||
       blob.type !== 'image/jpeg' ||

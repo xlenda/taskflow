@@ -5,6 +5,7 @@ const OPERATIONS = new Set(['scene', 'translation', 'dream', 'audio', 'visual'])
 const AUTH_TIMEOUT_MS = 5000;
 
 let authorizerOverride = null;
+let finalizerOverride = null;
 
 function cleanHeader(value, max = 2048) {
   const source = Array.isArray(value) ? value[0] : value;
@@ -155,14 +156,19 @@ async function reserveCredit(config, input) {
           : 429,
       };
     }
-    return { ok: true, duplicate: false };
+    // Migration 004/005 did not return `reserved` and charged in one phase.
+    // Only an explicit true means the two-phase finalizer exists and is needed.
+    return { ok: true, duplicate: false, reserved: result.reserved === true };
   } catch (_error) {
     return { error: 'spend_guard_unavailable', status: 503 };
   }
 }
 
 async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
-  if (authorizerOverride) return authorizerOverride(req, { operation, units });
+  if (authorizerOverride) {
+    const overridden = await authorizerOverride(req, { operation, units });
+    return overridden && overridden.ok ? { ...overridden, testOverride: true } : overridden;
+  }
   if (!OPERATIONS.has(operation) || !Number.isInteger(units) || units < 1 || units > 20) {
     return { error: 'spend_guard_invalid', status: 500 };
   }
@@ -191,22 +197,107 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   return {
     ok: true,
     userId: identity.userId,
+    requestId: id,
+    operation,
+    units,
     native: isNativeRequest(req),
     duplicate: reservation.duplicate,
+    reserved: reservation.reserved,
   };
+}
+
+async function finalizeCredit(config, access, commit) {
+  let response;
+  try {
+    const headers = {
+      apikey: config.serviceKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (!/^sb_secret_/i.test(config.serviceKey)) {
+      headers.Authorization = `Bearer ${config.serviceKey}`;
+    }
+    response = await fetchWithTimeout(
+      `${config.url}/rest/v1/rpc/celeste_finalize_generation_credit`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          p_user_id: access.userId,
+          p_request_id: access.requestId,
+          p_commit: commit,
+        }),
+      }
+    );
+  } catch (_error) {
+    return { error: 'spend_guard_unavailable', status: 503 };
+  }
+  if (!response || !response.ok) return { error: 'spend_guard_unavailable', status: 503 };
+  try {
+    const result = await response.json();
+    if (!result || result.finalized !== true) {
+      return {
+        error: result && result.reason === 'released'
+          ? 'generation_reservation_released'
+          : 'spend_guard_unavailable',
+        status: result && result.reason === 'released' ? 409 : 503,
+      };
+    }
+    return { ok: true, state: result.state || (commit ? 'committed' : 'released') };
+  } catch (_error) {
+    return { error: 'spend_guard_unavailable', status: 503 };
+  }
+}
+
+async function settlePaidRequest(access, commit) {
+  if (!access || access.ok !== true) return { error: 'spend_guard_invalid', status: 500 };
+  if (access.testOverride) {
+    if (finalizerOverride) return finalizerOverride(access, { commit });
+    return { ok: true, state: commit ? 'committed' : 'released' };
+  }
+  if (access.reserved !== true) {
+    return { ok: true, state: 'committed', legacyOnePhase: true };
+  }
+  if (
+    !USER_ID_PATTERN.test(access.userId || '') ||
+    !REQUEST_ID_PATTERN.test(access.requestId || '')
+  ) {
+    return { error: 'spend_guard_invalid', status: 500 };
+  }
+  const config = serverConfig();
+  if (!config.url || !config.serviceKey) {
+    return { error: 'spend_guard_not_configured', status: 503 };
+  }
+  return finalizeCredit(config, access, commit);
+}
+
+function commitPaidRequest(access) {
+  return settlePaidRequest(access, true);
+}
+
+function releasePaidRequest(access) {
+  return settlePaidRequest(access, false);
 }
 
 function setAuthorizerForTests(authorizer) {
   authorizerOverride = typeof authorizer === 'function' ? authorizer : null;
 }
 
+function setFinalizerForTests(finalizer) {
+  finalizerOverride = typeof finalizer === 'function' ? finalizer : null;
+}
+
 function resetAuthorizerForTests() {
   authorizerOverride = null;
+  finalizerOverride = null;
 }
 
 module.exports = {
   authorizePaidRequest,
+  commitPaidRequest,
   isNativeRequest,
+  releasePaidRequest,
   resetAuthorizerForTests,
   setAuthorizerForTests,
+  setFinalizerForTests,
 };

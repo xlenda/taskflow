@@ -26,6 +26,15 @@ assert.ok(screenSource.includes('No published stories yet'), 'estado vazio EN au
 assert.ok(!screenSource.includes('const TESTIMONIALS'), 'nao inclua depoimentos de exemplo');
 assert.ok(serviceSource.includes("post.status === 'published'"), 'feed deve aceitar somente published');
 assert.ok(serviceSource.includes('category: safeCategory(input.category)'), 'recibo deve preservar categoria real');
+assert.ok(
+  screenSource.indexOf('await loadLocalCommunityState()') >= 0 &&
+    screenSource.indexOf('await loadLocalCommunityState()') < screenSource.indexOf('await loadCommunityState({'),
+  'a tela precisa mostrar dados locais antes de esperar a comunidade remota'
+);
+assert.ok(
+  serviceSource.includes('COMMUNITY_REMOTE_TIMEOUT_MS') && serviceSource.includes(": 'timeout'"),
+  'atualizacao remota da comunidade precisa ter prazo e fallback local'
+);
 assert.ok(screenSource.includes('deleteCommunityStory'), 'autora precisa conseguir apagar o proprio relato');
 assert.ok(
   screenSource.includes('const submitRef = useRef(false)') &&
@@ -127,6 +136,9 @@ new Function('require', 'module', 'exports', 'process', transformed)(
   assert.strictEqual(loaded.own.length, 1, 'rascunho local deve sobreviver ao reload');
   assert.strictEqual(loaded.own[0].manifestationId, 'm-local-1');
   assert.strictEqual(loaded.own[0].category, 'Peace', 'categoria real deve sobreviver ao reload');
+  const localFirst = await api.loadLocalCommunityState();
+  assert.strictEqual(localFirst.reason, 'refreshing');
+  assert.strictEqual(localFirst.own.length, 1, 'primeiro quadro local precisa ficar disponivel sem rede');
   const deleted = await api.deleteCommunityStory(loaded.own[0]);
   assert.strictEqual(deleted.ok, true, 'rascunho local deve poder ser apagado');
   assert.strictEqual((await api.loadLocalCommunityStories()).length, 0, 'rascunho apagado nao pode reaparecer');
@@ -264,6 +276,44 @@ new Function('require', 'module', 'exports', 'process', transformed)(
     '{json-corrompido',
     'payload corrompido deve ser preservado para recuperacao, nunca sobrescrito'
   );
+
+  storage.delete(api.COMMUNITY_STORAGE_KEY);
+  const hungModule = { exports: {} };
+  const hungRequire = (name) => {
+    if (name.startsWith('@babel/runtime/')) return require(name);
+    if (name === 'expo/virtual/env') return { env: {} };
+    if (name === '@react-native-async-storage/async-storage') {
+      return {
+        __esModule: true,
+        default: {
+          getItem: async () => null,
+          setItem: async () => undefined,
+          removeItem: async () => undefined,
+        },
+      };
+    }
+    if (name === './celesteSupabase') {
+      return {
+        getCelesteSupabaseClient: () => ({
+          auth: { getSession: () => new Promise(() => {}) },
+        }),
+      };
+    }
+    throw new Error(`unexpected require: ${name}`);
+  };
+  new Function('require', 'module', 'exports', 'process', transformed)(
+    hungRequire,
+    hungModule,
+    hungModule.exports,
+    { env: {} }
+  );
+  const timeoutStartedAt = Date.now();
+  const timedOut = await hungModule.exports.loadCommunityState({
+    localStories: [],
+    timeoutMs: 500,
+  });
+  assert.strictEqual(timedOut.reason, 'timeout', 'rede travada precisa voltar ao estado local');
+  assert.ok(Date.now() - timeoutStartedAt < 1200, 'rede travada nao pode prender a Comunidade');
   console.log('OK: comunidade local-first, consentimento, moderacao, exclusao sincronizada e PT/EN verificados');
 })().catch((error) => {
   console.error(error);

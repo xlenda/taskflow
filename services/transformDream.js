@@ -1,5 +1,6 @@
 import {
   profileConfirmsAdult,
+  profileAnswerHasDetail,
   redactThirdPartyNames,
   thirdPartyNames,
 } from './generatePersonalizedScene';
@@ -37,7 +38,7 @@ function minimizeDreamProfile(profile, lang) {
       ? source[key]
       : redactThirdPartyNames(source[key], privateNames, lang);
     const value = cleanText(raw, limit);
-    if (value) output[key] = value;
+    if (profileAnswerHasDetail(value)) output[key] = value;
   }
   return output;
 }

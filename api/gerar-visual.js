@@ -182,8 +182,8 @@ function buildGeminiRequest(input) {
 
 function timeoutMs() {
   const configured = Number(process.env.GEMINI_IMAGE_TIMEOUT_MS);
-  if (!Number.isFinite(configured)) return 35_000;
-  return Math.min(45_000, Math.max(5_000, Math.floor(configured)));
+  if (!Number.isFinite(configured)) return 50_000;
+  return Math.min(52_000, Math.max(5_000, Math.floor(configured)));
 }
 
 async function readResponseTextLimited(response) {
@@ -290,9 +290,8 @@ async function requestGemini(input, apiKey) {
   if (typeof fetch !== 'function') throw new VisualGenerationError('visual_unavailable');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
-  let response;
   try {
-    response = await fetch(GEMINI_INTERACTIONS_ENDPOINT, {
+    const response = await fetch(GEMINI_INTERACTIONS_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -301,23 +300,25 @@ async function requestGemini(input, apiKey) {
       body: JSON.stringify(buildGeminiRequest(input)),
       signal: controller.signal,
     });
+    if (!response || !response.ok) throw new VisualGenerationError('visual_unavailable');
+    let payload;
+    try {
+      payload = JSON.parse(await readResponseTextLimited(response));
+    } catch (error) {
+      if (error instanceof VisualGenerationError) throw error;
+      if (error && error.name === 'AbortError') throw error;
+      throw new VisualGenerationError('invalid_upstream_json');
+    }
+    return extractImage(payload);
   } catch (error) {
     if (error && error.name === 'AbortError') {
       throw new VisualGenerationError('visual_timeout');
     }
+    if (error instanceof VisualGenerationError) throw error;
     throw new VisualGenerationError('visual_unavailable');
   } finally {
     clearTimeout(timer);
   }
-  if (!response || !response.ok) throw new VisualGenerationError('visual_unavailable');
-  let payload;
-  try {
-    payload = JSON.parse(await readResponseTextLimited(response));
-  } catch (error) {
-    if (error instanceof VisualGenerationError) throw error;
-    throw new VisualGenerationError('invalid_upstream_json');
-  }
-  return extractImage(payload);
 }
 
 function allowedOrigins() {
@@ -373,8 +374,8 @@ async function verifyHumanRequest(req) {
   }
 }
 
-function sendError(res, status, code) {
-  return res.status(status).json({ error: code });
+function sendError(res, status, code, stage) {
+  return res.status(status).json({ error: code, ...(stage ? { stage } : {}) });
 }
 
 async function handler(req, res) {
@@ -396,13 +397,13 @@ async function handler(req, res) {
   const validated = validateInput(parsed.body);
   if (validated.error) return sendError(res, validated.status, validated.error);
 
-  const access = await paidAccess.authorizePaidRequest(req, { operation: 'visual', units: 8 });
-  if (!access.ok) return sendError(res, access.status, access.error);
-
   const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
   if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
-    return sendError(res, 503, 'visual_not_configured');
+    return sendError(res, 503, 'visual_not_configured', 'configuration');
   }
+
+  const access = await paidAccess.authorizePaidRequest(req, { operation: 'visual', units: 8 });
+  if (!access.ok) return sendError(res, access.status, access.error, 'access');
 
   try {
     const image = await requestGemini(validated.value, apiKey);
@@ -421,16 +422,24 @@ async function handler(req, res) {
     if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > MAX_CLIENT_JSON_BYTES) {
       throw new VisualGenerationError('visual_too_large');
     }
+    const committed = await paidAccess.commitPaidRequest(access);
+    if (!committed.ok) {
+      await paidAccess.releasePaidRequest(access).catch(() => {});
+      return sendError(res, committed.status, committed.error, 'credit_finalize');
+    }
     return res.status(200).json(payload);
   } catch (error) {
-    if (error && error.code === 'visual_timeout') return sendError(res, 504, error.code);
+    await paidAccess.releasePaidRequest(access).catch(() => {});
+    if (error && error.code === 'visual_timeout') {
+      return sendError(res, 504, error.code, 'provider');
+    }
     if (
       error &&
       ['invalid_visual', 'invalid_upstream_json', 'visual_too_large'].includes(error.code)
     ) {
-      return sendError(res, 502, error.code);
+      return sendError(res, 502, error.code, 'provider_response');
     }
-    return sendError(res, 503, 'visual_unavailable');
+    return sendError(res, 503, 'visual_unavailable', 'provider');
   }
 }
 
@@ -458,4 +467,5 @@ module.exports._internals = {
     botVerifier = typeof verifier === 'function' ? verifier : checkBotId;
   },
   setPaidAccessAuthorizerForTests: paidAccess.setAuthorizerForTests,
+  setPaidAccessFinalizerForTests: paidAccess.setFinalizerForTests,
 };

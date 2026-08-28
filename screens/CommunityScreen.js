@@ -22,6 +22,7 @@ import {
   COMMUNITY_BODY_MIN,
   deleteCommunityStory,
   loadCommunityState,
+  loadLocalCommunityState,
   normalizeCommunityStory,
   submitCommunityStory,
 } from '../services/communityStories';
@@ -224,6 +225,7 @@ export default function CommunityScreen() {
   const [deletingId, setDeletingId] = useState(null);
   const [community, setCommunity] = useState({ feed: [], own: [], mode: 'local', reason: null });
   const refreshRequestRef = useRef(0);
+  const localHydratedRef = useRef(false);
   const submitRef = useRef(false);
   const deleteRef = useRef(false);
 
@@ -238,10 +240,16 @@ export default function CommunityScreen() {
   const refresh = useCallback(async ({ clearError = true } = {}) => {
     const requestId = refreshRequestRef.current + 1;
     refreshRequestRef.current = requestId;
-    setLoading(true);
+    if (!localHydratedRef.current) setLoading(true);
     if (clearError) setError(null);
     try {
-      const next = await loadCommunityState();
+      const local = await loadLocalCommunityState();
+      if (refreshRequestRef.current !== requestId) return false;
+      setCommunity(local);
+      localHydratedRef.current = true;
+      setLoading(false);
+
+      const next = await loadCommunityState({ localStories: local.own });
       if (refreshRequestRef.current !== requestId) return false;
       setCommunity(next);
       return true;

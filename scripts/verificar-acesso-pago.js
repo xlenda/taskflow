@@ -70,7 +70,20 @@ test('paid Gemini access is identity-bound and quota-bound', async (t) => {
         json: async () => ({ id: '00000000-0000-4000-8000-000000000001' }),
       };
     }
-    return { ok: true, json: async () => ({ allowed: true, duplicate: false }) };
+    if (url.endsWith('/rpc/celeste_finalize_generation_credit')) {
+      const body = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          finalized: true,
+          state: body.p_commit ? 'committed' : 'released',
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ allowed: true, duplicate: false, reserved: true }),
+    };
   };
 
   const allowed = await paidAccess.authorizePaidRequest(request(), {
@@ -91,6 +104,15 @@ test('paid Gemini access is identity-bound and quota-bound', async (t) => {
     'Bearer server-service-role-key',
     'service-role JWT legado precisa continuar no Bearer'
   );
+  const committed = await paidAccess.commitPaidRequest(allowed);
+  assert.deepStrictEqual(committed, { ok: true, state: 'committed' });
+  assert.strictEqual(calls.length, 3);
+  assert.match(calls[2].url, /\/rpc\/celeste_finalize_generation_credit$/);
+  assert.deepStrictEqual(JSON.parse(calls[2].options.body), {
+    p_user_id: '00000000-0000-4000-8000-000000000001',
+    p_request_id: 'celeste-test-request-0001',
+    p_commit: true,
+  });
 
   calls.length = 0;
   const visualAllowed = await paidAccess.authorizePaidRequest(request(), {
@@ -102,6 +124,33 @@ test('paid Gemini access is identity-bound and quota-bound', async (t) => {
   const visualReservation = JSON.parse(calls[1].options.body);
   assert.strictEqual(visualReservation.p_operation, 'visual');
   assert.strictEqual(visualReservation.p_units, 8);
+  const released = await paidAccess.releasePaidRequest(visualAllowed);
+  assert.deepStrictEqual(released, { ok: true, state: 'released' });
+  assert.strictEqual(JSON.parse(calls[2].options.body).p_commit, false);
+
+  calls.length = 0;
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith('/auth/v1/user')) {
+      return {
+        ok: true,
+        json: async () => ({ id: '00000000-0000-4000-8000-000000000001' }),
+      };
+    }
+    // Migration 004/005 response: charged immediately and no finalizer RPC.
+    return { ok: true, json: async () => ({ allowed: true, duplicate: false }) };
+  };
+  const legacyAllowed = await paidAccess.authorizePaidRequest(request(), {
+    operation: 'scene',
+    units: 4,
+  });
+  assert.strictEqual(legacyAllowed.reserved, false);
+  assert.deepStrictEqual(await paidAccess.commitPaidRequest(legacyAllowed), {
+    ok: true,
+    state: 'committed',
+    legacyOnePhase: true,
+  });
+  assert.strictEqual(calls.length, 2, 'schema antigo nao pode chamar RPC de finalizacao ausente');
 
   delete process.env.CELESTE_SUPABASE_URL;
   delete process.env.CELESTE_SUPABASE_ANON_KEY;

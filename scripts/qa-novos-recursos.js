@@ -89,7 +89,7 @@ let browser;
 
       if (route.slug === 'jornada') {
         const navigationLayout = await page.evaluate(() => {
-          const community = document.querySelector('[data-testid="journey-open-community"]');
+          const profile = document.querySelector('[data-testid="journey-open-profile"]');
           const tabs = [
             'tab-manifest',
             'tab-visions',
@@ -97,13 +97,13 @@ let browser;
             'tab-journey',
             'tab-community',
           ].map((id) => document.querySelector(`[data-testid="${id}"]`)).filter(Boolean);
-          if (!community) return { communityVisible: false, tabCount: tabs.length, tabsFit: false };
-          const communityRect = community.getBoundingClientRect();
+          if (!profile) return { profileVisible: false, tabCount: tabs.length, tabsFit: false };
+          const profileRect = profile.getBoundingClientRect();
           const visibleBottom = tabs.length
             ? Math.min(...tabs.map((tab) => tab.getBoundingClientRect().top))
             : innerHeight;
           return {
-            communityVisible: communityRect.top >= 0 && communityRect.bottom <= visibleBottom,
+            profileVisible: profileRect.top >= 0 && profileRect.bottom <= visibleBottom,
             tabCount: tabs.length,
             tabsFit: tabs.every((tab) => {
               const rect = tab.getBoundingClientRect();
@@ -111,8 +111,8 @@ let browser;
             }),
           };
         });
-        if (!navigationLayout.communityVisible) {
-          throw new Error(`Comunidade continua escondida na Jornada em ${viewport.label}`);
+        if (!navigationLayout.profileVisible) {
+          throw new Error(`Perfil continua escondido na Jornada em ${viewport.label}`);
         }
         if (navigationLayout.tabCount !== 5 || !navigationLayout.tabsFit) {
           throw new Error(`Cinco abas nao cabem em ${viewport.label}: ${JSON.stringify(navigationLayout)}`);
@@ -291,9 +291,9 @@ let browser;
   const journeyPage = await browser.newPage();
   await journeyPage.setViewport({ width: 320, height: 480 });
   await journeyPage.goto(`${URL}/jornada`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await journeyPage.waitForSelector('[data-testid="journey-open-community"]', { visible: true, timeout: 30000 });
-  await journeyPage.click('[data-testid="journey-open-community"]');
-  await journeyPage.waitForSelector('[data-testid="community-screen"]', { visible: true, timeout: 30000 });
+  await journeyPage.waitForSelector('[data-testid="journey-open-profile"]', { visible: true, timeout: 30000 });
+  await journeyPage.click('[data-testid="journey-open-profile"]');
+  await journeyPage.waitForSelector('[data-testid="profile-screen"]', { visible: true, timeout: 30000 });
   await journeyPage.close();
 
   const dreamPage = await browser.newPage();

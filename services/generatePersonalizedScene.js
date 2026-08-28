@@ -1,7 +1,22 @@
-// The server keeps its own 18 s ceiling. The client leaves earlier so the
-// tested local generator can finish the onboarding instead of feeling frozen.
-const API_TIMEOUT_MS = 15000;
+// The server may spend up to 48 s producing the high-quality scene. Generation
+// runs behind the saved local reward and leaves headroom inside the 60 s function.
+const API_TIMEOUT_MS = 56000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
+const NON_INFORMATIVE_PROFILE_ANSWERS = new Set([
+  'ainda nao sei', 'i am not sure yet', 'im not sure yet', 'not sure yet',
+  'nada especifico', 'nothing specific', 'prefer not to say', 'prefiro nao responder',
+]);
+
+export function profileAnswerHasDetail(value) {
+  const key = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’']/g, '')
+    .replace(/[^0-9A-Za-z]+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+  return !!key && !NON_INFORMATIVE_PROFILE_ANSWERS.has(key);
+}
 
 const PROFILE_FIELD_LIMITS = {
   name: 80,
@@ -224,7 +239,7 @@ export function minimizeProfile(profile, category, lang = 'pt') {
       ? source[key]
       : redactThirdPartyNames(source[key], privateNames, lang);
     const value = cleanText(raw, PROFILE_FIELD_LIMITS[key]);
-    if (value) out[key] = value;
+    if (profileAnswerHasDetail(value)) out[key] = value;
   });
   return out;
 }

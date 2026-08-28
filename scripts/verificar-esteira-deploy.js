@@ -41,6 +41,13 @@ function productionEnv(overrides = {}) {
         type: 'sensitive',
         target: ['production'],
       },
+      ...[
+        'ANTHROPIC_API_KEY',
+        'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
+        'ANTHROPIC_TEXT_MODEL',
+        'ANTHROPIC_TEXT_EFFORT',
+        'CELESTE_TEXT_PRIMARY',
+      ].map((key) => ({ key, type: 'sensitive', target: ['production'] })),
     ],
     ...overrides,
   });
@@ -88,11 +95,24 @@ test('deploy environment fails closed without exposing values', () => {
       { key: 'CELESTE_SUPABASE_URL', type: 'encrypted', target: ['production'] },
       { key: 'CELESTE_SUPABASE_ANON_KEY', type: 'encrypted', target: ['production'] },
       { key: 'CELESTE_SUPABASE_SERVICE_ROLE_KEY', type: 'sensitive', target: ['production'] },
+      ...[
+        'ANTHROPIC_API_KEY',
+        'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
+        'ANTHROPIC_TEXT_MODEL',
+        'ANTHROPIC_TEXT_EFFORT',
+        'CELESTE_TEXT_PRIMARY',
+      ].map((key) => ({ key, type: 'sensitive', target: ['production'] })),
     ],
   })), true);
   assert.throws(
     () => validateProductionEnvironmentOutput(JSON.stringify({ envs: [] })),
     /CELESTE_SUPABASE_URL ou SUPABASE_URL ou EXPO_PUBLIC_SUPABASE_URL/
+  );
+  assert.throws(
+    () => validateProductionEnvironmentOutput(JSON.stringify({
+      envs: JSON.parse(productionEnv()).envs.filter((item) => item.key !== 'ANTHROPIC_API_KEY'),
+    })),
+    /Variaveis Anthropic.*ANTHROPIC_API_KEY/
   );
   assert.throws(
     () => validateProductionEnvironmentOutput(productionEnv({
@@ -163,8 +183,19 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /process\.env\.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY \|\|\s*process\.env\.EXPO_PUBLIC_SUPABASE_ANON_KEY/
   );
   assert.match(deploySource, /Authorization:\s*`Bearer \$\{sessionToken\}`/);
+  assert.match(
+    deploySource,
+    /generation\.generation\?\.provider === 'anthropic'/,
+    'smoke de producao precisa confirmar Claude como escritor principal'
+  );
   assert.match(deploySource, /'X-Celeste-Request-Id': requestId\(\)/);
   assert.ok(!/console\.(?:log|error)\([^\n]*accessToken/.test(deploySource));
+  assert.match(
+    deploySource,
+    /SERVER_UTIL_FILES = \['profileSemantics\.js', 'selfDescription\.js'\]/,
+    'utilitarios usados pelas funcoes precisam entrar no pacote da Vercel'
+  );
+  assert.match(deploySource, /fs\.copyFileSync\(source, path\.join\(utilsTarget, name\)\)/);
 
   const candidateIndex = main.indexOf('const candidate = await createProductionCandidate');
   const candidateCheckIndex = main.indexOf('await candidateChecks(vercelCli, candidate, deployEnv)');

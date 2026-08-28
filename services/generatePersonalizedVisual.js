@@ -1,4 +1,4 @@
-const VISUAL_API_TIMEOUT_MS = 48_000;
+const VISUAL_API_TIMEOUT_MS = 58_000;
 const MAX_RESPONSE_CHARS = 3_360_000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
 const PROFILE_FIELD_LIMITS = Object.freeze({
@@ -120,6 +120,20 @@ function validBase64(value) {
   );
 }
 
+const ERROR_CODE_PATTERN = /^[a-z0-9_-]{1,80}$/;
+const ERROR_STAGE_PATTERN = /^[a-z0-9_-]{1,40}$/;
+
+export const PersonalVisualError = class PersonalVisualError extends Error {
+  constructor(code, { stage = 'client', status } = {}) {
+    const safeCode = ERROR_CODE_PATTERN.test(code || '') ? code : 'visual_unavailable';
+    super(safeCode);
+    this.name = 'PersonalVisualError';
+    this.code = safeCode;
+    this.stage = ERROR_STAGE_PATTERN.test(stage || '') ? stage : 'client';
+    if (Number.isInteger(status) && status >= 400 && status <= 599) this.status = status;
+  }
+};
+
 function validateVisual(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const image = source.image && typeof source.image === 'object' ? source.image : {};
@@ -129,7 +143,7 @@ function validateVisual(payload) {
     image.imageSize !== '1K' ||
     !validBase64(image.data)
   ) {
-    throw new Error('invalid_personalized_visual');
+    throw new PersonalVisualError('invalid_personalized_visual', { stage: 'response' });
   }
   const generation = source.generation && typeof source.generation === 'object'
     ? source.generation
@@ -157,15 +171,32 @@ function validateVisual(payload) {
 async function readJsonResponse(response) {
   const declaredLength = Number(response.headers && response.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_CHARS) {
-    throw new Error('personalized_visual_too_large');
+    throw new PersonalVisualError('personalized_visual_too_large', { stage: 'response' });
   }
   const text = await response.text();
-  if (text.length > MAX_RESPONSE_CHARS) throw new Error('personalized_visual_too_large');
+  if (text.length > MAX_RESPONSE_CHARS) {
+    throw new PersonalVisualError('personalized_visual_too_large', { stage: 'response' });
+  }
   try {
     return JSON.parse(text);
   } catch (_error) {
-    throw new Error('invalid_personalized_visual');
+    throw new PersonalVisualError('invalid_personalized_visual', { stage: 'response' });
   }
+}
+
+async function visualApiError(response) {
+  let payload = null;
+  try {
+    const text = await response.text();
+    if (text.length <= 4096) payload = JSON.parse(text);
+  } catch (_error) {
+    // The status still provides a bounded, non-personal error classification.
+  }
+  const code = ERROR_CODE_PATTERN.test(payload && payload.error)
+    ? payload.error
+    : `visual_api_${response.status}`;
+  const stage = ERROR_STAGE_PATTERN.test(payload && payload.stage) ? payload.stage : 'api';
+  return new PersonalVisualError(code, { stage, status: response.status });
 }
 
 export async function generatePersonalizedVisual({
@@ -181,10 +212,16 @@ export async function generatePersonalizedVisual({
   const sourceProfile = profile && typeof profile === 'object' ? profile : {};
   const names = thirdPartyNames(sourceProfile);
   const safeDesire = cleanText(redactThirdPartyNames(desire, names, locale), 240);
-  if (!safeDesire) throw new Error('missing_desire');
-  if (!VISUAL_MOOD_SET.has(visualMood)) throw new Error('invalid_visual_mood');
-  if (sourceProfile.cloudPersonalization !== true) throw new Error('cloud_consent_required');
-  if (!profileConfirmsAdult(sourceProfile)) throw new Error('adult_confirmation_required');
+  if (!safeDesire) throw new PersonalVisualError('missing_desire', { stage: 'validation' });
+  if (!VISUAL_MOOD_SET.has(visualMood)) {
+    throw new PersonalVisualError('invalid_visual_mood', { stage: 'validation' });
+  }
+  if (sourceProfile.cloudPersonalization !== true) {
+    throw new PersonalVisualError('cloud_consent_required', { stage: 'validation' });
+  }
+  if (!profileConfirmsAdult(sourceProfile)) {
+    throw new PersonalVisualError('adult_confirmation_required', { stage: 'validation' });
+  }
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const request = fetchImpl || fetch;
@@ -195,30 +232,48 @@ export async function generatePersonalizedVisual({
       timer = setTimeout(() => {
         timedOut = true;
         if (controller) controller.abort();
-        reject(new Error('personalized_visual_timeout'));
+        reject(new PersonalVisualError('personalized_visual_timeout', { stage: 'client_timeout' }));
       }, normalizedVisualTimeout(timeoutMs));
     });
     const operation = (async () => {
-      const authorization = await paidApiHeaders(fetchImpl, controller ? controller.signal : undefined);
-      if (timedOut || (controller && controller.signal.aborted)) {
-        throw new Error('personalized_visual_timeout');
+      let authorization;
+      try {
+        authorization = await paidApiHeaders(fetchImpl, controller ? controller.signal : undefined);
+      } catch (error) {
+        throw new PersonalVisualError(
+          ERROR_CODE_PATTERN.test(error && error.message)
+            ? error.message
+            : 'cloud_session_unavailable',
+          { stage: 'session' }
+        );
       }
-      const response = await request(apiEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authorization },
-        cache: 'no-store',
-        signal: controller ? controller.signal : undefined,
-        body: JSON.stringify({
-          desire: safeDesire,
-          category,
-          lang: locale,
-          profile: minimizeVisualProfile(sourceProfile, locale),
-          visualMood,
-          cloudConsent: true,
-          adultConfirmed: true,
-        }),
-      });
-      if (!response.ok) throw new Error(`visual_api_${response.status}`);
+      if (timedOut || (controller && controller.signal.aborted)) {
+        throw new PersonalVisualError('personalized_visual_timeout', { stage: 'client_timeout' });
+      }
+      let response;
+      try {
+        response = await request(apiEndpoint(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authorization },
+          cache: 'no-store',
+          signal: controller ? controller.signal : undefined,
+          body: JSON.stringify({
+            desire: safeDesire,
+            category,
+            lang: locale,
+            profile: minimizeVisualProfile(sourceProfile, locale),
+            visualMood,
+            cloudConsent: true,
+            adultConfirmed: true,
+          }),
+        });
+      } catch (error) {
+        if (timedOut || (error && error.name === 'AbortError')) {
+          throw new PersonalVisualError('personalized_visual_timeout', { stage: 'network' });
+        }
+        throw new PersonalVisualError('personalized_visual_network_error', { stage: 'network' });
+      }
+      if (!response.ok) throw await visualApiError(response);
       return validateVisual(await readJsonResponse(response));
     })();
     return await Promise.race([operation, timeoutPromise]);

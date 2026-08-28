@@ -511,6 +511,33 @@ test('Gemini scene API contract', async (t) => {
       }, validated.value),
       /invalid_generation/
     );
+
+    const roughProfile = endpoint._internals.validateInput(validBody({
+      profile: { ...validBody().profile, aboutYou: 'pro ativo bondoso' },
+    }));
+    assert.strictEqual(
+      roughProfile.value.profile.aboutYou,
+      'Qualidades reconhecidas pela pessoa: proatividade e bondade.',
+      'API precisa interpretar a lista de tracos antes de chamar o provedor'
+    );
+    assert.throws(
+      () => endpoint._internals.validateGeneratedScene({
+        ...raw,
+        affirmation: 'Eu construo uma vida criativa e tranquila. Eu honro o que sei sobre mim: pro ativo bondoso.',
+        affirmationFieldsUsed: ['desire', 'aboutYou'],
+      }, roughProfile.value),
+      /invalid_generation/,
+      'resposta remota nao pode repetir o despejo cru que apareceu em producao'
+    );
+    const noObstacle = endpoint._internals.validateInput(validBody({
+      profile: { ...validBody().profile, obstacle: 'nada específico' },
+    }));
+    assert.ok(noObstacle.value, 'Nada especifico nao pode invalidar a requisicao');
+    assert.strictEqual(
+      noObstacle.value.profile.obstacle,
+      undefined,
+      'Nada especifico nao pode acionar plano se-entao nem consumir contexto remoto'
+    );
   });
 
   await t.test('does not call Gemini until both server-only configuration guards exist', async () => {
@@ -535,6 +562,11 @@ test('Gemini scene API contract', async (t) => {
 
   await t.test('generates a validated scene with deterministic metadata and minimized input', async () => {
     configure();
+    const settlements = [];
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return { ok: true, state: commit ? 'committed' : 'released' };
+    });
     const seen = [];
     global.fetch = async (url, options) => {
       seen.push({ url, options, body: JSON.parse(options.body) });
@@ -549,6 +581,7 @@ test('Gemini scene API contract', async (t) => {
     }));
 
     assert.strictEqual(first.statusCode, 200);
+    assert.deepStrictEqual(settlements, [true, true], 'cenas validas precisam confirmar as reservas');
     assert.strictEqual(first.body.generation.source, 'celeste-ai');
     assert.strictEqual(first.body.generation.provider, 'gemini');
     assert.strictEqual(first.body.generation.fallbackUsed, false);
@@ -601,7 +634,11 @@ test('Gemini scene API contract', async (t) => {
     assert.strictEqual(userJson.profile.relationshipStatus, 'Solteiro(a)');
     assert.strictEqual(
       userJson.profile.aboutYou,
-      'sou curiosa, criativa e gosto de aprender fazendo com uma pessoa próxima'
+      'Qualidades reconhecidas pela pessoa: curiosidade, criatividade e interesse por aprender fazendo com uma pessoa próxima.'
+    );
+    assert.ok(
+      sent.options.body.includes('Never paste a raw trait list after a colon'),
+      'prompt remoto precisa proibir copia crua da resposta pessoal'
     );
     assert.strictEqual(userJson.profile.partnerDesire, 'uma parceria leve, presente e honesta');
     assert.strictEqual(userJson.profile.pastInfluence, 'ter mudado de cidade me ensinou a recomecar');
@@ -644,6 +681,11 @@ test('Gemini scene API contract', async (t) => {
 
   await t.test('rejects malformed Gemini JSON and safety-blocked candidates', async () => {
     configure();
+    const settlements = [];
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return { ok: true, state: commit ? 'committed' : 'released' };
+    });
     global.fetch = async () => ({
       ok: true,
       status: 200,
@@ -652,6 +694,7 @@ test('Gemini scene API contract', async (t) => {
     let res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.4' } }));
     assert.strictEqual(res.statusCode, 502);
     assert.deepStrictEqual(res.body, { error: 'invalid_generation' });
+    assert.deepStrictEqual(settlements, [false], 'resposta invalida precisa liberar a reserva');
 
     global.fetch = async () => ({
       ok: true,
@@ -661,6 +704,7 @@ test('Gemini scene API contract', async (t) => {
     res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.5' } }));
     assert.strictEqual(res.statusCode, 422);
     assert.deepStrictEqual(res.body, { error: 'generation_blocked' });
+    assert.deepStrictEqual(settlements, [false, false], 'bloqueio de seguranca nao pode consumir cota');
   });
 
   await t.test('does not start a repair when a slow invalid first attempt leaves too little budget', async () => {
@@ -749,6 +793,11 @@ test('Gemini scene API contract', async (t) => {
 
   await t.test('times out cleanly and never echoes network errors or secrets', async () => {
     configure();
+    const settlements = [];
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return { ok: true, state: commit ? 'committed' : 'released' };
+    });
     process.env.GEMINI_TIMEOUT_MS = '20';
     global.fetch = (_url, options) => new Promise((_resolve, reject) => {
       options.signal.addEventListener('abort', () => {
@@ -760,6 +809,7 @@ test('Gemini scene API contract', async (t) => {
     let res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.6' } }));
     assert.strictEqual(res.statusCode, 504);
     assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
+    assert.deepStrictEqual(settlements, [false], 'timeout do provedor precisa liberar a reserva');
     assert.ok(!JSON.stringify(res.body).includes(process.env.GEMINI_API_KEY));
 
     delete process.env.GEMINI_TIMEOUT_MS;
@@ -769,6 +819,11 @@ test('Gemini scene API contract', async (t) => {
     res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.7' } }));
     assert.strictEqual(res.statusCode, 503);
     assert.deepStrictEqual(res.body, { error: 'generation_unavailable' });
+    assert.deepStrictEqual(
+      settlements,
+      [false, false],
+      'falha de rede do provedor precisa liberar a reserva'
+    );
     assert.ok(!JSON.stringify(res.body).includes(process.env.GEMINI_API_KEY));
   });
 });

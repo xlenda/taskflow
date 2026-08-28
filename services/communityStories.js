@@ -6,6 +6,7 @@ export const COMMUNITY_BODY_MIN = 10;
 export const COMMUNITY_BODY_MAX = 600;
 export const COMMUNITY_STORAGE_ERROR_CODE = 'community_storage_unreadable';
 export const COMMUNITY_BACKUP_MAX_ITEMS = 50;
+export const COMMUNITY_REMOTE_TIMEOUT_MS = 4500;
 
 const CATEGORY_CIRCLES = {
   Love: 'amor-reciproco',
@@ -75,6 +76,36 @@ function safeText(value, max) {
 
 function safeCategory(value) {
   return Object.prototype.hasOwnProperty.call(CATEGORY_CIRCLES, value) ? value : null;
+}
+
+function boundedTimeout(value, fallback = COMMUNITY_REMOTE_TIMEOUT_MS) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(15_000, Math.max(500, Math.floor(parsed))) : fallback;
+}
+
+function settleWithin(promise, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ settled: false, value: null });
+    }, boundedTimeout(timeoutMs));
+    Promise.resolve(promise).then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ settled: true, value });
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ settled: true, value: null });
+      }
+    );
+  });
 }
 
 function stableLegacyId(raw, body, index) {
@@ -291,32 +322,53 @@ function remotePostToItem(post, localReceipt) {
   };
 }
 
-export async function loadCommunityState() {
-  const local = await loadLocalCommunityStories();
-  const supabase = getCelesteSupabaseClient();
-  if (!supabase) return { feed: [], own: local, mode: 'local', reason: 'not_configured' };
+function localCommunityState(local, reason) {
+  return { feed: [], own: local, mode: 'local', reason };
+}
 
+export async function loadLocalCommunityState() {
+  return localCommunityState(await loadLocalCommunityStories(), 'refreshing');
+}
+
+async function loadRemoteCommunityState(local, supabase) {
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return { feed: [], own: local, mode: 'local', reason: 'sign_in_required' };
+  if (!user) return localCommunityState(local, 'sign_in_required');
+
+  // RLS returns only the caller's own work and posts that moderation published.
+  const { data, error } = await supabase
+    .from('community_posts')
+    .select('id, user_id, body, kind, locale, status, created_at, updated_at')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  const receipts = new Map(local.filter((item) => item.remoteId).map((item) => [item.remoteId, item]));
+  const posts = (data || []).map((post) => remotePostToItem(post, receipts.get(post.id)));
+  const feed = posts.filter((post) => post.status === 'published');
+  const cloudOwn = posts.filter((post) => post.userId === user.id);
+  const cloudIds = new Set(cloudOwn.map((post) => post.remoteId));
+  const own = [...cloudOwn, ...local.filter((item) => !item.remoteId || !cloudIds.has(item.remoteId))];
+  return { feed, own, mode: 'cloud', reason: null };
+}
+
+export async function loadCommunityState(options = {}) {
+  const suppliedLocal = Array.isArray(options.localStories)
+    ? options.localStories.map((item, index) => sanitizeLocalItem(item, index)).filter(Boolean)
+    : null;
+  const local = suppliedLocal || await loadLocalCommunityStories();
+  const supabase = getCelesteSupabaseClient();
+  if (!supabase) return localCommunityState(local, 'not_configured');
 
   try {
-    // RLS returns only the caller's own work and posts that moderation published.
-    const { data, error } = await supabase
-      .from('community_posts')
-      .select('id, user_id, body, kind, locale, status, created_at, updated_at')
-      .order('created_at', { ascending: false })
-      .limit(30);
-    if (error) throw error;
-
-    const receipts = new Map(local.filter((item) => item.remoteId).map((item) => [item.remoteId, item]));
-    const posts = (data || []).map((post) => remotePostToItem(post, receipts.get(post.id)));
-    const feed = posts.filter((post) => post.status === 'published');
-    const cloudOwn = posts.filter((post) => post.userId === user.id);
-    const cloudIds = new Set(cloudOwn.map((post) => post.remoteId));
-    const own = [...cloudOwn, ...local.filter((item) => !item.remoteId || !cloudIds.has(item.remoteId))];
-    return { feed, own, mode: 'cloud', reason: null };
+    const outcome = await settleWithin(
+      loadRemoteCommunityState(local, supabase),
+      options.timeoutMs
+    );
+    return outcome.settled && outcome.value
+      ? outcome.value
+      : localCommunityState(local, outcome.settled ? 'unavailable' : 'timeout');
   } catch (error) {
-    return { feed: [], own: local, mode: 'local', reason: 'unavailable' };
+    return localCommunityState(local, 'unavailable');
   }
 }
 

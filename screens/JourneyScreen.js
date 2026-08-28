@@ -99,11 +99,6 @@ const S = {
     en: 'Name, language, appearance, Gemini and privacy',
     pt: 'Nome, idioma, aparência, Gemini e privacidade',
   },
-  community: { en: 'Community', pt: 'Comunidade' },
-  communityBody: {
-    en: 'Real stories, reviewed before they appear',
-    pt: 'Relatos reais, analisados antes de aparecer',
-  },
 
   resetCta: { en: 'Reset my journey', pt: 'Recomeçar minha jornada' },
   resetTitle: { en: 'Reset your journey?', pt: 'Recomeçar sua jornada?' },
@@ -443,22 +438,25 @@ export default function JourneyScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        <Card
-          testID="journey-open-community"
-          onPress={() => navigation.navigate('Community')}
-          accessibilityRole="button"
-          accessibilityLabel={t(S.community)}
-          accessibilityHint={t(S.communityBody)}
-          style={[styles.communityAccess, { backgroundColor: theme.surface }]}
-        >
-          <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 2), 0.14) }]}>
-            <Ionicons name="people-outline" size={20} color={accentAt(theme, 2)} />
-          </View>
-          <View style={styles.spaceCopy}>
-            <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.community)}</Text>
-            <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.communityBody)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+        <SectionHeading title={t(S.yourSpace)} style={styles.spaceHeading} />
+        <Card style={[styles.spaceCard, { backgroundColor: theme.surface }]}>
+          <TouchableOpacity
+            testID="journey-open-profile"
+            activeOpacity={0.76}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.profileSettings)}
+            onPress={() => navigation.navigate('Profile')}
+            style={styles.spaceRow}
+          >
+            <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}>
+              <Ionicons name="person-outline" size={20} color={accentAt(theme, 1)} />
+            </View>
+            <View style={styles.spaceCopy}>
+              <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.profileSettings)}</Text>
+              <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.profileSettingsBody)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+          </TouchableOpacity>
         </Card>
 
         <GradientCover accent={4} radius={22} style={styles.hero}>
@@ -485,27 +483,6 @@ export default function JourneyScreen() {
             </Card>
           ))}
         </View>
-
-        <SectionHeading title={t(S.yourSpace)} />
-        <Card style={[styles.spaceCard, { backgroundColor: theme.surface }]}>
-          <TouchableOpacity
-            testID="journey-open-profile"
-            activeOpacity={0.76}
-            accessibilityRole="button"
-            accessibilityLabel={t(S.profileSettings)}
-            onPress={() => navigation.navigate('Profile')}
-            style={styles.spaceRow}
-          >
-            <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}>
-              <Ionicons name="person-outline" size={20} color={accentAt(theme, 1)} />
-            </View>
-            <View style={styles.spaceCopy}>
-              <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.profileSettings)}</Text>
-              <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.profileSettingsBody)}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
-          </TouchableOpacity>
-        </Card>
 
         <SectionHeading title={t(S.traces)} />
         {traces.length === 0 ? (
@@ -764,16 +741,7 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1, minHeight: 0 },
   scroll: { paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  communityAccess: {
-    minHeight: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    marginTop: 4,
-    marginBottom: 14,
-  },
+  spaceHeading: { marginTop: 4 },
   hero: { padding: 22, marginTop: 4 },
   heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
   heroValue: { color: '#FFFFFF', fontSize: 44, fontWeight: '800', marginTop: 6, letterSpacing: -1 },

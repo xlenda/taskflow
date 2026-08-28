@@ -134,8 +134,9 @@ async function run() {
   assert.ok(!context.includes('await AsyncStorage.setItem'), 'gravacao bloqueante escapou da fila serial');
   assert.ok(context.includes('generationEpochRef'), 'geracoes antigas nao sao invalidadas');
   assert.ok(
-    context.includes('if (generationEpoch !== generationEpochRef.current) return null'),
-    'resposta Gemini antiga pode reaparecer depois de reset ou importacao'
+    context.includes('if (!mountedRef.current || generationEpoch !== generationEpochRef.current) return;') &&
+      context.includes('if (!currentState || generationEpoch !== generationEpochRef.current) return currentState;'),
+    'resposta remota antiga pode reaparecer depois de reset ou importacao'
   );
   assert.ok(
     (context.match(/generationEpochRef\.current \+= 1/g) || []).length >= 3,
@@ -293,7 +294,19 @@ async function run() {
   assert.ok(welcome.includes('OPENING_FALLBACK_MS = 11000'), 'abertura ainda espera alem do video');
   assert.ok(welcome.includes('onPlaybackIssue={finishOpening}'), 'falha do video nao avanca a abertura');
   assert.ok(video.includes('reportPlaybackIssue'), 'player nao reporta autoplay ou midia bloqueada');
-  assert.ok(sceneClient.includes('API_TIMEOUT_MS = 15000'), 'Gemini ainda prende o onboarding por tempo demais');
+  const addManifestationBlock = context.slice(
+    context.indexOf('const addManifestation'),
+    context.indexOf('// Regra ÚNICA', context.indexOf('const addManifestation'))
+  );
+  assert.ok(
+    addManifestationBlock.indexOf('setState((s) =>') <
+      addManifestationBlock.indexOf('void generatePersonalizedScene({'),
+    'cena remota ainda bloqueia a recompensa local do onboarding'
+  );
+  assert.ok(
+    sceneClient.includes('API_TIMEOUT_MS = 56000'),
+    'cliente precisa cobrir geracao e finalizacao sem bloquear a recompensa local'
+  );
   assert.ok(deploy.includes('verificar-recuperacao-travamentos.js'), 'deploy ignora teste de travamento');
 
   console.log('Recuperacao aprovada: leitura segura, escrita serial, abertura e cena nunca ficam presas');

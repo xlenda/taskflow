@@ -29,7 +29,7 @@ function loadClientModule(paidHeadersImpl) {
   };
   return Function(
     'require',
-    `${executable}\nreturn { PERSONALIZED_VISUAL_MOODS, minimizeVisualProfile, generatePersonalizedVisual, generatePersonalizedVisualInBackground };`
+    `${executable}\nreturn { PersonalVisualError, PERSONALIZED_VISUAL_MOODS, minimizeVisualProfile, generatePersonalizedVisual, generatePersonalizedVisualInBackground };`
   )(clientRequire);
 }
 
@@ -172,6 +172,15 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     const invalidMood = await invoke(request(validBody({ visualMood: 'expensive-luxury' })));
     assert.strictEqual(invalidMood.statusCode, 400);
     assert.strictEqual(invalidMood.body.error, 'visual_mood_invalid');
+
+    delete process.env.GEMINI_API_KEY;
+    const notConfigured = await invoke(request(validBody()));
+    assert.strictEqual(notConfigured.statusCode, 503);
+    assert.deepStrictEqual(notConfigured.body, {
+      error: 'visual_not_configured',
+      stage: 'configuration',
+    });
+    process.env.GEMINI_API_KEY = 'visual-secret-key';
     assert.strictEqual(paidCalls, 0);
   });
 
@@ -326,7 +335,31 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
       onError: (error) => { backgroundError = error; },
     });
     assert.strictEqual(background, null);
-    assert.match(backgroundError.message, /offline/);
+    assert.strictEqual(backgroundError.code, 'personalized_visual_network_error');
+    assert.strictEqual(backgroundError.stage, 'network');
+
+    await assert.rejects(
+      () => client.generatePersonalizedVisual({
+        desire: 'uma casa perto do mar',
+        category: 'Peace',
+        lang: 'pt',
+        profile,
+        visualMood: 'serene',
+        fetchImpl: async () => ({
+          ok: false,
+          status: 429,
+          text: async () => JSON.stringify({
+            error: 'daily_generation_limit_reached',
+            stage: 'access',
+          }),
+        }),
+      }),
+      (error) =>
+        error instanceof client.PersonalVisualError &&
+        error.code === 'daily_generation_limit_reached' &&
+        error.stage === 'access' &&
+        error.status === 429
+    );
   });
 
   await t.test('client timeout also covers a stalled paid session', async () => {
@@ -392,6 +425,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(context, /visual: null/);
     assert.match(context, /phase: 'pending'/);
     assert.match(context, /phase: 'error'/);
+    assert.match(context, /personalVisualErrorStage/);
     assert.match(affirmations, /ensurePersonalVisual\(current\.manifestationId\)/);
     assert.match(affirmations, /ensurePersonalVisual\(current\.manifestationId, \{ force: true \}\)/);
     assert.match(affirmationCard, /testID="personal-visual-pending"/);
@@ -408,6 +442,30 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     );
   });
 
+  await t.test('successful visuals commit credits and provider failures release them', async () => {
+    endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
+    endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
+      ok: true,
+      userId: '00000000-0000-4000-8000-000000000001',
+    }));
+    const settlements = [];
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return { ok: true, state: commit ? 'committed' : 'released' };
+    });
+
+    global.fetch = async () => upstreamImage();
+    const success = await invoke(request(validBody()));
+    assert.strictEqual(success.statusCode, 200);
+    assert.deepStrictEqual(settlements, [true]);
+
+    global.fetch = async () => { throw new Error('provider offline'); };
+    const failed = await invoke(request(validBody()));
+    assert.strictEqual(failed.statusCode, 503);
+    assert.deepStrictEqual(failed.body, { error: 'visual_unavailable', stage: 'provider' });
+    assert.deepStrictEqual(settlements, [true, false]);
+  });
+
   await t.test('migration and deploy gates include visual generation', () => {
     const migration004 = fs.readFileSync(
       path.join(__dirname, '..', 'supabase', 'migrations', '004_generation_budget.sql'),
@@ -417,11 +475,28 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
       path.join(__dirname, '..', 'supabase', 'migrations', '005_visual_generation_budget.sql'),
       'utf8'
     );
+    const migration006 = fs.readFileSync(
+      path.join(__dirname, '..', 'supabase', 'migrations', '006_generation_reservations.sql'),
+      'utf8'
+    );
     const deploy = fs.readFileSync(path.join(__dirname, 'deploy-celeste.js'), 'utf8');
     const paidAccess = fs.readFileSync(path.join(__dirname, '..', 'api', '_paid-access.js'), 'utf8');
+    const storage = fs.readFileSync(
+      path.join(__dirname, '..', 'services', 'personalVisualStorage.js'),
+      'utf8'
+    );
     assert.match(migration004, /'visual'/);
     assert.match(migration005, /'visual'/);
+    assert.match(migration006, /celeste_finalize_generation_credit/);
+    assert.match(migration006, /celeste_release_stale_generation_reservations/);
+    assert.match(migration006, /per_user_daily_units = 64/);
+    assert.match(migration006, /global_daily_units = 1200/);
+    assert.match(migration006, /p_operation in \('scene', 'visual'\)/);
     assert.match(paidAccess, /'visual'/);
+    assert.match(paidAccess, /commitPaidRequest/);
+    assert.match(paidAccess, /releasePaidRequest/);
+    assert.match(storage, /bytes: buffer/);
+    assert.match(storage, /record && record\.blob instanceof Blob/);
     assert.match(deploy, /verificar-visual-personalizado\.js/);
     assert.match(deploy, /gerar-visual\.js/);
   });

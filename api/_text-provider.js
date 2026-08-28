@@ -11,9 +11,9 @@ const PROVIDERS = new Set(['anthropic', 'openai']);
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,99}$/;
 const SCHEMA_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
-const DEFAULT_PROVIDER_TIMEOUT_MS = 18_000;
-const DEFAULT_FALLBACK_RESERVE_MS = 9_000;
-const DEFAULT_SESSION_DEADLINE_MS = 29_000;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
+const DEFAULT_FALLBACK_RESERVE_MS = 12_000;
+const DEFAULT_SESSION_DEADLINE_MS = 48_000;
 const MIN_CALL_BUDGET_MS = 250;
 const MAX_PROVIDER_CALLS = 2;
 

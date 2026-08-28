@@ -241,7 +241,9 @@ function generatedVariant(item, profile, lang, sourceLang) {
   const generationProfile = isAlternatePersonalLanguage ? {} : profile || {};
   const local = dreamToAffirmation(generationTitle, generationProfile, lang, category);
   const localSource = isAlternatePersonalLanguage ? 'local-language-fallback' : 'local';
-  const localPromptVersion = isAlternatePersonalLanguage ? 'local-language-v1' : 'local-v1';
+  const localPromptVersion = isAlternatePersonalLanguage
+    ? 'local-language-v1'
+    : 'local-interpreted-v2';
   return cleanVariant(
     {
       title,
@@ -261,6 +263,84 @@ function generatedVariant(item, profile, lang, sourceLang) {
       promptVersion: localPromptVersion,
     }
   );
+}
+
+function isLegacyRawSelfCopy(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const text = [
+    source.intention,
+    source.affirmation,
+    source.story,
+    source.anchorIdentity,
+    source.anchorStep,
+  ].filter((entry) => typeof entry === 'string').join(' ');
+  return /(?:honro o que sei sobre mim|honor what i know about myself)\s*:/i.test(text);
+}
+
+function isLegacyLocalVariant(value) {
+  const generation = value && value.generation && typeof value.generation === 'object'
+    ? value.generation
+    : {};
+  return generation.source === 'local' &&
+    generation.promptVersion === 'local-v1' &&
+    isLegacyRawSelfCopy(value);
+}
+
+export function repairLegacyLocalManifestation(item, profile) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+  const itemLang = item.lang === 'en' ? 'en' : 'pt';
+  const stored = item.contentByLang && typeof item.contentByLang === 'object' && !Array.isArray(item.contentByLang)
+    ? item.contentByLang
+    : {};
+  const contentByLang = { ...stored };
+  let output = item;
+  let repaired = false;
+
+  LANGS.forEach((lang) => {
+    if (!isLegacyLocalVariant(stored[lang])) return;
+    contentByLang[lang] = generatedVariant(
+      { ...item, title: cleanText(stored[lang].title, TEXT_LIMITS.title) || item.title },
+      profile,
+      lang,
+      lang
+    );
+    repaired = true;
+  });
+
+  if (isLegacyLocalVariant(item)) {
+    const visible = generatedVariant(item, profile, itemLang, itemLang);
+    output = { ...item, ...visible };
+    contentByLang[itemLang] = visible;
+    repaired = true;
+  }
+
+  return repaired ? { ...output, contentByLang } : item;
+}
+
+export function localInterpretedUpgradeCandidate(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const stored = item.contentByLang && typeof item.contentByLang === 'object' && !Array.isArray(item.contentByLang)
+    ? item.contentByLang
+    : {};
+  const itemLang = item.lang === 'en' ? 'en' : 'pt';
+  const order = [item.originLang, itemLang, 'pt', 'en']
+    .filter((lang, index, values) => LANGS.includes(lang) && values.indexOf(lang) === index);
+
+  for (const lang of order) {
+    const variants = [
+      ...(lang === itemLang ? [item] : []),
+      stored[lang],
+    ].filter(Boolean);
+    const eligible = variants.some((variant) => {
+      const generation = variant.generation && typeof variant.generation === 'object'
+        ? variant.generation
+        : {};
+      return generation.source === 'local' &&
+        generation.promptVersion === 'local-interpreted-v2';
+    });
+    if (eligible) return { id: cleanScalar(item.id, 120), lang };
+  }
+  return null;
 }
 
 export function localizeManifestation(item, profile, activeLang) {

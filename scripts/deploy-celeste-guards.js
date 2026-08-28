@@ -20,6 +20,13 @@ const PRODUCTION_BACKEND_ALIASES = Object.freeze({
     'SUPABASE_SECRET_KEY',
   ]),
 });
+const PRODUCTION_TEXT_REQUIRED = Object.freeze([
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
+  'ANTHROPIC_TEXT_MODEL',
+  'ANTHROPIC_TEXT_EFFORT',
+  'CELESTE_TEXT_PRIMARY',
+]);
 
 function requireText(value, name) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -123,9 +130,16 @@ function validateProductionEnvironmentOutput(output) {
   if (missing.length) {
     throw new Error(`Variaveis Supabase do backend ausentes na Vercel: ${missing.join(', ')}`);
   }
+  const missingText = PRODUCTION_TEXT_REQUIRED.filter((name) => !production.has(name));
+  if (missingText.length) {
+    throw new Error(`Variaveis Anthropic do backend ausentes na Vercel: ${missingText.join(', ')}`);
+  }
   const secret = production.get(selected.secretKey);
   if (secret.type !== 'sensitive') {
     throw new Error(`${selected.secretKey} deve ser Sensitive na Vercel`);
+  }
+  if (production.get('ANTHROPIC_API_KEY').type !== 'sensitive') {
+    throw new Error('ANTHROPIC_API_KEY deve ser Sensitive na Vercel');
   }
   return true;
 }
@@ -176,6 +190,7 @@ function extractAnonymousAccessToken(payload) {
 module.exports = {
   LOCAL_PUBLIC_KEY_ALIASES,
   PRODUCTION_BACKEND_ALIASES,
+  PRODUCTION_TEXT_REQUIRED,
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,

@@ -206,15 +206,10 @@ export default function AffirmationsScreen() {
     [manifestationAffirmations, dreamAffirmations]
   );
 
-  const populatedCategories = useMemo(() => {
-    const present = new Set(manifestationAffirmations.map((item) => item.category).filter(Boolean));
-    return CATEGORIES.filter((category) => present.has(category.key));
-  }, [manifestationAffirmations]);
-
   const filterStillExists =
     filter === 'All' ||
     (filter === DREAMS_FILTER && dreamAffirmations.length > 0) ||
-    populatedCategories.some((category) => category.key === filter);
+    CATEGORIES.some((category) => category.key === filter);
   const activeFilter = filter && filterStillExists ? filter : 'All';
 
   const listFor = useCallback(
@@ -234,13 +229,13 @@ export default function AffirmationsScreen() {
         ? [{ key: DREAMS_FILTER, label: t(S.fromDreams), accent: 3 }]
         : []),
       { key: 'All', label: t(S.all), accent: 0 },
-      ...populatedCategories.map((c) => ({
+      ...CATEGORIES.map((c) => ({
         key: c.key,
         label: loc(c, lang).label || c.key,
         accent: c.accent,
       })),
     ],
-    [dreamAffirmations.length, populatedCategories, t, lang]
+    [dreamAffirmations.length, t, lang]
   );
 
   const seededIndex = list.length > 0 ? seedIndex(list.length) : 0;

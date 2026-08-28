@@ -241,12 +241,14 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, '2 de 28'); // contador ao lado da barra (28 passos no roteiro)
   await assertChips(page, ['Ter mais paz e equilíbrio', 'Outra resposta'], 'desejo');
   await waitAndClick(page, 'Ter mais paz e equilíbrio');
+  await waitAndClick(page, 'Continuar');
   await waitForText(page, 'importa tanto');
   await waitAndClick(page, 'Pular'); // pergunta não essencial tem "Pular" no canto
-  await waitForText(page, 'maior obstáculo');
+  await waitForText(page, 'parece estar no seu caminho');
   await assertChips(page, ['Tempo ou energia', 'Outra resposta'], 'obstáculo');
   await waitAndClick(page, 'Outra resposta');
   await typeAnswer(page, 'Tempo');
+  await waitAndClick(page, 'Continuar');
   await waitForText(page, 'como devo te chamar');
   await typeAnswer(page, 'Teste');
   await waitForText(page, 'Onde você mora', 30000); // welcome-name auto-avança antes
@@ -309,6 +311,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await assertChips(page, ['Emocionalmente maduro(a)', 'Outra resposta'], 'parceiro');
   await waitAndClick(page, 'Outra resposta');
   await typeAnswer(page, 'Reciprocidade e calma');
+  await waitAndClick(page, 'Continuar');
   await waitForText(page, 'Existe uma pessoa específica', 30000);
   await sleep(800);
   await assertChips(page, ['Sim', 'Não'], 'pessoa específica');

@@ -67,19 +67,92 @@ assert.ok(!vague.affirmation.includes("I'm not sure yet"), 'vague answer became 
 assert.ok(!vague.story.includes("I'm not sure yet"), 'vague answer leaked into the story');
 assert.ok(!vague.usouDoPerfil.includes('where you want to live'), 'vague answer entered the receipt');
 
+const noObstacle = dreamToAffirmation(
+  'uma vida com mais equilibrio',
+  { obstacle: 'nada específico' },
+  'pt',
+  'Peace'
+);
+assert.doesNotMatch(noObstacle.anchorStep, /nada espec[ií]fico/i, 'Nada especifico virou um obstaculo real');
+assert.ok(
+  !noObstacle.usouDoPerfil.includes('o que travava você'),
+  'recibo nao pode dizer que Nada especifico personalizou a cena'
+);
+
 const sameA = dreamToAffirmation('um trabalho criativo', profile, 'pt', 'Career');
 const sameB = dreamToAffirmation('um trabalho criativo', profile, 'pt', 'Career');
 assert.deepStrictEqual(sameA, sameB, 'a mesma entrada deve gerar a mesma Cena-Ancora');
 assert.ok(sameA.usouDoPerfil.includes('onde quer morar'), 'recibo deve listar a cidade usada');
 assert.ok(sameA.usouDoPerfil.includes('casa dos sonhos'), 'recibo deve listar a casa usada');
 assert.ok(
-  sameA.affirmation.includes('sou curiosa e persistente'),
-  'afirmacao deve incorporar uma ancora pessoal segura'
+  /minha curiosidade.+minha persistência/i.test(sameA.affirmation),
+  'afirmacao deve interpretar uma ancora pessoal segura'
 );
 assert.strictEqual(
   new Set(sameA.usouDoPerfil).size,
   sameA.usouDoPerfil.length,
   'recibo nao pode repetir um campo usado na historia e na afirmacao'
+);
+
+const unpunctuatedTraits = dreamToAffirmation(
+  'uma vida próspera e tranquila',
+  { aboutYou: 'pro ativo bondoso' },
+  'pt',
+  'Wealth'
+);
+assert.match(
+  unpunctuatedTraits.affirmation,
+  /Eu reconheço minha proatividade e minha bondade, e deixo essas qualidades/i,
+  'lista sem pontuacao precisa virar qualidades naturais'
+);
+assert.ok(
+  !/pro ativo bondoso|honro o que sei sobre mim\s*:/i.test(unpunctuatedTraits.affirmation),
+  'afirmacao nao pode despejar a resposta crua depois de dois-pontos'
+);
+assert.match(
+  unpunctuatedTraits.story,
+  /sua proatividade e sua bondade nas pequenas escolhas/i,
+  'cena precisa usar a interpretacao, nao repetir a lista crua'
+);
+
+const traitsWithAlso = dreamToAffirmation(
+  'uma rotina com mais sentido',
+  { aboutYou: 'sou proativa e também bondosa' },
+  'pt',
+  'Peace'
+);
+assert.match(
+  traitsWithAlso.affirmation,
+  /minha proatividade e minha bondade/i,
+  '"e tambem" nao pode apagar a segunda qualidade em portugues'
+);
+
+const englishTraits = dreamToAffirmation(
+  'a meaningful and peaceful life',
+  { aboutYou: 'I am proactive kind and loyal' },
+  'en',
+  'Peace'
+);
+assert.match(
+  englishTraits.affirmation,
+  /my initiative, my kindness and my loyalty/i,
+  'an unpunctuated English trait list must become natural qualities'
+);
+assert.doesNotMatch(
+  englishTraits.affirmation,
+  /qualities I described as|proactive kind/i,
+  'English affirmation must not paste the raw self-description'
+);
+
+const mixedDescription = dreamToAffirmation(
+  'viver com mais presenca',
+  { aboutYou: 'sou bondosa e administro uma loja com minha familia' },
+  'pt',
+  'Peace'
+);
+assert.ok(
+  !mixedDescription.usouDoPerfil.includes('como você se descreve'),
+  'interpretacao parcial nao pode fingir que preservou todo o autorrelato'
 );
 
 const sameDesireA = dreamToAffirmation(
@@ -100,16 +173,16 @@ assert.notStrictEqual(
   'o mesmo desejo com perfis diferentes precisa gerar afirmacoes diferentes'
 );
 assert.ok(
-  sameDesireA.affirmation.includes('sou criativa e aprendo fazendo'),
-  'perfil A precisa aparecer somente na propria afirmacao'
+  /minha criatividade.+aprender fazendo/i.test(sameDesireA.affirmation),
+  'perfil A precisa ser interpretado somente na propria afirmacao'
 );
 assert.ok(
-  !sameDesireA.affirmation.includes('sou paciente e gosto de planejar'),
+  !/minha paciência.+planejar/i.test(sameDesireA.affirmation),
   'afirmacao A nao pode misturar o perfil B'
 );
 assert.ok(
-  sameDesireB.affirmation.includes('sou paciente e gosto de planejar'),
-  'perfil B precisa aparecer somente na propria afirmacao'
+  /minha paciência.+interesse por planejar/i.test(sameDesireB.affirmation),
+  'perfil B precisa ser interpretado somente na propria afirmacao'
 );
 assert.ok(sameDesireA.affirmation.startsWith('Eu '), 'afirmacao pessoal PT deve estar em primeira pessoa');
 assert.ok(!JSON.stringify([sameDesireA, sameDesireB]).includes('undefined'), 'perfil pessoal nao pode corromper texto');
@@ -174,7 +247,10 @@ const personal = dreamToAffirmation(
   'pt',
   'Peace'
 );
-assert.ok(personal.story.includes('sou curiosa e persistente'), 'Perfil: descricao pessoal nao entrou na cena');
+assert.ok(
+  /sua curiosidade.+sua persistência/i.test(personal.story),
+  'Perfil: descricao pessoal interpretada nao entrou na cena'
+);
 assert.ok(personal.story.includes('uma mudanca dificil me ensinou a recomecar'), 'Perfil: passado nao entrou na cena');
 assert.ok(personal.usouDoPerfil.includes('como voc\u00ea se descreve'), 'Perfil: recibo nao registrou descricao pessoal');
 assert.ok(
@@ -210,8 +286,8 @@ for (const unsafe of [
   assert.ok(!safeAffirmation.affirmation.includes(unsafe), `afirmacao repetiu campo sensivel: ${unsafe}`);
 }
 assert.ok(
-  safeAffirmation.affirmation.includes('sou consistente e cuidadosa'),
-  'afirmacao deve preferir descricao pessoal segura'
+  /minha constância.+meu cuidado/i.test(safeAffirmation.affirmation),
+  'afirmacao deve interpretar a descricao pessoal segura'
 );
 assert.ok(
   safeAffirmation.story.includes('ainda pode aparecer') &&
@@ -267,10 +343,17 @@ const oversized = dreamToAffirmation(
   'pt',
   'Peace'
 );
-assert.ok(oversized.story.includes('inicio_seguro'), 'Perfil longo: inicio foi perdido');
+assert.ok(
+  !JSON.stringify(oversized).toLowerCase().includes('inicio_seguro'),
+  'Perfil longo sem significado reconhecivel nao deve ser despejado na cena'
+);
 assert.ok(!oversized.story.includes('fim_nao_deve_entrar'), 'Perfil longo: limite de seguranca nao foi aplicado');
 assert.ok(oversized.affirmation.length <= 290, 'afirmacao pessoal precisa continuar concisa');
 assert.ok(!oversized.affirmation.includes('fim_nao_deve_entrar'), 'afirmacao nao pode exceder o limite da ancora');
+assert.ok(
+  !oversized.usouDoPerfil.includes('como você se descreve'),
+  'recibo nao pode declarar uma descricao que foi omitida por seguranca editorial'
+);
 assertPrivateFieldsAbsent(oversized, 'Perfil longo');
 
 const revealFile = path.join(__dirname, '..', 'screens', 'onboarding', 'RevealScreen.js');
@@ -297,4 +380,4 @@ assert.ok(
   'ponte para hoje precisa crescer com o texto sem rolagem interna no iPhone'
 );
 
-process.stdout.write(`Cena-Ancora: ${categories.length + 20} casos aprovados\n`);
+process.stdout.write(`Cena-Ancora: ${categories.length + 25} casos aprovados\n`);

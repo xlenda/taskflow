@@ -3,6 +3,7 @@ const { checkBotId } = require('botid/server');
 const paidAccess = require('./_paid-access');
 const celesteBrain = require('./_celeste-brain');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
+const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -69,7 +70,7 @@ function sanitizeProfile(profile) {
       throw new DreamGenerationError(`${key}_too_long`);
     }
     const value = cleanText(profile[key], limit);
-    if (value) output[key] = value;
+    if (value && !isNonInformativeProfileAnswer(value)) output[key] = value;
   }
   return output;
 }

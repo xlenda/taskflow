@@ -99,6 +99,7 @@ const S = {
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
   openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
   openProfile: { en: 'Open profile and settings', pt: 'Abrir perfil e configurações' },
+  yourDay: { en: 'Your day', pt: 'Seu dia' },
   minuteTitle: { en: 'Your Celeste minute', pt: 'Seu minuto Celeste' },
   minuteReady: {
     en: 'One affirmation and one possible step for today',
@@ -442,6 +443,9 @@ export default function HomeScreen() {
           />
         </View>
 
+        <View testID="home-your-day">
+          <SectionHeading title={t(S.yourDay)} style={styles.dayHeading} />
+
         {dailyRitual ? (
           <Card
             style={[
@@ -521,6 +525,7 @@ export default function HomeScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
         </Card>
+        </View>
 
         {hasItems ? (
           <>
@@ -610,6 +615,7 @@ const styles = StyleSheet.create({
   scroller: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingBottom: 96 },
   headerHold: { marginHorizontal: -16 },
+  dayHeading: { marginTop: 4 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   communityHeaderButton: {
     width: 44,

@@ -75,6 +75,16 @@ assert.ok(
     home.includes("navigation.navigate('MorningRitual', { focus: 'dream' })"),
   'Home precisa abrir o relato de sonho diretamente'
 );
+const yourDayStart = home.indexOf('testID="home-your-day"');
+const yourDayEnd = home.indexOf('{hasItems ?', yourDayStart);
+assert.ok(yourDayStart >= 0 && yourDayEnd > yourDayStart, 'Home precisa apresentar a secao Seu dia');
+for (const shortcut of ['open-daily-ritual', 'open-dream-journal', 'open-affirmation-alarm']) {
+  const shortcutIndex = home.indexOf(`testID="${shortcut}"`, yourDayStart);
+  assert.ok(
+    shortcutIndex > yourDayStart && shortcutIndex < yourDayEnd,
+    `${shortcut} precisa permanecer dentro de Seu dia`
+  );
+}
 assert.ok(home.includes('testID="open-profile"'), 'Home precisa abrir o perfil');
 assert.ok(
   home.includes('sentRef.current === title') &&
@@ -123,8 +133,15 @@ assert.ok(
     home.includes('cloudPersonalization, cloudAdultConfirmed'),
   'nova manifestacao na Home deve respeitar idade e consentimento adulto completo'
 );
-assert.ok(journey.includes('testID="journey-open-community"'), 'Jornada precisa abrir a comunidade');
 assert.ok(journey.includes('testID="journey-open-profile"'), 'Jornada precisa abrir o perfil');
+assert.ok(
+  !journey.includes('testID="journey-open-community"'),
+  'Jornada nao deve duplicar o acesso principal da Comunidade'
+);
+assert.ok(
+  journey.indexOf('testID="journey-open-profile"') < journey.indexOf('<GradientCover'),
+  'Perfil e configuracoes deve aparecer antes das metricas da Jornada'
+);
 assert.ok(!journey.includes('gemini-personalization-switch'), 'configuracao Gemini duplicada na Jornada');
 assert.ok(
   journey.includes('await cancelAffirmationAlarm()') && journey.includes('if (!cancelled.ok)'),
@@ -171,9 +188,9 @@ assert.ok(
   'falha ao apagar relato nao pode ser apagada pelo refresh'
 );
 assert.ok(
-  affirmations.includes('const populatedCategories = useMemo') &&
-    affirmations.includes('...populatedCategories.map'),
-  'afirmacoes devem mostrar apenas categorias com conteudo pessoal'
+  affirmations.includes('...CATEGORIES.map') &&
+    !affirmations.includes('AFFIRMATIONS,'),
+  'afirmacoes devem manter todos os temas visiveis sem restaurar o catalogo generico'
 );
 assert.ok(
   visions.includes('const populatedCategories = useMemo') &&

@@ -8,8 +8,10 @@ import { todayISO, streakFrom } from '../utils/date';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
 import {
   applyTranslatedManifestationVariant,
+  localInterpretedUpgradeCandidate,
   localizeManifestation,
   manifestationVariantFromScene,
+  repairLegacyLocalManifestation,
   shouldTranslateManifestationVariant,
   snapshotManifestationContent,
 } from '../utils/manifestationLanguage';
@@ -258,6 +260,11 @@ function personalVisualErrorCode(error) {
   return /^[a-z0-9_-]+$/.test(raw) ? raw : 'visual_unavailable';
 }
 
+function personalVisualErrorStage(error) {
+  const raw = shortText(error && error.stage, 40).toLowerCase();
+  return /^[a-z0-9_-]+$/.test(raw) ? raw : 'unknown';
+}
+
 function translationRequestKey({ id, sourceLang, targetLang, sourceVariant, profile, generationEpoch }) {
   return [
     generationEpoch,
@@ -445,7 +452,11 @@ function mergeDefensivo(parsed) {
       goalDays:
         Number.isInteger(m.goalDays) && m.goalDays > 0 && m.goalDays <= 365 ? m.goalDays : 21,
     };
-      return localizeManifestation(normalized, st.profile, st.lang);
+      return localizeManifestation(
+        repairLegacyLocalManifestation(normalized, st.profile),
+        st.profile,
+        st.lang
+      );
     });
   const savedRitual = st.morningRitual && typeof st.morningRitual === 'object' ? st.morningRitual : {};
   const defaultRitual = base.morningRitual;
@@ -589,6 +600,7 @@ export function AppProvider({ children }) {
   const desiredLanguageRef = useRef(null);
   const lastDreamSaveRef = useRef({ epoch: -1, signature: '', id: null, at: 0 });
   const evolutionRequestsRef = useRef(new Set());
+  const localSceneUpgradeEpochRef = useRef(-1);
   const personalVisualRequestsRef = useRef(new Map());
   const personalVisualFailuresRef = useRef(new Map());
   const resetInProgressRef = useRef(false);
@@ -614,12 +626,64 @@ export function AppProvider({ children }) {
         previous &&
         previous.phase === nextStatus.phase &&
         previous.error === nextStatus.error &&
+        previous.stage === nextStatus.stage &&
         previous.retryAt === nextStatus.retryAt &&
         previous.fingerprint === nextStatus.fingerprint
       ) {
         return current;
       }
       return { ...current, [id]: nextStatus };
+    });
+  }, []);
+
+  const applyRemoteSceneUpgrade = useCallback(({
+    id,
+    lang,
+    sourceFingerprint,
+    profileFingerprint,
+    candidateTitle,
+    remote,
+    generationEpoch,
+  }) => {
+    if (!mountedRef.current || generationEpoch !== generationEpochRef.current) return;
+    setState((currentState) => {
+      if (!currentState || generationEpoch !== generationEpochRef.current) return currentState;
+      if (JSON.stringify(currentState.profile || {}) !== profileFingerprint) return currentState;
+
+      const index = currentState.manifestations.findIndex((item) => item.id === id);
+      if (index < 0) return currentState;
+      const current = currentState.manifestations[index];
+      const currentCandidate = localInterpretedUpgradeCandidate(current);
+      if (!currentCandidate || currentCandidate.id !== id || currentCandidate.lang !== lang) {
+        return currentState;
+      }
+      const currentVariant = current.lang === lang
+        ? snapshotManifestationContent(current)
+        : current.contentByLang?.[lang];
+      const currentFingerprint = JSON.stringify(
+        snapshotManifestationContent(currentVariant || {})
+      );
+      if (currentFingerprint !== sourceFingerprint) return currentState;
+
+      const upgradedVariant = manifestationVariantFromScene({
+        title: shortText(currentVariant && currentVariant.title, 160) || candidateTitle,
+        scene: remote.scene,
+        generation: remote.generation,
+      });
+      const contentByLang = {
+        ...(current.contentByLang || {}),
+        [lang]: upgradedVariant,
+      };
+      const upgraded = current.lang === lang
+        ? { ...current, ...upgradedVariant, contentByLang }
+        : { ...current, contentByLang };
+      const manifestations = [...currentState.manifestations];
+      manifestations[index] = localizeManifestation(
+        upgraded,
+        currentState.profile,
+        currentState.lang
+      );
+      return { ...currentState, manifestations };
     });
   }, []);
 
@@ -735,6 +799,59 @@ export function AppProvider({ children }) {
       if (!ids.has(id)) personalVisualFailuresRef.current.delete(id);
     }
   }, [state && state.manifestations]);
+
+  useEffect(() => {
+    if (
+      !state ||
+      !hydratedRef.current ||
+      isKnownMinor(state.profile) ||
+      state.profile?.cloudPersonalization !== true ||
+      state.profile?.cloudAdultConfirmed !== true
+    ) return;
+
+    const generationEpoch = generationEpochRef.current;
+    if (localSceneUpgradeEpochRef.current === generationEpoch) return;
+
+    let target = null;
+    let candidate = null;
+    for (const item of state.manifestations) {
+      const nextCandidate = localInterpretedUpgradeCandidate(item);
+      if (!nextCandidate || !nextCandidate.id) continue;
+      target = item;
+      candidate = nextCandidate;
+      break;
+    }
+    if (!target || !candidate) return;
+
+    localSceneUpgradeEpochRef.current = generationEpoch;
+    const sourceVariant = target.lang === candidate.lang
+      ? snapshotManifestationContent(target)
+      : target.contentByLang?.[candidate.lang];
+    const sourceFingerprint = JSON.stringify(
+      snapshotManifestationContent(sourceVariant || {})
+    );
+    const profileFingerprint = JSON.stringify(state.profile || {});
+    const candidateTitle = shortText(sourceVariant && sourceVariant.title, 160) || target.title;
+
+    void generatePersonalizedScene({
+      desire: candidateTitle,
+      category: target.category || 'Wealth',
+      lang: candidate.lang,
+      profile: state.profile,
+    }).then((remote) => {
+      applyRemoteSceneUpgrade({
+        id: candidate.id,
+        lang: candidate.lang,
+        sourceFingerprint,
+        profileFingerprint,
+        candidateTitle,
+        remote,
+        generationEpoch,
+      });
+    }).catch(() => {
+      // The interpreted local v2 copy remains readable; a later app launch can retry.
+    });
+  }, [applyRemoteSceneUpgrade, state]);
 
   const retryLoad = useCallback(() => {
     loadStoredState();
@@ -967,6 +1084,7 @@ export function AppProvider({ children }) {
       setPersonalVisualPhase(id, {
         phase: 'error',
         error: previousFailure.error,
+        stage: previousFailure.stage || 'unknown',
         retryAt: previousFailure.retryAt,
         fingerprint,
       });
@@ -988,6 +1106,7 @@ export function AppProvider({ children }) {
         return { ok: false, error: 'visual_cancelled' };
       }
       const errorCode = personalVisualErrorCode(error);
+      const errorStage = personalVisualErrorStage(error);
       const lastFailure = personalVisualFailuresRef.current.get(id);
       const attempt =
         lastFailure && lastFailure.fingerprint === fingerprint ? lastFailure.attempt + 1 : 1;
@@ -995,12 +1114,14 @@ export function AppProvider({ children }) {
       personalVisualFailuresRef.current.set(id, {
         attempt,
         error: errorCode,
+        stage: errorStage,
         retryAt,
         fingerprint,
       });
       setPersonalVisualPhase(id, {
         phase: 'error',
         error: errorCode,
+        stage: errorStage,
         retryAt,
         fingerprint,
       });
@@ -1142,37 +1263,10 @@ export function AppProvider({ children }) {
     // Passing it explicitly avoids a React state race on that final transition.
     const profile = { ...(snapshot.profile || {}), ...(data.profile || {}) };
     const local = dreamToAffirmation(data.title, profile, lang, data.category);
-    let generated = local;
-    let generation = {
+    const generation = {
       source: 'local',
-      promptVersion: 'local-v1',
+      promptVersion: 'local-interpreted-v2',
     };
-
-    // The personal profile only leaves the device after explicit 18+ consent.
-    // A network/configuration/safety failure falls back to the tested local
-    // generator, so the reward screen never becomes a dead end.
-    if (
-      !isKnownMinor(profile) &&
-      profile.cloudPersonalization === true &&
-      profile.cloudAdultConfirmed === true
-    ) {
-      try {
-        const remote = await generatePersonalizedScene({
-          desire: data.title,
-          category: data.category || 'Wealth',
-          lang,
-          profile,
-        });
-        generated = { ...local, ...remote.scene, usouDoPerfil: remote.scene.personalizedWith };
-        generation = remote.generation;
-      } catch (e) {
-        // No payload/error logging: onboarding answers can be intimate.
-      }
-    }
-
-    // Reset/import may happen while Gemini is answering. A result born in the
-    // previous state must never reappear inside the replacement state.
-    if (generationEpoch !== generationEpochRef.current) return null;
 
     const id = `m-${Date.now()}`;
     const item = {
@@ -1181,13 +1275,13 @@ export function AppProvider({ children }) {
       category: data.category || 'Wealth',
       accent: typeof data.accent === 'number' ? data.accent : 0,
       lang, // variante visível; contentByLang preserva PT e EN sem perder edições
-      intention: generated.intention,
-      affirmation: generated.affirmation,
-      story: generated.story,
-      anchorIdentity: generated.anchorIdentity,
-      anchorStep: generated.anchorStep,
+      intention: local.intention,
+      affirmation: local.affirmation,
+      story: local.story,
+      anchorIdentity: local.anchorIdentity,
+      anchorStep: local.anchorStep,
       // o que do perfil foi usado — a tela mostra isso como recibo honesto
-      personalizedWith: generated.usouDoPerfil || [],
+      personalizedWith: local.usouDoPerfil || [],
       generation,
       goalDays: data.goalDays || 21,
       createdAt: todayISO(),
@@ -1196,10 +1290,13 @@ export function AppProvider({ children }) {
       livingMirror: emptyLivingMirror(),
     };
     const bilingualItem = localizeManifestation(item, profile, lang);
+
+    // Save the complete local reward first. The remote provider only upgrades
+    // this same item later and never delays navigation out of onboarding.
     setState((s) => {
       if (!s || generationEpoch !== generationEpochRef.current) return s;
-      // The app language may have changed while the first Gemini request was
-      // running. Insert the item in the language that is active now.
+      // The app language may have changed between the final answer and this
+      // state update. Insert the item in the language that is active now.
       const visibleItem = localizeManifestation(bilingualItem, profile, s.lang);
       return { ...s, manifestations: [visibleItem, ...s.manifestations] };
     });
@@ -1212,8 +1309,45 @@ export function AppProvider({ children }) {
       });
     }, 0);
 
+    const canUseCloud =
+      !isKnownMinor(profile) &&
+      profile.cloudPersonalization === true &&
+      profile.cloudAdultConfirmed === true;
+    if (canUseCloud) {
+      // The hydration upgrade effect sees the local item in the next render.
+      // Mark this epoch before it can start a duplicate paid request.
+      localSceneUpgradeEpochRef.current = generationEpoch;
+      const sourceVariant = bilingualItem.lang === lang
+        ? snapshotManifestationContent(bilingualItem)
+        : bilingualItem.contentByLang?.[lang];
+      const sourceFingerprint = JSON.stringify(
+        snapshotManifestationContent(sourceVariant || {})
+      );
+      const profileFingerprint = JSON.stringify(profile || {});
+      const candidateTitle = shortText(sourceVariant && sourceVariant.title, 160) || item.title;
+
+      void generatePersonalizedScene({
+        desire: data.title,
+        category: data.category || 'Wealth',
+        lang,
+        profile,
+      }).then((remote) => {
+        applyRemoteSceneUpgrade({
+          id,
+          lang,
+          sourceFingerprint,
+          profileFingerprint,
+          candidateTitle,
+          remote,
+          generationEpoch,
+        });
+      }).catch(() => {
+        // Keep the local scene. A later app launch can retry this same item.
+      });
+    }
+
     return id;
-  }, [ensurePersonalVisual, translateAndStoreVariant]);
+  }, [applyRemoteSceneUpgrade, ensurePersonalVisual, translateAndStoreVariant]);
 
   // Regra ÚNICA de marcar/desmarcar prática por data (sessions = lista de ISO).
   // `on`: true marca, false desmarca, undefined alterna. Não confirma nada —

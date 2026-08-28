@@ -21,6 +21,13 @@ import { APP_NAME, ONB } from '../../constants/brand';
 import { UI, txt, tr } from '../../constants/i18n';
 import { FLOW, ageConfirmsAdult, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
+import {
+  CUSTOM_CHOICE_KEY,
+  hasMeaningfulCustomValue,
+  restoreMultiChoice,
+  serializeMultiChoice,
+  toggleMultiChoice,
+} from '../../utils/onboardingMultiChoice';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
 // v: 4 = roteiro completo com respostas rápidas. Rascunhos anteriores podem
@@ -28,7 +35,7 @@ import { useApp } from '../../context/AppContext';
 const DRAFT_KEY = '@celeste_onb_draft';
 const DRAFT_V = 4;
 const DRAFT_READ_TIMEOUT_MS = 1500;
-const CUSTOM_OPTION = '__custom__';
+const CUSTOM_OPTION = CUSTOM_CHOICE_KEY;
 const initialReduceMotion = () =>
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&
@@ -49,6 +56,7 @@ const S = {
   retryCreation: { en: 'Try again', pt: 'Tentar novamente' },
   restoringDraft: { en: 'Restoring your conversation…', pt: 'Retomando sua conversa…' },
   other: { en: 'Something else', pt: 'Outra resposta' },
+  customMultiPlaceholder: { en: 'Write another answer', pt: 'Escreva outra resposta' },
 };
 
 function normalizeCloudConsent(profile) {
@@ -90,6 +98,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   const draftInteractionRef = useRef(false);
 
   const step = FLOW[idx];
+  const isMultiSelect = step.type === 'chips' && step.multiSelect === true;
   const shortCompactStep = step.compact && viewportHeight <= 520;
   const lines = useMemo(() => stepLines(step, answers, APP_NAME, lang), [idx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,14 +126,28 @@ export default function ChatOnboardingScreen({ navigation }) {
     // digitada e mantém o ritmo sensorial letra por letra.
     setInstant(false);
     const prev = answers[step.key];
+    const restoredMulti = isMultiSelect ? restoreMultiChoice(step, prev, lang) : null;
     const matchedOption =
       step.type === 'chips' &&
+      !isMultiSelect &&
       step.options.find((option) => option.en === prev || storedOptionValue(option) === prev);
     const customAnswer =
-      step.type === 'chips' && step.allowCustom && typeof prev === 'string' && !matchedOption;
-    setValue((step.type === 'text' || customAnswer) && typeof prev === 'string' ? prev : '');
+      step.type === 'chips' &&
+      !isMultiSelect &&
+      step.allowCustom &&
+      typeof prev === 'string' &&
+      !matchedOption;
+    setValue(
+      isMultiSelect
+        ? restoredMulti.customValue
+        : (step.type === 'text' || customAnswer) && typeof prev === 'string'
+        ? prev
+        : ''
+    );
     setSelected(
-      step.type === 'chips' || step.type === 'boolean'
+      isMultiSelect
+        ? restoredMulti.selectedKeys
+        : step.type === 'chips' || step.type === 'boolean'
         ? customAnswer
           ? CUSTOM_OPTION
           : matchedOption
@@ -336,7 +359,11 @@ export default function ChatOnboardingScreen({ navigation }) {
     }
   };
 
-  const customChoiceActive = step.type === 'chips' && selected === CUSTOM_OPTION;
+  const selectedMultiKeys = isMultiSelect && Array.isArray(selected) ? selected : [];
+  const customChoiceActive =
+    step.type === 'chips' &&
+    (isMultiSelect ? selectedMultiKeys.includes(CUSTOM_OPTION) : selected === CUSTOM_OPTION);
+  const multiCustomIsValid = !customChoiceActive || hasMeaningfulCustomValue(value);
   const canSend =
     (step.type === 'text' && (!!value.trim() || step.optional)) ||
     (customChoiceActive && !!value.trim());
@@ -348,6 +375,16 @@ export default function ChatOnboardingScreen({ navigation }) {
   const pickOption = (o) => {
     draftInteractionRef.current = true;
     clearTimeout(autoTimer.current);
+    if (isMultiSelect) {
+      const current = Array.isArray(selected) ? selected : [];
+      const alreadySelected = current.includes(o.key);
+      const next = toggleMultiChoice(current, o.key, step.exclusiveOptions);
+
+      setSelected(next);
+      if (o.custom && alreadySelected) setValue('');
+      return;
+    }
+
     setSelected(o.key);
     if (o.custom) {
       setValue('');
@@ -538,6 +575,19 @@ export default function ChatOnboardingScreen({ navigation }) {
             )}
 
             {/* Chips / boolean options */}
+            {!typing && isMultiSelect && step.selectionHint ? (
+              <Text
+                style={{
+                  color: ONB.inkSoft,
+                  fontSize: 14,
+                  lineHeight: 20,
+                  marginTop: 10,
+                  marginBottom: -4,
+                }}
+              >
+                {txt(step.selectionHint, lang)}
+              </Text>
+            ) : null}
             {!typing && opts.length ? (
               <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -551,9 +601,10 @@ export default function ChatOnboardingScreen({ navigation }) {
                   <OptionPill
                     key={String(o.key)}
                     label={o.label}
-                    active={selected === o.key}
+                    active={isMultiSelect ? selectedMultiKeys.includes(o.key) : selected === o.key}
                     onPress={() => pickOption(o)}
                     style={step.compact ? { paddingVertical: 11, marginBottom: 8 } : null}
+                    multiple={isMultiSelect}
                   />
                 ))}
               </ScrollView>
@@ -623,7 +674,7 @@ export default function ChatOnboardingScreen({ navigation }) {
         </Pressable>
 
         {/* Bottom action area */}
-        {!typing && (step.type === 'text' || customChoiceActive) ? (
+        {!typing && (step.type === 'text' || (customChoiceActive && !isMultiSelect)) ? (
           <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
             <View
               style={{
@@ -663,10 +714,42 @@ export default function ChatOnboardingScreen({ navigation }) {
           </View>
         ) : null}
 
+        {!typing && isMultiSelect && customChoiceActive ? (
+          <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
+            <TextInput
+              value={value}
+              onChangeText={(nextValue) => {
+                draftInteractionRef.current = true;
+                setValue(nextValue);
+              }}
+              placeholder={fill(
+                txt(step.customPlaceholder || S.customMultiPlaceholder, lang),
+                answers,
+                APP_NAME
+              )}
+              placeholderTextColor={ONB.surfaceFaint}
+              accessibilityLabel={txt(S.customMultiPlaceholder, lang)}
+              style={[
+                {
+                  minHeight: 54,
+                  backgroundColor: ONB.pill,
+                  borderRadius: 18,
+                  paddingHorizontal: 18,
+                  paddingVertical: 14,
+                  fontSize: 16,
+                  color: ONB.surfaceInk,
+                },
+                Platform.OS === 'web' ? { outlineStyle: 'none' } : null,
+              ]}
+            />
+          </View>
+        ) : null}
+
         {step.type === 'intro' ||
         (!typing &&
           ((step.type === 'statement' && step.needsContinue) ||
-            (step.type === 'chips' && step.needsContinue && !customChoiceActive) ||
+            (step.type === 'chips' &&
+              (isMultiSelect || (step.needsContinue && !customChoiceActive))) ||
             step.type === 'list')) ? (
           <View style={{ paddingHorizontal: 20, paddingBottom: 28 }}>
             <ContinueButton
@@ -674,10 +757,20 @@ export default function ChatOnboardingScreen({ navigation }) {
               onPress={() =>
                 step.type === 'statement' || step.type === 'intro'
                   ? goNext(answers)
-                  : commit(step.type === 'list' ? items : selected)
+                  : commit(
+                      step.type === 'list'
+                        ? items
+                        : isMultiSelect
+                        ? serializeMultiChoice(step, selectedMultiKeys, value, lang)
+                        : selected
+                    )
               }
               disabled={
-                (step.type === 'chips' && !selected) || (step.type === 'list' && step.requireOne && items.length === 0)
+                (step.type === 'chips' &&
+                  (isMultiSelect
+                    ? selectedMultiKeys.length === 0 || !multiCustomIsValid
+                    : !selected)) ||
+                (step.type === 'list' && step.requireOne && items.length === 0)
               }
             />
           </View>

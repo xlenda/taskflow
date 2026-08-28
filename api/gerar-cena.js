@@ -4,6 +4,8 @@ const paidAccess = require('./_paid-access');
 const celesteBrain = require('./_celeste-brain');
 const textProvider = require('./_text-provider');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
+const { interpretSelfDescription } = require('../utils/selfDescription');
+const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -12,7 +14,7 @@ const LEGACY_PROMPT_VERSION = 'celeste-scene-v7';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
 const CONTINUITY_MAX_BYTES = 12 * 1024;
-const GENERATION_DEADLINE_MS = 29_000;
+const GENERATION_DEADLINE_MS = 48_000;
 const MIN_REPAIR_BUDGET_MS = 5_000;
 const TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 4_800;
 const CATEGORIES = new Set(['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace']);
@@ -268,14 +270,18 @@ function sanitizeProfile(profile, lang = 'pt') {
   const available = new Set();
   const privateNames = thirdPartyNames(profile);
   const name = cleanText(profile.name, limits.name);
-  const personalText = (key) =>
-    cleanText(redactThirdPartyNames(profile[key], privateNames, lang), limits[key]);
+  const personalText = (key) => {
+    const text = cleanText(redactThirdPartyNames(profile[key], privateNames, lang), limits[key]);
+    return isNonInformativeProfileAnswer(text) ? '' : text;
+  };
   const location = personalText('dreamLocation') || personalText('city');
   const dreamHome = personalText('dreamHome');
   const work = personalText('work');
   const workFeeling = personalText('workFeeling');
   const relationshipStatus = personalText('relationshipStatus');
-  const aboutYou = personalText('aboutYou');
+  const rawAboutYou = personalText('aboutYou');
+  const interpretedAboutYou = interpretSelfDescription(rawAboutYou, lang);
+  const aboutYou = interpretedAboutYou ? interpretedAboutYou.providerValue : rawAboutYou;
   const partnerDesire = personalText('partnerDesire');
   const pastInfluence = personalText('pastInfluence');
   const obstacle = personalText('obstacle');
@@ -651,6 +657,7 @@ function buildSystemInstruction(input = {}) {
     'Create recognition through truthful detail and continuity, never through flattery, loyalty tests, guilt, loneliness, or telling the user an unsupported thing merely because they may want to hear it.',
     'Belonging must point back to the user\'s values, chosen relationships, and wider human community. Never make Celeste the exclusive source of understanding, safety, or progress.',
     'Use profile details selectively and naturally. Never recite the profile or force every available detail into one scene.',
+    'Interpret a self-description as meaning, not as copy. Repair missing punctuation and grammar, then weave the underlying qualities into a new natural sentence. Never paste a raw trait list after a colon.',
     'Treat relationship context and past influence with discretion: use them only when relevant, without diagnosis or judgment.',
     'The intention is one concise sentence. The affirmation is believable, in first person, and personally anchored in the user\'s desire.',
     'Treat the affirmation as values-based reflection, not as a magical positive statement. Prefer language such as I choose, I can, I am practising, or I am learning.',
@@ -784,6 +791,13 @@ const UNBELIEVABLE_AFFIRMATION = [
   /\b(i am already the person who has|it is on its way to me|already mine by right)\b/i,
 ];
 
+const RAW_PROFILE_DUMP = [
+  /\b(?:eu\s+)?honro\s+o\s+que\s+sei\s+sobre\s+mim\s*:/i,
+  /\b(?:como\s+me\s+descrevo|o\s+que\s+contei\s+sobre\s+mim)\s*:/i,
+  /\b(?:i\s+)?honou?r\s+what\s+i\s+know\s+about\s+myself\s*:/i,
+  /\b(?:how\s+i\s+describe\s+myself|what\s+i\s+shared\s+about\s+myself)\s*:/i,
+];
+
 const MATCH_STOP_WORDS = new Set([
   'a', 'ao', 'as', 'com', 'da', 'das', 'de', 'do', 'dos', 'e', 'em', 'eu', 'me', 'meu', 'minha',
   'na', 'nas', 'no', 'nos', 'o', 'os', 'para', 'por', 'que', 'se', 'ser', 'ter', 'estar',
@@ -913,6 +927,9 @@ function validateGeneratedScene(raw, input) {
     throw new GenerationError('invalid_generation');
   }
   if (UNBELIEVABLE_AFFIRMATION.some((pattern) => pattern.test(scene.affirmation))) {
+    throw new GenerationError('invalid_generation');
+  }
+  if (RAW_PROFILE_DUMP.some((pattern) => pattern.test(scene.affirmation))) {
     throw new GenerationError('invalid_generation');
   }
 
@@ -1177,7 +1194,7 @@ async function handler(req, res) {
       }
     }
     const knowledgePack = celesteBrain.buildKnowledgePack('scene', validated.value);
-    return res.status(200).json({
+    const payload = {
       scene,
       generation: {
         source: 'celeste-ai',
@@ -1191,8 +1208,15 @@ async function handler(req, res) {
         qualityScore: quality ? quality.score : undefined,
         ...(providerReceipt ? {} : { seed: responseSeed }),
       },
-    });
+    };
+    const committed = await paidAccess.commitPaidRequest(access);
+    if (!committed.ok) {
+      await paidAccess.releasePaidRequest(access).catch(() => {});
+      return sendJson(res, committed.status, committed.error);
+    }
+    return res.status(200).json(payload);
   } catch (error) {
+    await paidAccess.releasePaidRequest(access).catch(() => {});
     if (error && (error.code === 'generation_blocked' || error.code === 'text_provider_blocked')) {
       return sendJson(res, 422, 'generation_blocked');
     }
@@ -1247,4 +1271,5 @@ module.exports._internals = {
     generationClock = typeof clock === 'function' ? clock : () => Date.now();
   },
   setPaidAccessAuthorizerForTests: paidAccess.setAuthorizerForTests,
+  setPaidAccessFinalizerForTests: paidAccess.setFinalizerForTests,
 };

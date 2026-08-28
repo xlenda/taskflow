@@ -1,5 +1,6 @@
 import React from 'react';
-import { Platform, Pressable, Text, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ONB, SERIF } from '../../constants/brand';
@@ -58,10 +59,12 @@ export function ContinueButton({ label = 'Continue', onPress, disabled, dark, st
   );
 }
 
-export function OptionPill({ label, active, onPress, style }) {
+export function OptionPill({ label, active, onPress, style, multiple = false }) {
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={multiple ? 'checkbox' : 'button'}
+      accessibilityState={multiple ? { checked: !!active } : undefined}
+      aria-checked={multiple ? !!active : undefined}
       onPress={onPress}
       style={({ pressed }) => [
         {
@@ -70,6 +73,9 @@ export function OptionPill({ label, active, onPress, style }) {
           paddingHorizontal: 22,
           paddingVertical: 14,
           alignSelf: 'flex-start',
+          maxWidth: '100%',
+          flexDirection: 'row',
+          alignItems: 'center',
           marginBottom: 12,
           opacity: pressed ? 0.85 : 1,
           shadowColor: ONB.shadow,
@@ -81,7 +87,16 @@ export function OptionPill({ label, active, onPress, style }) {
         style,
       ]}
     >
-      <Text style={{ fontSize: 16, color: active ? ONB.inkOn : ONB.surfaceInk }}>{label}</Text>
+      {multiple ? (
+        <View
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          style={{ width: 18, height: 18, marginRight: 9, alignItems: 'center', justifyContent: 'center' }}
+        >
+          {active ? <Ionicons name="checkmark" size={17} color={ONB.inkOn} /> : null}
+        </View>
+      ) : null}
+      <Text style={{ flexShrink: 1, fontSize: 16, color: active ? ONB.inkOn : ONB.surfaceInk }}>{label}</Text>
     </Pressable>
   );
 }
