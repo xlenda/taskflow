@@ -504,6 +504,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await clickTestId(page, 'dream-feeling-calm');
   await clickTestId(page, 'transform-dream');
   await page.click('[data-testid="transform-dream"]');
+  const dreamResultTimeout = USE_GEMINI ? 30000 : 15000;
   await page.waitForFunction(
     () => {
       const text = (document.querySelector('[data-testid="dream-personalized-affirmation"]')?.innerText || '')
@@ -511,15 +512,16 @@ async function assertChips(page, labels, screen, timeout = 30000) {
         .toLowerCase();
       return text.length >= 24 && !text.includes('casa perto do mar');
     },
-    { timeout: 15000, polling: 200 }
+    { timeout: dreamResultTimeout, polling: 200 }
   );
   await page.waitForFunction(
-    () => {
+    (useGemini) => {
       const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
       return entries[0]?.dreamAnchor === '' &&
-        entries[0]?.generatorVersion === 'dream-local-v4';
+        entries[0]?.generatorVersion === (useGemini ? 'celeste-dream-v3' : 'dream-local-v4');
     },
-    { timeout: 15000, polling: 200 }
+    { timeout: dreamResultTimeout, polling: 200 },
+    USE_GEMINI
   );
   await sleep(900);
   const matchingDreams = await page.evaluate((report) => {
