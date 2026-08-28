@@ -147,12 +147,59 @@ async function assertChips(page, labels, screen, timeout = 30000) {
 (async () => {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
-    headless: 'new',
-    args: ['--no-sandbox', '--window-size=420,900', '--lang=pt-BR'],
+    headless: USE_GEMINI ? false : 'new',
+    ...(USE_GEMINI ? { ignoreDefaultArgs: ['--enable-automation'] } : {}),
+    args: [
+      '--no-sandbox',
+      '--window-size=420,900',
+      '--lang=pt-BR',
+      ...(USE_GEMINI
+        ? ['--disable-blink-features=AutomationControlled', '--window-position=-32000,-32000']
+        : []),
+    ],
     defaultViewport: { width: 420, height: 900 },
   });
   const page = await browser.newPage();
   global.__page = page;
+  const paidUiSmokeAttempts = [];
+  let uiSmokeCloudPhase = 'before-consent';
+  if (USE_GEMINI) {
+    await page.evaluateOnNewDocument(() => {
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch (_error) {}
+    });
+    const paidPathsBlockedInUiSmoke = new Set([
+      '/api/gerar-cena',
+      '/api/traduzir-cena',
+      '/api/gerar-audio',
+      '/api/gerar-visual',
+    ]);
+    const paidApiPaths = new Set([
+      ...paidPathsBlockedInUiSmoke,
+      '/api/transformar-sonho',
+    ]);
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      let pathname = '';
+      try {
+        pathname = new URL(request.url()).pathname;
+      } catch (_error) {}
+      if (request.method() === 'POST' && paidApiPaths.has(pathname)) {
+        paidUiSmokeAttempts.push({ pathname, phase: uiSmokeCloudPhase });
+      }
+      if (request.method() === 'POST' && paidPathsBlockedInUiSmoke.has(pathname)) {
+        void request.respond({
+          status: 403,
+          contentType: 'application/json',
+          headers: { 'Cache-Control': 'no-store' },
+          body: JSON.stringify({ error: 'automated_request_blocked' }),
+        }).catch(() => {});
+        return;
+      }
+      void request.continue().catch(() => {});
+    });
+  }
   await page.evaluateOnNewDocument(() => {
     window.__celesteVibrationCalls = [];
     const vibrationSpy = (pattern) => {
@@ -341,7 +388,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     throw new Error(`Consentimento Gemini não cabe em 320x480: ${JSON.stringify(compactConsent)}`);
   }
   await page.setViewport({ width: 420, height: 900 });
-  await waitAndClick(page, USE_GEMINI ? 'Permitir' : 'Criar no aparelho');
+  await waitAndClick(page, 'Criar no aparelho');
 
   // O Traço Celeste é o gatilho proprietário: a história pessoal não aparece
   // antes das três estrelas e se revela depois do gesto completo.
@@ -355,7 +402,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       return false;
     },
     { timeout: 30000, polling: 300 },
-    USE_GEMINI
+    false
   );
   const generationSource = await generationSourceHandle.jsonValue();
   // A chamada direta feita pelo deploy comprova o Gemini e sua base ao vivo.
@@ -493,6 +540,35 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   // e tema sem recontar a cena, e a transformacao persiste seu recibo tecnico.
   await clickTestId(page, 'affirmation-alarm-back');
   await waitForText(page, 'Manifestar', 20000);
+  if (USE_GEMINI) {
+    const assertNoPaidAttemptBeforeConsent = () => {
+      const attemptsBeforeCloudConsent = paidUiSmokeAttempts.filter(
+        (attempt) => attempt.phase === 'before-consent'
+      );
+      if (attemptsBeforeCloudConsent.length) {
+        throw new Error(
+          `API paga tentada antes do consentimento: ${attemptsBeforeCloudConsent
+            .map((attempt) => attempt.pathname)
+            .join(', ')}`
+        );
+      }
+    };
+    assertNoPaidAttemptBeforeConsent();
+    await clickTestId(page, 'open-profile');
+    await waitForText(page, 'Processamento em nuvem', 20000);
+    await clickTestId(page, 'profile-gemini-switch');
+    await waitForText(page, 'Confirme que você tem 18 anos ou mais', 15000);
+    assertNoPaidAttemptBeforeConsent();
+    uiSmokeCloudPhase = 'after-consent';
+    await waitAndClick(page, 'Tenho 18+ · Permitir');
+    await page.waitForFunction(
+      `(version) => { const p = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {}; return p.cloudConsentVersion === version && p.cloudPersonalization === true && p.cloudDreamConsent === true && p.cloudAdultConfirmed === true; }`,
+      { timeout: 15000, polling: 200 },
+      CLOUD_CONSENT_VERSION
+    );
+    await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
+    await waitForText(page, 'Manifestar', 20000);
+  }
   await clickTestId(page, 'open-dream-journal');
   await waitForText(page, 'Meus sonhos', 20000);
   await page.waitForSelector('[data-testid="dream-report-input"]', {
@@ -536,6 +612,18 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     });
     await page.waitForSelector('[data-testid="retry-dream-cloud"]', {
       visible: true,
+      timeout: 10000,
+    });
+    await clickTestId(page, 'retry-dream-cloud');
+    await page.waitForFunction(
+      () => {
+        const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
+        return entries[0]?.generatorVersion === 'celeste-dream-v3';
+      },
+      { timeout: 30000, polling: 200 }
+    );
+    await page.waitForSelector('[data-testid="dream-cloud-fallback"]', {
+      hidden: true,
       timeout: 10000,
     });
   }

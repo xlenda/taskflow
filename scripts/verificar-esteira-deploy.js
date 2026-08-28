@@ -15,6 +15,7 @@ const {
 
 const root = path.resolve(__dirname, '..');
 const deploySource = fs.readFileSync(path.join(__dirname, 'deploy-celeste.js'), 'utf8');
+const e2eSource = fs.readFileSync(path.join(__dirname, 'e2e-prod.js'), 'utf8');
 
 function publicEnv(overrides = {}) {
   return {
@@ -289,6 +290,21 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     deploySource,
     /dream\.generation\?\.promptVersion === 'celeste-dream-v3'/,
     'smoke de producao precisa confirmar o transformador real de sonhos'
+  );
+  assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
+  assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
+  assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);
+  assert.match(e2eSource, /clickTestId\(page, 'retry-dream-cloud'\)/);
+  assert.match(e2eSource, /entries\[0\]\?\.generatorVersion === 'celeste-dream-v3'/);
+  const blockedUiSmokeRoutes = e2eSource.slice(
+    e2eSource.indexOf('const paidPathsBlockedInUiSmoke'),
+    e2eSource.indexOf('const paidApiPaths')
+  );
+  assert.ok(blockedUiSmokeRoutes.includes('/api/gerar-cena'));
+  assert.ok(blockedUiSmokeRoutes.includes('/api/gerar-visual'));
+  assert.ok(
+    !blockedUiSmokeRoutes.includes('/api/transformar-sonho'),
+    'smoke da interface precisa liberar somente o transformador de sonhos'
   );
   assert.match(deploySource, /'X-Celeste-Request-Id': requestId\(\)/);
   assert.ok(!/console\.(?:log|error)\([^\n]*accessToken/.test(deploySource));
