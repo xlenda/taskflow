@@ -611,6 +611,20 @@ async function liveGeminiChecks(
     cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
+  const dreamBody = {
+    dream: 'Eu caminhava por um jardim silencioso ao amanhecer e acordei calma.',
+    feeling: 'calm',
+    theme: 'peace',
+    lang: 'pt',
+    profile: {
+      name: 'Clara',
+      desire: 'viver com mais serenidade e confiança',
+      whyMatters: 'estar presente nas escolhas importantes da minha vida',
+    },
+    cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+  };
   const visualBody = {
     desire: 'uma cabana tranquila perto da natureza',
     category: 'Peace',
@@ -658,6 +672,7 @@ async function liveGeminiChecks(
       accessToken: sessionToken,
       generationBody: generationInput,
       translationBody: translationInput,
+      dreamBody: dreamInput,
       visualBody: visualInput,
     }) => {
       const requestId = () => {
@@ -697,6 +712,7 @@ async function liveGeminiChecks(
       };
       const generation = await postGeneration();
       const translation = await post('/api/traduzir-cena', translationInput);
+      const dream = await post('/api/transformar-sonho', dreamInput);
       const visualResult = await post('/api/gerar-visual', visualInput);
       const visualData = visualResult.payload?.image?.data;
       const visual = {
@@ -716,8 +732,8 @@ async function liveGeminiChecks(
           error: visualResult.payload?.error,
         },
       };
-      return { generation, translation, visual };
-    }, { accessToken, generationBody, translationBody, visualBody });
+      return { generation, translation, dream, visual };
+    }, { accessToken, generationBody, translationBody, dreamBody, visualBody });
   } finally {
     await browser.close();
   }
@@ -741,6 +757,14 @@ async function liveGeminiChecks(
   assert(translation.generation?.source === 'gemini-translation', 'Traducao nao confirmou source=gemini-translation');
   assert(/blue mug/i.test(translatedText) && /27/.test(translatedText), 'Traducao perdeu o detalhe sentinela blue mug 27');
   assert(/\b(I|my|mine)\b/i.test(translation.scene.affirmation || ''), 'Afirmacao traduzida nao esta em primeira pessoa');
+  assert(results.dream.status === 200, `Sonho/BotID ao vivo falhou: ${JSON.stringify(results.dream)}`);
+  const dream = results.dream.payload;
+  assert(
+    dream.dream?.reflection && dream.dream?.affirmation,
+    'Sonho ao vivo nao devolveu reflexao e afirmacao'
+  );
+  assert(dream.generation?.source === 'gemini-dream', 'Sonho nao confirmou source=gemini-dream');
+  assert(dream.generation?.promptVersion === 'celeste-dream-v3', 'Sonho nao confirmou o prompt esperado');
   assert(results.visual.status === 200, `Visual/BotID ao vivo falhou: ${JSON.stringify(results.visual)}`);
   const visual = results.visual.payload;
   assert(
@@ -755,7 +779,7 @@ async function liveGeminiChecks(
     visual.generation?.source === 'gemini-image',
     'Visual ao vivo nao confirmou source=gemini-image'
   );
-  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model} e visual ${visual.generation.model} passaram no navegador real`);
+  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model} e visual ${visual.generation.model} passaram no navegador real`);
 }
 
 async function candidateChecks(vercelCli, candidate, env) {

@@ -514,15 +514,31 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     },
     { timeout: dreamResultTimeout, polling: 200 }
   );
-  await page.waitForFunction(
-    (useGemini) => {
+  const dreamVersionHandle = await page.waitForFunction(
+    (allowCloudVersion) => {
       const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
-      return entries[0]?.dreamAnchor === '' &&
-        entries[0]?.generatorVersion === (useGemini ? 'celeste-dream-v3' : 'dream-local-v4');
+      const entry = entries[0];
+      if (!entry || entry.dreamAnchor !== '') return false;
+      if (entry.generatorVersion === 'dream-local-v4') return entry.generatorVersion;
+      if (allowCloudVersion && entry.generatorVersion === 'celeste-dream-v3') {
+        return entry.generatorVersion;
+      }
+      return false;
     },
     { timeout: dreamResultTimeout, polling: 200 },
     USE_GEMINI
   );
+  const dreamVersion = await dreamVersionHandle.jsonValue();
+  if (USE_GEMINI && dreamVersion === 'dream-local-v4') {
+    await page.waitForSelector('[data-testid="dream-cloud-fallback"]', {
+      visible: true,
+      timeout: 10000,
+    });
+    await page.waitForSelector('[data-testid="retry-dream-cloud"]', {
+      visible: true,
+      timeout: 10000,
+    });
+  }
   await sleep(900);
   const matchingDreams = await page.evaluate((report) => {
     const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];

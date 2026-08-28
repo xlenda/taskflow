@@ -284,6 +284,12 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /generation\.generation\?\.provider === 'anthropic'/,
     'smoke de producao precisa confirmar Claude como escritor principal'
   );
+  assert.match(deploySource, /post\('\/api\/transformar-sonho', dreamInput\)/);
+  assert.match(
+    deploySource,
+    /dream\.generation\?\.promptVersion === 'celeste-dream-v3'/,
+    'smoke de producao precisa confirmar o transformador real de sonhos'
+  );
   assert.match(deploySource, /'X-Celeste-Request-Id': requestId\(\)/);
   assert.ok(!/console\.(?:log|error)\([^\n]*accessToken/.test(deploySource));
   assert.match(
