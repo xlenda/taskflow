@@ -321,7 +321,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await typeAnswer(page, 'Alex');
 
   await page.setViewport({ width: 320, height: 480 });
-  await waitForText(page, 'processadores em nuvem somente nos recursos', 30000);
+  await waitForText(page, 'processadores em nuvem nos recursos', 30000);
   await sleep(1000);
   await assertChips(page, ['Permitir', 'Criar no aparelho'], 'consentimento Gemini');
   const compactConsent = await page.evaluate(() => {

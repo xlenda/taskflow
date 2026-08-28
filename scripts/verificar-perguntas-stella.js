@@ -94,8 +94,8 @@ for (const [lang, copy] of Object.entries(cloud.question)) {
     assert.match(copy, new RegExp(provider), `${lang}: consentimento nao declara ${provider}`);
   }
 }
-assert.match(cloud.question.en, /Anthropic[\s\S]*OpenAI as failover/);
-assert.match(cloud.question.pt, /Anthropic[\s\S]*OpenAI como alternativa em caso de falha/);
+assert.match(cloud.question.en, /Anthropic[\s\S]*OpenAI (?:only )?as failover/);
+assert.match(cloud.question.pt, /Anthropic[\s\S]*OpenAI (?:apenas )?como alternativa(?: em caso de falha)?/);
 assert.match(cloud.question.en, /Gemini[\s\S]*translates[\s\S]*images[\s\S]*dreams/);
 assert.match(cloud.question.pt, /Gemini[\s\S]*traduz[\s\S]*imagens[\s\S]*sonhos/);
 assert.match(cloud.question.en, /ElevenLabs[\s\S]*narrates/);

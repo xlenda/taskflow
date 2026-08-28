@@ -559,8 +559,8 @@ export const FLOW = [
     textSize: 23,
     compact: true,
     question: {
-      en: 'Are you 18 or older, and do you allow Celeste to use cloud processors only for features you request? Anthropic creates personalized scene text, with OpenAI as failover; Google Gemini translates text, creates images and interprets dreams you choose to send; ElevenLabs narrates selected personal text. Only the necessary data is sent, and saved names of other people stay on this device.',
-      pt: 'Você tem 18 anos ou mais e permite que o Celeste use processadores em nuvem somente nos recursos que você solicitar? A Anthropic cria o texto das cenas personalizadas, com a OpenAI como alternativa em caso de falha; o Google Gemini traduz textos, cria imagens e interpreta sonhos que você escolher enviar; a ElevenLabs narra o texto pessoal selecionado. Só os dados necessários são enviados, e nomes cadastrados de outras pessoas ficam neste aparelho.',
+      en: 'Are you 18 or older, and do you allow cloud processors for features you choose? Anthropic creates scenes, with OpenAI only as failover; Gemini translates, creates images and interprets dreams; ElevenLabs narrates text. Only what is needed is sent. Saved names stay on this device.',
+      pt: 'Você tem 18 anos ou mais e permite processadores em nuvem nos recursos que escolher? A Anthropic cria cenas, com a OpenAI apenas como alternativa; o Gemini traduz, cria imagens e interpreta sonhos; a ElevenLabs narra textos. Só o necessário é enviado. Nomes salvos ficam neste aparelho.',
     },
     yesLabel: { en: 'Allow', pt: 'Permitir' },
     noLabel: { en: 'Create on device', pt: 'Criar no aparelho' },
