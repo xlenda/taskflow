@@ -116,6 +116,12 @@ const DREAM_FACTS = new Set([
   'existingEvidence',
   'whyItMatters',
   'desiredFeeling',
+  'desire',
+  'work',
+  'partnerDesire',
+  'place',
+  'dreamHome',
+  'support',
   'obstacle',
   'spiritualStyle',
   'excludedTopics',
@@ -1071,6 +1077,41 @@ function shingleSimilarity(left, right, size = 3) {
   return shared / (first.size + second.size - shared);
 }
 
+function dreamRecallEcho(recall, generatedText) {
+  const source = tokens(recall, true);
+  const generated = tokens(generatedText, true);
+  let longestSharedPhrase = 0;
+  const largestWindow = Math.min(8, source.length, generated.length);
+  for (let size = largestWindow; size >= 3; size -= 1) {
+    const sourcePhrases = new Set();
+    for (let index = 0; index <= source.length - size; index += 1) {
+      sourcePhrases.add(source.slice(index, index + size).join(' '));
+    }
+    let found = false;
+    for (let index = 0; index <= generated.length - size; index += 1) {
+      if (sourcePhrases.has(generated.slice(index, index + size).join(' '))) {
+        longestSharedPhrase = size;
+        found = true;
+        break;
+      }
+    }
+    if (found) break;
+  }
+
+  const sourceContent = [...new Set(tokens(recall))];
+  const generatedContent = new Set(tokens(generatedText));
+  const sharedContent = sourceContent.filter((token) => generatedContent.has(token)).length;
+  const contentCoverage = sourceContent.length ? sharedContent / sourceContent.length : 0;
+  return {
+    echoed:
+      longestSharedPhrase >= 3 ||
+      (sourceContent.length >= 4 && sharedContent >= 3 && contentCoverage >= 0.6),
+    longestSharedPhrase,
+    contentCoverage,
+    sharedContent,
+  };
+}
+
 function previousScene(input) {
   if (!isPlainObject(input)) return null;
   if (isPlainObject(input.previousScene)) return input.previousScene;
@@ -1247,6 +1288,16 @@ function evaluateDream(dream, input = {}) {
     );
   }
 
+  const recallEcho = dreamRecallEcho(factText(map.facts.dreamRecall), text);
+  if (recallEcho.echoed) {
+    collector.add(
+      'dream_recall_echo',
+      'high',
+      'Do not quote, restate, summarize, paraphrase, or retell the dream recall. Reflect only on waking feeling, chosen theme, and safe personal resources.',
+      fields
+    );
+  }
+
   const sourceIsGraphic = containsGraphicContent(factText(map.facts.dreamRecall));
   const outputIsGraphic = containsGraphicContent(text);
   if (outputIsGraphic) {
@@ -1257,9 +1308,11 @@ function evaluateDream(dream, input = {}) {
     );
   }
 
-  const safeAnchorKeys = sourceIsGraphic
-    ? ['wakingFeeling', 'userChosenTheme', 'selfDescription', 'strengths', 'whyItMatters', 'obstacle']
-    : ['dreamRecall', 'wakingFeeling', 'userChosenTheme', 'selfDescription', 'strengths', 'whyItMatters', 'obstacle'];
+  const safeAnchorKeys = [
+    'wakingFeeling', 'userChosenTheme', 'selfDescription', 'strengths',
+    'existingEvidence', 'whyItMatters', 'desiredFeeling', 'desire', 'work',
+    'partnerDesire', 'place', 'dreamHome', 'support', 'obstacle',
+  ];
   const coverage = anchorCoverage(map, text, safeAnchorKeys);
   if (coverage.availableKeys.length && !coverage.matchedKeys.length) {
     collector.add(
@@ -1299,6 +1352,9 @@ function evaluateDream(dream, input = {}) {
   return finalEvaluation('dream', map.language, collector.issues, {
     sourceIsGraphic,
     outputIsGraphic,
+    dreamRecallEcho: recallEcho.echoed,
+    dreamRecallLongestSharedPhrase: recallEcho.longestSharedPhrase,
+    dreamRecallContentCoverage: Number(recallEcho.contentCoverage.toFixed(3)),
     anchorCoverage: Number(coverage.ratio.toFixed(3)),
     anchorKeysAvailable: coverage.availableKeys,
     anchorKeysMatched: coverage.matchedKeys,
@@ -1317,6 +1373,7 @@ const REPAIR_INSTRUCTIONS = {
   manipulative_retention: 'Remove guilt, streak pressure, fear of lost progress, urgency, and loyalty tests.',
   affirmation_not_first_person: 'Rewrite the affirmation in grounded first-person process language.',
   literal_dream_interpretation: 'Offer only one uncertain possible reflection; do not decode symbols, reveal hidden truth, or predict.',
+  dream_recall_echo: 'Discard the wording and narrative of the recall. Start over from waking feeling, chosen theme, and safe profile resources; do not quote, summarize, paraphrase, or retell any scene detail.',
   graphic_dream_echo: 'Do not repeat any graphic detail; refer only to difficult imagery, the supplied waking feeling, and present safety.',
   missing_dream_uncertainty: 'Explicitly say that the reflection is only one possibility and is not a prediction or diagnosis.',
 };

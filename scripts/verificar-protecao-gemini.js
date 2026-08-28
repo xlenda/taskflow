@@ -10,6 +10,8 @@ const dream = read('api/transformar-sonho.js');
 const audio = read('api/gerar-audio.js');
 const visual = read('api/gerar-visual.js');
 const paidAccess = read('api/_paid-access.js');
+const actorQuotaMigration = read('supabase/migrations/008_generation_actor_quota.sql');
+const actorQuotaContract = read('supabase/migrations/009_disable_legacy_generation_reserve.sql');
 const client = read('utils/botProtection.web.js');
 const deploy = read('scripts/deploy-celeste.js');
 const vercel = JSON.parse(read('vercel.json'));
@@ -84,6 +86,17 @@ assert.match(
   /hasNativeClientClaim\(req\)\s*&&\s*!isNativeRequest\(req\)/,
   'claim nativo autodeclarado ainda pode chegar a reserva de credito'
 );
+assert.match(paidAccess, /TRUSTED_VERCEL_IP_HEADER\s*=\s*'x-vercel-forwarded-for'/);
+assert.match(paidAccess, /createHmac\('sha256', secret\)/);
+assert.match(paidAccess, /CELESTE_ACTOR_HASH_SECRET/);
+assert.match(paidAccess, /p_actor_hash:\s*input\.actorHash/);
+assert.doesNotMatch(paidAccess, /PGRST202|legacy_schema/);
+assert.doesNotMatch(paidAccess, /headers\[['"]x-forwarded-for['"]\]/);
+assert.match(actorQuotaMigration, /actor_daily_units\s+integer\s+not null\s+default 96/i);
+assert.match(actorQuotaMigration, /primary key\s*\(usage_day, actor_hash\)/i);
+assert.match(actorQuotaMigration, /for update/i);
+assert.match(actorQuotaMigration, /actorRemaining/i);
+assert.match(actorQuotaContract, /'reason', 'actor_required'/i);
 
 const clientFiles = [path.join(root, 'App.js')].concat(
   ['components', 'constants', 'context', 'screens', 'services', 'utils']
@@ -150,6 +163,11 @@ assert.strictEqual(
   packageJson.scripts['verify:gemini-waf-live'],
   'node scripts/verificar-waf-vercel.js',
   'verificador do WAF ativo nao esta exposto no package.json'
+);
+assert.strictEqual(
+  packageJson.scripts['verify:paid-access'],
+  'node scripts/verificar-acesso-pago.js',
+  'verificador da cota por ator nao esta exposto no package.json'
 );
 
 console.log('Protecao Gemini OK: Origin/BotID/no-store, payload minimo e WAF 12/min em cinco rotas.');

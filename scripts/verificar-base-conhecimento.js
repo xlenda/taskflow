@@ -8,6 +8,7 @@ const knowledge = JSON.parse(fs.readFileSync(knowledgePath, 'utf8'));
 const sceneEndpoint = require('../api/gerar-cena');
 const dreamEndpoint = require('../api/transformar-sonho');
 const brain = require('../api/_celeste-brain');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 assert.strictEqual(knowledge.version, 'celeste-knowledge-v2');
 assert.strictEqual(knowledge.schemaVersion, '2.0.0');
@@ -87,6 +88,7 @@ const sceneInput = sceneEndpoint._internals.validateInput({
     obstacle: 'medo de comecar errado',
   },
   cloudConsent: true,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
   adultConfirmed: true,
 }).value;
 const request = sceneEndpoint._internals.buildGeminiRequest(sceneInput, 17);

@@ -7,6 +7,8 @@ export const COMMUNITY_BODY_MAX = 600;
 export const COMMUNITY_STORAGE_ERROR_CODE = 'community_storage_unreadable';
 export const COMMUNITY_BACKUP_MAX_ITEMS = 50;
 export const COMMUNITY_REMOTE_TIMEOUT_MS = 4500;
+export const COMMUNITY_REMOTE_ENABLED =
+  process.env.EXPO_PUBLIC_CELESTE_COMMUNITY_REMOTE_ENABLED === '1';
 
 const CATEGORY_CIRCLES = {
   Love: 'amor-reciproco',
@@ -16,6 +18,21 @@ const CATEGORY_CIRCLES = {
   Confidence: 'coragem-confianca',
   Peace: 'paz-presenca',
 };
+
+export const COMMUNITY_CIRCLES = Object.freeze([
+  { slug: 'amor-reciproco', category: 'Love', namePt: 'Amor recíproco', nameEn: 'Reciprocal love' },
+  { slug: 'prosperidade-consciente', category: 'Wealth', namePt: 'Prosperidade consciente', nameEn: 'Mindful prosperity' },
+  { slug: 'coragem-confianca', category: 'Confidence', namePt: 'Coragem e confiança', nameEn: 'Courage and confidence' },
+  { slug: 'proposito-carreira', category: 'Career', namePt: 'Propósito e carreira', nameEn: 'Purpose and career' },
+  { slug: 'corpo-cuidado', category: 'Health', namePt: 'Corpo e cuidado', nameEn: 'Body and care' },
+  { slug: 'paz-presenca', category: 'Peace', namePt: 'Paz e presença', nameEn: 'Peace and presence' },
+]);
+
+export const COMMUNITY_POST_KINDS = Object.freeze(['action', 'evidence', 'celebration']);
+export const COMMUNITY_REACTION_KINDS = Object.freeze(['with_you', 'rooting', 'celebrate']);
+
+const CIRCLE_SLUGS = new Set(COMMUNITY_CIRCLES.map((circle) => circle.slug));
+const CIRCLE_CATEGORIES = Object.fromEntries(COMMUNITY_CIRCLES.map((circle) => [circle.slug, circle.category]));
 
 let localMutationTail = Promise.resolve();
 let communityGeneration = 0;
@@ -78,6 +95,19 @@ function safeCategory(value) {
   return Object.prototype.hasOwnProperty.call(CATEGORY_CIRCLES, value) ? value : null;
 }
 
+function safeCircleSlug(value) {
+  const slug = safeText(value, 80);
+  return CIRCLE_SLUGS.has(slug) ? slug : null;
+}
+
+function safePostKind(value) {
+  return COMMUNITY_POST_KINDS.includes(value) ? value : null;
+}
+
+function safeReactionKind(value) {
+  return COMMUNITY_REACTION_KINDS.includes(value) ? value : null;
+}
+
 function boundedTimeout(value, fallback = COMMUNITY_REMOTE_TIMEOUT_MS) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(15_000, Math.max(500, Math.floor(parsed))) : fallback;
@@ -137,6 +167,22 @@ export function validateCommunityStory(value) {
   const body = normalizeCommunityStory(value);
   if (body.length < COMMUNITY_BODY_MIN) return { ok: false, reason: 'too_short', body };
   if (body.length > COMMUNITY_BODY_MAX) return { ok: false, reason: 'too_long', body };
+  if (
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(body) ||
+    /(?:https?:\/\/|www\.)\S+/i.test(body) ||
+    /(^|\s)@[a-z0-9_.]{3,}/i.test(body) ||
+    (body.match(/[+\d][\d\s().-]{7,}\d/g) || []).some(
+      (candidate) => (candidate.match(/\d/g) || []).length >= 8
+    )
+  ) {
+    return { ok: false, reason: 'personal_data', body };
+  }
+  if (
+    /\b(?:chave\s+pix|paypal|venmo|cash\s*app|vaquinha)\b/i.test(body) ||
+    /\b(?:mande|envie|transfira|doe)\b[\s\S]{0,40}\b(?:dinheiro|reais|pix|valor)\b/i.test(body)
+  ) {
+    return { ok: false, reason: 'money_request', body };
+  }
   return { ok: true, body };
 }
 
@@ -147,6 +193,8 @@ function sanitizeLocalItem(raw, index = 0) {
   const status = ['local_draft', 'draft', 'pending', 'published', 'hidden', 'removed'].includes(raw.status)
     ? raw.status
     : 'local_draft';
+  const category = safeCategory(raw.category);
+  const circleSlug = safeCircleSlug(raw.circleSlug) || (category && CATEGORY_CIRCLES[category]) || null;
   return {
     id: safeText(raw.id, 160) || stableLegacyId(raw, body, index),
     remoteId: safeText(raw.remoteId, 160) || null,
@@ -155,7 +203,10 @@ function sanitizeLocalItem(raw, index = 0) {
     locale: raw.locale === 'en' ? 'en' : 'pt',
     manifestationId: safeText(raw.manifestationId, 120) || null,
     manifestationTitle: safeText(raw.manifestationTitle, 160) || null,
-    category: safeCategory(raw.category),
+    category,
+    circleSlug,
+    kind: safePostKind(raw.kind) || 'celebration',
+    authorHandle: safeText(raw.authorHandle, 24) || null,
     publicationConsentAt: safeText(raw.publicationConsentAt, 40) || null,
     createdAt: safeText(raw.createdAt, 40) || new Date(0).toISOString(),
     updatedAt: safeText(raw.updatedAt, 40) || safeText(raw.createdAt, 40) || new Date(0).toISOString(),
@@ -266,8 +317,9 @@ async function getAuthenticatedUser(supabase) {
   }
 }
 
-async function findOrJoinCircle(supabase, userId, category) {
-  const preferred = CATEGORY_CIRCLES[category] || CATEGORY_CIRCLES.Confidence;
+async function findOrJoinCircle(supabase, userId, { circleSlug, category } = {}) {
+  const preferred = safeCircleSlug(circleSlug) || CATEGORY_CIRCLES[safeCategory(category)];
+  if (!preferred) return null;
   const { data: memberships, error: membershipError } = await supabase
     .from('circle_members')
     .select('circle_id, joined_at')
@@ -304,12 +356,19 @@ async function findOrJoinCircle(supabase, userId, category) {
   return joinError ? null : circle;
 }
 
-function remotePostToItem(post, localReceipt) {
+function remotePostToItem(post, localReceipt, context = {}) {
+  const circleSlug = context.circleSlugs && context.circleSlugs.get(post.circle_id);
   return {
     id: localReceipt ? localReceipt.id : post.id,
     remoteId: post.id,
     userId: post.user_id,
+    isOwn: context.viewerUserId === post.user_id,
+    authorHandle: context.authorHandles && context.authorHandles.get(post.user_id) || null,
     body: normalizeCommunityStory(post.body),
+    kind: safePostKind(post.kind) || 'celebration',
+    circleId: post.circle_id,
+    circleSlug: safeCircleSlug(circleSlug) || (localReceipt && localReceipt.circleSlug) || null,
+    myReactions: context.myReactions && context.myReactions.get(post.id) || [],
     status: post.status,
     locale: post.locale === 'en' ? 'en' : 'pt',
     manifestationId: localReceipt ? localReceipt.manifestationId : null,
@@ -323,7 +382,7 @@ function remotePostToItem(post, localReceipt) {
 }
 
 function localCommunityState(local, reason) {
-  return { feed: [], own: local, mode: 'local', reason };
+  return { feed: [], own: local, mode: 'local', reason, viewerHandle: null };
 }
 
 export async function loadLocalCommunityState() {
@@ -337,18 +396,83 @@ async function loadRemoteCommunityState(local, supabase) {
   // RLS returns only the caller's own work and posts that moderation published.
   const { data, error } = await supabase
     .from('community_posts')
-    .select('id, user_id, body, kind, locale, status, created_at, updated_at')
+    .select('id, user_id, circle_id, body, kind, locale, status, created_at, updated_at')
     .order('created_at', { ascending: false })
     .limit(30);
   if (error) throw error;
 
+  const remotePosts = data || [];
+  const publishedIds = remotePosts.filter((post) => post.status === 'published').map((post) => post.id);
+  const { data: circleRows, error: circlesError } = await supabase
+    .from('circles')
+    .select('id, slug')
+    .eq('active', true);
+  if (circlesError) throw circlesError;
+
+  const { data: profile, error: profileError } = await supabase
+    .from('community_profiles')
+    .select('handle')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  const viewerHandle = safeText(profile && profile.handle, 24) || null;
+
+  const myReactions = new Map();
+  if (publishedIds.length) {
+    try {
+      const { data: reactionRows, error: reactionsError } = await supabase
+        .from('community_reactions')
+        .select('post_id, kind')
+        .eq('user_id', user.id)
+        .in('post_id', publishedIds);
+      if (!reactionsError) {
+        (reactionRows || []).forEach((reaction) => {
+          const kind = safeReactionKind(reaction.kind);
+          if (!kind) return;
+          const current = myReactions.get(reaction.post_id) || [];
+          myReactions.set(reaction.post_id, [...current, kind]);
+        });
+      }
+    } catch (_error) {
+      // Reactions are optional decoration; a feed remains useful without them.
+    }
+  }
+
+  const authorHandles = new Map();
+  if (viewerHandle) authorHandles.set(user.id, viewerHandle);
+  const publicAuthorIds = [...new Set(
+    remotePosts
+      .filter((post) => post.status === 'published' && post.user_id !== user.id)
+      .map((post) => post.user_id)
+  )];
+  const publicProfiles = await Promise.all(publicAuthorIds.map(async (authorId) => {
+    try {
+      const { data: profileRows, error: profileError } = await supabase.rpc('community_public_profile', {
+        target_user: authorId,
+      });
+      if (profileError) return null;
+      const profile = Array.isArray(profileRows) ? profileRows[0] : profileRows;
+      const handle = safeText(profile && profile.handle, 24);
+      return handle ? [authorId, handle] : null;
+    } catch (_error) {
+      return null;
+    }
+  }));
+  publicProfiles.filter(Boolean).forEach(([authorId, handle]) => authorHandles.set(authorId, handle));
+
+  const circleSlugs = new Map((circleRows || []).map((circle) => [circle.id, circle.slug]));
   const receipts = new Map(local.filter((item) => item.remoteId).map((item) => [item.remoteId, item]));
-  const posts = (data || []).map((post) => remotePostToItem(post, receipts.get(post.id)));
+  const posts = remotePosts.map((post) => remotePostToItem(post, receipts.get(post.id), {
+    authorHandles,
+    circleSlugs,
+    myReactions,
+    viewerUserId: user.id,
+  }));
   const feed = posts.filter((post) => post.status === 'published');
   const cloudOwn = posts.filter((post) => post.userId === user.id);
   const cloudIds = new Set(cloudOwn.map((post) => post.remoteId));
   const own = [...cloudOwn, ...local.filter((item) => !item.remoteId || !cloudIds.has(item.remoteId))];
-  return { feed, own, mode: 'cloud', reason: null };
+  return { feed, own, mode: 'cloud', reason: null, viewerHandle };
 }
 
 export async function loadCommunityState(options = {}) {
@@ -356,6 +480,7 @@ export async function loadCommunityState(options = {}) {
     ? options.localStories.map((item, index) => sanitizeLocalItem(item, index)).filter(Boolean)
     : null;
   const local = suppliedLocal || await loadLocalCommunityStories();
+  if (!COMMUNITY_REMOTE_ENABLED) return localCommunityState(local, 'remote_disabled');
   const supabase = getCelesteSupabaseClient();
   if (!supabase) return localCommunityState(local, 'not_configured');
 
@@ -381,11 +506,26 @@ export async function submitCommunityStory(input) {
     error.code = validation.reason;
     throw error;
   }
-  if (!input || input.consent !== true) {
+  if (COMMUNITY_REMOTE_ENABLED && (!input || input.consent !== true)) {
     const error = new Error('consent_required');
     error.code = 'consent_required';
     throw error;
   }
+
+  const kind = safePostKind(input && input.kind);
+  if (!kind) {
+    const error = new Error('kind_required');
+    error.code = 'kind_required';
+    throw error;
+  }
+  const circleSlug = safeCircleSlug(input && input.circleSlug)
+    || CATEGORY_CIRCLES[safeCategory(input && input.category)];
+  if (!circleSlug) {
+    const error = new Error('circle_required');
+    error.code = 'circle_required';
+    throw error;
+  }
+  const category = CIRCLE_CATEGORIES[circleSlug];
 
   const now = new Date().toISOString();
   const localDraft = {
@@ -396,8 +536,11 @@ export async function submitCommunityStory(input) {
     locale: input.locale === 'en' ? 'en' : 'pt',
     manifestationId: safeText(input.manifestationId, 120) || null,
     manifestationTitle: safeText(input.manifestationTitle, 160) || null,
-    category: safeCategory(input.category),
-    publicationConsentAt: now,
+    category,
+    circleSlug,
+    kind,
+    authorHandle: safeText(input.authorHandle, 24) || null,
+    publicationConsentAt: input && input.consent === true ? now : null,
     createdAt: now,
     updatedAt: now,
     syncReason: null,
@@ -406,6 +549,14 @@ export async function submitCommunityStory(input) {
   // A readable, durable local receipt is required before any private text is
   // sent to the community backend. Corruption therefore fails closed.
   await upsertLocalCommunityStory(localDraft, operationGeneration);
+
+  if (!COMMUNITY_REMOTE_ENABLED) {
+    const item = await upsertLocalCommunityStory(
+      { ...localDraft, syncReason: 'remote_disabled' },
+      operationGeneration
+    );
+    return { item, synced: false, reason: 'remote_disabled' };
+  }
 
   const supabase = getCelesteSupabaseClient();
   if (!supabase) {
@@ -427,7 +578,7 @@ export async function submitCommunityStory(input) {
 
   let created = null;
   try {
-    const circle = await findOrJoinCircle(supabase, user.id, input.category);
+    const circle = await findOrJoinCircle(supabase, user.id, { circleSlug, category });
     if (!circle) {
       const item = await upsertLocalCommunityStory(
         { ...localDraft, syncReason: 'profile_required' },
@@ -441,7 +592,7 @@ export async function submitCommunityStory(input) {
       .insert({
         user_id: user.id,
         circle_id: circle.id,
-        kind: 'celebration',
+        kind,
         body: validation.body,
         locale: localDraft.locale,
         manifestation_ref: localDraft.manifestationId,
@@ -501,6 +652,133 @@ export async function submitCommunityStory(input) {
   }
 }
 
+async function ensureCircleMembership(supabase, userId, circleId) {
+  const { data: membership } = await supabase
+    .from('circle_members')
+    .select('circle_id, status')
+    .eq('circle_id', circleId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (membership && membership.status === 'active') return true;
+  if (membership) return false;
+
+  const { data: profile } = await supabase
+    .from('community_profiles')
+    .select('age_confirmed_at')
+    .eq('id', userId)
+    .maybeSingle();
+  if (!profile || !profile.age_confirmed_at) return false;
+
+  const { error } = await supabase.from('circle_members').insert({
+    circle_id: circleId,
+    user_id: userId,
+  });
+  return !error;
+}
+
+export async function toggleCommunityReaction(item, reactionKind) {
+  const remoteId = safeText(item && item.remoteId, 160);
+  const circleId = safeText(item && item.circleId, 160);
+  const kind = safeReactionKind(reactionKind);
+  if (!remoteId || !circleId || !kind) return { ok: false, reason: 'invalid_reaction' };
+  if (!COMMUNITY_REMOTE_ENABLED) return { ok: false, reason: 'remote_disabled' };
+
+  const supabase = getCelesteSupabaseClient();
+  if (!supabase) return { ok: false, reason: 'not_configured' };
+  const user = await getAuthenticatedUser(supabase);
+  if (!user) return { ok: false, reason: 'sign_in_required' };
+  if (safeText(item && item.userId, 160) === user.id) return { ok: false, reason: 'own_story' };
+
+  try {
+    const { data: existing, error: existingError } = await supabase
+      .from('community_reactions')
+      .select('post_id')
+      .eq('post_id', remoteId)
+      .eq('user_id', user.id)
+      .eq('kind', kind)
+      .maybeSingle();
+    if (existingError) return { ok: false, reason: 'unavailable' };
+
+    if (existing) {
+      const { error: deleteError } = await supabase
+        .from('community_reactions')
+        .delete()
+        .eq('post_id', remoteId)
+        .eq('user_id', user.id)
+        .eq('kind', kind);
+      return deleteError ? { ok: false, reason: 'unavailable' } : { ok: true, active: false, kind };
+    }
+
+    if (!await ensureCircleMembership(supabase, user.id, circleId)) {
+      return { ok: false, reason: 'profile_required' };
+    }
+    const { error: insertError } = await supabase.from('community_reactions').insert({
+      post_id: remoteId,
+      user_id: user.id,
+      kind,
+    });
+    return insertError ? { ok: false, reason: 'unavailable' } : { ok: true, active: true, kind };
+  } catch (_error) {
+    return { ok: false, reason: 'unavailable' };
+  }
+}
+
+export async function reportCommunityStory(item, reason = 'other') {
+  const remoteId = safeText(item && item.remoteId, 160);
+  const safeReason = ['harassment', 'scam', 'personal_data', 'self_harm', 'hate', 'spam', 'other'].includes(reason)
+    ? reason
+    : 'other';
+  if (!remoteId) return { ok: false, reason: 'invalid_story' };
+  if (!COMMUNITY_REMOTE_ENABLED) return { ok: false, reason: 'remote_disabled' };
+
+  const supabase = getCelesteSupabaseClient();
+  if (!supabase) return { ok: false, reason: 'not_configured' };
+  const user = await getAuthenticatedUser(supabase);
+  if (!user) return { ok: false, reason: 'sign_in_required' };
+  if (safeText(item && item.userId, 160) === user.id) return { ok: false, reason: 'own_story' };
+
+  try {
+    const { data, error } = await supabase.rpc('community_report_post', {
+      target_post: remoteId,
+      target_reason: safeReason,
+      target_detail: null,
+    });
+    return error || !data ? { ok: false, reason: 'unavailable' } : { ok: true, reportId: data };
+  } catch (_error) {
+    return { ok: false, reason: 'unavailable' };
+  }
+}
+
+export async function blockCommunityMember(item) {
+  const blockedId = safeText(item && item.userId, 160);
+  if (!blockedId) return { ok: false, reason: 'invalid_story' };
+  if (!COMMUNITY_REMOTE_ENABLED) return { ok: false, reason: 'remote_disabled' };
+
+  const supabase = getCelesteSupabaseClient();
+  if (!supabase) return { ok: false, reason: 'not_configured' };
+  const user = await getAuthenticatedUser(supabase);
+  if (!user) return { ok: false, reason: 'sign_in_required' };
+  if (blockedId === user.id) return { ok: false, reason: 'own_story' };
+
+  try {
+    const { data: existing, error: existingError } = await supabase
+      .from('community_blocks')
+      .select('blocked_id')
+      .eq('blocker_id', user.id)
+      .eq('blocked_id', blockedId)
+      .maybeSingle();
+    if (existingError) return { ok: false, reason: 'unavailable' };
+    if (existing) return { ok: true, alreadyBlocked: true };
+    const { error } = await supabase.from('community_blocks').insert({
+      blocker_id: user.id,
+      blocked_id: blockedId,
+    });
+    return error ? { ok: false, reason: 'unavailable' } : { ok: true, alreadyBlocked: false };
+  } catch (_error) {
+    return { ok: false, reason: 'unavailable' };
+  }
+}
+
 export async function deleteCommunityStory(item) {
   const localId = safeText(item && item.id, 160);
   const remoteId = safeText(item && item.remoteId, 160);
@@ -510,6 +788,8 @@ export async function deleteCommunityStory(item) {
     await removeLocalCommunityStory(localId, remoteId);
     return { ok: true, remoteDeleted: false };
   }
+
+  if (!COMMUNITY_REMOTE_ENABLED) return { ok: false, reason: 'remote_disabled' };
 
   const supabase = getCelesteSupabaseClient();
   if (!supabase) return { ok: false, reason: 'not_configured' };

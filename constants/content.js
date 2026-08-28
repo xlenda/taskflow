@@ -51,6 +51,7 @@ export const initialState = () => ({
     narratorId: DEFAULT_NARRATOR_ID,
   },
   manifestations: [],
+  anchorSceneId: null,
   favoriteAffirmations: [],
   savedVisions: [],
   visionPlays: [],

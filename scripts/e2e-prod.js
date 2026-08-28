@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const URL = process.env.TARGET_URL || 'https://celeste-jet-two.vercel.app';
 const USE_GEMINI = process.env.E2E_GEMINI === '1';
@@ -488,30 +489,32 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     throw new Error(`Web não salvou o rascunho corretamente: ${JSON.stringify(webAlarmState)}`);
   }
 
-  // O bonus usa uma imagem do relato real; nao basta escolher uma frase pronta
-  // pelo tema. A transformacao permanece local e persiste seu recibo tecnico.
+  // O relato continua privado no diario. Reflexao e afirmacao usam sentimento
+  // e tema sem recontar a cena, e a transformacao persiste seu recibo tecnico.
   await clickTestId(page, 'affirmation-alarm-back');
   await waitForText(page, 'Manifestar', 20000);
   await clickTestId(page, 'open-dream-journal');
   await waitForText(page, 'Meus sonhos', 20000);
-  await clickTestId(page, 'open-dream-shortcut');
+  await clickTestId(page, 'open-dream-bonus');
   const dreamReport = 'Eu estava em uma casa perto do mar.';
   await page.type('[data-testid="dream-report-input"]', dreamReport, { delay: 12 });
   await clickTestId(page, 'dream-feeling-calm');
   await clickTestId(page, 'transform-dream');
   await page.click('[data-testid="transform-dream"]');
   await page.waitForFunction(
-    () =>
-      (document.querySelector('[data-testid="dream-personalized-affirmation"]')?.innerText || '')
-        .toLowerCase()
-        .includes('casa perto do mar'),
+    () => {
+      const text = (document.querySelector('[data-testid="dream-personalized-affirmation"]')?.innerText || '')
+        .trim()
+        .toLowerCase();
+      return text.length >= 24 && !text.includes('casa perto do mar');
+    },
     { timeout: 15000, polling: 200 }
   );
   await page.waitForFunction(
     () => {
       const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
-      return entries[0]?.dreamAnchor?.includes('casa perto do mar') &&
-        entries[0]?.generatorVersion === 'dream-local-v3';
+      return entries[0]?.dreamAnchor === '' &&
+        entries[0]?.generatorVersion === 'dream-local-v4';
     },
     { timeout: 15000, polling: 200 }
   );
@@ -543,10 +546,13 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await clickTestId(page, 'open-profile');
   await waitForText(page, 'Personalização e voz neural', 20000);
   const geminiInitiallyOn = await page.evaluate(
-    () => {
+    (consentVersion) => {
       const profile = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {};
-      return profile.cloudPersonalization === true && profile.cloudAdultConfirmed === true;
-    }
+      return profile.cloudConsentVersion === consentVersion &&
+        profile.cloudPersonalization === true &&
+        profile.cloudAdultConfirmed === true;
+    },
+    CLOUD_CONSENT_VERSION
   );
   if (geminiInitiallyOn) {
     await clickTestId(page, 'profile-gemini-switch');
@@ -559,8 +565,9 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Confirme que você tem 18 anos ou mais', 15000);
   await waitAndClick(page, 'Tenho 18+ · Permitir');
   await page.waitForFunction(
-    `(() => { const p = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {}; return p.cloudPersonalization === true && p.cloudAdultConfirmed === true; })()`,
-    { timeout: 15000, polling: 200 }
+    `(version) => { const p = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {}; return p.cloudConsentVersion === version && p.cloudPersonalization === true && p.cloudAdultConfirmed === true; }`,
+    { timeout: 15000, polling: 200 },
+    CLOUD_CONSENT_VERSION
   );
   await clickTestId(page, 'profile-gemini-switch');
   await page.waitForFunction(

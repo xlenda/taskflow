@@ -1,3 +1,9 @@
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentAdultCloudConsent,
+  hasCurrentCloudConsentVersion,
+} from '../constants/cloudConsent';
+
 const VISUAL_API_TIMEOUT_MS = 58_000;
 const MAX_RESPONSE_CHARS = 3_360_000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
@@ -16,6 +22,8 @@ export const PERSONALIZED_VISUAL_MOODS = Object.freeze([
   'focused',
 ]);
 const VISUAL_MOOD_SET = new Set(PERSONALIZED_VISUAL_MOODS);
+const VISUAL_PURPOSE_SET = new Set(['anchor', 'vision', 'affirmation', 'dream']);
+const MAX_COMPOSITION_VARIANT = 11;
 
 function cleanText(value, max) {
   return typeof value === 'string'
@@ -88,7 +96,7 @@ function profileConfirmsAdult(profile) {
   const source = profile && typeof profile === 'object' ? profile : {};
   const age = cleanText(source.age, 40).toLocaleLowerCase().replace(/\s+/g, '');
   if (age === 'under18' || age === 'menosde18') return false;
-  return source.cloudAdultConfirmed === true;
+  return hasCurrentAdultCloudConsent(source);
 }
 
 function apiEndpoint() {
@@ -205,6 +213,9 @@ export async function generatePersonalizedVisual({
   lang,
   profile,
   visualMood,
+  purpose = 'anchor',
+  visualBrief = '',
+  compositionVariant = 0,
   fetchImpl,
   timeoutMs,
 }) {
@@ -216,7 +227,24 @@ export async function generatePersonalizedVisual({
   if (!VISUAL_MOOD_SET.has(visualMood)) {
     throw new PersonalVisualError('invalid_visual_mood', { stage: 'validation' });
   }
-  if (sourceProfile.cloudPersonalization !== true) {
+  if (!VISUAL_PURPOSE_SET.has(purpose)) {
+    throw new PersonalVisualError('invalid_visual_purpose', { stage: 'validation' });
+  }
+  if (
+    !Number.isInteger(compositionVariant) ||
+    compositionVariant < 0 ||
+    compositionVariant > MAX_COMPOSITION_VARIANT
+  ) {
+    throw new PersonalVisualError('invalid_composition_variant', { stage: 'validation' });
+  }
+  const safeVisualBrief = cleanText(
+    redactThirdPartyNames(visualBrief, names, locale),
+    900
+  ) || safeDesire;
+  if (
+    !hasCurrentCloudConsentVersion(sourceProfile) ||
+    sourceProfile.cloudPersonalization !== true
+  ) {
     throw new PersonalVisualError('cloud_consent_required', { stage: 'validation' });
   }
   if (!profileConfirmsAdult(sourceProfile)) {
@@ -263,7 +291,11 @@ export async function generatePersonalizedVisual({
             lang: locale,
             profile: minimizeVisualProfile(sourceProfile, locale),
             visualMood,
+            purpose,
+            visualBrief: safeVisualBrief,
+            compositionVariant,
             cloudConsent: true,
+            cloudConsentVersion: CLOUD_CONSENT_VERSION,
             adultConfirmed: true,
           }),
         });

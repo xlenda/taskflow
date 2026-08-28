@@ -75,9 +75,22 @@ assert.ok(
     home.includes("navigation.navigate('MorningRitual', { focus: 'dream' })"),
   'Home precisa abrir o relato de sonho diretamente'
 );
+const anchorShortcut = home.indexOf('testID="open-anchor-scene"');
+const anchorDestination = home.indexOf("navigation.navigate('Manifestation', { id: anchorScene.id })");
+assert.ok(
+  home.includes("item.id === state.anchorSceneId") &&
+    home.includes('item.anchorOpenedAt') &&
+    anchorShortcut >= 0 &&
+    anchorDestination > anchorShortcut,
+  'Home precisa recuperar a Cena-Ancora persistida e abrir seu id exato'
+);
 const yourDayStart = home.indexOf('testID="home-your-day"');
 const yourDayEnd = home.indexOf('{hasItems ?', yourDayStart);
 assert.ok(yourDayStart >= 0 && yourDayEnd > yourDayStart, 'Home precisa apresentar a secao Seu dia');
+assert.ok(
+  anchorShortcut < yourDayStart,
+  'Minha Cena-Ancora precisa aparecer na primeira viewport, antes da secao Seu dia'
+);
 for (const shortcut of ['open-daily-ritual', 'open-dream-journal', 'open-affirmation-alarm']) {
   const shortcutIndex = home.indexOf(`testID="${shortcut}"`, yourDayStart);
   assert.ok(
@@ -112,6 +125,16 @@ assert.ok(
   'apagar manifestacao usada no despertador deve cancelar o AlarmKit primeiro'
 );
 assert.ok(
+  manifestation.includes('void ensurePersonalVisual(saved.id)') &&
+    manifestation.includes('testID="manifestation-personal-visual"') &&
+    manifestation.includes('visualKey={item.visual?.cacheKey}') &&
+    manifestation.includes('personalVisualStatus[saved.id]') &&
+    manifestation.includes('testID="manifestation-personal-visual-pending"') &&
+    manifestation.includes('testID="manifestation-personal-visual-retry"') &&
+    manifestation.includes('ensurePersonalVisual(saved.id, { force: true })'),
+  'detalhe da Cena-Ancora precisa exibir, reparar e explicar o estado da imagem pessoal no hero'
+);
+assert.ok(
   manifestation.includes('afirmacao !== state.morningRitual?.wakeAffirmationText') &&
     manifestation.includes('lang !== state.morningRitual?.wakeAffirmationLang'),
   'editar manifestacao deve comparar com o conteudo realmente gravado no despertador'
@@ -123,14 +146,18 @@ assert.ok(
   'idioma e afirmacao do despertador devem sincronizar no nivel global do app'
 );
 assert.ok(
-  context.includes('const usedAsAlarm = s.morningRitual?.wakeAffirmationId === alarmId') &&
+  context.includes("const affirmationPrefix = `${id}:affirmation:`") &&
+    context.includes('startsWith(affirmationPrefix)') &&
     context.includes("wakeAffirmationText: ''"),
   'provider deve remover a copia privada da afirmacao apagada'
 );
 assert.ok(
   home.includes('isUnder18Age(currentProfile.age)') &&
+    home.includes('hasCurrentCloudConsentVersion(currentProfile)') &&
+    home.includes('cloudConsentVersion = CLOUD_CONSENT_VERSION') &&
     home.includes('cloudAdultConfirmed = cloudPersonalization') &&
-    home.includes('cloudPersonalization, cloudAdultConfirmed'),
+    home.includes('cloudConsentVersion,') &&
+    home.includes('cloudPersonalization,'),
   'nova manifestacao na Home deve respeitar idade e consentimento adulto completo'
 );
 assert.ok(journey.includes('testID="journey-open-profile"'), 'Jornada precisa abrir o perfil');
@@ -172,6 +199,24 @@ assert.ok(morning.includes('scheduleAffirmationAlarm'), 'tela nao esta ligada ao
 assert.ok(morning.includes('response.ok === true'), 'alarme ativo exige confirmacao nativa');
 assert.ok(morning.includes('removeDreamRitual'), 'sonho precisa de exclusao individual');
 assert.ok(
+  morning.includes('testID="open-dream-bonus"') &&
+    !morning.includes('testID="open-dream-shortcut"'),
+  'Sonhos deve ter uma unica entrada principal dentro da propria area'
+);
+assert.ok(
+  morning.includes('testID={`saved-dream-${savedEntry.id}`}') &&
+    morning.includes('safeReflection = clean(savedEntry.reflection)') &&
+    morning.includes("setDream('')") &&
+    !morning.includes('setDream(savedEntry.dream)'),
+  'seletor de sonhos salvos deve mostrar reflexao segura, nunca o relato grafico'
+);
+assert.ok(
+  morning.includes('testID="dream-cloud-fallback"') &&
+    morning.includes('testID="retry-dream-cloud"') &&
+    morning.includes('replaceId: entryId'),
+  'queda da reflexao remota precisa ser transparente e recuperavel'
+);
+assert.ok(
   morning.includes("route?.params?.focus !== 'dream'") && morning.includes('openDreamSection()'),
   'rota do sonho precisa abrir o formulario em um toque'
 );
@@ -193,10 +238,15 @@ assert.ok(
   'afirmacoes devem manter todos os temas visiveis sem restaurar o catalogo generico'
 );
 assert.ok(
-  visions.includes('const populatedCategories = useMemo') &&
+  /\{current \? \(\s*<Card style=\{\[styles\.todayCard/.test(affirmations),
+  'card de sequencia nao deve aparecer quando nao existe afirmacao atual'
+);
+assert.ok(
+  visions.includes("personalJourneyItemsForState(state, 'vision', lang)") &&
+    visions.includes('const populatedCategories = allVisions.length ? CATEGORIES : []') &&
     visions.includes("activeFilter === 'All'") &&
-    !visions.includes("category: item.category || 'Wealth'"),
-  'visoes devem filtrar categorias pessoais sem fallback silencioso para prosperidade'
+    visions.includes('ensureJourneyVisual'),
+  'visoes devem mostrar as seis categorias pessoais e carregar a imagem propria de cada uma'
 );
 assert.ok(
   profile.includes("navigation.addListener('beforeRemove'") && profile.includes('setDocument(null)'),
@@ -211,11 +261,10 @@ assert.ok(
 );
 
 assert.ok(
-  context.includes('cloudPersonalization: false') &&
-    context.includes('cloudAdultConfirmed: false') &&
-    context.includes('cloudDreamConsent: false') &&
-    context.includes('!isKnownMinor(profile)') &&
-    context.includes('Consentimento para enviar respostas'),
+  context.includes('profile: stripCloudConsentProfile(') &&
+    context.includes('restored.profile = normalizeCloudConsentProfile(restored.profile') &&
+    context.includes('forceReconsent: true') &&
+    context.includes('knownMinor: isKnownMinor(restored.profile)'),
   'backup importado nunca pode reativar Gemini'
 );
 assert.ok(
@@ -268,13 +317,22 @@ assert.ok(
   'cards pessoais precisam usar a foto com veu central, texto legivel e retry visivel'
 );
 assert.ok(
-  visions.includes('visualKey={vision.visualKey}') &&
+    visions.includes('visualKey={vision.visualKey}') &&
+    visions.includes('personalVisualStatus[visibleVision.visualStatusKey]') &&
+    visions.includes('testID="visions-personal-visual-pending"') &&
+    visions.includes('testID="visions-personal-visual-retry"') &&
+    visions.includes('force: true') &&
     visionPlayer.includes('visualKey={vision.visualKey}') &&
+    visionPlayer.includes('personalVisualStatus[vision.visualStatusKey]') &&
+    visionPlayer.includes('testID="vision-player-personal-visual-pending"') &&
+    visionPlayer.includes('testID="vision-player-personal-visual-retry"') &&
+    visionPlayer.includes('force: true') &&
     affirmations.includes('visualKey={current.visualKey}') &&
-    affirmations.includes('ensurePersonalVisual(current.manifestationId)') &&
+    affirmations.includes('ensureJourneyVisual(current.manifestationId, current.key') &&
+    affirmations.includes('ensureDreamVisual(current.ritualEntryId') &&
     reveal.includes('testID="reveal-personal-visual"') &&
     reveal.includes('visualKey={m.visual.cacheKey}'),
-  'visual pessoal precisa aparecer e se autorreparar em afirmacoes, visoes e Reveal'
+  'visual pessoal precisa aparecer, explicar carregamento/falha e permitir reparo em afirmacoes, visoes e Reveal'
 );
 assert.ok(legal.includes('reconhecimento de voz') && legal.includes('afirmação escolhida como som do despertador'));
 

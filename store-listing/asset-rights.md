@@ -13,7 +13,7 @@ precisa guardar comprovantes e confirmar uso comercial antes da submissão.
 | Poster do vídeo | `public/video/celeste-abertura-poster.jpg` | fallback da abertura | confirmar como derivado do vídeo autorizado |
 | Screenshots | interface real com dados sintéticos controlados | rascunhos ASO | substituir por captura nativa antes do envio |
 | Feature graphic | composição automatizada da UI e do ícone Celeste v2 | Google Play | derivado dos assets acima |
-| Vozes | vozes nativas do Gemini TTS configuradas no backend | áudio sob demanda | confirmar termos comerciais do projeto Google ativo |
+| Vozes | vozes da ElevenLabs configuradas no backend | áudio sob demanda | confirmar termos comerciais da conta ElevenLabs ativa |
 
 ## Registro da geração do ícone
 
@@ -31,5 +31,5 @@ precisa guardar comprovantes e confirmar uso comercial antes da submissão.
 2. Confirmar que nenhuma referência enviada à ferramenta contém material sem
    autorização.
 3. Arquivar licenças das dependências de ícones.
-4. Confirmar os termos comerciais do Gemini para o projeto que gera áudio.
+4. Confirmar os termos comerciais da ElevenLabs para a conta que gera áudio.
 5. Atualizar `submission-readiness.json` com o caminho das evidências.

@@ -26,6 +26,10 @@ import { confirmAsync } from './utils/confirm';
 import { wavBytesToBase64 } from './utils/audioBase64';
 import { alarmAffirmationText } from './utils/personalAffirmations';
 import { detectLang } from './constants/i18n';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentAdultCloudConsent,
+} from './constants/cloudConsent';
 import { initCelesteBotProtection } from './utils/botProtection';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 import NarrationPlaybackControls from './components/NarrationPlaybackControls';
@@ -280,7 +284,7 @@ function alarmContentForState(state) {
 function hasSavedNarrationConsent(state) {
   const profile = state && state.profile;
   return (
-    profile?.cloudAdultConfirmed === true &&
+    hasCurrentAdultCloudConsent(profile) &&
     profile?.cloudNarrationConsent === true
   );
 }
@@ -299,6 +303,7 @@ async function prepareNeuralAlarm({ preparePersonal, state, desired, narratorId 
     narratorId,
     lang: desired.lang,
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   });
   if (!prepared?.ok) return prepared || { ok: false, error: 'audio_generation_failed' };

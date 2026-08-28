@@ -16,10 +16,10 @@ import { Screen, Header, Card, EmptyState } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, categoryMeta } from '../constants/content';
-import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import GradientCover from '../components/GradientCover';
 import SectionHeading from '../components/SectionHeading';
@@ -59,6 +59,8 @@ const S = {
     en: 'Audio is unavailable. Your vision remains here in text.',
     pt: 'O áudio não está disponível. Sua visão continua aqui em texto.',
   },
+  visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
+  visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   all: { en: 'All', pt: 'Todas' },
 };
 
@@ -83,34 +85,19 @@ function dateLabel(iso, lang) {
   return lang === 'pt' ? `${d.getDate()} de ${month}` : `${month} ${d.getDate()}`;
 }
 
-function toPersonalVision(item, fallbackLang) {
-  if (!item || typeof item !== 'object' || !item.id) return null;
-  const itemLang = item.lang === 'en' || item.lang === 'pt' ? item.lang : fallbackLang;
-  const title = String(txt(item.title, itemLang) || '').trim();
-  const story = String(txt(item.story, itemLang) || '').trim();
-  if (!title || !story) return null;
-  const firstLine = (story.match(/^.*?[.!?…](?:\s|$)/)?.[0] || story).trim();
-  const category = CATEGORIES.some((candidate) => candidate.key === item.category)
-    ? item.category
-    : null;
-  return {
-    id: String(item.id),
-    title,
-    story,
-    caption: firstLine,
-    category,
-    accent: Number.isInteger(item.accent) ? item.accent : category ? categoryMeta(category).accent : 0,
-    lang: itemLang,
-    visualKey: item.visual && item.visual.cacheKey,
-  };
-}
-
 export default function VisionsScreen() {
   const th = useTheme();
   const { t, lang } = useT();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  const { state, loading, toggleSavedVision, logVisionPlay } = useApp();
+  const {
+    state,
+    loading,
+    toggleSavedVision,
+    logVisionPlay,
+    personalVisualStatus,
+    ensureJourneyVisual,
+  } = useApp();
   const {
     activePlaybackId,
     lastCompletedPlaybackId,
@@ -169,17 +156,14 @@ export default function VisionsScreen() {
   }, [stopNarration]);
 
   const allVisions = useMemo(
-    () =>
-      ((state && state.manifestations) || [])
-        .map((item) => toPersonalVision(item, lang))
-        .filter(Boolean),
-    [state && state.manifestations, lang]
+    () => personalJourneyItemsForState(state, 'vision', lang).map((vision) => ({
+      ...vision,
+      caption: (vision.story.match(/^.*?[.!?…](?:\s|$)/)?.[0] || vision.story).trim(),
+    })),
+    [state, lang]
   );
 
-  const populatedCategories = useMemo(() => {
-    const present = new Set(allVisions.map((vision) => vision.category).filter(Boolean));
-    return CATEGORIES.filter((category) => present.has(category.key));
-  }, [allVisions]);
+  const populatedCategories = allVisions.length ? CATEGORIES : [];
   const activeFilter =
     filter === 'All' || populatedCategories.some((category) => category.key === filter)
       ? filter
@@ -191,6 +175,19 @@ export default function VisionsScreen() {
         : allVisions.filter((vision) => vision.category === activeFilter),
     [activeFilter, allVisions]
   );
+
+  const visibleVision = visions[index] || visions[0];
+  const visibleVisualPhase = visibleVision?.visualStatusKey
+    ? personalVisualStatus[visibleVision.visualStatusKey]?.phase
+    : null;
+  useEffect(() => {
+    if (!isFocused || !visibleVision) return;
+    void ensureJourneyVisual(
+      visibleVision.manifestationId,
+      visibleVision.key,
+      { lang: visibleVision.lang }
+    );
+  }, [ensureJourneyVisual, isFocused, visibleVision?.id, visibleVision?.lang]);
 
   useEffect(() => {
     if (!isFocused && playingId) {
@@ -424,6 +421,50 @@ export default function VisionsScreen() {
               })}
             </ScrollView>
 
+            {visibleVisualPhase === 'pending' ? (
+              <View
+                testID="visions-personal-visual-pending"
+                accessibilityLiveRegion="polite"
+                style={styles.visualStatusRow}
+              >
+                <ActivityIndicator size="small" color={accentAt(th, visibleVision.accent)} />
+                <Text style={[styles.visualStatusText, { color: th.textMuted }]}>
+                  {t(S.visualPreparing)}
+                </Text>
+              </View>
+            ) : visibleVisualPhase === 'error' ? (
+              <TouchableOpacity
+                testID="visions-personal-visual-retry"
+                activeOpacity={0.76}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  void ensureJourneyVisual(visibleVision.manifestationId, visibleVision.key, {
+                    force: true,
+                    lang: visibleVision.lang,
+                  });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t(S.visualRetry)}
+                style={[
+                  styles.visualRetry,
+                  {
+                    backgroundColor: alpha(accentAt(th, visibleVision.accent), 0.1),
+                    borderColor: alpha(accentAt(th, visibleVision.accent), 0.28),
+                  },
+                ]}
+              >
+                <Ionicons name="refresh" size={16} color={accentAt(th, visibleVision.accent)} />
+                <Text
+                  style={[
+                    styles.visualRetryText,
+                    { color: accentAt(th, visibleVision.accent) },
+                  ]}
+                >
+                  {t(S.visualRetry)}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
             <View style={styles.dots}>
               {visions.map((vision, dotIndex) => (
                 <View
@@ -572,6 +613,26 @@ const styles = StyleSheet.create({
   slideMeta: { flex: 1, marginLeft: 12 },
   slideTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   slideDur: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  visualStatusRow: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  visualStatusText: { fontSize: 12.5, lineHeight: 18, marginLeft: 8, textAlign: 'center' },
+  visualRetry: {
+    minHeight: 40,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    marginTop: 12,
+  },
+  visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18 },
   dot: { height: 7, borderRadius: 4, marginHorizontal: 3 },
   row: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, marginBottom: 10 },

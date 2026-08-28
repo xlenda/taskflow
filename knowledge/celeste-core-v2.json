@@ -950,15 +950,15 @@
     },
     {
       "id": "dream_waking_continuity",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "scopes": ["dream"],
       "domains": ["dream", "waking_concerns", "reflection"],
       "signals": ["dream_reported", "waking_feeling_present", "non_graphic_recall"],
       "evidenceLevel": "empirical_contextual",
       "principle": "Dreams may probabilistically reflect waking concerns and emotions, but a single dream does not reveal a hidden truth.",
       "apply": [
-        "Begin with the reported waking feeling and any connection the person explicitly makes.",
-        "Use a safe literal image only when it is non-graphic and useful to the person's chosen reflection."
+        "Use the recall as the primary private source for one broad emotional dynamic, then qualify it with the waking feeling and any connection the person explicitly makes.",
+        "Transform that broad dynamic without quoting, summarizing, paraphrasing or retelling the narrative, so the original scene cannot be reconstructed."
       ],
       "limits": [
         "Continuity is probabilistic, not a universal decoder.",
@@ -966,22 +966,24 @@
       ],
       "avoid": [
         "Symbol dictionaries or keyword interpretation.",
-        "Claims that dream content predicts an event."
+        "Claims that dream content predicts an event.",
+        "Repeating a scene, setting, object, person or action from the recall in the reflection or affirmation."
       ],
       "sources": ["schredl_hofmann_2003", "morewedge_norton_2009", "celeste_research_2026"],
-      "promptCue": "Reflect the waking feeling and user-stated connection; never decode the dream."
+      "promptCue": "Derive one tentative broad emotional dynamic from the recall, connect it to waking feeling and safe context, and never decode or retell the dream."
     },
     {
       "id": "dream_user_chosen_meaning",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "scopes": ["dream", "affirmation"],
       "domains": ["dream", "autonomy", "meaning"],
       "signals": ["user_chosen_meaning_present", "dream_affirmation_requested", "meaning_uncertain"],
       "evidenceLevel": "product_contract",
-      "principle": "Meaning belongs to the person; Celeste may reflect a selected meaning or, when none is chosen, stay with the reported feeling.",
+      "principle": "Meaning belongs to the person; Celeste may offer one tentative constructive reading of the dream's broad emotional dynamic through the person's selected lens.",
       "apply": [
         "Keep exact recall, reflection and affirmation as distinct fields.",
-        "Translate the chosen meaning into a credible first-person stance."
+        "Translate the chosen meaning into a credible first-person stance.",
+        "When the person selects auto, infer only a broad theme and clearly keep it as one revisable possibility."
       ],
       "limits": [
         "A chosen meaning is personal interpretation, not diagnosis or fact.",
@@ -992,7 +994,7 @@
         "Presenting uncertainty as resistance."
       ],
       "sources": ["celeste_research_2026", "celeste_dossier_2026", "morewedge_norton_2009"],
-      "promptCue": "Use the person's selected meaning; if absent, ground the affirmation only in the waking feeling and present choice."
+      "promptCue": "Use the person's selected lens or one tentative broad theme, then ground the affirmation in waking feeling, Anchor values and present choice."
     },
     {
       "id": "dream_uncertainty_disclosure",
@@ -1215,13 +1217,15 @@
     "dream": {
       "required": [
         "Keep exact recall, reflection and affirmation separate.",
-        "Use reported waking feeling and user-chosen meaning; if meaning is absent, stay with feeling and present choice.",
+        "Do not quote, summarize, paraphrase or retell the exact recall in generated prose.",
+        "Use the dream's broad emotional dynamic as the primary source, then connect it to reported waking feeling, user-chosen meaning and safe Anchor context.",
         "State that the reflection is not prediction, diagnosis or recovered memory.",
         "For graphic or violent material, omit all literal details from reflection, affirmation and audio.",
         "Record fields used and the knowledge version."
       ],
       "rejectWhen": [
         "The output decodes a symbol, predicts an event, diagnoses a condition or recovers a memory.",
+        "The output lets a reader reconstruct the dream by echoing its scene, setting, objects, people or actions.",
         "The output repeats graphic content or transforms harm into a triumphant positive statement.",
         "The output offers treatment for recurrent nightmares."
       ]

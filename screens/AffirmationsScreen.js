@@ -21,6 +21,7 @@ import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
@@ -94,7 +95,8 @@ export default function AffirmationsScreen() {
     state,
     loading,
     personalVisualStatus,
-    ensurePersonalVisual,
+    ensureJourneyVisual,
+    ensureDreamVisual,
     toggleFavoriteAffirmation,
     markAffirmationRead,
   } = useApp();
@@ -166,22 +168,8 @@ export default function AffirmationsScreen() {
   // A afirmação da intenção nasce no onboarding ou na criação de uma nova
   // manifestação; os relatos do ritual entram logo abaixo no mesmo deck.
   const manifestationAffirmations = useMemo(
-    () =>
-      ((state && state.manifestations) || [])
-        .filter((m) => typeof m.affirmation === 'string' && m.affirmation.trim())
-        .map((m) => ({
-          id: `manifestation:${m.id}`,
-          manifestationId: m.id,
-          sourceTitle: m.title,
-          category: m.category,
-          accent: m.accent,
-          text: m.affirmation.trim(),
-          speechLang: m.lang,
-          visualKey: m.visual && m.visual.cacheKey,
-          personalized: true,
-          source: 'manifestation',
-        })),
-    [state && state.manifestations]
+    () => personalJourneyItemsForState(state, 'affirmation', lang),
+    [state, lang]
   );
 
   const dreamAffirmations = useMemo(
@@ -191,14 +179,16 @@ export default function AffirmationsScreen() {
         .map((entry) => ({
           id: `ritual:${entry.id}`,
           ritualEntryId: entry.id,
-          sourceTitle: entry.dreamAnchor || entry.dream,
+          sourceTitle: lang === 'en' ? 'Dream reflection' : 'Reflexão do sonho',
           accent: 1,
           text: entry.affirmation.trim(),
           speechLang: entry.lang,
+          visualKey: entry.visual && entry.visual.cacheKey,
+          visualStatusKey: `dream-visual:${entry.id}`,
           personalized: true,
           source: 'dream',
         })),
-    [state && state.morningRitual]
+    [state && state.morningRitual, lang]
   );
 
   const allAffirmations = useMemo(
@@ -243,14 +233,20 @@ export default function AffirmationsScreen() {
   const safeIndex = selectedIndex >= 0 ? selectedIndex : seededIndex;
   const current = list[safeIndex];
   const currentId = current && current.id;
-  const currentVisualStatus = current?.manifestationId
-    ? personalVisualStatus[current.manifestationId]
+  const currentVisualStatus = current?.visualStatusKey
+    ? personalVisualStatus[current.visualStatusKey]
     : null;
 
   useEffect(() => {
-    if (!isFocused || !current?.manifestationId) return;
-    void ensurePersonalVisual(current.manifestationId);
-  }, [current?.manifestationId, ensurePersonalVisual, isFocused]);
+    if (!isFocused || !current) return;
+    if (current.source === 'dream' && current.ritualEntryId) {
+      void ensureDreamVisual(current.ritualEntryId);
+      return;
+    }
+    if (current.manifestationId && current.key) {
+      void ensureJourneyVisual(current.manifestationId, current.key, { lang: current.lang });
+    }
+  }, [current?.id, current?.lang, ensureDreamVisual, ensureJourneyVisual, isFocused]);
 
   // Se uma manifestação for criada, removida ou reordenada enquanto a aba
   // continua montada, a frase visível não pode trocar por baixo de um áudio ou
@@ -435,10 +431,18 @@ export default function AffirmationsScreen() {
               visualKey={current.visualKey}
               visualStatus={currentVisualStatus}
               onRetryVisual={
-                current.manifestationId
+                current.source === 'dream' && current.ritualEntryId
                   ? () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      void ensurePersonalVisual(current.manifestationId, { force: true });
+                      void ensureDreamVisual(current.ritualEntryId, { force: true });
+                    }
+                  : current.manifestationId && current.key
+                  ? () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      void ensureJourneyVisual(current.manifestationId, current.key, {
+                        force: true,
+                        lang: current.lang,
+                      });
                     }
                   : undefined
               }
@@ -518,25 +522,27 @@ export default function AffirmationsScreen() {
 
         {/* O status do dia mora logo abaixo do card da afirmação — antes
             ficava em y=616, fora da tela. */}
-        <Card style={[styles.todayCard, { backgroundColor: theme.surface }]}>
-          <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(theme, 3), 0.15) }]}>
-            <Ionicons
-              name={readToday ? 'checkmark-circle' : 'notifications-outline'}
-              size={20}
-              color={accentAt(theme, 3)}
-            />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.todayTitle, { color: theme.text }]}>
-              {readToday ? t(S.readTitle) : t(S.readPrompt)}
-            </Text>
-            {daysLogged > 0 ? (
-              <Text style={[styles.todaySub, { color: theme.textMuted }]}>
-                {daysLogged === 1 ? t(S.loggedOne) : t(S.logged, { n: daysLogged })}
+        {current ? (
+          <Card style={[styles.todayCard, { backgroundColor: theme.surface }]}>
+            <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(theme, 3), 0.15) }]}>
+              <Ionicons
+                name={readToday ? 'checkmark-circle' : 'notifications-outline'}
+                size={20}
+                color={accentAt(theme, 3)}
+              />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.todayTitle, { color: theme.text }]}>
+                {readToday ? t(S.readTitle) : t(S.readPrompt)}
               </Text>
-            ) : null}
-          </View>
-        </Card>
+              {daysLogged > 0 ? (
+                <Text style={[styles.todaySub, { color: theme.textMuted }]}>
+                  {daysLogged === 1 ? t(S.loggedOne) : t(S.logged, { n: daysLogged })}
+                </Text>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
 
         {/* O botão explícito é o caminho mais curto para registrar o dia sem
             precisar ouvir tudo nem favoritar — e só aparece enquanto o dia de

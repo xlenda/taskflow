@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { checkBotId } = require('botid/server');
 const celesteBrain = require('./_celeste-brain');
 const paidAccess = require('./_paid-access');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const PROMPT_VERSION = 'celeste-translation-v1';
@@ -89,6 +90,9 @@ function parseBody(req) {
 
 function validateInput(body) {
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
+  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+    return { error: 'cloud_consent_required', status: 403 };
+  }
   if (body.adultConfirmed !== true) return { error: 'adult_confirmation_required', status: 403 };
   if (body.sourceLang !== 'pt' && body.sourceLang !== 'en') {
     return { error: 'source_language_invalid', status: 400 };

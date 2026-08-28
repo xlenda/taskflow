@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const provider = require('../api/_text-provider');
 const sceneEndpoint = require('../api/gerar-cena');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const ENV_KEYS = [
   'ANTHROPIC_API_KEY',
@@ -102,8 +103,10 @@ function validBody() {
       whyMatters: 'ter liberdade para estar com pessoas importantes',
       cloudPersonalization: true,
       cloudAdultConfirmed: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
     },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
 }

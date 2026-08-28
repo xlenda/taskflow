@@ -11,16 +11,35 @@ export const alarmAffirmationText = (value) => {
 };
 
 export function personalAffirmationsForState(state) {
-  const manifestations = (Array.isArray(state && state.manifestations)
-    ? state.manifestations
-    : [])
+  const journeyAffirmations = personalJourneyItemsForState(
+    state,
+    'affirmation',
+    state && state.lang
+  )
     .map((item) => ({
-      id: `manifestation:${clean(item && item.id, 160)}`,
-      text: alarmAffirmationText(item && item.affirmation),
+      id: clean(item && item.id, 220),
+      text: alarmAffirmationText(item && item.text),
       lang: item && item.lang === 'en' ? 'en' : 'pt',
       source: 'manifestation',
     }))
-    .filter((item) => item.id !== 'manifestation:' && item.text);
+    .filter((item) => item.id && item.text);
+
+  // States created before the 6+6 journey migration can reach this helper in
+  // isolation (for example during native alarm recovery). Keep their one
+  // personal affirmation available until normal state hydration upgrades it.
+  const legacyAffirmations = journeyAffirmations.length
+    ? []
+    : (Array.isArray(state && state.manifestations) ? state.manifestations : [])
+        .map((item) => ({
+          id: `manifestation:${clean(item && item.id, 160)}`,
+          text: alarmAffirmationText(item && item.affirmation),
+          lang: item && item.lang === 'en' ? 'en' : 'pt',
+          source: 'manifestation',
+        }))
+        .filter((item) => item.id !== 'manifestation:' && item.text);
+  const manifestations = journeyAffirmations.length
+    ? journeyAffirmations
+    : legacyAffirmations;
 
   const ritual = state && state.morningRitual;
   const dreams = (Array.isArray(ritual && ritual.entries) ? ritual.entries : [])
@@ -39,3 +58,4 @@ export function personalAffirmationsForState(state) {
 
   return [...manifestations, ...dreams, ...custom];
 }
+import { personalJourneyItemsForState } from './personalJourney';

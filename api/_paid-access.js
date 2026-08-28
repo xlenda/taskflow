@@ -1,8 +1,14 @@
+const crypto = require('crypto');
+const net = require('net');
+
 const USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{16,96}$/;
+const ACTOR_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const NATIVE_CLIENTS = new Set(['ios', 'android']);
 const OPERATIONS = new Set(['scene', 'translation', 'dream', 'audio', 'visual']);
 const AUTH_TIMEOUT_MS = 5000;
+const ACTOR_HASH_SECRET_MIN_BYTES = 32;
+const TRUSTED_VERCEL_IP_HEADER = 'x-vercel-forwarded-for';
 
 let authorizerOverride = null;
 let finalizerOverride = null;
@@ -31,7 +37,89 @@ function serverConfig() {
       process.env.CELESTE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY,
       4096
     ),
+    actorHashSecret: cleanHeader(process.env.CELESTE_ACTOR_HASH_SECRET, 4096),
   };
+}
+
+function normalizeIpv4(value) {
+  if (net.isIP(value) !== 4) return '';
+  return value.split('.').map((part) => String(Number(part))).join('.');
+}
+
+function expandIpv6(value) {
+  let source = value.toLowerCase();
+  const embeddedIpv4 = source.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (embeddedIpv4) {
+    const ipv4 = normalizeIpv4(embeddedIpv4[1]);
+    if (!ipv4) return [];
+    const octets = ipv4.split('.').map(Number);
+    const replacement = `${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`;
+    source = `${source.slice(0, embeddedIpv4.index + (source[embeddedIpv4.index] === ':' ? 1 : 0))}${replacement}`;
+  }
+
+  const halves = source.split('::');
+  if (halves.length > 2) return [];
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  if ([...left, ...right].some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return [];
+  if (halves.length === 1 && left.length !== 8) return [];
+  const missing = halves.length === 2 ? 8 - left.length - right.length : 0;
+  if (missing < 1 && halves.length === 2) return [];
+  const parts = [...left, ...Array(missing).fill('0'), ...right];
+  return parts.length === 8 ? parts.map((part) => Number.parseInt(part, 16)) : [];
+}
+
+function normalizeActorOrigin(value) {
+  const source = cleanHeader(value, 128).toLowerCase();
+  if (!source || source.includes(',') || source.includes('%')) return '';
+  const mapped = source.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return normalizeIpv4(mapped[1]);
+  if (net.isIP(source) === 4) return normalizeIpv4(source);
+  if (net.isIP(source) !== 6) return '';
+  const parts = expandIpv6(source);
+  if (parts.length !== 8) return '';
+  // IPv6 privacy addresses rotate their lower half; a /64 remains one origin.
+  return `${parts.slice(0, 4).map((part) => part.toString(16).padStart(4, '0')).join(':')}::/64`;
+}
+
+function hostedVercelRuntime() {
+  return (
+    process.env.VERCEL === '1' ||
+    process.env.VERCEL_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'preview'
+  );
+}
+
+function trustedActorOrigin(req) {
+  if (hostedVercelRuntime()) {
+    // Vercel overwrites this system header at its edge. Never fall back to the
+    // client-controlled X-Forwarded-For value.
+    return normalizeActorOrigin(
+      req && req.headers && req.headers[TRUSTED_VERCEL_IP_HEADER]
+    );
+  }
+  if (process.env.NODE_ENV === 'production') return '';
+  const socketAddress =
+    req && req.socket && req.socket.remoteAddress
+      ? req.socket.remoteAddress
+      : req && req.connection && req.connection.remoteAddress
+      ? req.connection.remoteAddress
+      : '';
+  return normalizeActorOrigin(socketAddress);
+}
+
+function validActorHashSecret(value) {
+  return Buffer.byteLength(value || '', 'utf8') >= ACTOR_HASH_SECRET_MIN_BYTES;
+}
+
+function deriveActorHash(req, secret) {
+  if (!validActorHashSecret(secret)) return '';
+  const origin = trustedActorOrigin(req);
+  if (!origin) return '';
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`celeste-actor-v1\0${origin}`, 'utf8')
+    .digest('hex');
 }
 
 function bearerToken(req) {
@@ -107,61 +195,90 @@ async function authenticatedUser(config, token) {
   }
 }
 
+function serviceRoleHeaders(config) {
+  const headers = {
+    apikey: config.serviceKey,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  // Opaque Supabase secret keys are API keys, not JWTs. Legacy service-role
+  // JWTs still use Authorization, while sb_secret_* must stay in `apikey`.
+  if (!/^sb_secret_/i.test(config.serviceKey)) {
+    headers.Authorization = `Bearer ${config.serviceKey}`;
+  }
+  return headers;
+}
+
+async function reservationRpc(config, input) {
+  const body = {
+    p_user_id: input.userId,
+    p_request_id: input.requestId,
+    p_operation: input.operation,
+    p_units: input.units,
+    p_actor_hash: input.actorHash,
+  };
+  return fetchWithTimeout(
+    `${config.url}/rest/v1/rpc/celeste_reserve_generation_credit`,
+    {
+      method: 'POST',
+      headers: serviceRoleHeaders(config),
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+async function responseJson(response) {
+  try {
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+function reservationResult(result) {
+  if (result && result.duplicate === true) {
+    return { error: 'duplicate_request', status: 409 };
+  }
+  if (!result || result.allowed !== true) {
+    return {
+      error: result && result.reason === 'disabled'
+        ? 'generation_paused'
+        : result && result.reason === 'duplicate'
+        ? 'duplicate_request'
+        : result && result.reason === 'actor_required'
+        ? 'spend_guard_unavailable'
+        : 'daily_generation_limit_reached',
+      status: result && result.reason === 'disabled'
+        ? 503
+        : result && result.reason === 'duplicate'
+        ? 409
+        : result && result.reason === 'actor_required'
+        ? 503
+        : 429,
+    };
+  }
+  if (result.actorQuota !== true) {
+    return { error: 'spend_guard_unavailable', status: 503 };
+  }
+  // Scene and visual reserve before dispatch; the other operations commit in
+  // the atomic reservation. Only explicit true requires the finalizer RPC.
+  return {
+    ok: true,
+    duplicate: false,
+    reserved: result.reserved === true,
+    actorQuota: 'enforced',
+  };
+}
+
 async function reserveCredit(config, input) {
   let response;
   try {
-    const headers = {
-      apikey: config.serviceKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    };
-    // Opaque Supabase secret keys are API keys, not JWTs. Legacy service-role
-    // JWTs still use Authorization, while sb_secret_* must stay in `apikey`.
-    if (!/^sb_secret_/i.test(config.serviceKey)) {
-      headers.Authorization = `Bearer ${config.serviceKey}`;
-    }
-    response = await fetchWithTimeout(
-      `${config.url}/rest/v1/rpc/celeste_reserve_generation_credit`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          p_user_id: input.userId,
-          p_request_id: input.requestId,
-          p_operation: input.operation,
-          p_units: input.units,
-        }),
-      }
-    );
+    response = await reservationRpc(config, input);
   } catch (_error) {
     return { error: 'spend_guard_unavailable', status: 503 };
   }
   if (!response || !response.ok) return { error: 'spend_guard_unavailable', status: 503 };
-  try {
-    const result = await response.json();
-    if (result && result.duplicate === true) {
-      return { error: 'duplicate_request', status: 409 };
-    }
-    if (!result || result.allowed !== true) {
-      return {
-        error: result && result.reason === 'disabled'
-          ? 'generation_paused'
-          : result && result.reason === 'duplicate'
-          ? 'duplicate_request'
-          : 'daily_generation_limit_reached',
-        status: result && result.reason === 'disabled'
-          ? 503
-          : result && result.reason === 'duplicate'
-          ? 409
-          : 429,
-      };
-    }
-    // Migration 004/005 did not return `reserved` and charged in one phase.
-    // Only an explicit true means the two-phase finalizer exists and is needed.
-    return { ok: true, duplicate: false, reserved: result.reserved === true };
-  } catch (_error) {
-    return { error: 'spend_guard_unavailable', status: 503 };
-  }
+  return reservationResult(await responseJson(response));
 }
 
 async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
@@ -178,8 +295,17 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   }
 
   const config = serverConfig();
-  if (!config.url || !config.anonKey || !config.serviceKey) {
+  if (
+    !config.url ||
+    !config.anonKey ||
+    !config.serviceKey ||
+    !validActorHashSecret(config.actorHashSecret)
+  ) {
     return { error: 'spend_guard_not_configured', status: 503 };
+  }
+  const actorHash = deriveActorHash(req, config.actorHashSecret);
+  if (!ACTOR_HASH_PATTERN.test(actorHash)) {
+    return { error: 'spend_guard_unavailable', status: 503 };
   }
   const token = bearerToken(req);
   const id = requestId(req);
@@ -192,6 +318,7 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
     requestId: id,
     operation,
     units,
+    actorHash,
   });
   if (!reservation.ok) return reservation;
   return {
@@ -203,25 +330,18 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
     native: isNativeRequest(req),
     duplicate: reservation.duplicate,
     reserved: reservation.reserved,
+    actorQuota: reservation.actorQuota,
   };
 }
 
 async function finalizeCredit(config, access, commit) {
   let response;
   try {
-    const headers = {
-      apikey: config.serviceKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    };
-    if (!/^sb_secret_/i.test(config.serviceKey)) {
-      headers.Authorization = `Bearer ${config.serviceKey}`;
-    }
     response = await fetchWithTimeout(
       `${config.url}/rest/v1/rpc/celeste_finalize_generation_credit`,
       {
         method: 'POST',
-        headers,
+        headers: serviceRoleHeaders(config),
         body: JSON.stringify({
           p_user_id: access.userId,
           p_request_id: access.requestId,
@@ -293,6 +413,13 @@ function resetAuthorizerForTests() {
 }
 
 module.exports = {
+  _internals: {
+    ACTOR_HASH_SECRET_MIN_BYTES,
+    TRUSTED_VERCEL_IP_HEADER,
+    deriveActorHash,
+    normalizeActorOrigin,
+    trustedActorOrigin,
+  },
   authorizePaidRequest,
   commitPaidRequest,
   isNativeRequest,

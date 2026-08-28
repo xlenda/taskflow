@@ -283,8 +283,8 @@ async function captureSet(browser, platform, locale) {
   await resetAndOpen(page, state, '/ritual', '[data-testid="daily-ritual-screen"]');
   await shot(page, directory, 'daily-ritual');
 
-  await resetAndOpen(page, state, '/sonhos', '[data-testid="open-dream-shortcut"]');
-  await page.click('[data-testid="open-dream-shortcut"]');
+  await resetAndOpen(page, state, '/sonhos', '[data-testid="open-dream-bonus"]');
+  await page.click('[data-testid="open-dream-bonus"]');
   await page.waitForSelector('[data-testid="dream-report-input"]', { visible: true, timeout: 15000 });
   await page.type('[data-testid="dream-report-input"]', c.dream, { delay: 1 });
   await page.click('[data-testid="dream-feeling-calm"]');

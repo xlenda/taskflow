@@ -1,10 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const URL = process.env.TARGET_URL || 'http://127.0.0.1:4181';
 const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const SHOTS = path.join(__dirname, 'e2e-shots');
+const SHOTS = process.env.QA_SHOTS_DIR
+  ? path.resolve(process.env.QA_SHOTS_DIR)
+  : path.join(__dirname, 'e2e-shots');
 const STORAGE_KEY = '@stella_state_v2';
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -57,6 +60,41 @@ async function wheelIntoView(page, selector, viewport, maxSteps = 16) {
     const rect = element.getBoundingClientRect();
     return { top: rect.top, bottom: rect.bottom, visible: rect.top >= 0 && rect.bottom <= innerHeight };
   });
+}
+
+async function clickRadioByLabel(page, label) {
+  const radios = await page.$$('[role="radio"]');
+  for (const radio of radios) {
+    const text = await radio.evaluate((element) => element.textContent.trim());
+    if (text !== label) continue;
+    await radio.focus();
+    await page.keyboard.press('Enter');
+    return;
+  }
+  throw new Error(`opção acessível da Comunidade não encontrada: ${label}`);
+}
+
+async function openCommunityComposer(page) {
+  const trigger = await page.$(
+    '[aria-label="Compartilhar com um Círculo"], [aria-label="Contar o que aconteceu"]'
+  );
+  if (!trigger) throw new Error('botão de composição da Comunidade não encontrado');
+  await trigger.click();
+}
+
+async function fillCommunityStory(page, value) {
+  await page.$eval('[data-testid="community-story-input"]', (input, story) => {
+    const prototype = input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+    setter.call(input, story);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+  await page.waitForFunction((story) => {
+    const input = document.querySelector('[data-testid="community-story-input"]');
+    return input && input.value === story;
+  }, { timeout: 10000 }, value);
 }
 
 let browser;
@@ -120,7 +158,7 @@ let browser;
       }
 
       if (route.slug === 'sonhos') {
-        const dreamShortcutVisible = await page.$eval('[data-testid="open-dream-shortcut"]', (element) => {
+        const dreamShortcutVisible = await page.$eval('[data-testid="open-dream-bonus"]', (element) => {
           const rect = element.getBoundingClientRect();
           return rect.top >= 0 && rect.bottom <= innerHeight;
         });
@@ -299,8 +337,8 @@ let browser;
   const dreamPage = await browser.newPage();
   await dreamPage.setViewport({ width: 320, height: 480 });
   await dreamPage.goto(`${URL}/sonhos`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await dreamPage.waitForSelector('[data-testid="open-dream-shortcut"]', { visible: true, timeout: 30000 });
-  await dreamPage.click('[data-testid="open-dream-shortcut"]');
+  await dreamPage.waitForSelector('[data-testid="open-dream-bonus"]', { visible: true, timeout: 30000 });
+  await dreamPage.click('[data-testid="open-dream-bonus"]');
   await dreamPage.waitForFunction(() => {
     const input = document.querySelector('[data-testid="dream-report-input"]');
     if (!input) return false;
@@ -310,40 +348,91 @@ let browser;
   await dreamPage.screenshot({ path: path.join(SHOTS, 'qa-sonhos-320x480.png') });
   await dreamPage.close();
 
-  // Regressão: o compositor aumenta muito a altura da Comunidade. Em 320x480
-  // ele precisa continuar dentro de uma viewport rolável para consentir e enviar.
-  const communityPage = await browser.newPage();
-  const compactViewport = { width: 320, height: 480 };
-  await communityPage.setViewport(compactViewport);
-  await communityPage.goto(`${URL}/comunidade`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await communityPage.waitForSelector('[data-testid="community-screen"]', { visible: true, timeout: 30000 });
-  await communityPage.click('[aria-label="Contar o que aconteceu"]');
-  await communityPage.waitForSelector('[data-testid="community-story-input"]', { visible: true, timeout: 30000 });
-  await communityPage.type(
-    '[data-testid="community-story-input"]',
-    'Passei a agir com mais calma e confiança durante esta semana.',
-    { delay: 5 }
-  );
-  const consentPosition = await wheelIntoView(communityPage, '[data-testid="community-consent"]', compactViewport);
-  if (!consentPosition.visible) {
-    throw new Error(`consentimento da Comunidade continua inacessível em 320x480: ${JSON.stringify(consentPosition)}`);
+  // Regressão: o compositor exige tipo e Círculo antes da prévia e informa,
+  // antes da ação, se o relato será enviado ou ficará somente no aparelho.
+  // A sequência completa precisa continuar rolável e sem overflow em todos os tamanhos.
+  for (const communityViewport of [
+    { width: 320, height: 480, label: '320x480' },
+    { width: 390, height: 844, label: '390x844' },
+    { width: 1280, height: 800, label: 'desktop' },
+  ]) {
+    const communityPage = await browser.newPage();
+    await communityPage.setViewport(communityViewport);
+    await communityPage.goto(`${URL}/comunidade`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await communityPage.waitForSelector('[data-testid="community-screen"]', { visible: true, timeout: 30000 });
+    await openCommunityComposer(communityPage);
+    await communityPage.waitForSelector('[data-testid="community-story-input"]', { visible: true, timeout: 30000 });
+    await clickRadioByLabel(communityPage, 'Ação');
+    await clickRadioByLabel(communityPage, 'Paz e presença');
+    await fillCommunityStory(
+      communityPage,
+      'Passei a agir com mais calma e confiança durante esta semana.'
+    );
+    await communityPage.waitForSelector('[data-testid="community-submit-notice"]', { visible: true, timeout: 30000 });
+    const hasPublicationConsent = !!(await communityPage.$('[data-testid="community-consent"]'));
+
+    const layout = await communityPage.evaluate(() => ({
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }));
+    if (layout.documentWidth > layout.viewport + 1 || layout.bodyWidth > layout.viewport + 1) {
+      throw new Error(`compositor da Comunidade transborda em ${communityViewport.label}: ${JSON.stringify(layout)}`);
+    }
+
+    const actionNoticePosition = await wheelIntoView(
+      communityPage,
+      hasPublicationConsent
+        ? '[data-testid="community-consent"]'
+        : '[data-testid="community-submit-notice"]',
+      communityViewport
+    );
+    if (!actionNoticePosition.visible) {
+      throw new Error(
+        `aviso da ação da Comunidade continua inacessível em ${communityViewport.label}: ${JSON.stringify(actionNoticePosition)}`
+      );
+    }
+    if (communityViewport.width === 320) {
+      const communityScrollTop = await communityPage.$eval(
+        '[data-testid="community-scroll"]',
+        (element) => element.scrollTop
+      );
+      if (communityScrollTop < 20) {
+        throw new Error('compositor da Comunidade não respondeu ao gesto de rolagem em 320x480');
+      }
+    }
+
+    if (hasPublicationConsent) {
+      await communityPage.click('[data-testid="community-consent"]');
+    } else {
+      const localNotice = await communityPage.$eval(
+        '[data-testid="community-submit-notice"]',
+        (element) => element.textContent
+      );
+      if (!/apenas neste aparelho|only on this device/i.test(localNotice)) {
+        throw new Error(`modo local não explicou o destino do relato: ${localNotice}`);
+      }
+    }
+    const submitPosition = await wheelIntoView(
+      communityPage,
+      '[data-testid="community-submit"]',
+      communityViewport
+    );
+    if (!submitPosition.visible) {
+      throw new Error(
+        `envio da Comunidade continua inacessível em ${communityViewport.label}: ${JSON.stringify(submitPosition)}`
+      );
+    }
+    await communityPage.click('[data-testid="community-submit"]');
+    await communityPage.waitForFunction(
+      () => document.body.innerText.includes('Rascunho salvo neste aparelho'),
+      { timeout: 30000 }
+    );
+    await communityPage.screenshot({
+      path: path.join(SHOTS, `qa-comunidade-${communityViewport.label}-compositor-enviado.png`),
+    });
+    await communityPage.close();
   }
-  const communityScrollTop = await communityPage.$eval('[data-testid="community-scroll"]', (element) => element.scrollTop);
-  if (communityScrollTop < 20) {
-    throw new Error('compositor da Comunidade não respondeu ao gesto de rolagem em 320x480');
-  }
-  await communityPage.click('[data-testid="community-consent"]');
-  const submitPosition = await wheelIntoView(communityPage, '[data-testid="community-submit"]', compactViewport);
-  if (!submitPosition.visible) {
-    throw new Error(`envio da Comunidade continua inacessível em 320x480: ${JSON.stringify(submitPosition)}`);
-  }
-  await communityPage.click('[data-testid="community-submit"]');
-  await communityPage.waitForFunction(
-    () => document.body.innerText.includes('Rascunho salvo neste aparelho'),
-    { timeout: 30000 }
-  );
-  await communityPage.screenshot({ path: path.join(SHOTS, 'qa-comunidade-320x480-compositor-enviado.png') });
-  await communityPage.close();
 
   // Cada rota também precisa voltar ao app quando foi aberta diretamente e o
   // stack não possui histórico interno.
@@ -391,6 +480,7 @@ let browser;
     ...state,
     lang: 'pt',
     profile: {
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
       cloudPersonalization: true,
       cloudAdultConfirmed: true,
       age: '25-34',

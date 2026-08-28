@@ -21,6 +21,10 @@ import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { confirmAsync } from '../utils/confirm';
 import { APP_NAME } from '../constants/brand';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentAdultCloudConsent,
+} from '../constants/cloudConsent';
 import { LEGAL_UPDATED, PRIVACY_SECTIONS, TERMS_SECTIONS } from '../constants/legal';
 import NarratorSelector from '../components/NarratorSelector';
 import { isUnder18Age } from './onboarding/flow';
@@ -51,28 +55,28 @@ const S = {
   themePaper: { en: 'Paper', pt: 'Papel' },
   themeCloud: { en: 'Cloud', pt: 'Nuvem' },
   themeViolet: { en: 'Midnight rose', pt: 'Rosa de meia-noite' },
-  geminiTitle: { en: 'Personalization and neural voice', pt: 'Personalização e voz neural' },
+  geminiTitle: { en: 'Cloud processing', pt: 'Processamento em nuvem' },
   geminiOn: {
-    en: 'Gemini may receive only the information needed for personal scenes, dream reflections you request, and on-demand narration. Saved names of other people stay on this device.',
-    pt: 'O Gemini pode receber somente o necessário para cenas pessoais, reflexões de sonhos que você pedir e narração sob demanda. Nomes cadastrados de outras pessoas ficam neste aparelho.',
+    en: 'Scene text uses Anthropic, with OpenAI as failover. Translations, images and dream interpretations use Google Gemini. On-demand narration uses ElevenLabs. Only data needed for the requested feature is sent.',
+    pt: 'Textos de cenas usam Anthropic, com OpenAI como alternativa em caso de falha. Traduções, imagens e interpretações de sonhos usam Google Gemini. A narração sob demanda usa ElevenLabs. Só os dados necessários ao recurso solicitado são enviados.',
   },
   geminiOff: {
-    en: 'New personal scenes use Celeste\'s local generator.',
-    pt: 'Novas cenas pessoais usam o gerador local do Celeste.',
+    en: 'New content uses Celeste\'s on-device options. No new cloud request is sent.',
+    pt: 'Novos conteúdos usam as opções no aparelho do Celeste. Nenhuma nova solicitação é enviada à nuvem.',
   },
   geminiPartial: {
-    en: 'Neural voice is active only for text you choose to hear. Personal scenes and dreams stay on this device until you enable the full option.',
-    pt: 'A voz neural está ativa apenas para textos que você escolhe ouvir. Cenas pessoais e sonhos ficam neste aparelho até você ativar a opção completa.',
+    en: 'One or more earlier cloud permissions remain active. Depending on that permission, scenes use Anthropic/OpenAI, translations, images or dreams use Gemini, and narration uses ElevenLabs.',
+    pt: 'Uma ou mais permissões de nuvem anteriores continuam ativas. Conforme a permissão, cenas usam Anthropic/OpenAI, traduções, imagens ou sonhos usam Gemini, e a narração usa ElevenLabs.',
   },
-  geminiConfirmTitle: { en: 'Allow Gemini personalization?', pt: 'Permitir personalização com Gemini?' },
+  geminiConfirmTitle: { en: 'Allow cloud processing?', pt: 'Permitir processamento em nuvem?' },
   geminiConfirmBody: {
-    en: 'Confirm that you are 18 or older and allow Celeste to send Gemini only the information needed to create personal scenes, reflect on dreams you choose to send, and narrate selected text on demand. Saved names of children, important people, or a specific person stay on this device. Avoid names and confidential data in free text. You can turn this off at any time.',
-    pt: 'Confirme que você tem 18 anos ou mais e permite que o Celeste envie ao Gemini somente o necessário para criar cenas pessoais, refletir sobre sonhos que você escolher enviar e narrar o texto selecionado sob demanda. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar quando quiser.',
+    en: 'Confirm that you are 18 or older and allow Celeste to send only the data needed for features you request. Anthropic generates personalized scene text, with OpenAI used only when failover is needed. Google Gemini translates text, creates images and interprets dreams you choose to send. ElevenLabs narrates selected text on demand. Requests pass through Celeste\'s backend. Saved names of children, important people or a specific person stay on this device. Avoid names and confidential data in free text. You can turn this off at any time.',
+    pt: 'Confirme que você tem 18 anos ou mais e permite que o Celeste envie somente os dados necessários aos recursos que você solicitar. A Anthropic gera o texto das cenas personalizadas, com a OpenAI usada apenas quando a alternativa em caso de falha for necessária. O Google Gemini traduz textos, cria imagens e interpreta sonhos que você escolher enviar. A ElevenLabs narra o texto selecionado sob demanda. As solicitações passam pelo backend do Celeste. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar quando quiser.',
   },
   geminiConfirmAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
   geminiUnder18: {
-    en: 'Gemini personalization is unavailable for profiles marked Under 18. New scenes are created on this device.',
-    pt: 'A personalização com Gemini não está disponível para perfis marcados como Menos de 18. Novas cenas são criadas neste aparelho.',
+    en: 'Cloud processing is unavailable for profiles marked Under 18. New content is created on this device.',
+    pt: 'O processamento em nuvem não está disponível para perfis marcados como Menos de 18. Novos conteúdos são criados neste aparelho.',
   },
   notNow: { en: 'Not now', pt: 'Agora não' },
   privacyAndData: { en: 'Privacy and data', pt: 'Privacidade e dados' },
@@ -281,7 +285,7 @@ export default function ProfileScreen({ navigation }) {
       (profile.cloudPersonalization === true ||
         profile.cloudNarrationConsent === true ||
         profile.cloudDreamConsent === true) &&
-      (profile.cloudAdultConfirmed !== true || isUnder18Age(profile.age))
+      (!hasCurrentAdultCloudConsent(profile) || isUnder18Age(profile.age))
     ) {
       saveProfile({
         cloudPersonalization: false,
@@ -294,6 +298,7 @@ export default function ProfileScreen({ navigation }) {
     saveProfile,
     state?.profile?.age,
     state?.profile?.cloudAdultConfirmed,
+    state?.profile?.cloudConsentVersion,
     state?.profile?.cloudPersonalization,
     state?.profile?.cloudNarrationConsent,
     state?.profile?.cloudDreamConsent,
@@ -344,7 +349,7 @@ export default function ProfileScreen({ navigation }) {
   const under18 = isUnder18Age(state.profile && state.profile.age);
   const cloudPartiallyEnabled =
     !under18 &&
-    state.profile?.cloudAdultConfirmed === true &&
+    hasCurrentAdultCloudConsent(state.profile) &&
     (state.profile?.cloudPersonalization === true ||
       state.profile?.cloudNarrationConsent === true ||
       state.profile?.cloudDreamConsent === true);
@@ -352,7 +357,7 @@ export default function ProfileScreen({ navigation }) {
     !under18 &&
     state.profile &&
     state.profile.cloudPersonalization === true &&
-    state.profile.cloudAdultConfirmed === true &&
+    hasCurrentAdultCloudConsent(state.profile) &&
     state.profile.cloudNarrationConsent === true &&
     state.profile.cloudDreamConsent === true;
 
@@ -368,6 +373,7 @@ export default function ProfileScreen({ navigation }) {
   const changeCloudPersonalization = async (nextValue) => {
     if (!nextValue) {
       saveProfile({
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         cloudPersonalization: false,
         cloudAdultConfirmed: false,
         cloudNarrationConsent: false,
@@ -378,6 +384,7 @@ export default function ProfileScreen({ navigation }) {
     }
     if (under18) {
       saveProfile({
+        cloudConsentVersion: null,
         cloudPersonalization: false,
         cloudAdultConfirmed: false,
         cloudNarrationConsent: false,
@@ -396,6 +403,7 @@ export default function ProfileScreen({ navigation }) {
     });
     if (!allowed) return;
     saveProfile({
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
       cloudPersonalization: true,
       cloudAdultConfirmed: true,
       cloudNarrationConsent: true,

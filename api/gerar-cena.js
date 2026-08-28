@@ -6,18 +6,25 @@ const textProvider = require('./_text-provider');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
 const { interpretSelfDescription } = require('../utils/selfDescription');
 const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const PROMPT_VERSION = 'celeste-scene-v7';
 const LEGACY_PROMPT_VERSION = 'celeste-scene-v7';
+const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v1';
+const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
 const CONTINUITY_MAX_BYTES = 12 * 1024;
 const GENERATION_DEADLINE_MS = 48_000;
 const MIN_REPAIR_BUDGET_MS = 5_000;
-const TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 4_800;
-const CATEGORIES = new Set(['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace']);
+const SCENE_UNITS = 4;
+const JOURNEY_SUITE_UNITS = 12;
+const TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 6_000;
+const JOURNEY_SUITE_MAX_OUTPUT_TOKENS = 4_800;
+const JOURNEY_CATEGORIES = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
+const CATEGORIES = new Set(JOURNEY_CATEGORIES);
 const FIELD_KEYS = [
   'desire',
   'name',
@@ -568,6 +575,9 @@ function parseBody(req) {
 
 function validateInput(body) {
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
+  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+    return { error: 'cloud_consent_required', status: 403 };
+  }
   if (isPlainObject(body.profile) && isUnder18Age(body.profile.age)) {
     return { error: 'adult_confirmation_required', status: 403 };
   }
@@ -580,6 +590,9 @@ function validateInput(body) {
   if (desire.length < 2) return { error: 'desire_invalid', status: 400 };
   if (!CATEGORIES.has(body.category)) return { error: 'category_invalid', status: 400 };
   if (body.lang !== 'pt' && body.lang !== 'en') return { error: 'language_invalid', status: 400 };
+  if (body.includeJourneySuite !== undefined && typeof body.includeJourneySuite !== 'boolean') {
+    return { error: 'journey_suite_invalid', status: 400 };
+  }
 
   const profile = sanitizeProfile(body.profile, body.lang);
   if (profile.error) return { error: profile.error, status: 400 };
@@ -593,6 +606,7 @@ function validateInput(body) {
       lang: body.lang,
       profile: profile.value,
       availablePersonalization: profile.available,
+      includeJourneySuite: body.includeJourneySuite === true,
       ...(continuity.value ? { continuity: continuity.value } : {}),
     },
   };
@@ -604,6 +618,7 @@ function deterministicSeed(input) {
     category: input.category,
     lang: input.lang,
     profile: input.profile,
+    ...(input.includeJourneySuite === true ? { includeJourneySuite: true } : {}),
     ...(input.continuity ? { continuity: input.continuity } : {}),
   });
   const value = crypto.createHash('sha256').update(canonical).digest().readUInt32BE(0) & 0x7fffffff;
@@ -642,6 +657,20 @@ function buildSystemInstruction(input = {}) {
         'latestDreamTheme and latestDreamFeeling are structured labels only. Do not infer, diagnose, or invent the content of a dream.',
       ]
     : [];
+  const journeySuiteInstructions = input.includeJourneySuite
+    ? [
+        'In the same JSON object, also create journeySuite with exactly six visions and exactly six affirmations.',
+        `Both arrays must use this exact category order, once each: ${JOURNEY_CATEGORIES.join(', ')}.`,
+        'The Anchor Scene remains the source of identity and direction. Each journey item must derive from the same desire and personal map without copying the Anchor Scene.',
+        'A vision is a possible future, not a prediction. In Portuguese, every vision story must begin exactly with "Imagine uma possibilidade do seu futuro:". In English, every vision story must begin exactly with "Imagine one possibility in your future:".',
+        'After that future framing, write the vision as an immersive sensory scene. Keep each vision between 70 and 130 words and make setting, action, emotional texture, and wording genuinely different across categories.',
+        'Love concerns reciprocity and belonging; Wealth concerns meaningful resources and choice; Career concerns contribution and authorship; Health concerns sustainable care without medical claims; Confidence concerns grounded agency; Peace concerns attention and restoration.',
+        'Every journey affirmation must be first person and grammatical present. Prefer I choose/I can/I cultivate/I practice or their natural Portuguese equivalents. Never use I will, I am going to, eu vou, serei, terei, or other promises of a future outcome.',
+        'Each affirmation must be personally connected to the desire or a safe profile fact, but must reinterpret meaning naturally instead of copying a raw answer or trait list.',
+        'Every visualBrief is a concise, text-free editorial photography direction. It must be visibly distinct from every other brief in subject, setting, light, and composition. Never request a person, face, body, words, logo, UI, or watermark.',
+        'Do not reuse the same sentence, scene, title, or visualBrief in two categories.',
+      ]
+    : [];
   return [
     'You write one personalized Celeste Anchor Scene for an adult user.',
     ...buildKnowledgeInstructions('scene', input),
@@ -652,6 +681,7 @@ function buildSystemInstruction(input = {}) {
     'The story is a present-tense visualization exercise, not a prediction or a statement that the future is guaranteed.',
     'Do not promise results, deadlines, luck, supernatural certainty, or percentages.',
     ...continuityInstructions,
+    ...journeySuiteInstructions,
     'Do not provide medical, legal, financial, investment, gambling, or crisis advice.',
     'Keep the tone intimate, specific, grounded, warm, and non-dependent. Avoid hype, pressure, and generic coaching copy.',
     'Create recognition through truthful detail and continuity, never through flattery, loyalty tests, guilt, loneliness, or telling the user an unsupported thing merely because they may want to hear it.',
@@ -678,8 +708,8 @@ function buildSystemInstruction(input = {}) {
   ].join('\n');
 }
 
-function responseSchema() {
-  return {
+function responseSchema(input = {}) {
+  const schema = {
     type: 'OBJECT',
     required: [
       'intention',
@@ -712,13 +742,68 @@ function responseSchema() {
       },
     },
   };
+  if (!input.includeJourneySuite) return schema;
+
+  schema.required.push('journeySuite');
+  schema.properties.journeySuite = {
+    type: 'OBJECT',
+    required: ['visions', 'affirmations'],
+    properties: {
+      visions: {
+        type: 'ARRAY',
+        minItems: JOURNEY_CATEGORIES.length,
+        maxItems: JOURNEY_CATEGORIES.length,
+        items: {
+          type: 'OBJECT',
+          required: ['category', 'title', 'story', 'visualBrief'],
+          properties: {
+            category: { type: 'STRING', enum: JOURNEY_CATEGORIES },
+            title: { type: 'STRING', description: 'A short future-vision title.' },
+            story: {
+              type: 'STRING',
+              description: 'A grounded future possibility, framed as imagination rather than prediction.',
+            },
+            visualBrief: {
+              type: 'STRING',
+              description: 'A distinct, text-free editorial image direction for this vision.',
+            },
+          },
+        },
+      },
+      affirmations: {
+        type: 'ARRAY',
+        minItems: JOURNEY_CATEGORIES.length,
+        maxItems: JOURNEY_CATEGORIES.length,
+        items: {
+          type: 'OBJECT',
+          required: ['category', 'text', 'visualBrief'],
+          properties: {
+            category: { type: 'STRING', enum: JOURNEY_CATEGORIES },
+            text: {
+              type: 'STRING',
+              description: 'A believable first-person affirmation in the grammatical present.',
+            },
+            visualBrief: {
+              type: 'STRING',
+              description: 'A distinct, text-free editorial image direction for this affirmation.',
+            },
+          },
+        },
+      },
+    },
+  };
+  return schema;
 }
 
 function buildGeminiRequest(input, seed, repairInstruction = '') {
   const language = input.lang === 'pt' ? 'Brazilian Portuguese' : 'English';
   const knowledgePack = celesteBrain.buildKnowledgePack('scene', input);
   const userData = {
-    task: input.continuity ? 'evolve_anchor_scene' : 'create_anchor_scene',
+    task: input.includeJourneySuite
+      ? 'create_anchor_scene_with_journey_suite'
+      : input.continuity
+      ? 'evolve_anchor_scene'
+      : 'create_anchor_scene',
     language,
     desire: input.desire,
     category: input.category,
@@ -740,9 +825,9 @@ function buildGeminiRequest(input, seed, repairInstruction = '') {
     contents: [{ role: 'user', parts: [{ text: JSON.stringify(userData) }] }],
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: responseSchema(),
+      responseSchema: responseSchema(input),
       temperature: 0.55,
-      maxOutputTokens: 1800,
+      maxOutputTokens: input.includeJourneySuite ? JOURNEY_SUITE_MAX_OUTPUT_TOKENS : 1800,
       seed,
     },
     safetySettings: [
@@ -966,6 +1051,112 @@ function validateGeneratedScene(raw, input) {
   return scene;
 }
 
+const JOURNEY_OUTPUT_LIMITS = Object.freeze({
+  title: [5, 120],
+  story: [80, 1_200],
+  text: [20, 500],
+  visualBrief: [24, 420],
+});
+
+function requiredJourneyText(raw, field, limits) {
+  if (typeof raw[field] !== 'string') throw new GenerationError('invalid_generation');
+  const text = cleanText(raw[field], limits[1]);
+  if (text.length < limits[0] || raw[field].trim().length > limits[1]) {
+    throw new GenerationError('invalid_generation');
+  }
+  return text;
+}
+
+function ensureUniqueJourneyValues(items, fields) {
+  for (const field of fields) {
+    const normalized = items.map((item) => comparisonText(item[field]));
+    if (normalized.some((value) => !value) || new Set(normalized).size !== normalized.length) {
+      throw new GenerationError('invalid_generation');
+    }
+  }
+}
+
+function validateGeneratedJourneySuite(raw, input) {
+  if (!isPlainObject(raw)) throw new GenerationError('invalid_generation');
+  if (
+    !Array.isArray(raw.visions) ||
+    !Array.isArray(raw.affirmations) ||
+    raw.visions.length !== JOURNEY_CATEGORIES.length ||
+    raw.affirmations.length !== JOURNEY_CATEGORIES.length
+  ) {
+    throw new GenerationError('invalid_generation');
+  }
+
+  const validateCategory = (item, index) => {
+    if (!isPlainObject(item) || item.category !== JOURNEY_CATEGORIES[index]) {
+      throw new GenerationError('invalid_generation');
+    }
+    return item.category;
+  };
+  const visionPrefix = comparisonText(
+    input.lang === 'pt'
+      ? 'Imagine uma possibilidade do seu futuro:'
+      : 'Imagine one possibility in your future:'
+  );
+  const visions = raw.visions.map((item, index) => {
+    const category = validateCategory(item, index);
+    const title = requiredJourneyText(item, 'title', JOURNEY_OUTPUT_LIMITS.title);
+    const story = requiredJourneyText(item, 'story', JOURNEY_OUTPUT_LIMITS.story);
+    const visualBrief = requiredJourneyText(item, 'visualBrief', JOURNEY_OUTPUT_LIMITS.visualBrief);
+    if (!comparisonText(story).startsWith(visionPrefix)) {
+      throw new GenerationError('invalid_generation');
+    }
+    if (UNSAFE_OUTPUT.some((pattern) => pattern.test(`${title} ${story} ${visualBrief}`))) {
+      throw new GenerationError('invalid_generation');
+    }
+    return { key: `vision:${category}`, category, title, story, visualBrief };
+  });
+
+  const firstPerson = input.lang === 'pt'
+    ? /\b(eu|meu|minha|meus|minhas)\b/i
+    : /\b(i|my|mine)\b/i;
+  const futurePromise = input.lang === 'pt'
+    ? /\b(eu\s+vou|vou\s+(?:ser|ter|conseguir|alcan[c\u00e7]ar)|serei|terei|estarei|conseguirei|alcan[c\u00e7]arei)\b/i
+    : /\b(i\s+will|i['\u2019]ll|i\s+am\s+going\s+to|i['\u2019]m\s+going\s+to)\b/i;
+  const affirmations = raw.affirmations.map((item, index) => {
+    const category = validateCategory(item, index);
+    const text = requiredJourneyText(item, 'text', JOURNEY_OUTPUT_LIMITS.text);
+    const visualBrief = requiredJourneyText(item, 'visualBrief', JOURNEY_OUTPUT_LIMITS.visualBrief);
+    if (
+      !firstPerson.test(text) ||
+      futurePromise.test(text) ||
+      UNBELIEVABLE_AFFIRMATION.some((pattern) => pattern.test(text)) ||
+      RAW_PROFILE_DUMP.some((pattern) => pattern.test(text)) ||
+      UNSAFE_OUTPUT.some((pattern) => pattern.test(`${text} ${visualBrief}`))
+    ) {
+      throw new GenerationError('invalid_generation');
+    }
+    return { key: `affirmation:${category}`, category, text, visualBrief };
+  });
+
+  ensureUniqueJourneyValues(visions, ['title', 'story', 'visualBrief']);
+  ensureUniqueJourneyValues(affirmations, ['text', 'visualBrief']);
+  ensureUniqueJourneyValues(
+    [...visions, ...affirmations].map((item) => ({ visualBrief: item.visualBrief })),
+    ['visualBrief']
+  );
+  return {
+    version: JOURNEY_SUITE_VERSION,
+    visions,
+    affirmations,
+  };
+}
+
+function validateGeneratedOutput(raw, input) {
+  const scene = validateGeneratedScene(raw, input);
+  return {
+    scene,
+    ...(input.includeJourneySuite
+      ? { journeySuite: validateGeneratedJourneySuite(raw.journeySuite, input) }
+      : {}),
+  };
+}
+
 function extractCandidatePayload(payload, input) {
   if (!isPlainObject(payload)) throw new GenerationError('invalid_upstream_json');
   if (payload.promptFeedback && payload.promptFeedback.blockReason) {
@@ -991,7 +1182,7 @@ function extractCandidatePayload(payload, input) {
   } catch (_error) {
     throw new GenerationError('invalid_generation');
   }
-  return validateGeneratedScene(parsed, input);
+  return validateGeneratedOutput(parsed, input);
 }
 
 function timeoutMs() {
@@ -1130,8 +1321,16 @@ async function handler(req, res) {
     return sendJson(res, 503, 'generation_not_configured');
   }
 
-  const access = await paidAccess.authorizePaidRequest(req, { operation: 'scene', units: 4 });
+  const access = await paidAccess.authorizePaidRequest(req, {
+    operation: 'scene',
+    units: validated.value.includeJourneySuite ? JOURNEY_SUITE_UNITS : SCENE_UNITS,
+  });
   if (!access.ok) return sendJson(res, access.status, access.error);
+  const committedAccess = await paidAccess.commitPaidRequest(access);
+  if (!committedAccess.ok) {
+    await paidAccess.releasePaidRequest(access).catch(() => {});
+    return sendJson(res, committedAccess.status, committedAccess.error);
+  }
 
   const configuredModel = cleanText(process.env.GEMINI_MODEL || DEFAULT_MODEL, 80);
   const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
@@ -1141,6 +1340,7 @@ async function handler(req, res) {
     : null;
   try {
     let scene;
+    let journeySuite;
     let quality;
     let repairInstruction = '';
     let retryProvider = '';
@@ -1162,9 +1362,11 @@ async function handler(req, res) {
             retryProvider ? { provider: retryProvider } : {}
           );
           providerReceipt = generated;
-          scene = validateGeneratedScene(generated.data, validated.value);
+          const output = validateGeneratedOutput(generated.data, validated.value);
+          scene = output.scene;
+          journeySuite = output.journeySuite;
         } else {
-          scene = await requestGemini(
+          const output = await requestGemini(
             validated.value,
             model,
             apiKey,
@@ -1172,6 +1374,8 @@ async function handler(req, res) {
             repairInstruction,
             generationDeadline
           );
+          scene = output.scene;
+          journeySuite = output.journeySuite;
         }
         quality = celesteBrain.evaluateScene(scene, validated.value);
         requireGenerationBudget(generationDeadline);
@@ -1196,12 +1400,17 @@ async function handler(req, res) {
     const knowledgePack = celesteBrain.buildKnowledgePack('scene', validated.value);
     const payload = {
       scene,
+      ...(journeySuite ? { journeySuite } : {}),
       generation: {
         source: 'celeste-ai',
         model: providerReceipt ? providerReceipt.model : model,
         provider: providerReceipt ? providerReceipt.provider : 'gemini',
         fallbackUsed: providerReceipt ? providerReceipt.fallbackUsed === true : false,
-        promptVersion: validated.value.continuity ? PROMPT_VERSION : LEGACY_PROMPT_VERSION,
+        promptVersion: validated.value.includeJourneySuite
+          ? JOURNEY_SUITE_PROMPT_VERSION
+          : validated.value.continuity
+          ? PROMPT_VERSION
+          : LEGACY_PROMPT_VERSION,
         knowledgeVersion: CELESTE_KNOWLEDGE.version,
         brainVersion: BRAIN_VERSION,
         knowledgeCardIds: knowledgePack.selectionReceipt.cardIds,
@@ -1209,14 +1418,8 @@ async function handler(req, res) {
         ...(providerReceipt ? {} : { seed: responseSeed }),
       },
     };
-    const committed = await paidAccess.commitPaidRequest(access);
-    if (!committed.ok) {
-      await paidAccess.releasePaidRequest(access).catch(() => {});
-      return sendJson(res, committed.status, committed.error);
-    }
     return res.status(200).json(payload);
   } catch (error) {
-    await paidAccess.releasePaidRequest(access).catch(() => {});
     if (error && (error.code === 'generation_blocked' || error.code === 'text_provider_blocked')) {
       return sendJson(res, 422, 'generation_blocked');
     }
@@ -1253,12 +1456,17 @@ module.exports._internals = {
   repeatsPreviousChapter,
   sanitizeContinuity,
   sanitizeProfile,
+  responseSchema,
   validateGeneratedScene,
+  validateGeneratedJourneySuite,
+  validateGeneratedOutput,
   evaluateScene: celesteBrain.evaluateScene,
   validateInput,
   knowledgeVersion: CELESTE_KNOWLEDGE.version,
   generationDeadlineMs: () => GENERATION_DEADLINE_MS,
   minimumRepairBudgetMs: () => MIN_REPAIR_BUDGET_MS,
+  sceneUnits: () => SCENE_UNITS,
+  journeySuiteUnits: () => JOURNEY_SUITE_UNITS,
   resetSecurityForTests: () => {
     botVerifier = checkBotId;
     generationClock = () => Date.now();

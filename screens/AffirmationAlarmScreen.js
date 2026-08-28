@@ -95,6 +95,10 @@ const COPY = {
     pt: 'Conclua a permissão de Alarmes e Notificações que o aparelho abriu. Ao voltar, toque em Ativar novamente.',
     en: 'Complete the Alarm and Notification permission opened by your device. When you return, tap Turn on again.',
   },
+  permissionFailed: {
+    pt: 'Não foi possível verificar a permissão do aparelho. O despertador não foi alterado; tente novamente.',
+    en: 'Your device permission could not be checked. Your alarm was not changed; try again.',
+  },
   openSettings: { pt: 'Abrir Ajustes', en: 'Open Settings' },
   failed: {
     pt: 'O aparelho não confirmou o agendamento. Nada foi salvo; tente novamente.',
@@ -338,6 +342,7 @@ export default function AffirmationAlarmScreen({ route }) {
     operationRef.current = true;
     setBusy(true);
     setFeedback(null);
+    let activationStage = 'permission';
     try {
       narration.stop();
       const authorization = await requestAffirmationAlarmAuthorization();
@@ -358,6 +363,7 @@ export default function AffirmationAlarmScreen({ route }) {
         }
         return;
       }
+      activationStage = 'voice';
       const prepared = await narration.preparePersonal({
         text: selected.text,
         lang: selected.lang || lang,
@@ -367,6 +373,7 @@ export default function AffirmationAlarmScreen({ route }) {
         return;
       }
       const audioBase64Wav = wavBytesToBase64(prepared.bytes);
+      activationStage = 'schedule';
       const response = await scheduleAffirmationAlarm({
         time,
         weekdays,
@@ -407,7 +414,15 @@ export default function AffirmationAlarmScreen({ route }) {
         );
       }
     } catch (_error) {
-      if (mountedRef.current) setFeedback('voice_failed');
+      if (mountedRef.current) {
+        setFeedback(
+          activationStage === 'permission'
+            ? 'permission_failed'
+            : activationStage === 'voice'
+            ? 'voice_failed'
+            : 'failed'
+        );
+      }
     } finally {
       operationRef.current = false;
       if (mountedRef.current) setBusy(false);
@@ -486,6 +501,8 @@ export default function AffirmationAlarmScreen({ route }) {
     ? t(COPY.denied)
     : feedback === 'permission_required'
     ? t(COPY.permissionRequired)
+    : feedback === 'permission_failed'
+    ? t(COPY.permissionFailed)
     : feedback === 'failed'
     ? t(COPY.failed)
     : feedback === 'voice_failed'

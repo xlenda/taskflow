@@ -6,6 +6,7 @@ const test = require('node:test');
 const { transformSync } = require('@babel/core');
 
 const endpoint = require('../api/traduzir-cena');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const root = path.join(__dirname, '..');
 const ENV_KEYS = [
   'GEMINI_API_KEY',
@@ -105,6 +106,7 @@ function validBody(overrides = {}) {
     targetLang: 'en',
     scene: sourceScene(),
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     ...overrides,
   };
@@ -176,6 +178,7 @@ test('manifestation translation API contract', async (t) => {
         kids: [{ name: 'Leo' }],
         cloudPersonalization: true,
         cloudAdultConfirmed: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         privateAnswer: 'must stay local',
       },
       fetchImpl: async (_url, options) => {
@@ -190,7 +193,7 @@ test('manifestation translation API contract', async (t) => {
       },
     });
     assert.deepStrictEqual(Object.keys(sent).sort(), [
-      'adultConfirmed', 'cloudConsent', 'scene', 'sourceLang', 'targetLang',
+      'adultConfirmed', 'cloudConsent', 'cloudConsentVersion', 'scene', 'sourceLang', 'targetLang',
     ]);
     assert.strictEqual(sent.scene.evidence, undefined);
     assert.strictEqual(sent.scene.sessions, undefined);
@@ -207,7 +210,11 @@ test('manifestation translation API contract', async (t) => {
         sourceLang: 'pt',
         targetLang: 'en',
         scene: sourceScene(),
-        profile: { cloudPersonalization: false, cloudAdultConfirmed: true },
+        profile: {
+          cloudPersonalization: false,
+          cloudAdultConfirmed: true,
+          cloudConsentVersion: CLOUD_CONSENT_VERSION,
+        },
         fetchImpl: async () => { calls += 1; },
       }),
       /cloud_consent_required/
@@ -215,17 +222,29 @@ test('manifestation translation API contract', async (t) => {
     assert.strictEqual(calls, 0);
   });
 
-  await t.test('server rejects missing consent, minors and invalid language pairs before Gemini', async () => {
+  await t.test('server rejects stale consent, minors and invalid language pairs before Gemini or quota', async () => {
     configure();
     let calls = 0;
+    let quotaCalls = 0;
     global.fetch = async () => { calls += 1; return { ok: true, json: async () => geminiPayload() }; };
+    endpoint._internals.setPaidAccessAuthorizerForTests(async () => {
+      quotaCalls += 1;
+      return { ok: true, userId: '00000000-0000-4000-8000-000000000001' };
+    });
     let res = await invoke(request(validBody({ cloudConsent: false })));
     assert.strictEqual(res.statusCode, 403);
+    res = await invoke(request(validBody({ cloudConsentVersion: undefined })));
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.body.error, 'cloud_consent_required');
+    res = await invoke(request(validBody({ cloudConsentVersion: 'legacy-version' })));
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.body.error, 'cloud_consent_required');
     res = await invoke(request(validBody({ adultConfirmed: false })));
     assert.strictEqual(res.statusCode, 403);
     res = await invoke(request(validBody({ targetLang: 'pt' })));
     assert.strictEqual(res.statusCode, 400);
     assert.strictEqual(calls, 0);
+    assert.strictEqual(quotaCalls, 0, 'invalid consent version must fail before quota authorization');
   });
 
   await t.test('fails closed before Gemini when Origin is absent from POST and OPTIONS', async () => {

@@ -20,6 +20,10 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, categoryMeta } from '../constants/content';
 import { APP_NAME } from '../constants/brand';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentCloudConsentVersion,
+} from '../constants/cloudConsent';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { confirmAsync } from '../utils/confirm';
@@ -50,10 +54,10 @@ const S = {
   },
   sendDesire: { en: 'Send your desire', pt: 'Enviar seu desejo' },
   creating: { en: 'Creating your scene…', pt: 'Criando sua cena…' },
-  consentTitle: { en: 'Create with Gemini?', pt: 'Criar com o Gemini?' },
+  consentTitle: { en: 'Create in the cloud?', pt: 'Criar na nuvem?' },
   consentBody: {
-    en: 'If you are 18 or older, Celeste can send only the answers needed for this scene to Google Gemini. Choose local to keep the generation on this device.',
-    pt: 'Se você tem 18 anos ou mais, o Celeste pode enviar ao Google Gemini apenas as respostas necessárias para esta cena. Escolha local para manter a geração neste aparelho.',
+    en: 'If you are 18 or older, Celeste can send only the answers needed for this scene to Anthropic for its text, with OpenAI as failover, and to Google Gemini for its image and later translations. Choose local to keep generation on this device.',
+    pt: 'Se você tem 18 anos ou mais, o Celeste pode enviar somente as respostas necessárias desta cena à Anthropic para gerar o texto, com a OpenAI como alternativa em caso de falha, e ao Google Gemini para criar a imagem e traduções posteriores. Escolha local para manter a geração neste aparelho.',
   },
   consentAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
   consentLocal: { en: 'Use local', pt: 'Usar local' },
@@ -100,6 +104,11 @@ const S = {
   openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
   openProfile: { en: 'Open profile and settings', pt: 'Abrir perfil e configurações' },
   yourDay: { en: 'Your day', pt: 'Seu dia' },
+  anchorScene: { en: 'My Anchor Scene', pt: 'Minha Cena-Âncora' },
+  anchorSceneHint: {
+    en: 'Return to the scene created from your answers',
+    pt: 'Volte à cena criada a partir das suas respostas',
+  },
   minuteTitle: { en: 'Your Celeste minute', pt: 'Seu minuto Celeste' },
   minuteReady: {
     en: 'One affirmation and one possible step for today',
@@ -197,9 +206,17 @@ export default function HomeScreen() {
     const meta = categoryMeta(category);
     const currentProfile = state.profile || {};
     const knownMinor = isUnder18Age(currentProfile.age);
-    let cloudPersonalization = !knownMinor && currentProfile.cloudPersonalization === true;
+    const currentConsentDecision =
+      !knownMinor && hasCurrentCloudConsentVersion(currentProfile);
+    let cloudConsentVersion = currentConsentDecision ? CLOUD_CONSENT_VERSION : null;
+    let cloudPersonalization =
+      currentConsentDecision && currentProfile.cloudPersonalization === true;
     let cloudAdultConfirmed = cloudPersonalization && currentProfile.cloudAdultConfirmed === true;
-    if (!knownMinor && currentProfile.cloudPersonalization !== true && currentProfile.cloudPersonalization !== false) {
+    const cloudNarrationConsent =
+      currentConsentDecision && currentProfile.cloudNarrationConsent === true;
+    const cloudDreamConsent =
+      currentConsentDecision && currentProfile.cloudDreamConsent === true;
+    if (!knownMinor && !currentConsentDecision) {
       cloudPersonalization = await confirmAsync({
         title: t(S.consentTitle),
         message: t(S.consentBody),
@@ -209,7 +226,14 @@ export default function HomeScreen() {
         lang,
       });
       cloudAdultConfirmed = cloudPersonalization;
-      saveProfile({ cloudPersonalization, cloudAdultConfirmed });
+      cloudConsentVersion = CLOUD_CONSENT_VERSION;
+      saveProfile({
+        cloudConsentVersion,
+        cloudPersonalization,
+        cloudAdultConfirmed,
+        cloudNarrationConsent,
+        cloudDreamConsent,
+      });
     } else if (!cloudPersonalization || !cloudAdultConfirmed) {
       cloudPersonalization = false;
       cloudAdultConfirmed = false;
@@ -225,7 +249,14 @@ export default function HomeScreen() {
         lang,
         accent: meta.accent,
         goalDays: 21,
-        profile: { ...currentProfile, cloudPersonalization, cloudAdultConfirmed },
+        profile: {
+          ...currentProfile,
+          cloudConsentVersion,
+          cloudPersonalization,
+          cloudAdultConfirmed,
+          cloudNarrationConsent,
+          cloudDreamConsent,
+        },
       });
       if (!id) {
         // Reset/import pode invalidar uma geração remota ainda em voo. Nesse
@@ -274,6 +305,12 @@ export default function HomeScreen() {
   const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const hasItems = state.manifestations.length > 0;
+  const anchorScene =
+    state.manifestations.find((item) => item.id === state.anchorSceneId) ||
+    state.manifestations.find((item) => item.origin === 'onboarding-anchor') ||
+    state.manifestations.find((item) => item.anchorOpenedAt) ||
+    state.manifestations[state.manifestations.length - 1] ||
+    null;
   const dailyRitual = selectDailyRitual(state, todayISO());
   // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
   // concluídas por último (sort estável preserva a ordem de criação).
@@ -442,6 +479,30 @@ export default function HomeScreen() {
             )}
           />
         </View>
+
+        {anchorScene ? (
+          <Card
+            testID="open-anchor-scene"
+            onPress={() => navigation.navigate('Manifestation', { id: anchorScene.id })}
+            accessibilityRole="button"
+            accessibilityLabel={`${t(S.anchorScene)}. ${txt(anchorScene.title, lang)}`}
+            style={[
+              styles.anchorSceneCard,
+              { backgroundColor: th.surface, borderColor: alpha(th.accent, 0.28) },
+            ]}
+          >
+            <View style={[styles.anchorSceneIcon, { backgroundColor: alpha(th.accent, 0.13) }]}>
+              <Ionicons name="sparkles" size={22} color={th.accent} />
+            </View>
+            <View style={styles.anchorSceneCopy}>
+              <Text style={[styles.anchorSceneTitle, { color: th.text }]}>{t(S.anchorScene)}</Text>
+              <Text numberOfLines={1} style={[styles.anchorSceneName, { color: th.textMuted }]}>
+                {txt(anchorScene.title, lang) || t(S.anchorSceneHint)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+          </Card>
+        ) : null}
 
         <View testID="home-your-day">
           <SectionHeading title={t(S.yourDay)} style={styles.dayHeading} />
@@ -639,6 +700,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionPressed: { opacity: 0.72 },
+  anchorSceneCard: {
+    minHeight: 76,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  anchorSceneIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  anchorSceneCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
+  anchorSceneTitle: { fontSize: 16, lineHeight: 21, fontWeight: '800', letterSpacing: 0 },
+  anchorSceneName: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
   morningCard: {
     minHeight: 72,
     borderRadius: 8,

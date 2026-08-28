@@ -1,7 +1,22 @@
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentAdultCloudConsent,
+  hasCurrentCloudConsentVersion,
+} from '../constants/cloudConsent';
+
 // The server may spend up to 48 s producing the high-quality scene. Generation
 // runs behind the saved local reward and leaves headroom inside the 60 s function.
 const API_TIMEOUT_MS = 56000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
+export const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
+export const JOURNEY_CATEGORIES = Object.freeze([
+  'Love',
+  'Wealth',
+  'Career',
+  'Health',
+  'Confidence',
+  'Peace',
+]);
 const NON_INFORMATIVE_PROFILE_ANSWERS = new Set([
   'ainda nao sei', 'i am not sure yet', 'im not sure yet', 'not sure yet',
   'nada especifico', 'nothing specific', 'prefer not to say', 'prefiro nao responder',
@@ -177,7 +192,7 @@ function normalizedAge(value) {
 export function profileConfirmsAdult(profile) {
   const source = profile && typeof profile === 'object' ? profile : {};
   if (UNDER_18_VALUES.has(normalizedAge(source.age))) return false;
-  return source.cloudAdultConfirmed === true;
+  return hasCurrentAdultCloudConsent(source);
 }
 
 function listedPersonName(item) {
@@ -226,14 +241,19 @@ export function redactThirdPartyNames(value, names, lang) {
 
 // Only the answers that can genuinely improve the scene leave the device.
 // UI preferences, practice history and private evidence are never included.
-export function minimizeProfile(profile, category, lang = 'pt') {
+export function minimizeProfile(profile, category, lang = 'pt', includeJourneySuite = false) {
   const source = profile && typeof profile === 'object' ? profile : {};
   const privateNames = thirdPartyNames(source);
   const out = {};
-  const fields = [
-    ...COMMON_PROFILE_FIELDS,
-    ...(CATEGORY_PROFILE_FIELDS[category] || []),
-  ];
+  const fields = includeJourneySuite
+    ? [...new Set([
+        ...COMMON_PROFILE_FIELDS,
+        ...Object.values(CATEGORY_PROFILE_FIELDS).flat(),
+      ])]
+    : [
+        ...COMMON_PROFILE_FIELDS,
+        ...(CATEGORY_PROFILE_FIELDS[category] || []),
+      ];
   fields.forEach((key) => {
     const raw = key === 'name'
       ? source[key]
@@ -400,7 +420,103 @@ function requiredText(value, max, field) {
   return text;
 }
 
-function validateScene(payload) {
+function comparisonText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('en-US')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function requiredJourneyText(value, min, max, field) {
+  if (typeof value !== 'string' || value.trim().length > max) {
+    throw new Error(`invalid_journey_suite_${field}`);
+  }
+  const text = cleanText(value, max);
+  if (text.length < min) throw new Error(`invalid_journey_suite_${field}`);
+  return text;
+}
+
+export function validatePersonalContentSuitePayload(value, lang = 'pt') {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  if (
+    !raw ||
+    raw.version !== JOURNEY_SUITE_VERSION ||
+    !Array.isArray(raw.visions) ||
+    !Array.isArray(raw.affirmations) ||
+    raw.visions.length !== JOURNEY_CATEGORIES.length ||
+    raw.affirmations.length !== JOURNEY_CATEGORIES.length
+  ) {
+    throw new Error('invalid_journey_suite');
+  }
+
+  const expectedPrefix = comparisonText(
+    lang === 'en'
+      ? 'Imagine one possibility in your future:'
+      : 'Imagine uma possibilidade do seu futuro:'
+  );
+  const validateCategory = (item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('invalid_journey_suite_item');
+    }
+    const category = JOURNEY_CATEGORIES[index];
+    if (item.category !== category) throw new Error('invalid_journey_suite_category');
+    return category;
+  };
+  const visions = raw.visions.map((item, index) => {
+    const category = validateCategory(item, index);
+    const title = requiredJourneyText(item.title, 5, 120, 'title');
+    const story = requiredJourneyText(item.story, 80, 1_200, 'story');
+    const visualBrief = requiredJourneyText(item.visualBrief, 24, 420, 'visual_brief');
+    if (!comparisonText(story).startsWith(expectedPrefix)) {
+      throw new Error('invalid_journey_suite_future_frame');
+    }
+    return {
+      key: `vision:${category}`,
+      category,
+      title,
+      story,
+      visualBrief,
+    };
+  });
+  const firstPerson = lang === 'en'
+    ? /\b(i|my|mine)\b/i
+    : /\b(eu|meu|minha|meus|minhas)\b/i;
+  const futurePromise = lang === 'en'
+    ? /\b(i\s+will|i['\u2019]ll|i\s+am\s+going\s+to|i['\u2019]m\s+going\s+to)\b/i
+    : /\b(eu\s+vou|vou\s+(?:ser|ter|conseguir|alcan[c\u00e7]ar)|serei|terei|estarei|conseguirei|alcan[c\u00e7]arei)\b/i;
+  const affirmations = raw.affirmations.map((item, index) => {
+    const category = validateCategory(item, index);
+    const text = requiredJourneyText(item.text, 20, 500, 'affirmation');
+    const visualBrief = requiredJourneyText(item.visualBrief, 24, 420, 'visual_brief');
+    if (!firstPerson.test(text) || futurePromise.test(text)) {
+      throw new Error('invalid_journey_suite_present_affirmation');
+    }
+    return {
+      key: `affirmation:${category}`,
+      category,
+      text,
+      visualBrief,
+    };
+  });
+
+  const requireUnique = (items, field) => {
+    const values = items.map((item) => comparisonText(item[field]));
+    if (values.some((item) => !item) || new Set(values).size !== values.length) {
+      throw new Error(`invalid_journey_suite_duplicate_${field}`);
+    }
+  };
+  requireUnique(visions, 'title');
+  requireUnique(visions, 'story');
+  requireUnique(visions, 'visualBrief');
+  requireUnique(affirmations, 'text');
+  requireUnique(affirmations, 'visualBrief');
+  requireUnique([...visions, ...affirmations], 'visualBrief');
+  return { version: JOURNEY_SUITE_VERSION, visions, affirmations };
+}
+
+function validateScene(payload, includeJourneySuite = false, lang = 'pt') {
   const body = payload && typeof payload === 'object' ? payload : {};
   const raw = body.scene && typeof body.scene === 'object' ? body.scene : null;
   if (!raw) throw new Error('invalid_scene');
@@ -428,7 +544,7 @@ function validateScene(payload) {
   const provider = ['anthropic', 'openai', 'gemini'].includes(declaredProvider)
     ? declaredProvider
     : '';
-  return {
+  const validated = {
     scene: {
       intention: requiredText(raw.intention, 600, 'intention'),
       affirmation: requiredText(raw.affirmation, 1200, 'affirmation'),
@@ -463,6 +579,10 @@ function validateScene(payload) {
         : undefined,
     },
   };
+  if (includeJourneySuite) {
+    validated.journeySuite = validatePersonalContentSuitePayload(body.journeySuite, lang);
+  }
+  return validated;
 }
 
 export async function generatePersonalizedScene({
@@ -471,6 +591,7 @@ export async function generatePersonalizedScene({
   lang,
   profile,
   continuity,
+  includeJourneySuite = false,
   fetchImpl,
 }) {
   const title = cleanText(desire, 240);
@@ -483,7 +604,9 @@ export async function generatePersonalizedScene({
     redactThirdPartyNames(title, privateNames, locale),
     240
   );
-  const cloudConsent = sourceProfile.cloudPersonalization === true;
+  const cloudConsent =
+    hasCurrentCloudConsentVersion(sourceProfile) &&
+    sourceProfile.cloudPersonalization === true;
   const adultConfirmed = profileConfirmsAdult(sourceProfile);
   const safeContinuity = sanitizeContinuity(continuity, privateNames, locale);
   if (!cloudConsent) throw new Error('cloud_consent_required');
@@ -503,14 +626,16 @@ export async function generatePersonalizedScene({
         desire: safeTitle,
         category,
         lang: locale,
-        profile: minimizeProfile(sourceProfile, category, locale),
+        profile: minimizeProfile(sourceProfile, category, locale, includeJourneySuite === true),
         cloudConsent,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         adultConfirmed,
+        ...(includeJourneySuite === true ? { includeJourneySuite: true } : {}),
         ...(safeContinuity ? { continuity: safeContinuity } : {}),
       }),
     });
     if (!response.ok) throw new Error(`scene_api_${response.status}`);
-    return validateScene(await response.json());
+    return validateScene(await response.json(), includeJourneySuite === true, locale);
   } finally {
     if (timer) clearTimeout(timer);
   }

@@ -5,6 +5,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const brain = require('../api/_celeste-brain');
 const sceneEndpoint = require('../api/gerar-cena');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 function loadChronology() {
   const source = fs.readFileSync(path.join(root, 'utils', 'celesteChronology.js'), 'utf8');
@@ -249,6 +250,19 @@ const safeDream = {
   affirmation: 'Eu posso respeitar meu ritmo e escolher um passo que me ajude a recuperar calma agora.',
 };
 assert.strictEqual(brain.evaluateDream(safeDream, safeDreamInput).ok, true);
+const echoedDreamEvaluation = brain.evaluateDream({
+  reflection: 'Uma possibilidade e que eu estava em uma sala escura e isso pede cuidado, sem ser uma previsao.',
+  affirmation: 'Eu estava em uma sala escura e agora escolho recuperar calma.',
+}, safeDreamInput);
+const echoedDreamCodes = echoedDreamEvaluation.issues.map((issue) => issue.code);
+assert.strictEqual(echoedDreamEvaluation.ok, false, 'o cerebro aceitou uma recontagem do relato');
+assert.ok(echoedDreamCodes.includes('dream_recall_echo'));
+assert.ok(echoedDreamEvaluation.metrics.dreamRecallLongestSharedPhrase >= 3);
+assert.match(
+  brain.buildRepairInstruction(echoedDreamEvaluation),
+  /Discard the wording and narrative of the recall/,
+  'o reparo nao orienta uma reescrita sem eco do sonho'
+);
 const inventedDreamMeanings = [
   'A sala azul demonstra um trauma reprimido que precisa de atencao.',
   'Talvez seu sonho indique que voce reprime uma verdade e exista um conflito escondido.',
@@ -321,6 +335,7 @@ assert.strictEqual(chronology.version, 1);
 const validated = sceneEndpoint._internals.validateInput({
   ...profileInput,
   cloudConsent: true,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
   adultConfirmed: true,
   continuity: chronology.memory,
 });

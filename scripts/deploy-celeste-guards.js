@@ -27,6 +27,9 @@ const PRODUCTION_TEXT_REQUIRED = Object.freeze([
   'ANTHROPIC_TEXT_EFFORT',
   'CELESTE_TEXT_PRIMARY',
 ]);
+const PRODUCTION_SECURITY_REQUIRED = Object.freeze([
+  'CELESTE_ACTOR_HASH_SECRET',
+]);
 
 function requireText(value, name) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -134,6 +137,10 @@ function validateProductionEnvironmentOutput(output) {
   if (missingText.length) {
     throw new Error(`Variaveis Anthropic do backend ausentes na Vercel: ${missingText.join(', ')}`);
   }
+  const missingSecurity = PRODUCTION_SECURITY_REQUIRED.filter((name) => !production.has(name));
+  if (missingSecurity.length) {
+    throw new Error(`Variaveis de seguranca do backend ausentes na Vercel: ${missingSecurity.join(', ')}`);
+  }
   const secret = production.get(selected.secretKey);
   if (secret.type !== 'sensitive') {
     throw new Error(`${selected.secretKey} deve ser Sensitive na Vercel`);
@@ -141,7 +148,84 @@ function validateProductionEnvironmentOutput(output) {
   if (production.get('ANTHROPIC_API_KEY').type !== 'sensitive') {
     throw new Error('ANTHROPIC_API_KEY deve ser Sensitive na Vercel');
   }
+  if (production.get('CELESTE_ACTOR_HASH_SECRET').type !== 'sensitive') {
+    throw new Error('CELESTE_ACTOR_HASH_SECRET deve ser Sensitive na Vercel');
+  }
   return true;
+}
+
+async function validateActorQuotaBackend(env = {}, fetchImpl = global.fetch) {
+  const urlValue = PRODUCTION_BACKEND_ALIASES.url
+    .map((name) => String(env[name] || '').trim())
+    .find(Boolean);
+  const serviceKey = PRODUCTION_BACKEND_ALIASES.secretKey
+    .map((name) => String(env[name] || '').trim())
+    .find(Boolean);
+  if (!urlValue || !serviceKey) {
+    throw new Error(
+      'Credenciais locais do backend ausentes para verificar migration 008; deploy bloqueado'
+    );
+  }
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('Verificacao da migration 008 indisponivel; deploy bloqueado');
+  }
+  let url;
+  try {
+    url = new URL(urlValue);
+  } catch (_error) {
+    throw new Error('URL local do backend invalida para verificar migration 008');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('URL local do backend insegura para verificar migration 008');
+  }
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (!/^sb_secret_/i.test(serviceKey)) {
+    headers.Authorization = `Bearer ${serviceKey}`;
+  }
+  let response;
+  try {
+    response = await fetchImpl(
+      `${url.toString().replace(/\/$/, '')}/rest/v1/rpc/celeste_generation_actor_quota_version`,
+      { method: 'POST', headers, body: '{}' }
+    );
+  } catch (_error) {
+    throw new Error('Supabase indisponivel ao verificar migration 008; deploy bloqueado');
+  }
+  if (!response || !response.ok) {
+    throw new Error('Migration 008 ausente ou inacessivel no Supabase; deploy bloqueado');
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    throw new Error('Migration 008 devolveu contrato invalido; deploy bloqueado');
+  }
+  if (
+    !payload ||
+    ![8, 9].includes(payload.schemaVersion) ||
+    payload.reserveSignature !== true ||
+    !Number.isInteger(payload.actorDailyUnits) ||
+    payload.actorDailyUnits < 20 ||
+    payload.actorDailyUnits > 400
+  ) {
+    throw new Error('Migration 008 devolveu contrato invalido; deploy bloqueado');
+  }
+  return {
+    schemaVersion: payload.schemaVersion,
+    actorDailyUnits: payload.actorDailyUnits,
+    legacyReserveDisabled: payload.legacyReserveDisabled === true,
+  };
 }
 
 function parseDeploymentOutput(output, label = 'Vercel') {
@@ -190,10 +274,12 @@ function extractAnonymousAccessToken(payload) {
 module.exports = {
   LOCAL_PUBLIC_KEY_ALIASES,
   PRODUCTION_BACKEND_ALIASES,
+  PRODUCTION_SECURITY_REQUIRED,
   PRODUCTION_TEXT_REQUIRED,
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
   validateLocalBuildEnvironment,
+  validateActorQuotaBackend,
   validateProductionEnvironmentOutput,
 };

@@ -25,8 +25,8 @@ loaded._compile(compiledUtility, utilityFile);
 const { createDreamAffirmation, extractDreamAnchor, inferDreamTheme } = loaded.exports;
 assert.strictEqual(typeof createDreamAffirmation, 'function');
 assert.strictEqual(typeof extractDreamAnchor, 'function');
-assert.strictEqual(inferDreamTheme('Eu corria no escuro com medo', ''), 'clarity');
-assert.strictEqual(inferDreamTheme('I found a quiet garden', ''), 'clarity');
+assert.strictEqual(inferDreamTheme('Eu corria no escuro com medo', ''), 'courage');
+assert.strictEqual(inferDreamTheme('I found a quiet garden', ''), 'peace');
 assert.strictEqual(inferDreamTheme('Qualquer símbolo', 'anxious'), 'courage');
 
 const pt = createDreamAffirmation({
@@ -34,15 +34,18 @@ const pt = createDreamAffirmation({
   feeling: 'calm',
   theme: 'auto',
   lang: 'pt',
+  profile: { aboutYou: 'pro ativo bondoso' },
 });
 assert.strictEqual(pt.theme, 'peace');
 assert.ok(pt.affirmation.startsWith('Eu '), 'afirmacao PT deve estar em primeira pessoa');
 assert.ok(pt.reflection.includes('calma'), 'reflexao PT deve considerar o sentimento');
-assert.ok(pt.dreamAnchor.includes('casa perto do mar'), 'detalhe real do sonho deve virar ancora');
-assert.ok(pt.affirmation.includes(pt.dreamAnchor), 'afirmacao deve usar a ancora do proprio relato');
-assert.deepStrictEqual(pt.usedDetails, ['dream_anchor', 'feeling', 'theme']);
-assert.strictEqual(pt.generatorVersion, 'dream-local-v3');
-assert.ok(/não é previsão nem diagnóstico/i.test(pt.reflection), 'sonho nao pode virar previsao ou diagnostico');
+assert.strictEqual(pt.dreamAnchor, '', 'o relato original nao pode virar trecho exibivel');
+assert.ok(!/casa perto do mar/i.test(`${pt.reflection} ${pt.affirmation}`), 'saida local recontou o sonho');
+assert.ok(/proatividade/.test(pt.affirmation) && /bondade/.test(pt.affirmation), 'perfil seguro nao entrou com redacao natural');
+assert.ok(!/pro ativo bondoso/i.test(pt.affirmation), 'rascunho cru do perfil foi copiado');
+assert.deepStrictEqual(pt.usedDetails, ['dream_semantics', 'feeling', 'theme']);
+assert.strictEqual(pt.generatorVersion, 'dream-local-v4');
+assert.ok(/não uma previsão, diagnóstico ou verdade escondida/i.test(pt.reflection), 'sonho nao pode virar previsao ou diagnostico');
 
 const en = createDreamAffirmation({
   dream: 'I opened a door and started flying.',
@@ -52,7 +55,8 @@ const en = createDreamAffirmation({
 });
 assert.strictEqual(en.theme, 'renewal');
 assert.ok(en.affirmation.startsWith('I '), 'English affirmation must be in first person');
-assert.ok(en.affirmation.includes(en.dreamAnchor), 'English affirmation must preserve a dream detail');
+assert.strictEqual(en.dreamAnchor, '');
+assert.ok(!/opened a door|started flying/i.test(`${en.reflection} ${en.affirmation}`), 'English output retold the recall');
 
 const repeated = createDreamAffirmation({
   dream: 'I opened a door and started flying.',
@@ -68,10 +72,9 @@ const sameThemeDifferentDream = createDreamAffirmation({
   theme: 'renewal',
   lang: 'en',
 });
-assert.notStrictEqual(
-  en.affirmation,
-  sameThemeDifferentDream.affirmation,
-  'different dreams in the same theme must not collapse into one catalog phrase'
+assert.ok(
+  !/wooden bridge|under the moon/i.test(`${sameThemeDifferentDream.reflection} ${sameThemeDifferentDream.affirmation}`),
+  'a second local result echoed its dream narrative'
 );
 
 const feelingKeepsDream = createDreamAffirmation({
@@ -80,21 +83,29 @@ const feelingKeepsDream = createDreamAffirmation({
   theme: 'auto',
   lang: 'pt',
 });
-assert.ok(feelingKeepsDream.affirmation.includes('porta azul'), 'sentimento nao pode apagar a imagem do sonho');
+assert.ok(
+  !/porta azul|jardim/i.test(`${feelingKeepsDream.reflection} ${feelingKeepsDream.affirmation}`),
+  'sentimento e tema devem transformar o residuo emocional sem recontar a imagem'
+);
 assert.strictEqual(
   feelingKeepsDream.theme,
   'peace',
-  'modo automatico deve usar o sentimento escolhido, nao interpretar porta ou jardim'
+  'modo automatico deve combinar o sentido amplo do relato com o sentimento escolhido'
 );
 
 const sensitive = createDreamAffirmation({
-  dream: 'Eu vi sangue e uma arma perto de casa.',
+  dream: 'Sonhei que fui cortada ao meio com uma serra elétrica.',
   feeling: 'anxious',
   lang: 'pt',
 });
 assert.strictEqual(sensitive.dreamAnchor, '', 'imagem sensivel nao deve ser repetida no audio');
-assert.ok(!/sangue|arma/i.test(sensitive.affirmation), 'afirmacao nao deve ecoar detalhe perturbador');
+assert.ok(!/serra|cortad|meio/i.test(`${sensitive.reflection} ${sensitive.affirmation}`), 'saida nao deve ecoar detalhe perturbador');
 assert.ok(/não é uma previsão/i.test(sensitive.reflection), 'relato intenso precisa de aterramento');
+assert.strictEqual(
+  extractDreamAnchor('Uma motosserra cortava meu corpo.', 'pt').redacted,
+  true,
+  'a allowlist local de pesadelos nao reconheceu corte e serra'
+);
 
 for (const result of [pt, en, sameThemeDifferentDream, feelingKeepsDream, sensitive]) {
   assert.ok(!/100\s*%|garantid|vai acontecer|will happen|guaranteed/i.test(result.affirmation));
@@ -227,7 +238,20 @@ assert.ok(
     screen.includes("document.querySelector('[data-testid=\"dream-result-panel\"]')"),
   'resultado do sonho precisa vencer o refoco do formulario e ficar visivel em tela pequena'
 );
-assert.ok(screen.includes('open-dream-shortcut'), 'dream entry must be visible before alarm configuration');
+assert.ok(screen.includes('testID="open-dream-bonus"'), 'dream entry must remain visible in its own section');
+assert.ok(
+  screen.includes('testID={`saved-dream-${savedEntry.id}`}') &&
+    screen.includes('safeReflection = clean(savedEntry.reflection)') &&
+    screen.includes("setDream('')") &&
+    !screen.includes('setDream(savedEntry.dream)'),
+  'historico deve reabrir qualquer reflexao segura sem exibir o relato bruto'
+);
+assert.ok(
+  screen.includes('testID="dream-cloud-fallback"') &&
+    screen.includes('testID="retry-dream-cloud"') &&
+    screen.includes('replaceId: entryId'),
+  'fallback local precisa ser explicado e permitir retry sem duplicar o sonho'
+);
 assert.ok(screen.includes('FlatList'), 'affirmation picker must remain virtualized');
 
 const selectWakeBlock = screen.slice(screen.indexOf('const selectWake'), screen.indexOf('const selectAlarmTime'));
@@ -297,6 +321,12 @@ assert.ok(
   context.includes('lastDreamSaveRef') && context.includes('nowMs - previous.at < 1500'),
   'clique duplo nao pode criar duas copias do mesmo sonho'
 );
+assert.ok(
+  context.includes('requestedReplacementId') &&
+    context.includes('entry.id === requestedReplacementId') &&
+    context.includes('entries.map((entry) => (entry.id === id ? item : entry))'),
+  'retry em nuvem deve atualizar a reflexao existente sem duplicar o historico'
+);
 assert.ok(context.includes('markDreamRitualPracticed'), 'practice action missing');
 assert.ok(context.includes('dreamAnchor: shortText'), 'dream anchor must survive reload');
 assert.ok(context.includes("generatorVersion: shortText(entry.generatorVersion"), 'generator version must survive reload');
@@ -305,7 +335,7 @@ assert.ok(
   'favorite dream affirmations must survive reload and import'
 );
 assert.ok(
-  context.includes('const fallbackManifestation') &&
+  context.includes('const fallbackAffirmation') &&
     context.includes('const fallbackDream') &&
     context.includes('st.morningRitual.alarmSyncError = st.morningRitual.reminderEnabled') &&
     context.includes('st.morningRitual.reminderEnabled = false'),

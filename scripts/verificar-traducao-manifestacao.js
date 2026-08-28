@@ -391,7 +391,7 @@ assert.ok(
     remoteUpgradeSource.includes('JSON.stringify(currentState.profile || {}) !== profileFingerprint') &&
     remoteUpgradeSource.includes('currentFingerprint !== sourceFingerprint') &&
     remoteUpgradeSource.includes('localInterpretedUpgradeCandidate(current)') &&
-    remoteUpgradeSource.includes('{ ...current, ...upgradedVariant, contentByLang }'),
+    remoteUpgradeSource.includes('{ ...current, ...upgradedVariant, contentByLang, journeySuiteByLang }'),
   'upgrade tardio precisa rejeitar reset, perfil/edicao alterados e preservar dados nao textuais'
 );
 assert.ok(

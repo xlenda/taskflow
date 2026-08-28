@@ -733,13 +733,14 @@ export function NarrationProvider({ children }) {
   );
 
   const playPersonal = useCallback(
-    ({ text, narratorId, lang = 'pt', cloudConsent, adultConfirmed, playbackId }) =>
+    ({ text, narratorId, lang = 'pt', cloudConsent, cloudConsentVersion, adultConfirmed, playbackId }) =>
       start({
         mode: 'personal',
         text,
         narratorId,
         lang,
         cloudConsent,
+        cloudConsentVersion,
         adultConfirmed,
         playbackId,
       }),
@@ -747,7 +748,7 @@ export function NarrationProvider({ children }) {
   );
 
   const preparePersonal = useCallback(
-    async ({ text, narratorId, lang = 'pt', cloudConsent, adultConfirmed }) => {
+    async ({ text, narratorId, lang = 'pt', cloudConsent, cloudConsentVersion, adultConfirmed }) => {
       const passage = normalizeNarrationText(text);
       if (!passage || passage.length > 280) return { ok: false, error: 'text_invalid' };
 
@@ -762,6 +763,7 @@ export function NarrationProvider({ children }) {
           narratorId,
           lang,
           cloudConsent,
+          cloudConsentVersion,
           adultConfirmed,
           signal: controller ? controller.signal : undefined,
         });

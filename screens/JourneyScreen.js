@@ -96,8 +96,8 @@ const S = {
   yourSpace: { en: 'Your space', pt: 'Seu espaço' },
   profileSettings: { en: 'Profile and settings', pt: 'Perfil e configurações' },
   profileSettingsBody: {
-    en: 'Name, language, appearance, Gemini and privacy',
-    pt: 'Nome, idioma, aparência, Gemini e privacidade',
+    en: 'Name, language, appearance, cloud processing and privacy',
+    pt: 'Nome, idioma, aparência, processamento em nuvem e privacidade',
   },
 
   resetCta: { en: 'Reset my journey', pt: 'Recomeçar minha jornada' },
@@ -154,8 +154,8 @@ const S = {
   },
 
   footer: {
-    en: '{app} · saved locally; Gemini is used only when you allow it',
-    pt: '{app} · salvo localmente; o Gemini só é usado com sua permissão',
+    en: '{app} · saved locally; cloud processors are used only with your permission',
+    pt: '{app} · salvo localmente; processadores em nuvem só são usados com sua permissão',
   },
 };
 

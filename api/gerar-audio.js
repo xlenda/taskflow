@@ -1,10 +1,14 @@
 const { checkBotId } = require('botid/server');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const paidAccess = require('./_paid-access');
 
 const DEFAULT_TTS_MODEL = 'eleven_multilingual_v2';
 const ELEVENLABS_TTS_ENDPOINT = 'https://api.elevenlabs.io/v1/text-to-speech';
 const MAX_BODY_BYTES = 12 * 1024;
-const MAX_TEXT_CHARS = 1800;
+const MAX_TEXT_CHARS = 800;
+const AUDIO_CHARS_PER_UNIT_STEP = 160;
+const AUDIO_UNITS_PER_STEP = 4;
+const MAX_AUDIO_UNITS = 20;
 const MAX_PCM_BYTES = 4_000_000;
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
@@ -61,6 +65,7 @@ const PERSONAL_KEYS = new Set([
   'lang',
   'narratorId',
   'cloudConsent',
+  'cloudConsentVersion',
   'adultConfirmed',
 ]);
 const PREVIEW_KEYS = new Set(['mode', 'lang', 'narratorId']);
@@ -149,6 +154,9 @@ function validateInput(body) {
 
   if (!hasOnlyKeys(body, PERSONAL_KEYS)) return { error: 'invalid_request', status: 400 };
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
+  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+    return { error: 'cloud_consent_required', status: 403 };
+  }
   if (body.adultConfirmed !== true) {
     return { error: 'adult_confirmation_required', status: 403 };
   }
@@ -165,6 +173,13 @@ function validateInput(body) {
       text,
     },
   };
+}
+
+function audioUnits(input) {
+  if (input && input.mode === 'preview') return 1;
+  const length = typeof input?.text === 'string' ? input.text.length : 0;
+  const steps = Math.max(1, Math.ceil(length / AUDIO_CHARS_PER_UNIT_STEP));
+  return Math.min(MAX_AUDIO_UNITS, steps * AUDIO_UNITS_PER_STEP);
 }
 
 function buildElevenLabsRequest(input, model = configuredModel()) {
@@ -367,7 +382,7 @@ async function handler(req, res) {
 
   const access = await paidAccess.authorizePaidRequest(req, {
     operation: 'audio',
-    units: validated.value.mode === 'preview' ? 1 : 4,
+    units: audioUnits(validated.value),
   });
   if (!access.ok) return sendJson(res, access.status, access.error);
 
@@ -394,8 +409,12 @@ module.exports = handler;
 module.exports.default = handler;
 module.exports.handler = handler;
 module.exports._internals = {
+  AUDIO_CHARS_PER_UNIT_STEP,
+  MAX_AUDIO_UNITS,
+  MAX_TEXT_CHARS,
   NARRATOR_VOICES,
   PREVIEW_TEXT,
+  audioUnits,
   buildElevenLabsRequest,
   configuredModel,
   parseBody,

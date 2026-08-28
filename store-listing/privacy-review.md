@@ -7,10 +7,12 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 
 | Fluxo | Origem | Destino | Finalidade | Controle atual |
 |---|---|---|---|---|
-| Cena personalizada | respostas selecionadas | backend Celeste e Gemini | gerar Cena-Âncora | consentimento adulto separado |
-| Narracao | texto final, idioma e narrador | backend Celeste e Gemini TTS | devolver audio solicitado | play manual e consentimento separado |
-| Sonho em nuvem | transcricao, sentimento e tema | backend Celeste e Gemini | criar reflexao e afirmacao | consentimento separado; fallback local |
-| Espelho Vivo | cena anterior e progresso estruturado | backend Celeste e Gemini | criar novo capitulo | acao explicita; rastros completos ficam fora |
+| Cena personalizada | respostas selecionadas | backend Celeste e Anthropic; OpenAI somente como failover | gerar Cena-Âncora e capítulos do Espelho Vivo | consentimento adulto separado; uma chamada de texto por vez |
+| Traducao | cena salva e idioma de destino | backend Celeste e Google Gemini | traduzir a cena solicitada | consentimento adulto; fallback local neutro |
+| Imagem personalizada | contexto visual reduzido | backend Celeste e Google Gemini | criar a imagem da cena, visão ou afirmação | consentimento adulto; imagem privada no aparelho |
+| Narracao | texto final, idioma e narrador | backend Celeste e ElevenLabs TTS | devolver audio solicitado | play manual e consentimento separado |
+| Sonho em nuvem | transcricao, sentimento, tema e contexto reduzido | backend Celeste e Google Gemini | interpretar o sonho e criar reflexao e afirmacao | consentimento separado; fallback local |
+| Espelho Vivo | cena anterior e progresso estruturado | backend Celeste e Anthropic; OpenAI somente como failover | criar novo capitulo | acao explicita; rastros completos ficam fora |
 | Pratica local | manifestacoes, sonhos e historico | aparelho | continuidade do produto | edicao, exclusao e reset local |
 | Comunidade | rascunho escolhido | local hoje; Supabase planejado | envio moderado futuro | nao anunciar como publico nesta versao |
 
@@ -18,7 +20,8 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 
 - Conteudo do usuario enviado para gerar cenas, sonhos e voz.
 - Nome e dados de perfil que permanecem locais versus campos realmente enviados.
-- Retencao e uso dos dados por Gemini conforme o contrato pago ativo.
+- Retencao e uso dos dados por Anthropic, OpenAI, Google Gemini e ElevenLabs
+  conforme os contratos ativos de cada finalidade.
 - Supabase, autenticacao e dados sociais somente quando forem habilitados.
 - Logs operacionais, IP, protecao contra abuso e prazos de retencao na Vercel.
 - Qualquer analytics, crash reporting ou attribution adicionado ao build nativo.

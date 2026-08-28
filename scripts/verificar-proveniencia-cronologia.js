@@ -3,6 +3,7 @@ const fs = require('fs');
 const Module = require('module');
 const path = require('path');
 const { transformSync } = require('@babel/core');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const root = path.join(__dirname, '..');
 const originalLoader = Module._extensions['.js'];
@@ -52,6 +53,7 @@ const profile = {
   aboutYou: 'criativa e cuidadosa',
   cloudPersonalization: true,
   cloudAdultConfirmed: true,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
 };
 const scene = {
   intention: 'Criar com calma e consistencia.',
@@ -322,6 +324,7 @@ function verifyServerLimit() {
     lang: 'pt',
     profile: { name: 'Ana', aboutYou: 'criativa e cuidadosa' },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     continuity: {
       chapter: 4,

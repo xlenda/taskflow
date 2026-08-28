@@ -21,6 +21,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import { useApp } from '../context/AppContext';
+import { hasCurrentAdultCloudConsent } from '../constants/cloudConsent';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
@@ -39,8 +40,8 @@ import {
 const S = {
   title: { pt: 'Meus sonhos', en: 'My dreams' },
   subtitle: {
-    pt: 'Transforme o que ficou da noite numa afirmação só sua.',
-    en: 'Turn what stayed from the night into an affirmation of your own.',
+    pt: 'Receba uma reflexão construtiva e uma afirmação só sua.',
+    en: 'Receive a constructive reflection and an affirmation of your own.',
   },
   wakeTitle: { pt: 'A afirmação será o alarme', en: 'Your affirmation is the alarm' },
   wakeBody: {
@@ -85,16 +86,11 @@ const S = {
     pt: 'A voz privada não está disponível neste aparelho. A frase continua salva para leitura.',
     en: 'A private voice is unavailable on this device. The phrase remains saved for reading.',
   },
-  dreamShortcutTitle: { pt: 'Conte seu sonho', en: 'Share your dream' },
-  dreamShortcutBody: {
-    pt: 'Fale ou escreva o que sonhou e transforme isso numa afirmação só sua.',
-    en: 'Speak or write what you dreamed and turn it into an affirmation of your own.',
-  },
   bonus: { pt: 'Seus sonhos', en: 'Your dreams' },
   threeS: { pt: 'Sonhar · Significar · Sentir', en: 'Dream · Meaning · Feeling' },
   bonusBody: {
-    pt: 'Conte um sonho da noite e transforme o sentimento dele numa afirmação positiva.',
-    en: 'Share a dream from the night and turn its feeling into a positive affirmation.',
+    pt: 'Conte um sonho da noite. Celeste cria uma reflexão construtiva e uma afirmação pessoal.',
+    en: 'Share a dream from the night. Celeste creates a constructive reflection and a personal affirmation.',
   },
   openDream: { pt: 'Transformar meu sonho', en: 'Transform my dream' },
   closeDream: { pt: 'Fechar bônus', en: 'Close bonus' },
@@ -114,18 +110,23 @@ const S = {
     en: 'Transcription is provided by your browser. The affirmation is transformed locally.',
   },
   voicePrivacyCloud: {
-    pt: 'A transcrição é fornecida pelo navegador. Com sua permissão ativa, o relato é enviado ao Gemini para criar a frase personalizada.',
-    en: 'Transcription is provided by your browser. With your active permission, the report is sent to Gemini to create the personalized affirmation.',
+    pt: 'A transcrição é fornecida pelo navegador. Com sua permissão ativa, o relato é enviado ao Google Gemini para interpretar o sonho e criar a reflexão e a afirmação personalizadas.',
+    en: 'Transcription is provided by your browser. With your active permission, the report is sent to Google Gemini to interpret the dream and create the personalized reflection and affirmation.',
   },
   cloudLocalNotice: {
-    pt: 'Por enquanto, esta frase será criada neste aparelho. Você pode ativar a personalização com Gemini no Perfil.',
-    en: 'For now, this affirmation will be created on this device. You can enable Gemini personalization in Profile.',
+    pt: 'Por enquanto, esta frase será criada neste aparelho. Você pode ativar o processamento em nuvem no Perfil.',
+    en: 'For now, this affirmation will be created on this device. You can enable cloud processing in Profile.',
   },
+  cloudFallbackNotice: {
+    pt: 'A reflexão em nuvem não respondeu. Esta versão privada foi criada no aparelho.',
+    en: 'The cloud reflection did not respond. This private version was created on your device.',
+  },
+  retryCloud: { pt: 'Tentar reflexão em nuvem', en: 'Retry cloud reflection' },
   openProfile: { pt: 'Abrir Perfil', en: 'Open Profile' },
-  transform: { pt: 'Transformar em afirmação', en: 'Turn into an affirmation' },
-  transforming: { pt: 'Transformando seu sonho…', en: 'Transforming your dream…' },
-  meaningResult: { pt: 'Um significado possível', en: 'One possible meaning' },
-  affirmationResult: { pt: 'Sua frase desta manhã', en: 'Your phrase this morning' },
+  transform: { pt: 'Interpretar meu sonho', en: 'Reflect on my dream' },
+  transforming: { pt: 'Criando sua reflexão…', en: 'Creating your reflection…' },
+  meaningResult: { pt: 'Uma reflexão possível', en: 'One possible reflection' },
+  affirmationResult: { pt: 'Sua afirmação desta manhã', en: 'Your affirmation this morning' },
   listenResult: { pt: 'Ouvir', en: 'Listen' },
   feel: { pt: 'Sentir por 12 segundos', en: 'Feel it for 12 seconds' },
   breathingIn: { pt: 'Inspire devagar', en: 'Breathe in slowly' },
@@ -138,7 +139,11 @@ const S = {
     pt: 'Usa somente o tema e como você acordou nos próximos capítulos. O relato completo não é reutilizado.',
     en: 'Uses only the theme and how you woke up in future chapters. The full dream report is not reused.',
   },
-  lastDream: { pt: 'Praticar a última frase', en: 'Practice the latest phrase' },
+  savedReflections: { pt: 'Reflexões salvas', en: 'Saved reflections' },
+  savedReflectionFallback: {
+    pt: 'Uma reflexão construtiva está guardada aqui.',
+    en: 'A constructive reflection is saved here.',
+  },
   pickerTitle: { pt: 'Afirmação para despertar', en: 'Wake-up affirmation' },
   pickerBody: {
     pt: 'Escolha uma frase criada a partir da sua manifestação ou de um sonho.',
@@ -192,6 +197,16 @@ const THEMES = [
 const TIMES = ['06:00', '06:30', '07:00', '07:30', '08:00'];
 const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
+function dreamDate(value, lang) {
+  const date = new Date(value || 0);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(lang === 'en' ? 'en-US' : 'pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 function recognitionClass() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -213,7 +228,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const narration = usePersonalNarration();
   const alarmVisible = mode === 'combined';
   const cloudDreamEnabled =
-    state.profile?.cloudAdultConfirmed === true &&
+    hasCurrentAdultCloudConsent(state.profile) &&
     state.profile?.cloudDreamConsent === true;
 
   const ritual = state.morningRitual || {
@@ -239,6 +254,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const [listening, setListening] = useState(false);
   const [voiceFailed, setVoiceFailed] = useState(false);
   const [transformingDream, setTransformingDream] = useState(false);
+  const [dreamCloudFallback, setDreamCloudFallback] = useState(false);
   const [dreamDeleteError, setDreamDeleteError] = useState(false);
   const [practiceState, setPracticeState] = useState('idle');
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -299,7 +315,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     };
   }, [wakeOptions, ritual.wakeAffirmationId, ritual.wakeAffirmationText, ritual.wakeAffirmationLang]);
 
-  const lastEntry = ritual.entries && ritual.entries[0];
+  const dreamEntries = Array.isArray(ritual.entries) ? ritual.entries : [];
   const usingResultForWake = !!result && ritual.wakeAffirmationId === `ritual:${entryId}`;
   const currentDreamEntry = entryId
     ? (ritual.entries || []).find((entry) => entry.id === entryId) || null
@@ -340,7 +356,26 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     // the next frame so the final position is deterministic and fully visible.
     dreamSettleFrameRef.current = requestAnimationFrame(() => {
       dreamSettleFrameRef.current = null;
-      if (mountedRef.current) scrollToDreamSection(true);
+      if (!mountedRef.current) return;
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const input = document.querySelector('[data-testid="dream-report-input"]');
+        if (input && typeof input.scrollIntoView === 'function') {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          return;
+        }
+      }
+      const input = dreamInputRef.current;
+      if (input && typeof input.measureInWindow === 'function') {
+        input.measureInWindow((_x, windowY) => {
+          if (!mountedRef.current) return;
+          mainScrollRef.current?.scrollTo({
+            y: Math.max(0, mainScrollYRef.current + windowY - 118),
+            animated: true,
+          });
+        });
+        return;
+      }
+      scrollToDreamSection(true);
     });
   }, [scrollToDreamSection]);
 
@@ -701,6 +736,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
       setDream([original, transcript.trim()].filter(Boolean).join(' ').slice(0, 1600));
       setResult(null);
       setEntryId(null);
+      setDreamCloudFallback(false);
       setPracticeState('idle');
     };
     recognition.onerror = () => {
@@ -734,7 +770,14 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
       cancelAnimationFrame(dreamSettleFrameRef.current);
       dreamSettleFrameRef.current = null;
     }
-    let generated = createDreamAffirmation({ dream, feeling, theme: meaning, lang });
+    let generated = createDreamAffirmation({
+      dream,
+      feeling,
+      theme: meaning,
+      lang,
+      profile: state.profile,
+    });
+    let usedLocalFallback = false;
     if (cloudDreamEnabled) {
       try {
         generated = await transformDreamWithKnowledge({
@@ -745,7 +788,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
           profile: state.profile,
         });
       } catch (_error) {
-        // The local result remains private and usable when cloud generation fails.
+        usedLocalFallback = true;
       }
     }
     try {
@@ -755,6 +798,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
       Keyboard.dismiss();
       setResult({ ...generated, lang });
       setEntryId(id);
+      setDreamCloudFallback(usedLocalFallback);
       setPracticeState('idle');
       practiceProgress.setValue(0);
       haptic(true);
@@ -769,27 +813,62 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     }
   }, [cloudDreamEnabled, dream, feeling, meaning, lang, state.profile, saveDreamRitual, practiceProgress, clearPractice, haptic, scrollToDreamResult]);
 
-  const openLastEntry = useCallback(() => {
-    if (!lastEntry) return;
+  const retryDreamCloud = useCallback(async () => {
+    if (
+      !cloudDreamEnabled ||
+      !dreamCloudFallback ||
+      !entryId ||
+      clean(dream).length < 4 ||
+      dreamTransformRef.current
+    ) return;
+    dreamTransformRef.current = true;
+    setTransformingDream(true);
+    try {
+      const generated = await transformDreamWithKnowledge({
+        dream,
+        feeling,
+        theme: meaning,
+        lang,
+        profile: state.profile,
+      });
+      if (!mountedRef.current) return;
+      const id = saveDreamRitual({ ...generated, lang, replaceId: entryId });
+      if (!id) return;
+      setResult({ ...generated, lang });
+      setEntryId(id);
+      setDreamCloudFallback(false);
+      haptic(true);
+    } catch (_error) {
+      if (mountedRef.current) setDreamCloudFallback(true);
+    } finally {
+      dreamTransformRef.current = false;
+      if (mountedRef.current) setTransformingDream(false);
+    }
+  }, [cloudDreamEnabled, dreamCloudFallback, entryId, dream, feeling, meaning, lang, state.profile, saveDreamRitual, haptic]);
+
+  const openDreamEntry = useCallback((savedEntry) => {
+    if (!savedEntry) return;
     setBonusOpen(true);
-    setDream(lastEntry.dream);
-    setFeeling(lastEntry.feeling || '');
-    setMeaning(lastEntry.theme || 'auto');
+    // The original report stays private in storage; reopening only surfaces
+    // the safe reflection and affirmation generated from it.
+    setDream('');
+    setFeeling(savedEntry.feeling || '');
+    setMeaning(savedEntry.theme || 'auto');
     setResult({
-      dream: lastEntry.dream,
-      feeling: lastEntry.feeling,
-      theme: lastEntry.theme,
-      affirmation: lastEntry.affirmation,
-      reflection: lastEntry.reflection,
-      dreamAnchor: lastEntry.dreamAnchor,
-      usedDetails: lastEntry.usedDetails,
-      generatorVersion: lastEntry.generatorVersion,
-      lang: lastEntry.lang,
+      feeling: savedEntry.feeling,
+      theme: savedEntry.theme,
+      affirmation: savedEntry.affirmation,
+      reflection: clean(savedEntry.reflection) || t(S.savedReflectionFallback),
+      dreamAnchor: savedEntry.dreamAnchor,
+      usedDetails: savedEntry.usedDetails,
+      generatorVersion: savedEntry.generatorVersion,
+      lang: savedEntry.lang,
     });
-    setEntryId(lastEntry.id);
+    setEntryId(savedEntry.id);
+    setDreamCloudFallback(false);
     setPracticeState('idle');
     practiceProgress.setValue(0);
-  }, [lastEntry, practiceProgress]);
+  }, [practiceProgress, t]);
 
   const practice = useCallback(() => {
     if (!entryId || practiceState === 'running' || practiceState === 'complete') return;
@@ -880,6 +959,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     setMeaning('auto');
     setResult(null);
     setEntryId(null);
+    setDreamCloudFallback(false);
     setPracticeState('idle');
     setDreamDeleteError(false);
     haptic(true);
@@ -989,28 +1069,6 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.content}>
-            <Pressable
-              testID="open-dream-shortcut"
-              accessibilityRole="button"
-              accessibilityLabel={t(S.dreamShortcutTitle)}
-              accessibilityHint={t(S.dreamShortcutBody)}
-              onPress={openDreamSection}
-              style={({ pressed }) => [
-                styles.dreamShortcut,
-                { backgroundColor: theme.surface, borderColor: theme.border },
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={[styles.dreamShortcutIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}>
-                <Ionicons name="moon-outline" size={22} color={accentAt(theme, 1)} />
-              </View>
-              <View style={styles.dreamShortcutCopy}>
-                <Text style={[styles.dreamShortcutTitle, { color: theme.text }]}>{t(S.dreamShortcutTitle)}</Text>
-                <Text style={[styles.dreamShortcutBody, { color: theme.textMuted }]}>{t(S.dreamShortcutBody)}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
-            </Pressable>
-
             {alarmVisible ? (
               <>
             <View style={styles.introRow}>
@@ -1138,6 +1196,48 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
               </Pressable>
             </View>
 
+            {dreamEntries.length > 0 ? (
+              <View style={styles.savedDreams}>
+                <Text style={[styles.savedDreamsTitle, { color: theme.textMuted }]}>
+                  {t(S.savedReflections)}
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.savedDreamsRow}
+                >
+                  {dreamEntries.map((savedEntry) => {
+                    const date = dreamDate(savedEntry.createdAt, lang);
+                    const safeReflection = clean(savedEntry.reflection) || t(S.savedReflectionFallback);
+                    return (
+                      <Pressable
+                        key={savedEntry.id}
+                        testID={`saved-dream-${savedEntry.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${date}. ${safeReflection}`}
+                        onPress={() => openDreamEntry(savedEntry)}
+                        style={({ pressed }) => [
+                          styles.savedDream,
+                          {
+                            backgroundColor: entryId === savedEntry.id ? alpha(theme.accent, 0.09) : theme.surface,
+                            borderColor: entryId === savedEntry.id ? theme.accent : theme.border,
+                          },
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={[styles.savedDreamDate, { color: accentAt(theme, 1) }]}>
+                          {date}
+                        </Text>
+                        <Text numberOfLines={3} style={[styles.savedDreamReflection, { color: theme.text }]}>
+                          {safeReflection}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : null}
+
             {!bonusOpen ? (
               <View style={styles.bonusActions}>
                 <PrimaryButton
@@ -1148,9 +1248,6 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                   onPress={openDreamSection}
                   style={styles.flexButton}
                 />
-                {lastEntry ? (
-                  <PrimaryButton label={t(S.lastDream)} icon="play" variant="ghost" onPress={openLastEntry} style={styles.flexButton} />
-                ) : null}
               </View>
             ) : (
               <View
@@ -1170,6 +1267,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                       setDream(value.slice(0, 1600));
                       setResult(null);
                       setEntryId(null);
+                      setDreamCloudFallback(false);
                       setPracticeState('idle');
                     }}
                     placeholder={t(S.dreamPlaceholder)}
@@ -1212,6 +1310,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                           setFeeling(selected ? '' : item.key);
                           setResult(null);
                           setEntryId(null);
+                          setDreamCloudFallback(false);
                           setPracticeState('idle');
                           haptic();
                         }}
@@ -1244,6 +1343,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                           setMeaning(item.key);
                           setResult(null);
                           setEntryId(null);
+                          setDreamCloudFallback(false);
                           setPracticeState('idle');
                           haptic();
                         }}
@@ -1303,6 +1403,27 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                   >
                     <Text style={[styles.resultLabel, { color: theme.textMuted }]}>{t(S.meaningResult)}</Text>
                     <Text style={[styles.reflection, { color: theme.text }]}>{result.reflection}</Text>
+                    {dreamCloudFallback ? (
+                      <View
+                        testID="dream-cloud-fallback"
+                        style={[styles.cloudFallback, { backgroundColor: alpha(theme.warning, 0.09) }]}
+                      >
+                        <Text style={[styles.cloudFallbackText, { color: theme.textMuted }]}>
+                          {t(S.cloudFallbackNotice)}
+                        </Text>
+                        <Pressable
+                          testID="retry-dream-cloud"
+                          accessibilityRole="button"
+                          disabled={transformingDream}
+                          onPress={retryDreamCloud}
+                          style={({ pressed }) => [pressed && styles.pressed, transformingDream && styles.disabled]}
+                        >
+                          <Text style={[styles.cloudFallbackAction, { color: theme.accent }]}>
+                            {transformingDream ? t(S.transforming) : t(S.retryCloud)}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                     <View style={[styles.resultDivider, { backgroundColor: theme.border }]} />
                     <Text style={[styles.resultLabel, { color: accentAt(theme, 1) }]}>{t(S.affirmationResult)}</Text>
                     <Text testID="dream-personalized-affirmation" style={[styles.resultText, { color: theme.text }]}>
@@ -1480,19 +1601,6 @@ const styles = StyleSheet.create({
   pageSubtitle: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 1, letterSpacing: 0 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 22, paddingBottom: 112 },
   content: { width: '100%', maxWidth: 700, alignSelf: 'center' },
-  dreamShortcut: {
-    minHeight: 86,
-    borderWidth: 1,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 13,
-    marginBottom: 22,
-  },
-  dreamShortcutIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  dreamShortcutCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
-  dreamShortcutTitle: { fontSize: 16, lineHeight: 21, fontWeight: '800', letterSpacing: 0 },
-  dreamShortcutBody: { fontSize: 12, lineHeight: 17, marginTop: 2, letterSpacing: 0 },
   introRow: { flexDirection: 'row', alignItems: 'flex-start' },
   featureIcon: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   sectionTitle: { fontSize: 22, lineHeight: 28, fontWeight: '800', letterSpacing: 0 },
@@ -1519,6 +1627,12 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0 },
   bonusTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800', marginTop: 2, letterSpacing: 0 },
   expandButton: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+  savedDreams: { marginTop: 16 },
+  savedDreamsTitle: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0 },
+  savedDreamsRow: { paddingTop: 8, paddingRight: 16 },
+  savedDream: { width: 236, minHeight: 92, borderWidth: 1, borderRadius: 8, padding: 12, marginRight: 8 },
+  savedDreamDate: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0 },
+  savedDreamReflection: { fontSize: 13, lineHeight: 19, fontWeight: '600', marginTop: 4, letterSpacing: 0 },
   bonusActions: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 14 },
   flexButton: { flexGrow: 1, minWidth: 210, marginHorizontal: 4 },
   bonusPanel: { borderTopWidth: 1, marginTop: 16, paddingTop: 18 },
@@ -1540,6 +1654,9 @@ const styles = StyleSheet.create({
   resultPanel: { borderWidth: 1, borderRadius: 8, padding: 16, marginTop: 18 },
   resultLabel: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0 },
   reflection: { fontSize: 14, lineHeight: 21, fontWeight: '600', marginTop: 5, letterSpacing: 0 },
+  cloudFallback: { borderRadius: 8, padding: 10, marginTop: 12 },
+  cloudFallbackText: { fontSize: 11, lineHeight: 17, letterSpacing: 0 },
+  cloudFallbackAction: { fontSize: 11, lineHeight: 17, fontWeight: '800', marginTop: 5, letterSpacing: 0 },
   resultDivider: { height: 1, marginVertical: 15 },
   resultText: { fontSize: 22, lineHeight: 31, fontWeight: '700', marginTop: 5, letterSpacing: 0 },
   resultActions: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 13 },

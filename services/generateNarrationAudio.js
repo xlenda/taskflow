@@ -3,16 +3,16 @@ import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { narratorPreviewUrl } from '../constants/narrators';
+import { CLOUD_CONSENT_VERSION } from '../constants/cloudConsent';
 
 const API_TIMEOUT_MS = 35000;
 const MAX_AUDIO_BYTES = 4_100_000;
-const MAX_PERSONAL_REQUEST_CHARS = 1800;
+export const MAX_AUDIO_CHUNK_CHARS = 800;
+const MAX_PERSONAL_REQUEST_CHARS = MAX_AUDIO_CHUNK_CHARS;
 const MAX_PERSONAL_SEQUENCE_CHARS = 12000;
 const MAX_MEMORY_CACHE_BYTES = 24 * 1024 * 1024;
 const MAX_MEMORY_CACHE_ENTRIES = 24;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
-
-export const MAX_AUDIO_CHUNK_CHARS = 800;
 
 const audioMemoryCache = new Map();
 const pendingAudioRequests = new Map();
@@ -326,6 +326,7 @@ export async function requestNarrationAudio({
   lang = 'pt',
   text,
   cloudConsent = false,
+  cloudConsentVersion,
   adultConfirmed = false,
   fetchImpl,
   previewLoaderImpl,
@@ -348,11 +349,15 @@ export async function requestNarrationAudio({
       throw new NarrationRequestError('text_invalid');
     }
     if (cloudConsent !== true) throw new NarrationRequestError('cloud_consent_required', 403);
+    if (cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+      throw new NarrationRequestError('cloud_consent_required', 403);
+    }
     if (adultConfirmed !== true) {
       throw new NarrationRequestError('adult_confirmation_required', 403);
     }
     body.text = passage;
     body.cloudConsent = true;
+    body.cloudConsentVersion = CLOUD_CONSENT_VERSION;
     body.adultConfirmed = true;
   }
 

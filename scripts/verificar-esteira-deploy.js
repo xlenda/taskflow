@@ -8,6 +8,7 @@ const {
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  validateActorQuotaBackend,
   validateLocalBuildEnvironment,
   validateProductionEnvironmentOutput,
 } = require('./deploy-celeste-guards');
@@ -38,6 +39,11 @@ function productionEnv(overrides = {}) {
       },
       {
         key: 'SUPABASE_SECRET_KEY',
+        type: 'sensitive',
+        target: ['production'],
+      },
+      {
+        key: 'CELESTE_ACTOR_HASH_SECRET',
         type: 'sensitive',
         target: ['production'],
       },
@@ -95,6 +101,7 @@ test('deploy environment fails closed without exposing values', () => {
       { key: 'CELESTE_SUPABASE_URL', type: 'encrypted', target: ['production'] },
       { key: 'CELESTE_SUPABASE_ANON_KEY', type: 'encrypted', target: ['production'] },
       { key: 'CELESTE_SUPABASE_SERVICE_ROLE_KEY', type: 'sensitive', target: ['production'] },
+      { key: 'CELESTE_ACTOR_HASH_SECRET', type: 'sensitive', target: ['production'] },
       ...[
         'ANTHROPIC_API_KEY',
         'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
@@ -115,6 +122,12 @@ test('deploy environment fails closed without exposing values', () => {
     /Variaveis Anthropic.*ANTHROPIC_API_KEY/
   );
   assert.throws(
+    () => validateProductionEnvironmentOutput(JSON.stringify({
+      envs: JSON.parse(productionEnv()).envs.filter((item) => item.key !== 'CELESTE_ACTOR_HASH_SECRET'),
+    })),
+    /Variaveis de seguranca.*CELESTE_ACTOR_HASH_SECRET/
+  );
+  assert.throws(
     () => validateProductionEnvironmentOutput(productionEnv({
       envs: JSON.parse(productionEnv()).envs.map((item) => (
         item.key === 'SUPABASE_SECRET_KEY'
@@ -123,6 +136,16 @@ test('deploy environment fails closed without exposing values', () => {
       )),
     })),
     /deve ser Sensitive/
+  );
+  assert.throws(
+    () => validateProductionEnvironmentOutput(productionEnv({
+      envs: JSON.parse(productionEnv()).envs.map((item) => (
+        item.key === 'CELESTE_ACTOR_HASH_SECRET'
+          ? { ...item, type: 'encrypted' }
+          : item
+      )),
+    })),
+    /CELESTE_ACTOR_HASH_SECRET deve ser Sensitive/
   );
 });
 
@@ -150,6 +173,78 @@ test('deployment and anonymous session parsers keep credentials out of logs', ()
   assert.throws(() => extractAnonymousAccessToken({}), /sessao anonima valida/);
 });
 
+test('deploy probes migration 008 without spending provider quota', async () => {
+  const env = {
+    CELESTE_SUPABASE_URL: 'https://celeste-test.supabase.co',
+    CELESTE_SUPABASE_SERVICE_ROLE_KEY: 'server-service-role-key',
+  };
+  const calls = [];
+  const result = await validateActorQuotaBackend(env, async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({
+        schemaVersion: 8,
+        actorDailyUnits: 96,
+        reserveSignature: true,
+        legacyReserveDisabled: false,
+      }),
+    };
+  });
+  assert.deepStrictEqual(result, {
+    schemaVersion: 8,
+    actorDailyUnits: 96,
+    legacyReserveDisabled: false,
+  });
+  assert.strictEqual(calls.length, 1);
+  assert.match(calls[0].url, /\/rpc\/celeste_generation_actor_quota_version$/);
+  assert.strictEqual(calls[0].options.method, 'POST');
+  assert.strictEqual(calls[0].options.body, '{}');
+  assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer server-service-role-key');
+  assert.ok(!JSON.stringify(calls[0]).includes('p_units'), 'probe nao pode reservar credito');
+
+  await assert.rejects(
+    () => validateActorQuotaBackend({}, async () => ({ ok: true })),
+    /Credenciais locais.*migration 008.*deploy bloqueado/
+  );
+  await assert.rejects(
+    () => validateActorQuotaBackend(env, async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ code: 'PGRST202' }),
+    })),
+    /Migration 008 ausente.*deploy bloqueado/
+  );
+  await assert.rejects(
+    () => validateActorQuotaBackend(env, async () => ({
+      ok: true,
+      json: async () => ({ schemaVersion: 8, actorDailyUnits: 96 }),
+    })),
+    /contrato invalido.*deploy bloqueado/
+  );
+
+  const opaqueCalls = [];
+  await validateActorQuotaBackend(
+    {
+      SUPABASE_URL: 'https://celeste-marketplace.supabase.co',
+      SUPABASE_SECRET_KEY: 'sb_secret_marketplace',
+    },
+    async (url, options) => {
+      opaqueCalls.push({ url, options });
+      return {
+        ok: true,
+        json: async () => ({
+          schemaVersion: 9,
+          actorDailyUnits: 96,
+          reserveSignature: true,
+          legacyReserveDisabled: true,
+        }),
+      };
+    }
+  );
+  assert.strictEqual(opaqueCalls[0].options.headers.Authorization, undefined);
+});
+
 test('authoritative deploy pipeline gates, authenticates, validates and promotes', () => {
   for (const script of [
     'verificar-controles-reproducao-audio.js',
@@ -165,6 +260,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
       main.indexOf('for (const [script, failure] of STATIC_GATES)'),
     'variaveis devem falhar antes dos gates e do export'
   );
+  assert.match(deploySource, /await validateActorQuotaBackend\(/);
   assert.ok(
     main.indexOf('for (const [script, failure] of STATIC_GATES)') <
       main.indexOf("'export', '--platform', 'web'"),

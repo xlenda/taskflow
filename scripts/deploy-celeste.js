@@ -7,10 +7,12 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const puppeteer = require('puppeteer-core');
 const { loadProjectEnv } = require('@expo/env');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const {
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  validateActorQuotaBackend,
   validateLocalBuildEnvironment,
   validateProductionEnvironmentOutput,
 } = require('./deploy-celeste-guards');
@@ -173,7 +175,13 @@ async function validateDeploymentEnvironment(vercelCli) {
     }
   );
   validateProductionEnvironmentOutput(stdout);
-  console.log('Ambiente de deploy validado: bundle anonimo e backend Supabase separados.');
+  const actorQuota = await validateActorQuotaBackend(
+    process.env,
+    (url, options) => fetchWithTimeout(url, options, 10000)
+  );
+  console.log(
+    `Ambiente de deploy validado: backend separado e cota de ator schema ${actorQuota.schemaVersion}.`
+  );
 }
 
 function runNode(script, options = {}) {
@@ -574,6 +582,7 @@ async function liveGeminiChecks(
     lang: 'pt',
     profile: {},
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
   const translationBody = {
@@ -589,6 +598,7 @@ async function liveGeminiChecks(
       personalizedWith: ['caneca azul numero 27'],
     },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
   const visualBody = {
@@ -603,6 +613,7 @@ async function liveGeminiChecks(
     },
     visualMood: 'grounded',
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
 

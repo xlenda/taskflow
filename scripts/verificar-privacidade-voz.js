@@ -167,11 +167,28 @@ const manifestationSource = read('screens/ManifestationScreen.js');
 const personalNarrationSource = read('utils/usePersonalNarration.js');
 const morningRitualSource = read('screens/MorningRitualScreen.js');
 const dreamServiceSource = read('services/transformDream.js');
+const onboardingFlowSource = read('screens/onboarding/flow.js');
+const profileSource = read('screens/ProfileScreen.js');
+const homeSource = read('screens/HomeScreen.js');
+const journeySource = read('screens/JourneyScreen.js');
+const legalSource = read('constants/legal.js');
 
-assert.match(affirmationsSource, /state\.manifestations/, 'Affirmations must come from personal manifestations');
+assert.match(
+  affirmationsSource,
+  /personalJourneyItemsForState\(state,\s*['"]affirmation['"]/,
+  'Affirmations must come from the personal 6+6 journey'
+);
 assert.match(affirmationsSource, /state\.morningRitual/, 'Dream affirmations must come from the personal ritual');
-assert.match(visionsSource, /state\.manifestations/, 'Vision cards must come from personal manifestations');
-assert.match(visionPlayerSource, /state\.manifestations\.find/, 'Vision route must resolve a personal manifestation');
+assert.match(
+  visionsSource,
+  /personalJourneyItemsForState\(state,\s*['"]vision['"]/,
+  'Vision cards must come from the personal 6+6 journey'
+);
+assert.match(
+  visionPlayerSource,
+  /personalJourneyItemsForState\(state,\s*['"]vision['"]/,
+  'Vision route must resolve a personal journey item'
+);
 assert.match(manifestationSource, /state\.manifestations\.find/, 'Manifestation screen must resolve saved personal content');
 assert.doesNotMatch(
   personalNarrationSource,
@@ -185,6 +202,28 @@ assert.match(
 );
 assert.match(morningRitualSource, /cloudDreamConsent === true/, 'Dream upload needs its own consent');
 assert.match(dreamServiceSource, /cloudDreamConsent !== true/, 'Dream service must fail closed without dream consent');
+
+// Every consent and legal surface must name the processor used for each purpose.
+for (const [label, source] of [
+  ['onboarding', onboardingFlowSource],
+  ['Profile confirmation', profileSource],
+  ['privacy and terms', legalSource],
+]) {
+  for (const provider of ['Anthropic', 'OpenAI', 'Gemini', 'ElevenLabs']) {
+    assert.match(source, new RegExp(provider), `${label} does not disclose ${provider}`);
+  }
+}
+assert.match(homeSource, /Anthropic[\s\S]*OpenAI[\s\S]*Google Gemini/, 'Scene consent must disclose text failover and image processor');
+assert.doesNotMatch(homeSource, /Create with Gemini|Criar com o Gemini/, 'Scene consent still attributes all processing to Gemini');
+assert.match(personalNarrationSource, /ElevenLabs/, 'Voice consent must disclose ElevenLabs TTS');
+assert.doesNotMatch(personalNarrationSource, /Google Gemini/, 'Voice consent still attributes TTS to Gemini');
+assert.match(morningRitualSource, /Google Gemini[\s\S]*interpret/, 'Dream notice must disclose Gemini interpretation');
+assert.match(
+  legalSource,
+  /Anthropic[\s\S]*OpenAI[\s\S]*failover[\s\S]*Google Gemini[\s\S]*translations[\s\S]*images[\s\S]*dream interpretations[\s\S]*ElevenLabs[\s\S]*text-to-speech/,
+  'Privacy copy must map scene text, failover, Gemini media/dreams and ElevenLabs TTS'
+);
+assert.doesNotMatch(journeySource, /Gemini is used only|Gemini só é usado/, 'Journey footer still hides the other cloud processors');
 
 // Personal playback surfaces must use the consent-aware shared neural hook.
 let personalNarrationSurfaces = 0;

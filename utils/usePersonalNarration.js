@@ -3,6 +3,10 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNarration } from '../context/NarrationContext';
 import { DEFAULT_NARRATOR_ID } from '../constants/narrators';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentAdultCloudConsent,
+} from '../constants/cloudConsent';
 import { ageConfirmsAdult } from '../screens/onboarding/flow';
 import { redactThirdPartyNames, thirdPartyNames } from '../services/generatePersonalizedScene';
 import { confirmAsync } from './confirm';
@@ -11,14 +15,14 @@ const COPY = {
   pt: {
     title: 'Ativar voz pessoal?',
     message:
-      'Para narrar com a voz escolhida, o Celeste envia ao Google Gemini somente o texto que você decidiu ouvir. Nomes de outras pessoas salvos no aparelho não são enviados. O áudio é criado para esta reprodução e não é público.',
+      'Para narrar com a voz escolhida, o Celeste envia à ElevenLabs somente o texto que você decidiu ouvir, o idioma e a voz selecionada. A solicitação passa pelo backend do Celeste. Nomes de outras pessoas salvos no aparelho não são enviados. O áudio é criado para esta reprodução e não é público.',
     confirm: 'Ativar voz',
     cancel: 'Agora não',
   },
   en: {
     title: 'Enable your personal voice?',
     message:
-      'To narrate with your chosen voice, Celeste sends Google Gemini only the text you chose to hear. Names of other people saved on this device are not sent. The audio is created for this playback and is not public.',
+      'To narrate with your chosen voice, Celeste sends ElevenLabs only the text you chose to hear, its language and the selected voice. The request passes through Celeste\'s backend. Names of other people saved on this device are not sent. The audio is created for this playback and is not public.',
     confirm: 'Enable voice',
     cancel: 'Not now',
   },
@@ -40,7 +44,7 @@ export function usePersonalNarration() {
       return { ok: false, error: 'adult_confirmation_required' };
     }
     if (
-      profile.cloudAdultConfirmed === true &&
+      hasCurrentAdultCloudConsent(profile) &&
       profile.cloudNarrationConsent === true
     ) {
       return { ok: true };
@@ -58,6 +62,7 @@ export function usePersonalNarration() {
     if (!accepted) return { ok: false, error: 'cloud_consent_required' };
 
     saveProfile({
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
       cloudAdultConfirmed: true,
       cloudNarrationConsent: true,
     });
@@ -78,6 +83,7 @@ export function usePersonalNarration() {
         narratorId: requestedNarrator || narratorId,
         lang: resolvedLang,
         cloudConsent: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         adultConfirmed: true,
         playbackId,
       });
@@ -95,6 +101,7 @@ export function usePersonalNarration() {
         narratorId: requestedNarrator || narratorId,
         lang: resolvedLang,
         cloudConsent: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         adultConfirmed: true,
       });
     },

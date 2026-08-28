@@ -5,11 +5,27 @@ import {
   thirdPartyNames,
 } from './generatePersonalizedScene';
 import { celestePaidApiHeaders } from './celesteApiSession';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentCloudConsentVersion,
+} from '../constants/cloudConsent';
 
 const API_TIMEOUT_MS = 15000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
 const FEELINGS = new Set(['', 'calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful']);
 const THEMES = new Set(['auto', 'clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal']);
+const DREAM_PROFILE_FIELDS = Object.freeze({
+  name: { limit: 80, sources: ['name'] },
+  aboutYou: { limit: 600, sources: ['aboutYou', 'selfDescription'] },
+  whyMatters: { limit: 600, sources: ['whyMatters', 'whyItMatters'] },
+  obstacle: { limit: 500, sources: ['obstacle'] },
+  desire: { limit: 600, sources: ['desire', 'hopedChange'] },
+  desiredFeeling: { limit: 160, sources: ['desiredFeeling'] },
+  work: { limit: 180, sources: ['work'] },
+  partnerDesire: { limit: 400, sources: ['partnerDesire'] },
+  dreamLocation: { limit: 160, sources: ['dreamLocation'] },
+  dreamHome: { limit: 120, sources: ['dreamHome'] },
+});
 
 function cleanText(value, maxLength) {
   return typeof value === 'string'
@@ -32,12 +48,13 @@ function minimizeDreamProfile(profile, lang) {
   const source = profile && typeof profile === 'object' ? profile : {};
   const privateNames = thirdPartyNames(source);
   const output = {};
-  const limits = { name: 80, aboutYou: 600, whyMatters: 600, obstacle: 500 };
-  for (const [key, limit] of Object.entries(limits)) {
+  for (const [key, config] of Object.entries(DREAM_PROFILE_FIELDS)) {
+    const sourceKey = config.sources.find((candidate) => cleanText(source[candidate], config.limit));
+    const sourceValue = sourceKey ? source[sourceKey] : '';
     const raw = key === 'name'
-      ? source[key]
-      : redactThirdPartyNames(source[key], privateNames, lang);
-    const value = cleanText(raw, limit);
+      ? sourceValue
+      : redactThirdPartyNames(sourceValue, privateNames, lang);
+    const value = cleanText(raw, config.limit);
     if (profileAnswerHasDetail(value)) output[key] = value;
   }
   return output;
@@ -47,6 +64,31 @@ function requiredText(value, maxLength, field) {
   const text = cleanText(value, maxLength);
   if (!text) throw new Error(`invalid_dream_${field}`);
   return text;
+}
+
+function normalizedWords(value) {
+  return cleanText(value, 4000)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function hasDreamRecallEcho(recall, generated) {
+  const source = normalizedWords(recall);
+  const output = normalizedWords(generated);
+  if (source.length < 3 || output.length < 3) return false;
+  const sourcePhrases = new Set();
+  for (let index = 0; index <= source.length - 3; index += 1) {
+    sourcePhrases.add(source.slice(index, index + 3).join(' '));
+  }
+  for (let index = 0; index <= output.length - 3; index += 1) {
+    if (sourcePhrases.has(output.slice(index, index + 3).join(' '))) return true;
+  }
+  return false;
 }
 
 function validateResponse(payload, source) {
@@ -71,17 +113,27 @@ function validateResponse(payload, source) {
   const basis = Array.isArray(generated.basis)
     ? generated.basis.filter((item) => typeof item === 'string').slice(0, 4)
     : [];
+  const reflection = requiredText(generated.reflection, 900, 'reflection');
+  const affirmation = requiredText(generated.affirmation, 700, 'affirmation');
+  const generatedTheme = THEMES.has(generated.theme) && generated.theme !== 'auto'
+    ? generated.theme
+    : source.theme !== 'auto'
+      ? source.theme
+      : 'clarity';
+  if (hasDreamRecallEcho(source.dream, `${reflection} ${affirmation}`)) {
+    throw new Error('invalid_dream_echo');
+  }
   return {
     dream: source.dream,
     feeling: source.feeling,
-    theme: source.theme === 'auto' ? 'clarity' : source.theme,
-    reflection: requiredText(generated.reflection, 900, 'reflection'),
-    affirmation: requiredText(generated.affirmation, 700, 'affirmation'),
+    theme: generatedTheme,
+    reflection,
+    affirmation,
     dreamAnchor: '',
     usedDetails: [
-      ...(basis.includes('dream') ? ['dream_anchor'] : []),
+      ...(basis.includes('dream') ? ['dream_semantics'] : []),
       ...(basis.includes('feeling') && source.feeling ? ['feeling'] : []),
-      ...(basis.includes('theme') && source.theme !== 'auto' ? ['theme'] : []),
+      ...(basis.includes('theme') ? ['theme'] : []),
     ],
     generatorVersion: cleanText(
       body.generation && body.generation.promptVersion,
@@ -118,6 +170,7 @@ export async function transformDreamWithKnowledge({
 }) {
   const sourceProfile = profile && typeof profile === 'object' ? profile : {};
   if (
+    !hasCurrentCloudConsentVersion(sourceProfile) ||
     sourceProfile.cloudDreamConsent !== true
   ) {
     throw new Error('cloud_consent_required');
@@ -151,6 +204,7 @@ export async function transformDreamWithKnowledge({
         dream: safeDream,
         profile: minimizeDreamProfile(sourceProfile, source.lang),
         cloudConsent: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         adultConfirmed: true,
       }),
     });
@@ -162,6 +216,7 @@ export async function transformDreamWithKnowledge({
 }
 
 export const _dreamServiceInternals = {
+  hasDreamRecallEcho,
   minimizeDreamProfile,
   validateResponse,
 };

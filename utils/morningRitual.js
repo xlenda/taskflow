@@ -1,5 +1,6 @@
 const THEMES = ['clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal'];
 const FEELINGS = ['calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful'];
+const { interpretSelfDescription } = require('./selfDescription');
 
 const compact = (value, max = 1600) =>
   String(value || '')
@@ -25,76 +26,7 @@ const FEELING_THEME = {
   powerful: 'courage',
 };
 
-const FEELING_LABELS = {
-  pt: {
-    calm: 'calma',
-    joyful: 'feliz',
-    curious: 'curiosa',
-    anxious: 'ansiosa',
-    confused: 'confusa',
-    powerful: 'poderosa',
-  },
-  en: {
-    calm: 'calm',
-    joyful: 'joyful',
-    curious: 'curious',
-    anxious: 'anxious',
-    confused: 'confused',
-    powerful: 'powerful',
-  },
-};
-
-const THEME_LABELS = {
-  pt: {
-    clarity: 'clareza',
-    courage: 'coragem',
-    peace: 'paz',
-    connection: 'conexão',
-    abundance: 'possibilidade',
-    renewal: 'recomeço',
-  },
-  en: {
-    clarity: 'clarity',
-    courage: 'courage',
-    peace: 'peace',
-    connection: 'connection',
-    abundance: 'possibility',
-    renewal: 'a new beginning',
-  },
-};
-
-const SENSITIVE_DREAM = /\b(mort[eoas]*|morrer|suic[ií]d|sangue|assassin|estupro|abus[oa]|viol[eê]ncia|ferid[oa]|arma|tiro|acidente|dead|death|dying|suicid|blood|murder|kill|rape|abuse|violence|wound|weapon|gun|shoot|crash)\b/i;
-
-const ANCHORED_AFFIRMATIONS = {
-  pt: {
-    clarity: (anchor) =>
-      `Eu noto a imagem “${anchor}” e o que ela desperta em mim; não preciso decifrá-la para escolher meu próximo passo.`,
-    courage: (anchor) =>
-      `Eu lembro da imagem “${anchor}” sem tratá-la como previsão, volto ao presente e escolho avançar com coragem e cuidado.`,
-    peace: (anchor) =>
-      `Eu noto a imagem “${anchor}” e escolho guardar apenas a sensação que me ajuda a respirar com mais calma hoje.`,
-    connection: (anchor) =>
-      `Eu noto a imagem “${anchor}” e escolho cultivar vínculos recíprocos sem me abandonar.`,
-    abundance: (anchor) =>
-      `Eu uso a imagem “${anchor}” como ponto de reflexão e volto ao que posso construir com presença e constância.`,
-    renewal: (anchor) =>
-      `Eu observo a imagem “${anchor}” sem impor um significado e escolho abrir espaço a um começo mais leve hoje.`,
-  },
-  en: {
-    clarity: (anchor) =>
-      `I notice the image “${anchor}” and what it stirs in me; I do not need to decode it before choosing my next step.`,
-    courage: (anchor) =>
-      `I remember the image “${anchor}” without treating it as a prediction, return to the present and choose courage and care.`,
-    peace: (anchor) =>
-      `I notice the image “${anchor}” and keep only the feeling that helps me breathe more calmly today.`,
-    connection: (anchor) =>
-      `I notice the image “${anchor}” and choose to nurture reciprocal bonds without abandoning myself.`,
-    abundance: (anchor) =>
-      `I use the image “${anchor}” as a point for reflection and return to what I can steadily build.`,
-    renewal: (anchor) =>
-      `I observe the image “${anchor}” without imposing a meaning and choose to make room for a lighter beginning today.`,
-  },
-};
+const SENSITIVE_DREAM = /\b(?:mort[eoas]*|morrer|morreu|cad[aá]ver|suic[ií]d|sangue|sangrar|ensanguent|assassin|estupro|abus[oa]|viol[eê]ncia|violent[oa]|agress[aã]o|ferid[oa]|ferimento|arma|tiro|bala|faca|facada|l[aâ]mina|serra|motosserra|eletrosserra|cort(?:ar|ad[oa]s?|ou|ei|ando)|amput|decapit|esquartej|mutil|dilacer|desmembr|atropel|acidente|dead|death|dying|corpse|suicid|blood|bleed|murder|kill|rape|abuse|violence|violent|assault|wound|injur|weapon|gun|shoot|bullet|knife|stab|blade|chainsaw|cut|slice|amputat|decapitat|dismember|mutilat|run\s+over|crash)\b/i;
 
 const SENSITIVE_REFLECTION = {
   pt: 'O sonho trouxe uma imagem intensa. Isso não é uma previsão: você pode deixá-la na noite e voltar ao que é seguro e real agora.',
@@ -196,8 +128,8 @@ const REFLECTIONS = {
     curious: 'A curiosidade não exige uma resposta imediata. Ela pode abrir uma pergunta boa para o seu dia.',
     anxious: 'O desconforto pode ser acolhido como um pedido de segurança, não como uma previsão.',
     confused: 'Você não precisa decifrar tudo. Pode escolher apenas o significado que ajuda você a seguir com clareza.',
-    powerful: 'A força que apareceu no sonho pode lembrar uma capacidade que já existe em você.',
-    default: 'Um sonho não precisa ser previsão. Você pode escolher o significado que ajuda a começar bem o dia.',
+    powerful: 'A sensação de força ao acordar pode lembrar uma capacidade que você já consegue praticar.',
+    default: 'O que você sentiu ao acordar pode virar uma pergunta cuidadosa sobre o que precisa hoje.',
   },
   en: {
     calm: 'The calm that remained may point to what your body wants to preserve today.',
@@ -205,53 +137,97 @@ const REFLECTIONS = {
     curious: 'Curiosity does not need an immediate answer. It can open a useful question for your day.',
     anxious: 'Discomfort can be welcomed as a request for safety, not treated as a prediction.',
     confused: 'You do not have to decode everything. Choose only the meaning that helps you move with clarity.',
-    powerful: 'The strength that appeared in your dream can remind you of a capacity already within you.',
-    default: 'A dream does not have to be a prediction. You can choose the meaning that helps you begin well.',
+    powerful: 'The sense of strength you woke with may point to a capacity you can already practise.',
+    default: 'What you felt on waking may become a careful question about what you need today.',
   },
 };
 
-export function inferDreamTheme(_dream, feeling) {
-  const knownFeeling = FEELINGS.includes(feeling) ? feeling : '';
-  return knownFeeling ? FEELING_THEME[knownFeeling] : 'clarity';
+const REFLECTION_BOUNDARY = {
+  pt: 'Essa é apenas uma possibilidade de reflexão, não uma previsão, diagnóstico ou verdade escondida.',
+  en: 'This is only one possible reflection, not a prediction, diagnosis, or hidden truth.',
+};
+
+const THEME_REFLECTIONS = {
+  pt: {
+    clarity: 'Uma leitura construtiva possível é que sua mente esteja tentando organizar o que ainda parece confuso e devolver a você poder de escolha.',
+    courage: 'Uma leitura construtiva possível é que sua mente esteja ensaiando como proteger o que importa e recuperar sua capacidade de agir.',
+    peace: 'Uma leitura construtiva possível é que sua mente esteja pedindo menos alerta e mais espaço para segurança, descanso e presença.',
+    connection: 'Uma leitura construtiva possível é que sua mente esteja elaborando necessidades de vínculo, reciprocidade e pertencimento.',
+    abundance: 'Uma leitura construtiva possível é que sua mente esteja reorganizando desejos de possibilidade, autonomia e recursos com significado.',
+    renewal: 'Uma leitura construtiva possível é que sua mente esteja abrindo espaço para encerrar um ciclo e experimentar uma forma mais leve de seguir.',
+  },
+  en: {
+    clarity: 'One constructive possibility is that your mind is organizing what still feels unclear and returning a sense of choice to you.',
+    courage: 'One constructive possibility is that your mind is rehearsing how to protect what matters and recover your capacity to act.',
+    peace: 'One constructive possibility is that your mind is asking for less vigilance and more room for safety, rest, and presence.',
+    connection: 'One constructive possibility is that your mind is working through needs for connection, reciprocity, and belonging.',
+    abundance: 'One constructive possibility is that your mind is reorganizing wishes for possibility, autonomy, and meaningful resources.',
+    renewal: 'One constructive possibility is that your mind is making room to close a cycle and try a lighter way forward.',
+  },
+};
+
+const DREAM_THEME_SIGNALS = [
+  {
+    theme: 'connection',
+    pattern: /\b(?:amor|amar|parceir|namor|casament|fam[ií]li|amizad|amig|sozinh|abandon|rejei[cç]|pertenc|love|partner|marri|family|friend|lonely|abandon|reject|belong)\b/i,
+  },
+  {
+    theme: 'renewal',
+    pattern: /\b(?:mudan[cç]|recome[cç]|come[cç]|termin|partid|chegad|novo|nova|viaj|transform|change|restart|begin|ending|leav|arriv|new|travel|transform)\b/i,
+  },
+  {
+    theme: 'courage',
+    pattern: /\b(?:medo|ansios|pres[oa]|fug|perseg|amea[cç]|impot[eê]n|coragem|fear|anxious|trapp|escap|chas|threat|powerless|courage)\b/i,
+  },
+  {
+    theme: 'peace',
+    pattern: /\b(?:calm|paz|descans|segur|al[ií]vio|tranquil|mar|oceano|[aá]gua|peace|rest|safe|relief|quiet|sea|ocean|water)\b/i,
+  },
+  {
+    theme: 'abundance',
+    pattern: /\b(?:trabalh|dinheir|prosper|conquist|oportun|fazenda|casa|work|money|prosper|achiev|opportun|farm|home)\b/i,
+  },
+];
+
+function profileResource(profile, language) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  const description = compact(source.aboutYou || source.selfDescription, 600);
+  const interpreted = interpretSelfDescription(description, language);
+  return interpreted ? compact(interpreted.affirmationFragment, 220) : '';
 }
 
-export function createDreamAffirmation({ dream, feeling, theme = 'auto', lang = 'pt' } = {}) {
+function weaveProfileResource(affirmation, resource, language) {
+  if (!resource) return affirmation;
+  return language === 'pt'
+    ? `${affirmation} Eu reconheço ${resource} como recursos que posso praticar com gentileza.`
+    : `${affirmation} I recognize ${resource} as resources I can practise with care.`;
+}
+
+export function inferDreamTheme(dream, feeling) {
+  const knownFeeling = FEELINGS.includes(feeling) ? feeling : '';
+  const semanticTheme = DREAM_THEME_SIGNALS.find((item) => item.pattern.test(compact(dream)))?.theme;
+  return semanticTheme || (knownFeeling ? FEELING_THEME[knownFeeling] : 'clarity');
+}
+
+export function createDreamAffirmation({ dream, feeling, theme = 'auto', lang = 'pt', profile } = {}) {
   const cleanDream = compact(dream);
   const language = lang === 'en' ? 'en' : 'pt';
   const cleanFeeling = FEELINGS.includes(feeling) ? feeling : '';
   const themeWasChosen = THEMES.includes(theme);
   const selectedTheme = themeWasChosen ? theme : inferDreamTheme(cleanDream, cleanFeeling);
-  const dreamAnchor = extractDreamAnchor(cleanDream, language);
+  const sensitive = SENSITIVE_DREAM.test(cleanDream);
   const options = THEME_AFFIRMATIONS[language][selectedTheme];
-  const affirmation = dreamAnchor.text
-    ? ANCHORED_AFFIRMATIONS[language][selectedTheme](dreamAnchor.text)
-    : options[hash(`${cleanDream}|${cleanFeeling}|${selectedTheme}`) % options.length];
-  const feelingLabel = cleanFeeling ? FEELING_LABELS[language][cleanFeeling] : '';
-  const reflection = dreamAnchor.redacted
-    ? SENSITIVE_REFLECTION[language]
-    : dreamAnchor.text
-    ? language === 'pt'
-      ? `Você trouxe a imagem “${dreamAnchor.text}”${
-          feelingLabel ? ` e acordou ${feelingLabel}` : ''
-        }. ${
-          themeWasChosen
-            ? `Você escolheu levar ${THEME_LABELS.pt[selectedTheme]} para o dia.`
-            : feelingLabel
-            ? `A Celeste usou apenas esse sentimento para sugerir ${THEME_LABELS.pt[selectedTheme]}.`
-            : `Sem atribuir sentido à imagem, a Celeste oferece ${THEME_LABELS.pt[selectedTheme]} como ponto de partida.`
-        } A imagem não é previsão nem diagnóstico.`
-      : `You brought back the image “${dreamAnchor.text}”${
-          feelingLabel ? ` and woke up feeling ${feelingLabel}` : ''
-        }. ${
-          themeWasChosen
-            ? `You chose to carry ${THEME_LABELS.en[selectedTheme]} into the day.`
-            : feelingLabel
-            ? `Celeste used only that feeling to suggest ${THEME_LABELS.en[selectedTheme]}.`
-            : `Without assigning meaning to the image, Celeste offers ${THEME_LABELS.en[selectedTheme]} as a starting point.`
-        } The image is not a prediction or diagnosis.`
-    : REFLECTIONS[language][cleanFeeling] || REFLECTIONS[language].default;
+  const baseAffirmation = options[hash(`${cleanDream}|${cleanFeeling}|${selectedTheme}`) % options.length];
+  const affirmation = weaveProfileResource(
+    baseAffirmation,
+    profileResource(profile, language),
+    language
+  );
+  const reflection = sensitive
+    ? `${SENSITIVE_REFLECTION[language]} ${THEME_REFLECTIONS[language][selectedTheme]} ${REFLECTION_BOUNDARY[language]}`
+    : `${THEME_REFLECTIONS[language][selectedTheme]} ${REFLECTIONS[language][cleanFeeling] || REFLECTIONS[language].default} ${REFLECTION_BOUNDARY[language]}`;
   const usedDetails = [
-    ...(dreamAnchor.text ? ['dream_anchor'] : []),
+    'dream_semantics',
     ...(cleanFeeling ? ['feeling'] : []),
     'theme',
   ];
@@ -262,8 +238,10 @@ export function createDreamAffirmation({ dream, feeling, theme = 'auto', lang = 
     theme: selectedTheme,
     affirmation,
     reflection,
-    dreamAnchor: dreamAnchor.text,
+    // The original report remains in `dream`; generated copy never exposes a
+    // fragment that another screen could accidentally present as affirmation.
+    dreamAnchor: '',
     usedDetails,
-    generatorVersion: 'dream-local-v3',
+    generatorVersion: 'dream-local-v4',
   };
 }

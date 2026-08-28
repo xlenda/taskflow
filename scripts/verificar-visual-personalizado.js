@@ -4,6 +4,8 @@ const path = require('path');
 const test = require('node:test');
 
 const endpoint = require('../api/gerar-visual');
+const consent = require('../constants/cloudConsent');
+const { CLOUD_CONSENT_VERSION } = consent;
 
 const ENV_KEYS = [
   'GEMINI_API_KEY',
@@ -20,7 +22,9 @@ function loadClientModule(paidHeadersImpl) {
     path.join(__dirname, '..', 'services', 'generatePersonalizedVisual.js'),
     'utf8'
   );
-  const executable = source.replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
+  const executable = source
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/constants\/cloudConsent['"];?/, '')
+    .replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
   const clientRequire = (request) => {
     if (request === './celesteApiSession' && typeof paidHeadersImpl === 'function') {
       return { celestePaidApiHeaders: paidHeadersImpl };
@@ -29,8 +33,16 @@ function loadClientModule(paidHeadersImpl) {
   };
   return Function(
     'require',
+    'CLOUD_CONSENT_VERSION',
+    'hasCurrentAdultCloudConsent',
+    'hasCurrentCloudConsentVersion',
     `${executable}\nreturn { PersonalVisualError, PERSONALIZED_VISUAL_MOODS, minimizeVisualProfile, generatePersonalizedVisual, generatePersonalizedVisualInBackground };`
-  )(clientRequire);
+  )(
+    clientRequire,
+    consent.CLOUD_CONSENT_VERSION,
+    consent.hasCurrentAdultCloudConsent,
+    consent.hasCurrentCloudConsentVersion
+  );
 }
 
 function restore() {
@@ -64,6 +76,7 @@ function validBody(overrides = {}) {
       whyMatters: 'ter liberdade e presenca para uma vida que importa',
     },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     ...overrides,
   };
@@ -159,10 +172,23 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
 
   await t.test('server rejects unknown context and invalid moods before spending', async () => {
     let paidCalls = 0;
+    let providerCalls = 0;
     endpoint._internals.setPaidAccessAuthorizerForTests(async () => {
       paidCalls += 1;
       return { ok: true };
     });
+    global.fetch = async () => {
+      providerCalls += 1;
+      return upstreamImage();
+    };
+    const missingVersion = await invoke(request(validBody({ cloudConsentVersion: undefined })));
+    assert.strictEqual(missingVersion.statusCode, 403);
+    assert.strictEqual(missingVersion.body.error, 'cloud_consent_required');
+
+    const staleVersion = await invoke(request(validBody({ cloudConsentVersion: 'legacy-version' })));
+    assert.strictEqual(staleVersion.statusCode, 403);
+    assert.strictEqual(staleVersion.body.error, 'cloud_consent_required');
+
     const privateProfile = await invoke(request(validBody({
       profile: { ...validBody().profile, name: 'must-not-leave-device' },
     })));
@@ -182,6 +208,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     });
     process.env.GEMINI_API_KEY = 'visual-secret-key';
     assert.strictEqual(paidCalls, 0);
+    assert.strictEqual(providerCalls, 0);
   });
 
   await t.test('browser request uses BotID, paid visual units, and never caches output', async () => {
@@ -287,6 +314,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
       aboutYou: 'must-stay-local-too',
       cloudPersonalization: true,
       cloudAdultConfirmed: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
     };
     const visual = await client.generatePersonalizedVisual({
       desire: 'viver em paz com Bia e Leo',
@@ -307,9 +335,13 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
       'adultConfirmed',
       'category',
       'cloudConsent',
+      'cloudConsentVersion',
+      'compositionVariant',
       'desire',
       'lang',
       'profile',
+      'purpose',
+      'visualBrief',
       'visualMood',
     ]);
     assert.deepStrictEqual(Object.keys(requests[0].profile).sort(), [
@@ -386,6 +418,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
           ...validBody().profile,
           cloudPersonalization: true,
           cloudAdultConfirmed: true,
+          cloudConsentVersion: CLOUD_CONSENT_VERSION,
         },
         visualMood: 'serene',
         timeoutMs: 20,
@@ -408,6 +441,18 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
       path.join(__dirname, '..', 'screens', 'AffirmationsScreen.js'),
       'utf8'
     );
+    const manifestation = fs.readFileSync(
+      path.join(__dirname, '..', 'screens', 'ManifestationScreen.js'),
+      'utf8'
+    );
+    const visions = fs.readFileSync(
+      path.join(__dirname, '..', 'screens', 'VisionsScreen.js'),
+      'utf8'
+    );
+    const visionPlayer = fs.readFileSync(
+      path.join(__dirname, '..', 'screens', 'VisionPlayerScreen.js'),
+      'utf8'
+    );
     const affirmationCard = fs.readFileSync(
       path.join(__dirname, '..', 'components', 'AffirmationCard.js'),
       'utf8'
@@ -418,6 +463,8 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     );
 
     assert.match(context, /const ensurePersonalVisual = useCallback/);
+    assert.match(context, /const ensureJourneyVisual = useCallback/);
+    assert.match(context, /const ensureDreamVisual = useCallback/);
     assert.match(context, /personalVisualRequestsRef = useRef\(new Map\(\)\)/);
     assert.match(context, /if \(running\)[\s\S]*return running\.promise/);
     assert.match(context, /personalVisualRetryDelay\(attempt\)/);
@@ -426,10 +473,21 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(context, /phase: 'pending'/);
     assert.match(context, /phase: 'error'/);
     assert.match(context, /personalVisualErrorStage/);
-    assert.match(affirmations, /ensurePersonalVisual\(current\.manifestationId\)/);
-    assert.match(affirmations, /ensurePersonalVisual\(current\.manifestationId, \{ force: true \}\)/);
+    assert.match(affirmations, /ensureJourneyVisual\(current\.manifestationId, current\.key/);
+    assert.match(affirmations, /ensureDreamVisual\(current\.ritualEntryId/);
+    assert.match(affirmations, /force: true/);
     assert.match(affirmationCard, /testID="personal-visual-pending"/);
     assert.match(affirmationCard, /testID="personal-visual-retry"/);
+    assert.match(manifestation, /personalVisualStatus\[saved\.id\]/);
+    assert.match(manifestation, /testID="manifestation-personal-visual-pending"/);
+    assert.match(manifestation, /testID="manifestation-personal-visual-retry"/);
+    assert.match(manifestation, /ensurePersonalVisual\(saved\.id, \{ force: true \}\)/);
+    assert.match(visions, /personalVisualStatus\[visibleVision\.visualStatusKey\]/);
+    assert.match(visions, /testID="visions-personal-visual-pending"/);
+    assert.match(visions, /testID="visions-personal-visual-retry"/);
+    assert.match(visionPlayer, /personalVisualStatus\[vision\.visualStatusKey\]/);
+    assert.match(visionPlayer, /testID="vision-player-personal-visual-pending"/);
+    assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
     assert.match(reveal, /testID="reveal-personal-visual"/);
     assert.match(reveal, /visualKey=\{m\.visual\.cacheKey\}/);
 
@@ -437,12 +495,13 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     const dreamEnd = affirmations.indexOf('const allAffirmations', dreamStart);
     assert.ok(dreamStart >= 0 && dreamEnd > dreamStart);
     assert.ok(
-      !affirmations.slice(dreamStart, dreamEnd).includes('visualKey'),
-      'dream affirmations must not generate personal visuals yet'
+      affirmations.slice(dreamStart, dreamEnd).includes('visualKey') &&
+        affirmations.slice(dreamStart, dreamEnd).includes('dream-visual:'),
+      'cada reflexao de sonho deve usar um recibo visual proprio sem reutilizar a Ancora'
     );
   });
 
-  await t.test('successful visuals commit credits and provider failures release them', async () => {
+  await t.test('visual quota commits before every billable provider attempt', async () => {
     endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
     endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
       ok: true,
@@ -463,7 +522,11 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     const failed = await invoke(request(validBody()));
     assert.strictEqual(failed.statusCode, 503);
     assert.deepStrictEqual(failed.body, { error: 'visual_unavailable', stage: 'provider' });
-    assert.deepStrictEqual(settlements, [true, false]);
+    assert.deepStrictEqual(
+      settlements,
+      [true, true],
+      'falha depois do despacho ao provedor nao pode liberar uma tentativa faturavel'
+    );
   });
 
   await t.test('migration and deploy gates include visual generation', () => {

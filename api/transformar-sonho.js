@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { checkBotId } = require('botid/server');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const paidAccess = require('./_paid-access');
 const celesteBrain = require('./_celeste-brain');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
@@ -7,13 +8,25 @@ const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const PROMPT_VERSION = 'celeste-dream-v2';
+const PROMPT_VERSION = 'celeste-dream-v3';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 12 * 1024;
 const GENERATION_DEADLINE_MS = 12_500;
 const MIN_REPAIR_BUDGET_MS = 2_000;
 const FEELINGS = new Set(['', 'calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful']);
 const THEMES = new Set(['auto', 'clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal']);
+const DREAM_PROFILE_LIMITS = Object.freeze({
+  name: 80,
+  aboutYou: 600,
+  whyMatters: 600,
+  obstacle: 500,
+  desire: 600,
+  desiredFeeling: 160,
+  work: 180,
+  partnerDesire: 400,
+  dreamLocation: 160,
+  dreamHome: 120,
+});
 const ALLOWED_BODY_KEYS = new Set([
   'dream',
   'feeling',
@@ -21,6 +34,7 @@ const ALLOWED_BODY_KEYS = new Set([
   'lang',
   'profile',
   'cloudConsent',
+  'cloudConsentVersion',
   'adultConfirmed',
 ]);
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -63,9 +77,8 @@ function rawTextIsTooLong(value, maxLength) {
 function sanitizeProfile(profile) {
   if (profile === undefined || profile === null) return {};
   if (!isPlainObject(profile)) throw new DreamGenerationError('profile_invalid');
-  const limits = { name: 80, aboutYou: 600, whyMatters: 600, obstacle: 500 };
   const output = {};
-  for (const [key, limit] of Object.entries(limits)) {
+  for (const [key, limit] of Object.entries(DREAM_PROFILE_LIMITS)) {
     if (rawTextIsTooLong(profile[key], limit)) {
       throw new DreamGenerationError(`${key}_too_long`);
     }
@@ -108,6 +121,9 @@ function parseBody(req) {
 
 function validateInput(body) {
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
+  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+    return { error: 'cloud_consent_required', status: 403 };
+  }
   if (body.adultConfirmed !== true) return { error: 'adult_confirmation_required', status: 403 };
   if (rawTextIsTooLong(body.dream, 1600)) return { error: 'dream_too_long', status: 400 };
   const dream = cleanText(body.dream, 1600);
@@ -161,9 +177,15 @@ function buildSystemInstruction(input = {}) {
     'The reflection is one possible lens, never a decoding, prediction, recovered memory, diagnosis, or clinical interpretation.',
     'Do not assign universal meanings to dream symbols. Do not claim the dream reveals hidden truth.',
     'Do not repeat graphic, sexual, violent, self-harm, or traumatic imagery. Refer to it only as difficult imagery when needed.',
-    'For a graphic or violent nightmare, do not name a specific object, action, injury, body detail, perpetrator, or outcome from the recall. Ground the reflection only in the reported waking feeling and present safety.',
+    'For a graphic or violent nightmare, do not name a specific object, action, injury, body detail, perpetrator, or outcome from the recall. Use only its broad emotional dynamic, the reported waking feeling, and present safety.',
     'Never turn harmful dream material into a literal, triumphant, or positive statement. For example, do not frame surviving, being harmed, or a harmful object as strength, destiny, or an achievement.',
-    'Use the waking feeling and user-selected theme as the primary basis. If theme is auto, preserve uncertainty.',
+    'Keep the exact dream recall as private source context only. Never quote, restate, summarize, paraphrase, retell, or continue its scene, setting, objects, people, or actions.',
+    'Do not open with the recalled image or with phrases such as You brought back, You saw, In your dream, or The image of. Begin from the waking feeling, chosen theme, or a safe profile resource instead.',
+    'The affirmation must stand on its own in the present and must not mention a dream, symbol, image, scene, object, setting, or action from the recall.',
+    'The dream itself is the primary source of meaning. Silently identify its broad emotional dynamic, such as agency, transition, belonging, boundaries, loss, responsibility, safety, or renewal, without using a symbol dictionary.',
+    'Transform that broad dynamic into a constructive, emotionally truthful reflection. Do not ignore the recall, but never expose enough narrative detail for a reader to reconstruct it.',
+    'Use the waking feeling to qualify the reflection. Use the selected theme as the person\'s preferred lens; if theme is auto, choose a fitting constructive lens while preserving uncertainty.',
+    'When safe profile context is available, connect the reflection naturally to the person\'s Anchor direction, values, obstacle, or desired feeling. The Anchor supports the interpretation; it never replaces the dream.',
     'Use only safe profile facts provided. Never invent a person, relationship, event, motive, memory, or outcome.',
     'The affirmation must be first person, believable, emotionally warm, and centered on choice, values, self-compassion, or one possible next step.',
     'Prefer language such as I can, I choose, I am learning, or I am practising. Never state that an external result already exists or is guaranteed.',
@@ -176,21 +198,32 @@ function buildSystemInstruction(input = {}) {
 function responseSchema() {
   return {
     type: 'OBJECT',
-    required: ['reflection', 'affirmation', 'basis'],
+    required: ['reflection', 'affirmation', 'theme', 'basis'],
     properties: {
       reflection: {
         type: 'STRING',
-        description: 'A two- or three-sentence possible reflection, explicitly non-predictive.',
+        description: 'A two- or three-sentence constructive reflection derived primarily from the dream\'s broad emotional dynamic, then connected to waking feeling and safe Anchor context; never a retelling.',
       },
       affirmation: {
         type: 'STRING',
-        description: 'A grounded first-person affirmation, one or two sentences.',
+        description: 'A grounded first-person present-tense affirmation, one or two sentences, with no dream scene or symbol.',
+      },
+      theme: {
+        type: 'STRING',
+        enum: ['clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal'],
+        description: 'The constructive lens used. Preserve the user-selected theme, or infer the best-fitting lens when the input theme is auto.',
       },
       basis: {
         type: 'ARRAY',
         minItems: 1,
         maxItems: 4,
-        items: { type: 'STRING', enum: ['dream', 'feeling', 'theme', 'aboutYou', 'whyMatters', 'obstacle'] },
+        items: {
+          type: 'STRING',
+          enum: [
+            'dream', 'feeling', 'theme', 'aboutYou', 'whyMatters', 'obstacle',
+            'desire', 'desiredFeeling', 'work', 'partnerDesire', 'dreamLocation', 'dreamHome',
+          ],
+        },
       },
     },
   };
@@ -290,12 +323,23 @@ function validateGeneratedDream(raw, input) {
   ) {
     throw new DreamGenerationError('invalid_generation');
   }
-  const allowedBasis = new Set(['dream', 'feeling', 'theme', 'aboutYou', 'whyMatters', 'obstacle']);
+  const allowedBasis = new Set([
+    'dream', 'feeling', 'theme', 'aboutYou', 'whyMatters', 'obstacle',
+    'desire', 'desiredFeeling', 'work', 'partnerDesire', 'dreamLocation', 'dreamHome',
+  ]);
   const basis = Array.isArray(raw.basis)
     ? [...new Set(raw.basis.filter((item) => allowedBasis.has(item)))].slice(0, 4)
     : [];
   if (!basis.length || !basis.includes('dream')) throw new DreamGenerationError('invalid_generation');
-  const dream = { reflection, affirmation, basis };
+  const generatedTheme = THEMES.has(raw.theme) && raw.theme !== 'auto'
+    ? raw.theme
+    : input && input.theme !== 'auto' && THEMES.has(input.theme)
+      ? input.theme
+      : 'clarity';
+  if (input && input.theme !== 'auto' && generatedTheme !== input.theme) {
+    throw new DreamGenerationError('invalid_generation');
+  }
+  const dream = { reflection, affirmation, theme: generatedTheme, basis };
   if (input) {
     const evaluation = celesteBrain.evaluateDream(dream, input);
     if (!evaluation.ok) throw new DreamGenerationError('invalid_generation', evaluation);

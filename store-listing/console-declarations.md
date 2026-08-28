@@ -66,10 +66,11 @@ que apareçam e descrevam o app real.
 
 | Tipo provável | Quando | Finalidade | Obrigatório | Tracking | Estado |
 |---|---|---|---|---|---|
-| Nome próprio | personalização Gemini autorizada | funcionalidade do app | opcional | não identificado | confirmar retenção |
-| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | confirmar retenção |
-| Texto da narração | toque em Play com consentimento | gerar áudio | opcional | não identificado | Gemini TTS |
-| Relato de sonho | reflexão em nuvem autorizada | gerar afirmação | opcional | não identificado | fallback local disponível |
+| Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI somente como failover; confirmar retenção |
+| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI somente como failover |
+| Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
+| Texto da narração, idioma e narrador | toque em Play com consentimento | gerar áudio | opcional | não identificado | ElevenLabs TTS |
+| Relato de sonho | reflexão em nuvem autorizada | gerar reflexão e afirmação | opcional | não identificado | Google Gemini; fallback local disponível |
 | Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |
 | Cena anterior e contagens de progresso | novo capítulo do Espelho Vivo | personalização | opcional | não identificado | texto de Rastro não é enviado |
 | IP, sinais de abuso e logs técnicos | chamadas ao backend | segurança e operação | técnico | não identificado | confirmar Vercel/BotID |
@@ -86,7 +87,8 @@ que apareçam e descrevam o app real.
 
 ### Respostas que ainda dependem de contrato ou binário
 
-- se cada dado é retido pelo Gemini, Vercel ou BotID e por quanto tempo;
+- se cada dado é retido por Anthropic, OpenAI, Google Gemini, ElevenLabs,
+  Vercel ou BotID e por quanto tempo;
 - se o processamento pode ser marcado como efêmero;
 - se a transferência ao provedor se qualifica como compartilhamento em cada
   loja;
@@ -114,7 +116,7 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 ## Acesso para revisão
 
 1. Escolher português ou inglês e concluir o questionário.
-2. Usar a opção local para testar sem Gemini.
+2. Usar a opção local para testar sem processadores de conteúdo em nuvem.
 3. Abrir Cena-Âncora, Ponte de Hoje e Ritual de Um Minuto.
 4. Registrar um sonho curto e gerar a afirmação local.
 5. Ativar consentimento adulto separado para testar cena, sonho e narração em

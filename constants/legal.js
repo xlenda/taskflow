@@ -2,8 +2,8 @@
 // hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
 // serem ativados.
 export const LEGAL_UPDATED = {
-  en: 'Updated August 27, 2026',
-  pt: 'Atualizado em 27 de agosto de 2026',
+  en: 'Updated August 28, 2026',
+  pt: 'Atualizado em 28 de agosto de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -15,8 +15,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Quando a personalização em nuvem é ativada, o Celeste cria uma sessão técnica anônima usada somente para autorizar pedidos e aplicar limites de geração.',
       },
       {
-        en: 'Your onboarding answers personalize the experience. Selected answers are sent to Google Gemini only when an adult explicitly enables Gemini personalization. Profiles marked Under 18 always use the on-device generator.',
-        pt: 'Suas respostas do questionário personalizam a experiência. Algumas respostas só são enviadas ao Google Gemini quando uma pessoa adulta permite expressamente essa personalização. Perfis marcados como Menos de 18 sempre usam o gerador no aparelho.',
+        en: 'Your onboarding answers personalize the experience. Only after explicit adult permission, selected data may go through Celeste\'s backend to Anthropic for personalized scene text, OpenAI only as scene-text failover, Google Gemini for translations, images and dream interpretations, and ElevenLabs for text-to-speech. Profiles marked Under 18 always use the on-device options.',
+        pt: 'Suas respostas do questionário personalizam a experiência. Somente após permissão adulta expressa, dados selecionados podem passar pelo backend do Celeste para a Anthropic gerar textos de cenas personalizadas, para a OpenAI apenas como alternativa do texto da cena em caso de falha, para o Google Gemini fazer traduções, imagens e interpretações de sonhos, e para a ElevenLabs fazer texto para fala. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
       },
     ],
   },
@@ -42,19 +42,19 @@ export const PRIVACY_SECTIONS = [
     ],
   },
   {
-    title: { en: 'Gemini personalization', pt: 'Personalização com Gemini' },
+    title: { en: 'Cloud personalization and processors', pt: 'Personalização e processadores em nuvem' },
     paragraphs: [
       {
-        en: 'Celeste stores separate permissions for personal scenes, dream reflection and neural narration. Enabling voice alone never authorizes a dream upload. With the corresponding adult permission, Celeste may send Gemini only the answered fields needed for a scene, or the dream transcript, selected waking feeling and theme, plus reduced profile context. Saved content does not change when you turn a permission off.',
-        pt: 'O Celeste guarda permissões separadas para cenas pessoais, reflexão de sonhos e narração neural. Ativar apenas a voz nunca autoriza o envio de um sonho. Com a permissão adulta correspondente, o Celeste pode enviar ao Gemini somente os campos necessários para uma cena ou a transcrição do sonho, o sentimento e o tema escolhidos, além de um contexto reduzido do perfil. O conteúdo já salvo não muda quando você desativa uma permissão.',
+        en: 'Celeste stores separate permissions for personal scenes, dream reflection and neural narration. Enabling voice alone never authorizes a dream upload. With the corresponding adult permission, personalized scene text is sent to Anthropic; OpenAI may receive the same minimized scene request only when failover is needed. Google Gemini receives only the content needed for a translation, personal image or dream interpretation. ElevenLabs receives only the selected text, language and narrator needed for text-to-speech. Saved content does not change when you turn a permission off.',
+        pt: 'O Celeste guarda permissões separadas para cenas pessoais, reflexão de sonhos e narração neural. Ativar apenas a voz nunca autoriza o envio de um sonho. Com a permissão adulta correspondente, o texto da cena personalizada é enviado à Anthropic; a OpenAI pode receber a mesma solicitação reduzida da cena somente quando a alternativa em caso de falha for necessária. O Google Gemini recebe apenas o conteúdo necessário para uma tradução, imagem pessoal ou interpretação de sonho. A ElevenLabs recebe apenas o texto selecionado, o idioma e o narrador necessários para texto para fala. O conteúdo já salvo não muda quando você desativa uma permissão.',
       },
       {
-        en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If Gemini is unavailable or consent is incomplete, Celeste uses its local generator.',
-        pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Se o Gemini estiver indisponível ou o consentimento estiver incompleto, o Celeste usa o gerador local.',
+        en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If the required processor is unavailable or consent is incomplete, Celeste keeps or creates the local version instead of sending the request elsewhere.',
+        pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Se o processador necessário estiver indisponível ou o consentimento estiver incompleto, o Celeste mantém ou cria a versão local em vez de enviar a solicitação a outro lugar.',
       },
       {
-        en: 'When you request a new Living Mirror chapter, Celeste sends the prior generated scene and structured progress counts to Gemini. Private trace text and full dream reports are never included. A dream contributes only its selected theme and waking feeling after you turn on that choice for the individual dream.',
-        pt: 'Quando você pede um novo capítulo do Espelho Vivo, o Celeste envia ao Gemini a cena anterior já gerada e contagens estruturadas do progresso. O texto dos Rastros privados e o relato completo dos sonhos nunca são incluídos. Um sonho contribui somente com o tema escolhido e como você acordou depois que você ativa essa opção naquele sonho.',
+        en: 'When you request a new Living Mirror chapter, Celeste sends the prior generated scene and structured progress counts to Anthropic for the chapter text; OpenAI may receive that same minimized request only as failover. Private trace text and full dream reports are never included. A dream contributes only its selected theme and waking feeling after you turn on that choice for the individual dream.',
+        pt: 'Quando você pede um novo capítulo do Espelho Vivo, o Celeste envia à Anthropic a cena anterior já gerada e contagens estruturadas do progresso para criar o texto do capítulo; a OpenAI pode receber essa mesma solicitação reduzida somente como alternativa em caso de falha. O texto dos Rastros privados e o relato completo dos sonhos nunca são incluídos. Um sonho contribui somente com o tema escolhido e como você acordou depois que você ativa essa opção naquele sonho.',
       },
     ],
   },
@@ -62,8 +62,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Voice and media', pt: 'Voz e mídia' },
     paragraphs: [
       {
-        en: 'With explicit adult consent, pressing Play sends the selected personal text, language and narrator choice to Gemini text-to-speech. Gemini returns audio for that request; Celeste does not publish it or use it as a shared voice catalog. Narrator previews are fixed samples bundled with the app, contain no questionnaire answers and do not make a cloud request when played.',
-        pt: 'Com consentimento adulto explícito, tocar em Reproduzir envia ao Gemini de texto para fala o texto pessoal selecionado, o idioma e a voz escolhida. O Gemini devolve o áudio daquela solicitação; o Celeste não o publica nem o usa como catálogo compartilhado. As prévias dos narradores são amostras fixas incluídas no app, não contêm respostas do questionário e não fazem uma solicitação à nuvem quando são reproduzidas.',
+        en: 'With explicit adult consent, pressing Play sends the selected personal text, language and narrator choice through Celeste\'s backend to ElevenLabs text-to-speech. ElevenLabs returns audio for that request; Celeste does not publish it or use it as a shared voice catalog. Narrator previews are fixed samples bundled with the app, contain no questionnaire answers and do not make a cloud request when played.',
+        pt: 'Com consentimento adulto explícito, tocar em Reproduzir envia pelo backend do Celeste à ElevenLabs de texto para fala o texto pessoal selecionado, o idioma e a voz escolhida. A ElevenLabs devolve o áudio daquela solicitação; o Celeste não o publica nem o usa como catálogo compartilhado. As prévias dos narradores são amostras fixas incluídas no app, não contêm respostas do questionário e não fazem uma solicitação à nuvem quando são reproduzidas.',
       },
       {
         en: 'If you dictate a dream, speech recognition is provided by your browser or operating system and may be processed under that provider\'s rules. Celeste receives only the transcript, never uploads the recording itself, and sends the transcript to Gemini only when you request cloud reflection with consent; otherwise it uses the local fallback.',
@@ -83,8 +83,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Your controls', pt: 'Seus controles' },
     bullets: [
       {
-        en: 'Turn Gemini personalization off at any time in your profile. Turning it off also clears the saved adult confirmation for cloud generation.',
-        pt: 'Desative a personalização com Gemini a qualquer momento no seu perfil. Ao desligar, a confirmação adulta salva para geração em nuvem também é removida.',
+        en: 'Turn cloud processing off at any time in your profile. Turning it off also clears the saved adult confirmation for new cloud generation.',
+        pt: 'Desative o processamento em nuvem a qualquer momento no seu perfil. Ao desligar, a confirmação adulta salva para novas gerações em nuvem também é removida.',
       },
       {
         en: 'Edit or delete private traces and manifestations from the app.',
@@ -147,8 +147,8 @@ export const TERMS_SECTIONS = [
     title: { en: 'Your content', pt: 'Seu conteúdo' },
     paragraphs: [
       {
-        en: 'You remain responsible for the information you enter. Do not include passwords, financial credentials, document numbers, another person\'s name in free-text answers, or information you are not comfortable keeping on this device or, when enabled, using for Gemini personalization.',
-        pt: 'Você continua responsável pelas informações que insere. Não inclua senhas, credenciais financeiras, números de documentos, o nome de outra pessoa em respostas livres nem informações que não queira manter neste aparelho ou, quando ativado, usar na personalização com Gemini.',
+        en: 'You remain responsible for the information you enter. Do not include passwords, financial credentials, document numbers, another person\'s name in free-text answers, or information you are not comfortable keeping on this device or, when enabled, sending to the cloud processor identified for that feature.',
+        pt: 'Você continua responsável pelas informações que insere. Não inclua senhas, credenciais financeiras, números de documentos, o nome de outra pessoa em respostas livres nem informações que não queira manter neste aparelho ou, quando ativado, enviar ao processador em nuvem identificado para aquele recurso.',
       },
       {
         en: 'Community drafts are private by default. Sending a story requires explicit publication consent, and it can become visible to other people only after moderation. Without an authenticated account and configured community service, it remains only on this device.',
@@ -160,8 +160,8 @@ export const TERMS_SECTIONS = [
     title: { en: 'Third-party services', pt: 'Serviços de terceiros' },
     paragraphs: [
       {
-        en: 'Optional Gemini personalization is subject to Google service availability and applicable terms. Celeste may fall back to local generation when the service fails or a response cannot be used safely.',
-        pt: 'A personalização opcional com Gemini depende da disponibilidade do serviço e dos termos aplicáveis do Google. O Celeste pode voltar à geração local quando o serviço falhar ou uma resposta não puder ser usada com segurança.',
+        en: 'Optional cloud features depend on Anthropic and OpenAI for personalized scene text, Google Gemini for translations, images and dream interpretations, and ElevenLabs for text-to-speech, as well as each provider\'s applicable terms and availability. OpenAI is the scene-text failover, not an additional routine call. Celeste may use the local version when a service fails or a response cannot be used safely.',
+        pt: 'Os recursos opcionais em nuvem dependem da Anthropic e da OpenAI para textos de cenas personalizadas, do Google Gemini para traduções, imagens e interpretações de sonhos, e da ElevenLabs para texto para fala, além dos termos aplicáveis e da disponibilidade de cada fornecedor. A OpenAI é a alternativa do texto da cena em caso de falha, não uma chamada adicional de rotina. O Celeste pode usar a versão local quando um serviço falhar ou uma resposta não puder ser usada com segurança.',
       },
     ],
   },

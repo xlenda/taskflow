@@ -6,6 +6,7 @@ const { transformSync } = require('@babel/core');
 
 const ROOT = path.resolve(__dirname, '..');
 const endpoint = require('../api/gerar-audio');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const ENV_KEYS = [
   'ELEVENLABS_API_KEY',
   'ELEVENLABS_TTS_MODEL',
@@ -154,6 +155,19 @@ async function main() {
     assert.ok(narrators.narratorPreviewUrl(narrator.id, 'pt'));
     assert.ok(narrators.narratorPreviewUrl(narrator.id, 'en'));
   }
+  assert.strictEqual(endpoint._internals.audioUnits({ mode: 'personal', text: 'a'.repeat(160) }), 4);
+  assert.strictEqual(endpoint._internals.audioUnits({ mode: 'personal', text: 'a'.repeat(161) }), 8);
+  assert.strictEqual(endpoint._internals.audioUnits({ mode: 'personal', text: 'a'.repeat(800) }), 20);
+  assert.strictEqual(
+    service.MAX_AUDIO_CHUNK_CHARS,
+    endpoint._internals.MAX_TEXT_CHARS,
+    'cliente e servidor precisam compartilhar o mesmo teto atomico de audio'
+  );
+  assert.strictEqual(
+    endpoint._internals.MAX_TEXT_CHARS / endpoint._internals.MAX_AUDIO_UNITS,
+    40,
+    'o teto global precisa limitar o pior caso do ElevenLabs a 48 mil caracteres por dia'
+  );
 
   const longText = Array.from(
     { length: 38 },
@@ -202,7 +216,12 @@ async function main() {
   assert.strictEqual(upstreamCalls, 0, 'preview empacotado nunca pode chegar ao provedor');
 
   const personalText = 'Eu caminho com calma na direcao do que importa para mim.';
-  const personal = await call({
+  const paidCalls = [];
+  endpoint._internals.setPaidAccessAuthorizerForTests(async (_request, input) => {
+    paidCalls.push(input);
+    return { ok: true, userId: '00000000-0000-4000-8000-000000000001' };
+  });
+  const missingVersion = await call({
     mode: 'personal',
     narratorId: 'atlas',
     lang: 'pt',
@@ -210,7 +229,35 @@ async function main() {
     cloudConsent: true,
     adultConfirmed: true,
   });
+  assert.strictEqual(missingVersion.statusCode, 403);
+  assert.strictEqual(missingVersion.body.error, 'cloud_consent_required');
+  const staleVersion = await call({
+    mode: 'personal',
+    narratorId: 'atlas',
+    lang: 'pt',
+    text: personalText,
+    cloudConsent: true,
+    cloudConsentVersion: 'legacy-version',
+    adultConfirmed: true,
+  });
+  assert.strictEqual(staleVersion.statusCode, 403);
+  assert.strictEqual(staleVersion.body.error, 'cloud_consent_required');
+  assert.deepStrictEqual(paidCalls, [], 'invalid consent version must fail before quota');
+  assert.strictEqual(upstreamCalls, 0, 'invalid consent version must fail before ElevenLabs');
+  const personal = await call({
+    mode: 'personal',
+    narratorId: 'atlas',
+    lang: 'pt',
+    text: personalText,
+    cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+  });
   assert.strictEqual(personal.statusCode, 200);
+  assert.deepStrictEqual(paidCalls, [{
+    operation: 'audio',
+    units: endpoint._internals.audioUnits({ mode: 'personal', text: personalText }),
+  }]);
   const sentUrl = new URL(sent.url);
   assert.strictEqual(sentUrl.origin, 'https://api.elevenlabs.io');
   assert.strictEqual(
@@ -237,20 +284,32 @@ async function main() {
     400
   );
   assert.strictEqual(
-    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', cloudConsent: true, adultConfirmed: true, voice: 'Kore' })).statusCode,
+    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', cloudConsent: true, cloudConsentVersion: CLOUD_CONSENT_VERSION, adultConfirmed: true, voice: 'Kore' })).statusCode,
     400
   );
   assert.strictEqual(
-    (await call({ mode: 'personal', narratorId: 'desconhecida', lang: 'pt', text: 'texto valido', cloudConsent: true, adultConfirmed: true })).body.error,
+    (await call({ mode: 'personal', narratorId: 'desconhecida', lang: 'pt', text: 'texto valido', cloudConsent: true, cloudConsentVersion: CLOUD_CONSENT_VERSION, adultConfirmed: true })).body.error,
     'narrator_invalid'
   );
   assert.strictEqual(
-    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', adultConfirmed: true })).body.error,
+    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', cloudConsentVersion: CLOUD_CONSENT_VERSION, adultConfirmed: true })).body.error,
     'cloud_consent_required'
   );
   assert.strictEqual(
-    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', cloudConsent: true })).body.error,
+    (await call({ mode: 'personal', narratorId: 'luma', lang: 'pt', text: 'texto valido', cloudConsent: true, cloudConsentVersion: CLOUD_CONSENT_VERSION })).body.error,
     'adult_confirmation_required'
+  );
+  assert.strictEqual(
+    (await call({
+      mode: 'personal',
+      narratorId: 'luma',
+      lang: 'pt',
+      text: 'a'.repeat(endpoint._internals.MAX_TEXT_CHARS + 1),
+      cloudConsent: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+      adultConfirmed: true,
+    })).body.error,
+    'text_invalid'
   );
   assert.strictEqual(
     (await call({ mode: 'preview', narratorId: 'luma', lang: 'pt' }, { headers: { origin: undefined } })).body.error,
@@ -282,6 +341,7 @@ async function main() {
     lang: 'en',
     text: 'A valid personal narration.',
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   });
   assert.strictEqual(malformed.statusCode, 502);
@@ -333,6 +393,7 @@ async function main() {
     lang: 'pt',
     text: 'Eu caminho com calma e presenca.',
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     fetchImpl: clientFetch,
   };
@@ -355,7 +416,7 @@ async function main() {
     () =>
       service.requestNarrationAudio({
         ...cachedPersonalRequest,
-        text: 'a'.repeat(1801),
+        text: 'a'.repeat(service.MAX_AUDIO_CHUNK_CHARS + 1),
       }),
     (requestError) => requestError && requestError.code === 'text_invalid'
   );
@@ -549,6 +610,7 @@ async function main() {
   );
   assert.match(serviceSource, /cache:\s*'no-store'/);
   assert.match(serviceSource, /MAX_AUDIO_CHUNK_CHARS\s*=\s*800/);
+  assert.match(serviceSource, /MAX_PERSONAL_REQUEST_CHARS\s*=\s*MAX_AUDIO_CHUNK_CHARS/);
   assert.match(serviceSource, /audioMemoryCache/);
   assert.match(serviceSource, /loadNarratorPreview/);
   assert.match(apiSource, /preview_is_bundled/);

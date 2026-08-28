@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
@@ -101,6 +102,8 @@ const S = {
   },
 
   storyTitle: { en: 'Your story', pt: 'Sua história' },
+  visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
+  visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
 
   // Recibo do dia feito — números vêm do estado, nunca inventados.
   receipt: {
@@ -219,6 +222,8 @@ export default function ManifestationScreen() {
     addEvidence,
     removeManifestation,
     saveMorningRitualPreferences,
+    personalVisualStatus,
+    ensurePersonalVisual,
   } = useApp();
   const {
     activePlaybackId,
@@ -244,6 +249,11 @@ export default function ManifestationScreen() {
     [state, routeId]
   );
 
+  useEffect(() => {
+    if (!saved?.id) return;
+    void ensurePersonalVisual(saved.id);
+  }, [ensurePersonalVisual, saved?.id]);
+
   // Cenas pessoais já chegam geradas no idioma ativo. txt() mantém compatibilidade
   // com manifestações antigas que tenham algum campo salvo como objeto bilíngue.
   const item = useMemo(() => {
@@ -256,6 +266,7 @@ export default function ManifestationScreen() {
       story: txt(saved.story, lang),
     };
   }, [saved, lang]);
+  const visualPhase = saved?.id ? personalVisualStatus[saved.id]?.phase : null;
 
   const lines = useMemo(() => (item ? splitNarration(item.story) : []), [item]);
   const estimated = useMemo(() => (item ? estimateSeconds(item.story) : FALLBACK_SECONDS), [item]);
@@ -828,7 +839,13 @@ export default function ManifestationScreen() {
             ) : null}
           </Card>
         ) : (
-          <GradientCover accent={item.accent} radius={22} style={styles.hero}>
+          <GradientCover
+            testID="manifestation-personal-visual"
+            visualKey={item.visual?.cacheKey}
+            accent={item.accent}
+            radius={22}
+            style={styles.hero}
+          >
             <View style={styles.heroInner}>
               <View style={[styles.badge, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
                 <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
@@ -842,6 +859,31 @@ export default function ManifestationScreen() {
                   goal,
                 })} · {t(S.chapter, { n: mirror.chapter })}
               </Text>
+              {visualPhase === 'pending' ? (
+                <View
+                  testID="manifestation-personal-visual-pending"
+                  accessibilityLiveRegion="polite"
+                  style={styles.visualStatusRow}
+                >
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={styles.visualStatusText}>{t(S.visualPreparing)}</Text>
+                </View>
+              ) : visualPhase === 'error' ? (
+                <TouchableOpacity
+                  testID="manifestation-personal-visual-retry"
+                  activeOpacity={0.76}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    void ensurePersonalVisual(saved.id, { force: true });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.visualRetry)}
+                  style={styles.visualRetry}
+                >
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                  <Text style={styles.visualRetryText}>{t(S.visualRetry)}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </GradientCover>
         )}
@@ -1121,6 +1163,33 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   heroMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 12, fontWeight: '600' },
+  visualStatusRow: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  visualStatusText: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginLeft: 8,
+    textAlign: 'center',
+  },
+  visualRetry: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 20,
+    backgroundColor: 'rgba(8,16,28,0.30)',
+    paddingHorizontal: 14,
+    marginTop: 14,
+  },
+  visualRetryText: { color: '#FFFFFF', fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
   card: { padding: 16, borderRadius: 18, marginTop: 16 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontSize: 15.5, fontWeight: '700' },

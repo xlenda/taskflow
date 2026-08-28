@@ -2,10 +2,22 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { initialState } from '../constants/content';
+import {
+  hasCurrentAdultCloudConsent,
+  normalizeCloudConsentProfile,
+  stripCloudConsentProfile,
+} from '../constants/cloudConsent';
 import { detectLang } from '../constants/i18n';
 import { isNarratorId } from '../constants/narrators';
 import { todayISO, streakFrom } from '../utils/date';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
+import {
+  JOURNEY_CATEGORIES,
+  buildPersonalJourneySuites,
+  journeyVisualStatusKey,
+  normalizePersonalJourneySuite,
+  personalJourneyItemsForState,
+} from '../utils/personalJourney';
 import {
   applyTranslatedManifestationVariant,
   localInterpretedUpgradeCandidate,
@@ -97,7 +109,7 @@ function settleWithin(promise, timeoutMs) {
 
 const RITUAL_THEMES = ['clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal'];
 const RITUAL_FEELINGS = ['calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful'];
-const RITUAL_DETAIL_KEYS = ['dream_anchor', 'feeling', 'theme'];
+const RITUAL_DETAIL_KEYS = ['dream_semantics', 'feeling', 'theme'];
 const VISUAL_MOODS = ['midnight', 'violet', 'ember', 'forest', 'paper', 'cloud', 'blossom', 'mono'];
 const PERSONAL_VISUAL_SOURCE_FIELDS = ['desire', 'dreamLocation', 'dreamHome', 'work', 'whyMatters'];
 const PERSONAL_VISUAL_MOOD_MAP = {
@@ -128,6 +140,34 @@ const uniqueShortStrings = (values, maxLength, maxItems) =>
         .filter(Boolean)
     )
   ).slice(0, maxItems);
+
+function sanitizeAnchorAnswerValue(value, depth = 0) {
+  if (depth > 4 || value === undefined || typeof value === 'function') return undefined;
+  if (typeof value === 'string') return shortText(value, 1600);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 40)
+      .map((entry) => sanitizeAnchorAnswerValue(entry, depth + 1))
+      .filter((entry) => entry !== undefined);
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const output = {};
+  Object.entries(value).slice(0, 80).forEach(([rawKey, entry]) => {
+    const key = shortText(rawKey, 80);
+    if (!key || ['__proto__', 'prototype', 'constructor'].includes(key)) return;
+    const safe = sanitizeAnchorAnswerValue(entry, depth + 1);
+    if (safe !== undefined) output[key] = safe;
+  });
+  return output;
+}
+
+function sanitizeAnchorAnswers(value) {
+  const result = sanitizeAnchorAnswerValue(value, 0);
+  return result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+}
 const normalizeKnowledgeCardIds = (values) =>
   Array.from(
     new Set(
@@ -186,16 +226,84 @@ const sanitizePersonalVisualReceipt = (value) => {
   const model = shortText(source.model, 100);
   const promptVersion = shortText(source.promptVersion, 80);
   const visualMood = shortText(source.visualMood, 40);
+  const contentFingerprint = shortText(source.contentFingerprint, 80).toLowerCase();
   if (model) out.model = model;
   if (promptVersion) out.promptVersion = promptVersion;
   if (['serene', 'luminous', 'grounded', 'romantic', 'abundant', 'focused'].includes(visualMood)) {
     out.visualMood = visualMood;
+  }
+  if (/^[a-z0-9_-]{1,80}$/.test(contentFingerprint)) {
+    out.contentFingerprint = contentFingerprint;
   }
   if (typeof source.createdAt === 'string' && !Number.isNaN(Date.parse(source.createdAt))) {
     out.createdAt = source.createdAt;
   }
   return out;
 };
+
+const JOURNEY_VISUAL_KEYS = new Set(
+  JOURNEY_CATEGORIES.flatMap((category) => [
+    `vision:${category}`,
+    `affirmation:${category}`,
+  ])
+);
+
+const sanitizeJourneyVisuals = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const output = {};
+  Object.entries(source).forEach(([key, receipt]) => {
+    if (!JOURNEY_VISUAL_KEYS.has(key)) return;
+    const safe = sanitizePersonalVisualReceipt(receipt);
+    if (safe) output[key] = safe;
+  });
+  return output;
+};
+
+const journeyItemForManifestation = (manifestation, journeyKey, lang) => {
+  if (!manifestation || !JOURNEY_VISUAL_KEYS.has(journeyKey)) return null;
+  const locale = lang === 'en' ? 'en' : 'pt';
+  const suite = manifestation.journeySuiteByLang?.[locale];
+  const collection = journeyKey.startsWith('vision:')
+    ? suite?.visions
+    : suite?.affirmations;
+  return (Array.isArray(collection) ? collection : []).find(
+    (item) => item && item.key === journeyKey
+  ) || null;
+};
+
+const journeyCompositionVariant = (journeyKey) => {
+  const category = String(journeyKey || '').split(':')[1];
+  const index = Math.max(0, JOURNEY_CATEGORIES.indexOf(category));
+  return journeyKey.startsWith('affirmation:') ? index + 6 : index;
+};
+
+const journeyVisualFingerprint = (manifestation, item, lang) =>
+  compactFingerprint({
+    manifestationId: shortText(manifestation && manifestation.id, 120),
+    journeyKey: shortText(item && item.key, 80),
+    visualBrief: shortText(item && item.visualBrief, 420),
+    lang: lang === 'en' ? 'en' : 'pt',
+  });
+
+const dreamVisualStatusKey = (entryId) => `dream-visual:${shortText(entryId, 160)}`;
+
+const dreamVisualCategory = (theme) => ({
+  connection: 'Love',
+  abundance: 'Wealth',
+  clarity: 'Career',
+  renewal: 'Health',
+  courage: 'Confidence',
+  peace: 'Peace',
+}[theme] || 'Peace');
+
+const dreamVisualFingerprint = (entry) =>
+  compactFingerprint({
+    id: shortText(entry && entry.id, 160),
+    reflection: shortText(entry && entry.reflection, 800),
+    affirmation: shortText(entry && entry.affirmation, 800),
+    theme: shortText(entry && entry.theme, 40),
+    lang: entry && entry.lang === 'en' ? 'en' : 'pt',
+  });
 
 const personalVisualMood = (mood, category) => {
   if (PERSONAL_VISUAL_MOOD_MAP[mood]) return PERSONAL_VISUAL_MOOD_MAP[mood];
@@ -360,18 +468,12 @@ function mergeDefensivo(parsed) {
       ? savedNarration.narratorId
       : base.narration.narratorId,
   };
-  st.profile = st.profile && typeof st.profile === 'object' && !Array.isArray(st.profile)
-    ? { ...st.profile }
+  const savedProfile = st.profile && typeof st.profile === 'object' && !Array.isArray(st.profile)
+    ? st.profile
     : {};
-  const cloudAdultConfirmed =
-    !isKnownMinor(st.profile) && st.profile.cloudAdultConfirmed === true;
-  st.profile.cloudAdultConfirmed = cloudAdultConfirmed;
-  st.profile.cloudPersonalization =
-    cloudAdultConfirmed && st.profile.cloudPersonalization === true;
-  st.profile.cloudNarrationConsent =
-    cloudAdultConfirmed && st.profile.cloudNarrationConsent === true;
-  st.profile.cloudDreamConsent =
-    cloudAdultConfirmed && st.profile.cloudDreamConsent === true;
+  st.profile = normalizeCloudConsentProfile(savedProfile, {
+    knownMinor: isKnownMinor(savedProfile),
+  });
   const savedDailyRitual =
     st.dailyRitual && typeof st.dailyRitual === 'object' && !Array.isArray(st.dailyRitual)
       ? st.dailyRitual
@@ -405,6 +507,23 @@ function mergeDefensivo(parsed) {
     // removed catalog cannot return after an update.
     const cameFromCatalog = !!shortText(m.templateId, 120);
     const { templateId: _legacyTemplateId, ...manifestationFields } = m;
+    const anchorAnswers = sanitizeAnchorAnswers(m.anchorAnswers);
+    const journeyProfile = Object.keys(anchorAnswers).length
+      ? { ...(st.profile || {}), ...anchorAnswers }
+      : st.profile || {};
+    const journeyOriginLang = m.journeySuiteByLang?.originLang === 'en' ||
+      m.journeySuiteByLang?.originLang === 'pt'
+      ? m.journeySuiteByLang.originLang
+      : m.originLang === 'en' || m.originLang === 'pt'
+      ? m.originLang
+      : itemLang;
+    const originTitle = shortText(m.contentByLang?.[journeyOriginLang]?.title, 160) || title;
+    const journeySuiteByLang = buildPersonalJourneySuites({
+      desire: originTitle,
+      profile: journeyProfile,
+      stored: m.journeySuiteByLang,
+      originLang: journeyOriginLang,
+    });
     const evidence = (Array.isArray(m.evidence) ? m.evidence : [])
       .filter((entry) => entry && typeof entry === 'object' && typeof entry.text === 'string' && entry.text.trim())
       .map((entry, index) => ({
@@ -415,6 +534,10 @@ function mergeDefensivo(parsed) {
     const normalized = {
       ...manifestationFields,
       id: textOr(m.id, `m-legacy-${manifestationIndex}`, 120),
+      origin: m.origin === 'onboarding-anchor' ? 'onboarding-anchor' : 'manifestation',
+      anchorAnswers,
+      journeySuiteByLang,
+      journeyVisuals: sanitizeJourneyVisuals(m.journeyVisuals),
       title,
       category,
       lang: itemLang,
@@ -458,6 +581,28 @@ function mergeDefensivo(parsed) {
         st.lang
       );
     });
+  const declaredAnchorId = shortText(st.anchorSceneId, 120);
+  const declaredAnchor = st.manifestations.find((item) => item.id === declaredAnchorId);
+  const discoveredAnchor =
+    declaredAnchor ||
+    st.manifestations.find((item) => item.origin === 'onboarding-anchor') ||
+    st.manifestations.find((item) => item.anchorOpenedAt) ||
+    st.manifestations[st.manifestations.length - 1] ||
+    null;
+  st.anchorSceneId = discoveredAnchor ? discoveredAnchor.id : null;
+  if (discoveredAnchor) {
+    st.manifestations = st.manifestations.map((item) =>
+      item.id === discoveredAnchor.id
+        ? {
+            ...item,
+            origin: 'onboarding-anchor',
+            anchorAnswers: Object.keys(item.anchorAnswers || {}).length
+              ? item.anchorAnswers
+              : sanitizeAnchorAnswers(st.profile),
+          }
+        : item
+    );
+  }
   const savedRitual = st.morningRitual && typeof st.morningRitual === 'object' ? st.morningRitual : {};
   const defaultRitual = base.morningRitual;
   st.morningRitual = {
@@ -497,6 +642,7 @@ function mergeDefensivo(parsed) {
           .filter((key) => RITUAL_DETAIL_KEYS.includes(key))
           .filter((key, index, values) => values.indexOf(key) === index),
         generatorVersion: shortText(entry.generatorVersion, 40) || 'dream-local-v1',
+        visual: sanitizePersonalVisualReceipt(entry.visual),
         generation: sanitizeGenerationReceipt(
           entry.generation,
           'local-dream',
@@ -522,18 +668,18 @@ function mergeDefensivo(parsed) {
 
   // Fixed catalog IDs from older builds are no longer valid. Every collection
   // below may point only to content created from this person's own answers.
-  const manifestationIds = new Set(st.manifestations.map((item) => item.id));
-  const personalAffirmationIds = new Set(
-    st.manifestations.map((item) => `manifestation:${item.id}`)
-  );
+  const personalAffirmationItems = personalJourneyItemsForState(st, 'affirmation', st.lang);
+  const personalVisionItems = personalJourneyItemsForState(st, 'vision', st.lang);
+  const personalAffirmationIds = new Set(personalAffirmationItems.map((item) => item.id));
+  const personalVisionIds = new Set(personalVisionItems.map((item) => item.id));
   const ritualIds = new Set(
     (st.morningRitual.entries || []).map((entry) => `ritual:${entry.id}`)
   );
   st.favoriteAffirmations = st.favoriteAffirmations.filter(
     (id) => personalAffirmationIds.has(id) || ritualIds.has(id)
   );
-  st.savedVisions = st.savedVisions.filter((id) => manifestationIds.has(id));
-  st.visionPlays = st.visionPlays.filter((play) => manifestationIds.has(play.visionId));
+  st.savedVisions = st.savedVisions.filter((id) => personalVisionIds.has(id));
+  st.visionPlays = st.visionPlays.filter((play) => personalVisionIds.has(play.visionId));
 
   const wakeId = st.morningRitual.wakeAffirmationId;
   const validWakeId =
@@ -542,17 +688,17 @@ function mergeDefensivo(parsed) {
     personalAffirmationIds.has(wakeId) ||
     ritualIds.has(wakeId);
   if (!validWakeId) {
-    const fallbackManifestation = st.manifestations.find(
-      (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
+    const fallbackAffirmation = personalAffirmationItems.find(
+      (item) => typeof item.text === 'string' && item.text.trim()
     );
     const fallbackDream = (st.morningRitual.entries || []).find(
       (entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim()
     );
-    const fallbackWake = fallbackManifestation
+    const fallbackWake = fallbackAffirmation
       ? {
-          id: `manifestation:${fallbackManifestation.id}`,
-          text: fallbackManifestation.affirmation.trim(),
-          lang: fallbackManifestation.lang === 'en' ? 'en' : 'pt',
+          id: fallbackAffirmation.id,
+          text: fallbackAffirmation.text.trim(),
+          lang: fallbackAffirmation.lang === 'en' ? 'en' : 'pt',
         }
       : fallbackDream
         ? {
@@ -601,6 +747,7 @@ export function AppProvider({ children }) {
   const lastDreamSaveRef = useRef({ epoch: -1, signature: '', id: null, at: 0 });
   const evolutionRequestsRef = useRef(new Set());
   const localSceneUpgradeEpochRef = useRef(-1);
+  const journeySuiteUpgradeEpochRef = useRef(-1);
   const personalVisualRequestsRef = useRef(new Map());
   const personalVisualFailuresRef = useRef(new Map());
   const resetInProgressRef = useRef(false);
@@ -674,15 +821,68 @@ export function AppProvider({ children }) {
         ...(current.contentByLang || {}),
         [lang]: upgradedVariant,
       };
+      const fallbackSuite = current.journeySuiteByLang?.[lang] ||
+        buildPersonalJourneySuites({
+          desire: current.title,
+          profile: current.anchorAnswers || currentState.profile,
+          originLang: current.originLang || current.lang,
+        })[lang];
+      const journeySuiteByLang = remote.journeySuite
+        ? {
+            ...(current.journeySuiteByLang || {}),
+            [lang]: normalizePersonalJourneySuite(
+              { ...remote.journeySuite, source: 'remote' },
+              fallbackSuite
+            ),
+          }
+        : current.journeySuiteByLang;
       const upgraded = current.lang === lang
-        ? { ...current, ...upgradedVariant, contentByLang }
-        : { ...current, contentByLang };
+        ? { ...current, ...upgradedVariant, contentByLang, journeySuiteByLang }
+        : { ...current, contentByLang, journeySuiteByLang };
       const manifestations = [...currentState.manifestations];
       manifestations[index] = localizeManifestation(
         upgraded,
         currentState.profile,
         currentState.lang
       );
+      return { ...currentState, manifestations };
+    });
+  }, []);
+
+  const applyRemoteJourneySuite = useCallback(({
+    id,
+    lang,
+    profileFingerprint,
+    remote,
+    generationEpoch,
+  }) => {
+    if (
+      !remote?.journeySuite ||
+      !mountedRef.current ||
+      generationEpoch !== generationEpochRef.current
+    ) return;
+    setState((currentState) => {
+      if (
+        !currentState ||
+        generationEpoch !== generationEpochRef.current ||
+        JSON.stringify(currentState.profile || {}) !== profileFingerprint
+      ) return currentState;
+      const index = currentState.manifestations.findIndex((item) => item.id === id);
+      if (index < 0) return currentState;
+      const current = currentState.manifestations[index];
+      const fallbackSuite = current.journeySuiteByLang?.[lang];
+      if (!fallbackSuite) return currentState;
+      const manifestations = [...currentState.manifestations];
+      manifestations[index] = {
+        ...current,
+        journeySuiteByLang: {
+          ...(current.journeySuiteByLang || {}),
+          [lang]: normalizePersonalJourneySuite(
+            { ...remote.journeySuite, source: 'remote' },
+            fallbackSuite
+          ),
+        },
+      };
       return { ...currentState, manifestations };
     });
   }, []);
@@ -791,6 +991,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!state) return;
     const ids = new Set(state.manifestations.map((item) => item.id));
+    state.manifestations.forEach((item) => {
+      JOURNEY_VISUAL_KEYS.forEach((journeyKey) => {
+        ids.add(journeyVisualStatusKey(item.id, journeyKey));
+      });
+    });
+    (state.morningRitual?.entries || []).forEach((entry) => {
+      ids.add(dreamVisualStatusKey(entry.id));
+    });
     setPersonalVisualStatus((current) => {
       const entries = Object.entries(current).filter(([id]) => ids.has(id));
       return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
@@ -806,7 +1014,7 @@ export function AppProvider({ children }) {
       !hydratedRef.current ||
       isKnownMinor(state.profile) ||
       state.profile?.cloudPersonalization !== true ||
-      state.profile?.cloudAdultConfirmed !== true
+      !hasCurrentAdultCloudConsent(state.profile)
     ) return;
 
     const generationEpoch = generationEpochRef.current;
@@ -838,6 +1046,8 @@ export function AppProvider({ children }) {
       category: target.category || 'Wealth',
       lang: candidate.lang,
       profile: state.profile,
+      includeJourneySuite:
+        target.id === state.anchorSceneId || target.origin === 'onboarding-anchor',
     }).then((remote) => {
       applyRemoteSceneUpgrade({
         id: candidate.id,
@@ -852,6 +1062,45 @@ export function AppProvider({ children }) {
       // The interpreted local v2 copy remains readable; a later app launch can retry.
     });
   }, [applyRemoteSceneUpgrade, state]);
+
+  useEffect(() => {
+    if (
+      !state ||
+      !hydratedRef.current ||
+      isKnownMinor(state.profile) ||
+      state.profile?.cloudPersonalization !== true ||
+      !hasCurrentAdultCloudConsent(state.profile)
+    ) return;
+    const generationEpoch = generationEpochRef.current;
+    if (
+      localSceneUpgradeEpochRef.current === generationEpoch ||
+      journeySuiteUpgradeEpochRef.current === generationEpoch
+    ) return;
+    const anchor =
+      state.manifestations.find((item) => item.id === state.anchorSceneId) ||
+      state.manifestations.find((item) => item.origin === 'onboarding-anchor');
+    if (!anchor || anchor.journeySuiteByLang?.[state.lang]?.source === 'remote') return;
+
+    journeySuiteUpgradeEpochRef.current = generationEpoch;
+    const profileFingerprint = JSON.stringify(state.profile || {});
+    void generatePersonalizedScene({
+      desire: anchor.title,
+      category: anchor.category || 'Wealth',
+      lang: state.lang,
+      profile: state.profile,
+      includeJourneySuite: true,
+    }).then((remote) => {
+      applyRemoteJourneySuite({
+        id: anchor.id,
+        lang: state.lang,
+        profileFingerprint,
+        remote,
+        generationEpoch,
+      });
+    }).catch(() => {
+      // The complete local 6+6 suite remains available; retry happens next launch.
+    });
+  }, [applyRemoteJourneySuite, state]);
 
   const retryLoad = useCallback(() => {
     loadStoredState();
@@ -1167,7 +1416,7 @@ export function AppProvider({ children }) {
       if (
         isKnownMinor(profile) ||
         profile.cloudPersonalization !== true ||
-        profile.cloudAdultConfirmed !== true
+        !hasCurrentAdultCloudConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(id);
         setPersonalVisualPhase(id, null);
@@ -1255,6 +1504,457 @@ export function AppProvider({ children }) {
     return task;
   }, [setPersonalVisualPhase]);
 
+  const ensureJourneyVisual = useCallback((manifestationId, rawJourneyKey, options = {}) => {
+    const id = shortText(manifestationId, 120);
+    const journeyKey = shortText(rawJourneyKey, 80);
+    if (!id || !JOURNEY_VISUAL_KEYS.has(journeyKey)) {
+      return Promise.resolve({ ok: false, error: 'journey_item_not_found' });
+    }
+
+    const snapshot = stateRef.current || initialState();
+    const manifestation = snapshot.manifestations.find((entry) => entry.id === id);
+    const lang = options.lang === 'en' || options.lang === 'pt' ? options.lang : snapshot.lang;
+    const item = journeyItemForManifestation(manifestation, journeyKey, lang);
+    const statusId = journeyVisualStatusKey(id, journeyKey);
+    if (!manifestation || !item) {
+      setPersonalVisualPhase(statusId, null);
+      return Promise.resolve({ ok: false, error: 'journey_item_not_found' });
+    }
+
+    const fingerprint = journeyVisualFingerprint(manifestation, item, lang);
+    const running = personalVisualRequestsRef.current.get(statusId);
+    if (running) {
+      if (running.fingerprint === fingerprint) return running.promise;
+      return running.promise.then(() => ensureJourneyVisual(id, journeyKey, options));
+    }
+
+    const force = options.force === true;
+    const previousFailure = personalVisualFailuresRef.current.get(statusId);
+    if (
+      !force &&
+      previousFailure &&
+      previousFailure.fingerprint === fingerprint &&
+      previousFailure.retryAt > Date.now()
+    ) {
+      setPersonalVisualPhase(statusId, {
+        phase: 'error',
+        error: previousFailure.error,
+        stage: previousFailure.stage || 'unknown',
+        retryAt: previousFailure.retryAt,
+        fingerprint,
+      });
+      return Promise.resolve({
+        ok: false,
+        error: 'visual_backoff',
+        retryAt: previousFailure.retryAt,
+      });
+    }
+
+    const generationEpoch = generationEpochRef.current;
+    const profile = {
+      ...(snapshot.profile || {}),
+      ...(manifestation.anchorAnswers || {}),
+      ...(options.profile && typeof options.profile === 'object' ? options.profile : {}),
+    };
+    const mood = shortText(options.mood, 40) || snapshot.mood;
+
+    const fail = (error) => {
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      const errorCode = personalVisualErrorCode(error);
+      const errorStage = personalVisualErrorStage(error);
+      const lastFailure = personalVisualFailuresRef.current.get(statusId);
+      const attempt =
+        lastFailure && lastFailure.fingerprint === fingerprint ? lastFailure.attempt + 1 : 1;
+      const retryAt = Date.now() + personalVisualRetryDelay(attempt);
+      personalVisualFailuresRef.current.set(statusId, {
+        attempt,
+        error: errorCode,
+        stage: errorStage,
+        retryAt,
+        fingerprint,
+      });
+      setPersonalVisualPhase(statusId, {
+        phase: 'error',
+        error: errorCode,
+        stage: errorStage,
+        retryAt,
+        fingerprint,
+      });
+      return { ok: false, error: errorCode, retryAt };
+    };
+
+    const task = (async () => {
+      const existingReceipt = manifestation.journeyVisuals?.[journeyKey];
+      const existingKey = existingReceipt?.cacheKey;
+      if (existingKey) {
+        if (existingReceipt.contentFingerprint !== fingerprint) {
+          setState((currentState) => {
+            if (!currentState) return currentState;
+            const index = currentState.manifestations.findIndex((entry) => entry.id === id);
+            if (index < 0) return currentState;
+            const manifestations = [...currentState.manifestations];
+            const journeyVisuals = { ...(manifestations[index].journeyVisuals || {}) };
+            if (journeyVisuals[journeyKey]?.cacheKey !== existingKey) return currentState;
+            delete journeyVisuals[journeyKey];
+            manifestations[index] = { ...manifestations[index], journeyVisuals };
+            return { ...currentState, manifestations };
+          });
+          void deletePersonalVisual(existingKey).catch(() => {});
+        } else {
+          let resource;
+          try {
+            resource = await acquirePersonalVisual(existingKey);
+          } catch (error) {
+            return fail(error);
+          }
+          if (resource) {
+            try {
+              resource.release();
+            } catch (_error) {
+              // Releasing an object URL is best effort.
+            }
+            personalVisualFailuresRef.current.delete(statusId);
+            setPersonalVisualPhase(statusId, null);
+            return { ok: true, status: 'ready', cacheKey: existingKey };
+          }
+
+          setState((currentState) => {
+            if (!currentState) return currentState;
+            const index = currentState.manifestations.findIndex((entry) => entry.id === id);
+            if (
+              index < 0 ||
+              currentState.manifestations[index].journeyVisuals?.[journeyKey]?.cacheKey !== existingKey
+            ) {
+              return currentState;
+            }
+            const manifestations = [...currentState.manifestations];
+            const journeyVisuals = { ...(manifestations[index].journeyVisuals || {}) };
+            delete journeyVisuals[journeyKey];
+            manifestations[index] = { ...manifestations[index], journeyVisuals };
+            return { ...currentState, manifestations };
+          });
+          void deletePersonalVisual(existingKey).catch(() => {});
+        }
+      }
+
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      if (
+        isKnownMinor(profile) ||
+        profile.cloudPersonalization !== true ||
+        !hasCurrentAdultCloudConsent(profile)
+      ) {
+        personalVisualFailuresRef.current.delete(statusId);
+        setPersonalVisualPhase(statusId, null);
+        return { ok: false, error: 'visual_consent_required' };
+      }
+
+      setPersonalVisualPhase(statusId, { phase: 'pending', fingerprint });
+      const purpose = journeyKey.startsWith('vision:') ? 'vision' : 'affirmation';
+      let visual;
+      try {
+        visual = await generatePersonalizedVisual({
+          desire: manifestation.title,
+          category: item.category,
+          lang,
+          profile,
+          visualMood: personalVisualMood(mood, item.category),
+          purpose,
+          visualBrief: item.visualBrief,
+          compositionVariant: journeyCompositionVariant(journeyKey),
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const cacheKey = createPersonalVisualCacheKey(`${id}-${purpose}-${item.category}`);
+      try {
+        await savePersonalVisual({
+          cacheKey,
+          base64: visual.image.data,
+          mimeType: visual.image.mimeType,
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const latestManifestation = stateRef.current?.manifestations?.find((entry) => entry.id === id);
+      const latestItem = journeyItemForManifestation(latestManifestation, journeyKey, lang);
+      if (
+        !mountedRef.current ||
+        generationEpoch !== generationEpochRef.current ||
+        !latestManifestation ||
+        !latestItem ||
+        journeyVisualFingerprint(latestManifestation, latestItem, lang) !== fingerprint
+      ) {
+        void deletePersonalVisual(cacheKey).catch(() => {});
+        return { ok: false, error: 'visual_cancelled' };
+      }
+
+      const visualMood = personalVisualMood(mood, item.category);
+      const sourceFields = personalVisualSourceFields(profile);
+      setState((currentState) => {
+        if (!currentState || generationEpoch !== generationEpochRef.current) return currentState;
+        const index = currentState.manifestations.findIndex((entry) => entry.id === id);
+        if (index < 0) return currentState;
+        const currentManifestation = currentState.manifestations[index];
+        const currentItem = journeyItemForManifestation(currentManifestation, journeyKey, lang);
+        if (
+          !currentItem ||
+          journeyVisualFingerprint(currentManifestation, currentItem, lang) !== fingerprint
+        ) {
+          return currentState;
+        }
+        const manifestations = [...currentState.manifestations];
+        manifestations[index] = {
+          ...currentManifestation,
+          journeyVisuals: {
+            ...(currentManifestation.journeyVisuals || {}),
+            [journeyKey]: {
+              cacheKey,
+              mimeType: 'image/jpeg',
+              aspectRatio: '4:5',
+              model: visual.generation.model,
+              promptVersion: visual.generation.promptVersion,
+              visualMood,
+              contentFingerprint: fingerprint,
+              sourceFields,
+              createdAt: new Date().toISOString(),
+            },
+          },
+        };
+        return { ...currentState, manifestations };
+      });
+      personalVisualFailuresRef.current.delete(statusId);
+      setPersonalVisualPhase(statusId, null);
+      return { ok: true, status: 'generated', cacheKey };
+    })().catch(fail);
+
+    const tracked = { promise: task, fingerprint };
+    personalVisualRequestsRef.current.set(statusId, tracked);
+    const release = () => {
+      if (personalVisualRequestsRef.current.get(statusId) === tracked) {
+        personalVisualRequestsRef.current.delete(statusId);
+      }
+    };
+    task.then(release, release);
+    return task;
+  }, [setPersonalVisualPhase]);
+
+  const ensureDreamVisual = useCallback((entryId, options = {}) => {
+    const id = shortText(entryId, 160);
+    if (!id) return Promise.resolve({ ok: false, error: 'dream_not_found' });
+    const snapshot = stateRef.current || initialState();
+    const entry = snapshot.morningRitual?.entries?.find((item) => item.id === id);
+    const statusId = dreamVisualStatusKey(id);
+    if (!entry) {
+      setPersonalVisualPhase(statusId, null);
+      return Promise.resolve({ ok: false, error: 'dream_not_found' });
+    }
+
+    const fingerprint = dreamVisualFingerprint(entry);
+    const running = personalVisualRequestsRef.current.get(statusId);
+    if (running) {
+      if (running.fingerprint === fingerprint) return running.promise;
+      return running.promise.then(() => ensureDreamVisual(id, options));
+    }
+    const force = options.force === true;
+    const previousFailure = personalVisualFailuresRef.current.get(statusId);
+    if (
+      !force &&
+      previousFailure &&
+      previousFailure.fingerprint === fingerprint &&
+      previousFailure.retryAt > Date.now()
+    ) {
+      setPersonalVisualPhase(statusId, {
+        phase: 'error',
+        error: previousFailure.error,
+        stage: previousFailure.stage || 'unknown',
+        retryAt: previousFailure.retryAt,
+        fingerprint,
+      });
+      return Promise.resolve({ ok: false, error: 'visual_backoff', retryAt: previousFailure.retryAt });
+    }
+
+    const generationEpoch = generationEpochRef.current;
+    const profile = snapshot.profile || {};
+    const fail = (error) => {
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      const errorCode = personalVisualErrorCode(error);
+      const errorStage = personalVisualErrorStage(error);
+      const lastFailure = personalVisualFailuresRef.current.get(statusId);
+      const attempt =
+        lastFailure && lastFailure.fingerprint === fingerprint ? lastFailure.attempt + 1 : 1;
+      const retryAt = Date.now() + personalVisualRetryDelay(attempt);
+      personalVisualFailuresRef.current.set(statusId, {
+        attempt,
+        error: errorCode,
+        stage: errorStage,
+        retryAt,
+        fingerprint,
+      });
+      setPersonalVisualPhase(statusId, {
+        phase: 'error',
+        error: errorCode,
+        stage: errorStage,
+        retryAt,
+        fingerprint,
+      });
+      return { ok: false, error: errorCode, retryAt };
+    };
+
+    const task = (async () => {
+      const existingKey = entry.visual?.cacheKey;
+      if (existingKey) {
+        if (entry.visual.contentFingerprint !== fingerprint) {
+          setState((currentState) => ({
+            ...currentState,
+            morningRitual: {
+              ...currentState.morningRitual,
+              entries: (currentState.morningRitual?.entries || []).map((item) =>
+                item.id === id && item.visual?.cacheKey === existingKey
+                  ? { ...item, visual: null }
+                  : item
+              ),
+            },
+          }));
+          void deletePersonalVisual(existingKey).catch(() => {});
+        } else {
+          let resource;
+          try {
+            resource = await acquirePersonalVisual(existingKey);
+          } catch (error) {
+            return fail(error);
+          }
+          if (resource) {
+            try {
+              resource.release();
+            } catch (_error) {
+              // Releasing an object URL is best effort.
+            }
+            personalVisualFailuresRef.current.delete(statusId);
+            setPersonalVisualPhase(statusId, null);
+            return { ok: true, status: 'ready', cacheKey: existingKey };
+          }
+
+          setState((currentState) => ({
+            ...currentState,
+            morningRitual: {
+              ...currentState.morningRitual,
+              entries: (currentState.morningRitual?.entries || []).map((item) =>
+                item.id === id && item.visual?.cacheKey === existingKey
+                  ? { ...item, visual: null }
+                  : item
+              ),
+            },
+          }));
+          void deletePersonalVisual(existingKey).catch(() => {});
+        }
+      }
+
+      if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
+        return { ok: false, error: 'visual_cancelled' };
+      }
+      if (
+        isKnownMinor(profile) ||
+        profile.cloudPersonalization !== true ||
+        !hasCurrentAdultCloudConsent(profile)
+      ) {
+        personalVisualFailuresRef.current.delete(statusId);
+        setPersonalVisualPhase(statusId, null);
+        return { ok: false, error: 'visual_consent_required' };
+      }
+
+      const category = dreamVisualCategory(entry.theme);
+      const lang = entry.lang === 'en' ? 'en' : 'pt';
+      const visualBrief = lang === 'en'
+        ? `Create a hopeful editorial image from this safe reflection only: ${entry.reflection}. Do not reconstruct the original dream.`
+        : `Crie uma imagem editorial esperançosa apenas a partir desta reflexão segura: ${entry.reflection}. Não reconstrua o sonho original.`;
+      setPersonalVisualPhase(statusId, { phase: 'pending', fingerprint });
+      let visual;
+      try {
+        visual = await generatePersonalizedVisual({
+          desire: entry.affirmation,
+          category,
+          lang,
+          profile,
+          visualMood: personalVisualMood(snapshot.mood, category),
+          purpose: 'dream',
+          visualBrief,
+          compositionVariant: parseInt(compactFingerprint(id), 36) % 12,
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const cacheKey = createPersonalVisualCacheKey(`${id}-dream`);
+      try {
+        await savePersonalVisual({
+          cacheKey,
+          base64: visual.image.data,
+          mimeType: visual.image.mimeType,
+        });
+      } catch (error) {
+        return fail(error);
+      }
+
+      const latestEntry = stateRef.current?.morningRitual?.entries?.find((item) => item.id === id);
+      if (
+        !mountedRef.current ||
+        generationEpoch !== generationEpochRef.current ||
+        !latestEntry ||
+        dreamVisualFingerprint(latestEntry) !== fingerprint
+      ) {
+        void deletePersonalVisual(cacheKey).catch(() => {});
+        return { ok: false, error: 'visual_cancelled' };
+      }
+
+      const visualMood = personalVisualMood(snapshot.mood, category);
+      setState((currentState) => ({
+        ...currentState,
+        morningRitual: {
+          ...currentState.morningRitual,
+          entries: (currentState.morningRitual?.entries || []).map((item) =>
+            item.id === id && dreamVisualFingerprint(item) === fingerprint
+              ? {
+                  ...item,
+                  visual: {
+                    cacheKey,
+                    mimeType: 'image/jpeg',
+                    aspectRatio: '4:5',
+                    model: visual.generation.model,
+                    promptVersion: visual.generation.promptVersion,
+                    visualMood,
+                    contentFingerprint: fingerprint,
+                    sourceFields: personalVisualSourceFields(profile),
+                    createdAt: new Date().toISOString(),
+                  },
+                }
+              : item
+          ),
+        },
+      }));
+      personalVisualFailuresRef.current.delete(statusId);
+      setPersonalVisualPhase(statusId, null);
+      return { ok: true, status: 'generated', cacheKey };
+    })().catch(fail);
+
+    const tracked = { promise: task, fingerprint };
+    personalVisualRequestsRef.current.set(statusId, tracked);
+    const release = () => {
+      if (personalVisualRequestsRef.current.get(statusId) === tracked) {
+        personalVisualRequestsRef.current.delete(statusId);
+      }
+    };
+    task.then(release, release);
+    return task;
+  }, [setPersonalVisualPhase]);
+
   const addManifestation = useCallback(async (data) => {
     const generationEpoch = generationEpochRef.current;
     const snapshot = stateRef.current || initialState();
@@ -1269,8 +1969,20 @@ export function AppProvider({ children }) {
     };
 
     const id = `m-${Date.now()}`;
+    const isAnchor =
+      data.origin === 'onboarding-anchor' ||
+      (!snapshot.anchorSceneId && snapshot.manifestations.length === 0);
+    const journeySuiteByLang = buildPersonalJourneySuites({
+      desire: data.title,
+      profile,
+      originLang: lang,
+    });
     const item = {
       id,
+      origin: isAnchor ? 'onboarding-anchor' : 'manifestation',
+      anchorAnswers: isAnchor ? sanitizeAnchorAnswers(profile) : {},
+      journeySuiteByLang,
+      journeyVisuals: {},
       title: data.title,
       category: data.category || 'Wealth',
       accent: typeof data.accent === 'number' ? data.accent : 0,
@@ -1298,7 +2010,11 @@ export function AppProvider({ children }) {
       // The app language may have changed between the final answer and this
       // state update. Insert the item in the language that is active now.
       const visibleItem = localizeManifestation(bilingualItem, profile, s.lang);
-      return { ...s, manifestations: [visibleItem, ...s.manifestations] };
+      return {
+        ...s,
+        anchorSceneId: isAnchor ? id : s.anchorSceneId,
+        manifestations: [visibleItem, ...s.manifestations],
+      };
     });
 
     setTimeout(() => {
@@ -1312,7 +2028,7 @@ export function AppProvider({ children }) {
     const canUseCloud =
       !isKnownMinor(profile) &&
       profile.cloudPersonalization === true &&
-      profile.cloudAdultConfirmed === true;
+      hasCurrentAdultCloudConsent(profile);
     if (canUseCloud) {
       // The hydration upgrade effect sees the local item in the next render.
       // Mark this epoch before it can start a duplicate paid request.
@@ -1331,6 +2047,7 @@ export function AppProvider({ children }) {
         category: data.category || 'Wealth',
         lang,
         profile,
+        includeJourneySuite: isAnchor,
       }).then((remote) => {
         applyRemoteSceneUpgrade({
           id,
@@ -1440,7 +2157,7 @@ export function AppProvider({ children }) {
     if (
       isKnownMinor(snapshot.profile) ||
       snapshot.profile?.cloudPersonalization !== true ||
-      snapshot.profile?.cloudAdultConfirmed !== true
+      !hasCurrentAdultCloudConsent(snapshot.profile)
     ) {
       return { ok: false, error: 'cloud_consent_required' };
     }
@@ -1568,8 +2285,16 @@ export function AppProvider({ children }) {
       void deletePersonalVisual(saved.visual.cacheKey).catch(() => {});
     }
     if (changesVisualSubject) {
+      Object.values(saved.journeyVisuals || {}).forEach((receipt) => {
+        if (receipt?.cacheKey) void deletePersonalVisual(receipt.cacheKey).catch(() => {});
+      });
       personalVisualFailuresRef.current.delete(id);
       setPersonalVisualPhase(id, null);
+      JOURNEY_VISUAL_KEYS.forEach((journeyKey) => {
+        const statusId = journeyVisualStatusKey(id, journeyKey);
+        personalVisualFailuresRef.current.delete(statusId);
+        setPersonalVisualPhase(statusId, null);
+      });
     }
     setState((s) => ({
       ...s,
@@ -1578,7 +2303,33 @@ export function AppProvider({ children }) {
         const itemChangesVisualSubject =
           Object.prototype.hasOwnProperty.call(patch, 'title') &&
           shortText(patch.title, 160) !== shortText(m.title, 160);
-        const next = { ...m, ...patch, ...(itemChangesVisualSubject ? { visual: null } : {}) };
+        const journeyOriginLang = m.journeySuiteByLang?.originLang === 'en'
+          ? 'en'
+          : m.journeySuiteByLang?.originLang === 'pt'
+          ? 'pt'
+          : m.lang === 'en'
+          ? 'en'
+          : 'pt';
+        const journeyOriginTitle = journeyOriginLang === m.lang
+          ? patch.title
+          : m.contentByLang?.[journeyOriginLang]?.title || m.title;
+        const next = {
+          ...m,
+          ...patch,
+          ...(itemChangesVisualSubject
+            ? {
+                visual: null,
+                journeyVisuals: {},
+                journeySuiteByLang: buildPersonalJourneySuites({
+                  desire: journeyOriginTitle,
+                  profile: Object.keys(m.anchorAnswers || {}).length
+                    ? { ...(s.profile || {}), ...m.anchorAnswers }
+                    : s.profile,
+                  originLang: journeyOriginLang,
+                }),
+              }
+            : {}),
+        };
         const contentFields = [
           'title',
           'intention',
@@ -1663,19 +2414,47 @@ export function AppProvider({ children }) {
   }, []);
 
   const removeManifestation = useCallback((id) => {
-    const visualKey = stateRef.current?.manifestations?.find((item) => item.id === id)?.visual
-      ?.cacheKey;
+    const removedManifestation = stateRef.current?.manifestations?.find((item) => item.id === id);
+    const visualKey = removedManifestation?.visual?.cacheKey;
     if (visualKey) void deletePersonalVisual(visualKey).catch(() => {});
+    Object.values(removedManifestation?.journeyVisuals || {}).forEach((receipt) => {
+      if (receipt?.cacheKey) void deletePersonalVisual(receipt.cacheKey).catch(() => {});
+    });
     personalVisualFailuresRef.current.delete(id);
     setPersonalVisualPhase(id, null);
+    JOURNEY_VISUAL_KEYS.forEach((journeyKey) => {
+      const statusId = journeyVisualStatusKey(id, journeyKey);
+      personalVisualFailuresRef.current.delete(statusId);
+      setPersonalVisualPhase(statusId, null);
+    });
     setState((s) => {
-      const alarmId = `manifestation:${id}`;
-      const usedAsAlarm = s.morningRitual?.wakeAffirmationId === alarmId;
+      const affirmationPrefix = `${id}:affirmation:`;
+      const visionPrefix = `${id}:vision:`;
+      const usedAsAlarm = String(s.morningRitual?.wakeAffirmationId || '').startsWith(
+        affirmationPrefix
+      );
+      const remainingManifestations = s.manifestations.filter((m) => m.id !== id);
+      const nextAnchor = s.anchorSceneId === id
+        ? remainingManifestations.find((item) => item.origin === 'onboarding-anchor') ||
+          remainingManifestations[remainingManifestations.length - 1] ||
+          null
+        : null;
       return {
         ...s,
-        manifestations: s.manifestations.filter((m) => m.id !== id),
+        anchorSceneId: s.anchorSceneId === id ? nextAnchor?.id || null : s.anchorSceneId,
+        manifestations: remainingManifestations.map((item) =>
+          nextAnchor && item.id === nextAnchor.id
+            ? { ...item, origin: 'onboarding-anchor' }
+            : item
+        ),
         favoriteAffirmations: s.favoriteAffirmations.filter(
-          (favoriteId) => favoriteId !== alarmId
+          (favoriteId) => !String(favoriteId).startsWith(affirmationPrefix)
+        ),
+        savedVisions: s.savedVisions.filter(
+          (visionId) => !String(visionId).startsWith(visionPrefix)
+        ),
+        visionPlays: s.visionPlays.filter(
+          (play) => !String(play?.visionId || '').startsWith(visionPrefix)
         ),
         ...(usedAsAlarm
           ? {
@@ -1940,6 +2719,12 @@ export function AppProvider({ children }) {
     const reflection = shortText(data.reflection, 800);
     const dreamAnchor = shortText(data.dreamAnchor, 120);
     const lang = data.lang === 'en' ? 'en' : 'pt';
+    const requestedReplacementId = shortText(data && data.replaceId, 160);
+    const existingEntry = requestedReplacementId
+      ? (stateRef.current?.morningRitual?.entries || []).find(
+          (entry) => entry.id === requestedReplacementId
+        ) || null
+      : null;
     const signature = JSON.stringify({ dream, affirmation, feeling, theme, reflection, dreamAnchor, lang });
     const nowMs = Date.now();
     const previous = lastDreamSaveRef.current;
@@ -1952,7 +2737,7 @@ export function AppProvider({ children }) {
     }
 
     const now = new Date(nowMs).toISOString();
-    const id = `dream-${nowMs}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = existingEntry?.id || `dream-${nowMs}-${Math.random().toString(36).slice(2, 7)}`;
     lastDreamSaveRef.current = {
       epoch: generationEpochRef.current,
       signature,
@@ -1977,16 +2762,23 @@ export function AppProvider({ children }) {
         'dream-local-v2'
       ),
       lang,
-      createdAt: now,
-      practiceCount: 0,
-      lastPracticedAt: null,
-      useInLivingMirror: false,
+      createdAt: existingEntry?.createdAt || now,
+      practiceCount: Number(existingEntry?.practiceCount) || 0,
+      lastPracticedAt: existingEntry?.lastPracticedAt || null,
+      useInLivingMirror: existingEntry?.useInLivingMirror === true,
+      ...(existingEntry?.visual ? { visual: existingEntry.visual } : {}),
     };
     setState((s) => {
       const ritual = s.morningRitual || initialState().morningRitual;
+      const entries = ritual.entries || [];
       return {
         ...s,
-        morningRitual: { ...ritual, entries: [item, ...(ritual.entries || [])].slice(0, 90) },
+        morningRitual: {
+          ...ritual,
+          entries: existingEntry
+            ? entries.map((entry) => (entry.id === id ? item : entry))
+            : [item, ...entries].slice(0, 90),
+        },
       };
     });
     return id;
@@ -2036,6 +2828,13 @@ export function AppProvider({ children }) {
   const removeDreamRitual = useCallback((id) => {
     const target = shortText(id, 160);
     if (!target) return;
+    const visualKey = stateRef.current?.morningRitual?.entries?.find(
+      (entry) => entry.id === target
+    )?.visual?.cacheKey;
+    if (visualKey) void deletePersonalVisual(visualKey).catch(() => {});
+    const statusId = dreamVisualStatusKey(target);
+    personalVisualFailuresRef.current.delete(statusId);
+    setPersonalVisualPhase(statusId, null);
     if (lastDreamSaveRef.current.id === target) {
       lastDreamSaveRef.current = { epoch: -1, signature: '', id: null, at: 0 };
     }
@@ -2059,7 +2858,7 @@ export function AppProvider({ children }) {
         },
       };
     });
-  }, []);
+  }, [setPersonalVisualPhase]);
 
   const exportStateJson = useCallback(async () => {
     if (
@@ -2087,9 +2886,20 @@ export function AppProvider({ children }) {
       data: {
         state: {
           ...(stateRef.current || initialState()),
+          profile: stripCloudConsentProfile((stateRef.current || initialState()).profile),
           manifestations: ((stateRef.current || initialState()).manifestations || []).map(
-            ({ visual: _deviceOnlyVisual, ...manifestation }) => manifestation
+            ({
+              visual: _deviceOnlyVisual,
+              journeyVisuals: _deviceOnlyJourneyVisuals,
+              ...manifestation
+            }) => manifestation
           ),
+          morningRitual: {
+            ...((stateRef.current || initialState()).morningRitual || {}),
+            entries: (((stateRef.current || initialState()).morningRitual || {}).entries || []).map(
+              ({ visual: _deviceOnlyDreamVisual, ...entry }) => entry
+            ),
+          },
         },
         communityStories,
       },
@@ -2109,16 +2919,17 @@ export function AppProvider({ children }) {
     const backup = decodeBackupPayload(str);
     if (backup.error) return { ok: false, erro: backup.error };
     const restored = mergeDefensivo(backup.state);
-    restored.manifestations = restored.manifestations.map(({ visual: _visual, ...item }) => item);
-    // Consentimento para enviar respostas ao Gemini pertence a este aparelho e
-    // a esta instalação. Um arquivo de backup nunca pode reativá-lo sozinho.
-    restored.profile = {
-      ...(restored.profile || {}),
-      cloudPersonalization: false,
-      cloudAdultConfirmed: false,
-      cloudNarrationConsent: false,
-      cloudDreamConsent: false,
-    };
+    restored.manifestations = restored.manifestations.map(({
+      visual: _visual,
+      journeyVisuals: _journeyVisuals,
+      ...item
+    }) => item);
+    // Consentimento de nuvem pertence a este aparelho e a esta instalação.
+    // Mesmo um backup forjado com a versão atual precisa de novo aceite local.
+    restored.profile = normalizeCloudConsentProfile(restored.profile, {
+      knownMinor: isKnownMinor(restored.profile),
+      forceReconsent: true,
+    });
     restored.dailyRitual = {
       ...(restored.dailyRitual || initialState().dailyRitual),
       reminderEnabled: false,
@@ -2136,6 +2947,7 @@ export function AppProvider({ children }) {
       wakeSoundSource: null,
       entries: (restored.morningRitual?.entries || []).map((entry) => ({
         ...entry,
+        visual: null,
         useInLivingMirror: false,
       })),
     };
@@ -2254,17 +3066,10 @@ export function AppProvider({ children }) {
   // ── Onboarding ────────────────────────────────────────────────────────────
   const saveProfile = useCallback((patch) => {
     setState((s) => {
-      const profile = { ...(s.profile || {}), ...(patch || {}) };
-      if (isKnownMinor(profile) || profile.cloudAdultConfirmed !== true) {
-        profile.cloudPersonalization = false;
-        profile.cloudAdultConfirmed = false;
-        profile.cloudNarrationConsent = false;
-        profile.cloudDreamConsent = false;
-      } else {
-        profile.cloudPersonalization = profile.cloudPersonalization === true;
-        profile.cloudNarrationConsent = profile.cloudNarrationConsent === true;
-        profile.cloudDreamConsent = profile.cloudDreamConsent === true;
-      }
+      const candidate = { ...(s.profile || {}), ...(patch || {}) };
+      const profile = normalizeCloudConsentProfile(candidate, {
+        knownMinor: isKnownMinor(candidate),
+      });
       return {
         ...s,
         profile,
@@ -2328,7 +3133,7 @@ export function AppProvider({ children }) {
       !snapshot ||
       isKnownMinor(snapshot.profile) ||
       snapshot.profile.cloudPersonalization !== true ||
-      snapshot.profile.cloudAdultConfirmed !== true
+      !hasCurrentAdultCloudConsent(snapshot.profile)
     ) {
       return;
     }
@@ -2351,7 +3156,7 @@ export function AppProvider({ children }) {
         latest.lang !== nextLang ||
         isKnownMinor(latest.profile) ||
         latest.profile.cloudPersonalization !== true ||
-        latest.profile.cloudAdultConfirmed !== true
+        !hasCurrentAdultCloudConsent(latest.profile)
       ) {
         return;
       }
@@ -2409,6 +3214,8 @@ export function AppProvider({ children }) {
       derived,
       addManifestation,
       ensurePersonalVisual,
+      ensureJourneyVisual,
+      ensureDreamVisual,
       updateManifestation,
       addEvidence,
       updateEvidence,
@@ -2454,6 +3261,8 @@ export function AppProvider({ children }) {
       derived,
       addManifestation,
       ensurePersonalVisual,
+      ensureJourneyVisual,
+      ensureDreamVisual,
       updateManifestation,
       addEvidence,
       updateEvidence,

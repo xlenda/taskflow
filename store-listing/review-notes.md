@@ -10,8 +10,11 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 ## Conteudo personalizado
 
 - A Celeste funciona sem personalizacao em nuvem por meio do gerador local.
-- Gemini so e usado depois de confirmacao adulta e consentimento explicito por finalidade.
-- Cena, sonho e narracao possuem consentimentos separados.
+- Os textos de cenas usam Anthropic, com OpenAI somente como failover; traducoes,
+  imagens e interpretacoes de sonhos usam Google Gemini; narracoes usam ElevenLabs.
+- Esses processadores so sao usados depois de confirmacao adulta e consentimento
+  explicito para a finalidade correspondente.
+- Cena, sonho e narracao possuem permissoes separadas.
 - O app nao apresenta afirmacoes ou sonhos como previsao, diagnostico ou garantia.
 
 ## Dados locais

@@ -4,6 +4,7 @@ const path = require('path');
 const test = require('node:test');
 
 const endpoint = require('../api/gerar-cena');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const ENV_KEYS = [
   'GEMINI_API_KEY',
@@ -20,10 +21,20 @@ function loadClientModule() {
     path.join(__dirname, '..', 'services', 'generatePersonalizedScene.js'),
     'utf8'
   );
-  const executable = source.replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
+  const executable = source
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/constants\/cloudConsent['"];?/, '')
+    .replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
+  const consent = require('../constants/cloudConsent');
   return Function(
+    'CLOUD_CONSENT_VERSION',
+    'hasCurrentAdultCloudConsent',
+    'hasCurrentCloudConsentVersion',
     `${executable}\nreturn { minimizeProfile, profileConfirmsAdult, generatePersonalizedScene };`
-  )();
+  )(
+    consent.CLOUD_CONSENT_VERSION,
+    consent.hasCurrentAdultCloudConsent,
+    consent.hasCurrentCloudConsentVersion
+  );
 }
 
 function restoreEnvironment() {
@@ -74,9 +85,11 @@ function validBody(overrides = {}) {
       manifestingName: 'private-third-party-name-token',
       cloudPersonalization: true,
       cloudAdultConfirmed: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
       ignoredPrivateField: 'must not be forwarded',
     },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     ...overrides,
   };
@@ -302,6 +315,35 @@ test('Gemini scene API contract', async (t) => {
     assert.strictEqual(calls, 0);
   });
 
+  await t.test('client never upgrades legacy boolean consent without the current version', async () => {
+    const { generatePersonalizedScene, profileConfirmsAdult } = loadClientModule();
+    let calls = 0;
+    const legacyProfile = {
+      ...validBody().profile,
+      cloudConsentVersion: undefined,
+      cloudPersonalization: true,
+      cloudAdultConfirmed: true,
+      cloudNarrationConsent: true,
+      cloudDreamConsent: true,
+    };
+
+    assert.strictEqual(profileConfirmsAdult(legacyProfile), false);
+    await assert.rejects(
+      generatePersonalizedScene({
+        desire: validBody().desire,
+        category: validBody().category,
+        lang: validBody().lang,
+        profile: legacyProfile,
+        fetchImpl: async () => {
+          calls += 1;
+          throw new Error('must not run');
+        },
+      }),
+      /cloud_consent_required/
+    );
+    assert.strictEqual(calls, 0);
+  });
+
   await t.test('onboarding and Profile persist the same explicit adult-consent field', () => {
     const flowSource = fs.readFileSync(
       path.join(__dirname, '..', 'screens', 'onboarding', 'flow.js'),
@@ -425,11 +467,29 @@ test('Gemini scene API contract', async (t) => {
 
   await t.test('requires a JSON object, consent, adult confirmation, and valid fields', async () => {
     configure();
+    let providerCalls = 0;
+    let quotaCalls = 0;
+    global.fetch = async () => {
+      providerCalls += 1;
+      return { ok: true, status: 200, json: async () => generatedPayload() };
+    };
+    endpoint._internals.setPaidAccessAuthorizerForTests(async () => {
+      quotaCalls += 1;
+      return { ok: true, userId: '00000000-0000-4000-8000-000000000001' };
+    });
     let res = await invoke(request(null));
     assert.strictEqual(res.statusCode, 400);
     assert.strictEqual(res.body.error, 'invalid_request');
 
     res = await invoke(request(validBody({ cloudConsent: false })));
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.body.error, 'cloud_consent_required');
+
+    res = await invoke(request(validBody({ cloudConsentVersion: undefined })));
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.body.error, 'cloud_consent_required');
+
+    res = await invoke(request(validBody({ cloudConsentVersion: 'legacy-version' })));
     assert.strictEqual(res.statusCode, 403);
     assert.strictEqual(res.body.error, 'cloud_consent_required');
 
@@ -451,6 +511,8 @@ test('Gemini scene API contract', async (t) => {
     res = await invoke(request(validBody({ profile: [] })));
     assert.strictEqual(res.statusCode, 400);
     assert.strictEqual(res.body.error, 'profile_invalid');
+    assert.strictEqual(providerCalls, 0);
+    assert.strictEqual(quotaCalls, 0, 'invalid input and consent must fail before quota authorization');
   });
 
   await t.test('rejects false personalization receipts and unanchored affirmations', () => {
@@ -694,7 +756,11 @@ test('Gemini scene API contract', async (t) => {
     let res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.4' } }));
     assert.strictEqual(res.statusCode, 502);
     assert.deepStrictEqual(res.body, { error: 'invalid_generation' });
-    assert.deepStrictEqual(settlements, [false], 'resposta invalida precisa liberar a reserva');
+    assert.deepStrictEqual(
+      settlements,
+      [true],
+      'uma chamada faturavel precisa consumir cota mesmo quando a resposta e invalida'
+    );
 
     global.fetch = async () => ({
       ok: true,
@@ -704,7 +770,11 @@ test('Gemini scene API contract', async (t) => {
     res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.5' } }));
     assert.strictEqual(res.statusCode, 422);
     assert.deepStrictEqual(res.body, { error: 'generation_blocked' });
-    assert.deepStrictEqual(settlements, [false, false], 'bloqueio de seguranca nao pode consumir cota');
+    assert.deepStrictEqual(
+      settlements,
+      [true, true],
+      'uma recusa faturavel nao pode devolver cota e permitir repeticao gratuita'
+    );
   });
 
   await t.test('does not start a repair when a slow invalid first attempt leaves too little budget', async () => {
@@ -809,7 +879,11 @@ test('Gemini scene API contract', async (t) => {
     let res = await invoke(request(validBody(), { headers: { 'x-forwarded-for': '10.0.0.6' } }));
     assert.strictEqual(res.statusCode, 504);
     assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
-    assert.deepStrictEqual(settlements, [false], 'timeout do provedor precisa liberar a reserva');
+    assert.deepStrictEqual(
+      settlements,
+      [true],
+      'timeout depois do despacho ao provedor precisa continuar contando na cota'
+    );
     assert.ok(!JSON.stringify(res.body).includes(process.env.GEMINI_API_KEY));
 
     delete process.env.GEMINI_TIMEOUT_MS;
@@ -821,9 +895,61 @@ test('Gemini scene API contract', async (t) => {
     assert.deepStrictEqual(res.body, { error: 'generation_unavailable' });
     assert.deepStrictEqual(
       settlements,
-      [false, false],
-      'falha de rede do provedor precisa liberar a reserva'
+      [true, true],
+      'falha depois do despacho ao provedor nao pode liberar uma tentativa faturavel'
     );
     assert.ok(!JSON.stringify(res.body).includes(process.env.GEMINI_API_KEY));
+  });
+
+  await t.test('commits quota before provider dispatch and prices the 6+6 suite separately', async () => {
+    configure();
+    const paidCalls = [];
+    const settlements = [];
+    let providerCalls = 0;
+    endpoint._internals.setPaidAccessAuthorizerForTests(async (_req, input) => {
+      paidCalls.push(input);
+      return { ok: true, userId: '00000000-0000-4000-8000-000000000001' };
+    });
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return commit
+        ? { ok: false, status: 503, error: 'spend_guard_unavailable' }
+        : { ok: true, state: 'released' };
+    });
+    global.fetch = async () => {
+      providerCalls += 1;
+      return { ok: true, status: 200, json: async () => generatedPayload() };
+    };
+
+    let res = await invoke(request(validBody()));
+    assert.strictEqual(res.statusCode, 503);
+    assert.strictEqual(providerCalls, 0, 'provedor pago nao pode iniciar sem cota confirmada');
+    assert.deepStrictEqual(paidCalls, [{ operation: 'scene', units: endpoint._internals.sceneUnits() }]);
+    assert.deepStrictEqual(settlements, [true, false]);
+
+    endpoint._internals.setPaidAccessFinalizerForTests(async (_access, { commit }) => {
+      settlements.push(commit);
+      return { ok: true, state: commit ? 'committed' : 'released' };
+    });
+    global.fetch = async () => {
+      providerCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
+      };
+    };
+    res = await invoke(request(validBody({ includeJourneySuite: true })));
+    assert.strictEqual(res.statusCode, 502);
+    assert.deepStrictEqual(paidCalls[1], {
+      operation: 'scene',
+      units: endpoint._internals.journeySuiteUnits(),
+    });
+    assert.ok(
+      endpoint._internals.journeySuiteUnits() > endpoint._internals.sceneUnits(),
+      'suite 6+6 precisa custar mais que uma cena simples'
+    );
+    assert.strictEqual(providerCalls, 2, 'reparo limitado continua dentro da mesma cota confirmada');
+    assert.strictEqual(settlements.at(-1), true);
   });
 });

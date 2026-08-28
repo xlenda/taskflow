@@ -6,6 +6,7 @@ const { transformSync } = require('@babel/core');
 
 const api = require('../api/transformar-sonho');
 const internals = api._internals;
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const ROOT = path.resolve(__dirname, '..');
 
 function loadClientModule(relativePath) {
@@ -71,8 +72,18 @@ const validBody = {
   feeling: 'curious',
   theme: 'clarity',
   lang: 'pt',
-  profile: { aboutYou: 'Sou uma pessoa cuidadosa.', whyMatters: 'Quero estar presente.' },
+  profile: {
+    aboutYou: 'Sou uma pessoa cuidadosa.',
+    whyMatters: 'Quero estar presente.',
+    desire: 'Construir uma rotina com mais liberdade.',
+    desiredFeeling: 'Calma e confiança.',
+    work: 'Designer de produto.',
+    partnerDesire: 'Reciprocidade e parceria.',
+    dreamLocation: 'Uma cidade perto do mar.',
+    dreamHome: 'Uma casa clara e tranquila.',
+  },
   cloudConsent: true,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
   adultConfirmed: true,
 };
 
@@ -82,6 +93,14 @@ assert.strictEqual(internals.knowledgeVersion, 'celeste-knowledge-v2');
 assert.deepStrictEqual(validated.value.profile, validBody.profile, 'perfil minimo foi alterado');
 assert.strictEqual(
   internals.validateInput({ ...validBody, cloudConsent: false }).error,
+  'cloud_consent_required'
+);
+assert.strictEqual(
+  internals.validateInput({ ...validBody, cloudConsentVersion: undefined }).error,
+  'cloud_consent_required'
+);
+assert.strictEqual(
+  internals.validateInput({ ...validBody, cloudConsentVersion: 'legacy-version' }).error,
   'cloud_consent_required'
 );
 assert.strictEqual(
@@ -113,12 +132,17 @@ const instructions = geminiBody.systemInstruction.parts[0].text;
 assert.match(instructions, /never a decoding, prediction/i);
 assert.match(instructions, /celeste-knowledge-v2/);
 assert.match(instructions, /first person, believable/i);
+assert.match(instructions, /Never quote, restate, summarize, paraphrase, retell/i);
+assert.match(instructions, /The dream itself is the primary source of meaning/i);
+assert.match(instructions, /broad emotional dynamic/i);
+assert.match(instructions, /The Anchor supports the interpretation; it never replaces the dream/i);
 assert.deepStrictEqual(
   internals.validateGeneratedDream({
     reflection: 'Uma possibilidade e que a calma desejada seja o ponto mais importante, sem prever nada sobre o futuro.',
     affirmation: 'Eu posso escolher um passo calmo e presente hoje.',
+    theme: 'clarity',
     basis: ['dream', 'feeling', 'theme'],
-  }).basis,
+  }, validated.value).basis,
   ['dream', 'feeling', 'theme']
 );
 assert.throws(
@@ -138,6 +162,18 @@ assert.throws(
   /invalid_generation/,
   'uma conclusao clinica continua bloqueada mesmo quando a negacao segura e permitida'
 );
+const echoedBenignDream = {
+  reflection: 'Uma possibilidade e que eu caminhava perto do mar e isso esteja pedindo calma, sem ser uma previsao.',
+  affirmation: 'Eu caminhava perto do mar e escolho seguir com calma.',
+  basis: ['dream', 'feeling', 'theme'],
+};
+assert.throws(
+  () => internals.validateGeneratedDream(echoedBenignDream, validated.value),
+  /invalid_generation/,
+  'uma recontagem benigna do relato precisa ser reparada antes de chegar ao app'
+);
+const echoEvaluation = internals.evaluateDream(echoedBenignDream, validated.value);
+assert.ok(echoEvaluation.issues.some((issue) => issue.code === 'dream_recall_echo'));
 
 const safeNightmareResponses = [
   {
@@ -188,10 +224,30 @@ for (const response of graphicNightmareEchoes) {
 
 (async () => {
   const dreamClient = loadDreamClient();
-  internals.setPaidAccessAuthorizerForTests(async () => ({
-    ok: true,
-    userId: '00000000-0000-4000-8000-000000000001',
-  }));
+  assert.strictEqual(
+    dreamClient._dreamServiceInternals.hasDreamRecallEcho(
+      validBody.dream,
+      `${echoedBenignDream.reflection} ${echoedBenignDream.affirmation}`
+    ),
+    true,
+    'o cliente nao reconheceu a recontagem devolvida pelo servidor'
+  );
+  assert.throws(
+    () => dreamClient._dreamServiceInternals.validateResponse(
+      { dream: echoedBenignDream, generation: {} },
+      { dream: validBody.dream, feeling: validBody.feeling, theme: validBody.theme }
+    ),
+    /invalid_dream_echo/,
+    'uma resposta remota com eco chegou ao contrato normalizado do app'
+  );
+  let paidAccessCalls = 0;
+  internals.setPaidAccessAuthorizerForTests(async () => {
+    paidAccessCalls += 1;
+    return {
+      ok: true,
+      userId: '00000000-0000-4000-8000-000000000001',
+    };
+  });
   let outboundDream;
   const originalDream = 'Sonhei que caminhava com Bia e Leo perto do mar.';
   const transformed = await dreamClient.transformDreamWithKnowledge({
@@ -203,8 +259,16 @@ for (const response of graphicNightmareEchoes) {
       name: 'Ana',
       people: [{ name: 'Bia' }],
       kids: [{ name: 'Leo' }],
+      aboutYou: 'Sou cuidadosa e curiosa.',
+      whyMatters: 'Estar presente para Bia e Leo.',
+      hopedChange: 'Construir uma rotina tranquila perto de Bia.',
+      work: 'Designer de produto.',
+      partnerDesire: 'Uma parceria recíproca.',
+      dreamLocation: 'Perto do mar.',
+      dreamHome: 'Uma casa clara.',
       cloudDreamConsent: true,
       cloudAdultConfirmed: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
     },
     fetchImpl: async (_url, options) => {
       outboundDream = JSON.parse(options.body);
@@ -214,6 +278,7 @@ for (const response of graphicNightmareEchoes) {
           dream: {
             reflection: 'Uma possibilidade segura para refletir.',
             affirmation: 'Eu acolho o que senti e escolho um passo presente.',
+            theme: 'clarity',
             basis: ['dream', 'feeling', 'theme'],
           },
           generation: {},
@@ -227,7 +292,14 @@ for (const response of graphicNightmareEchoes) {
   );
   assert.ok(!JSON.stringify(outboundDream).includes('Bia'));
   assert.ok(!JSON.stringify(outboundDream).includes('Leo'));
+  assert.strictEqual(outboundDream.profile.desire, 'Construir uma rotina tranquila perto de uma pessoa próxima.');
+  assert.strictEqual(outboundDream.profile.work, 'Designer de produto.');
+  assert.strictEqual(outboundDream.profile.dreamLocation, 'Perto do mar.');
+  assert.ok(!Object.hasOwn(outboundDream.profile, 'hopedChange'));
   assert.strictEqual(transformed.dream, originalDream, 'o relato privado local deve preservar o texto original');
+  assert.strictEqual(transformed.theme, 'clarity', 'o app precisa preservar o tema usado na reflexao');
+  assert.strictEqual(transformed.dreamAnchor, '', 'o contrato remoto nao pode recriar uma ancora literal');
+  assert.deepStrictEqual(transformed.usedDetails, ['dream_semantics', 'feeling', 'theme']);
 
   let res = responseMock();
   await api(request(validBody, { headers: {} }), res);
@@ -276,6 +348,18 @@ for (const response of graphicNightmareEchoes) {
   };
   try {
     res = responseMock();
+    await api(request({ ...validBody, cloudConsentVersion: undefined }), res);
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.payload.error, 'cloud_consent_required');
+
+    res = responseMock();
+    await api(request({ ...validBody, cloudConsentVersion: 'legacy-version' }), res);
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.payload.error, 'cloud_consent_required');
+    assert.strictEqual(fetchCalls, 0, 'invalid consent version must fail before Gemini');
+    assert.strictEqual(paidAccessCalls, 0, 'invalid consent version must fail before quota');
+
+    res = responseMock();
     await api(request({
       ...validBody,
       profile: {
@@ -292,7 +376,7 @@ for (const response of graphicNightmareEchoes) {
     assert.strictEqual(res.headers['referrer-policy'], 'no-referrer');
     assert.strictEqual(res.headers.vary, 'Origin');
     assert.strictEqual(res.payload.generation.source, 'gemini-dream');
-    assert.strictEqual(res.payload.generation.promptVersion, 'celeste-dream-v2');
+    assert.strictEqual(res.payload.generation.promptVersion, 'celeste-dream-v3');
     assert.strictEqual(res.payload.generation.knowledgeVersion, 'celeste-knowledge-v2');
     assert.match(res.payload.dream.affirmation, /depende de mim/);
     assert.strictEqual(fetchCalls, 1);
@@ -315,7 +399,10 @@ for (const response of graphicNightmareEchoes) {
     assert.ok(personalPayload.knowledgeCardIds.length >= 4 && personalPayload.knowledgeCardIds.length <= 8);
     assert.deepStrictEqual(
       personalPayload.personalMap.factKeys.sort(),
-      ['dreamRecall', 'selfDescription', 'userChosenTheme', 'wakingFeeling', 'whyItMatters'].sort()
+      [
+        'desire', 'desiredFeeling', 'dreamHome', 'dreamRecall', 'partnerDesire',
+        'place', 'selfDescription', 'userChosenTheme', 'wakingFeeling', 'whyItMatters', 'work',
+      ].sort()
     );
     assert.ok(!sent.options.body.includes('historico privado'));
     assert.ok(!sent.options.body.includes('identificador que nao deve'));
@@ -337,6 +424,12 @@ for (const response of graphicNightmareEchoes) {
     const invalidDreamResponse = () => ({
       ok: true,
       json: async () => ({ candidates: [{ content: { parts: [{ text: 'not-json' }] } }] }),
+    });
+    const echoedDreamResponse = () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(echoedBenignDream) }] } }],
+      }),
     });
 
     let now = 1_000;
@@ -364,7 +457,7 @@ for (const response of graphicNightmareEchoes) {
       repairRequests.push(JSON.parse(options.body));
       now += 100;
       return repairRequests.length === 1
-        ? invalidDreamResponse()
+        ? echoedDreamResponse()
         : { ok: true, json: async () => validDreamPayload() };
     };
     res = responseMock();
@@ -373,8 +466,8 @@ for (const response of graphicNightmareEchoes) {
     assert.strictEqual(repairRequests.length, 2);
     assert.match(
       repairRequests[1].systemInstruction.parts[0].text,
-      /QUALITY REPAIR FOR THIS RETRY/,
-      'a fast invalid dream must receive one repaired attempt'
+      /QUALITY REPAIR FOR THIS RETRY[\s\S]*dream_recall_echo[\s\S]*Discard the wording and narrative of the recall/,
+      'a recontagem deve receber uma tentativa de reparo especifica'
     );
 
     now = 3_000;

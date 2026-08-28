@@ -4,14 +4,27 @@ const path = require('path');
 const test = require('node:test');
 
 const endpoint = require('../api/gerar-cena');
+const consent = require('../constants/cloudConsent');
+const { CLOUD_CONSENT_VERSION } = consent;
 
 function loadClientModule() {
   const source = fs.readFileSync(
     path.join(__dirname, '..', 'services', 'generatePersonalizedScene.js'),
     'utf8'
   );
-  const executable = source.replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
-  return Function(`${executable}\nreturn { sanitizeContinuity, generatePersonalizedScene };`)();
+  const executable = source
+    .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/constants\/cloudConsent['"];?/, '')
+    .replace(/\bexport\s+(?=(?:async\s+)?function|const)/g, '');
+  return Function(
+    'CLOUD_CONSENT_VERSION',
+    'hasCurrentAdultCloudConsent',
+    'hasCurrentCloudConsentVersion',
+    `${executable}\nreturn { sanitizeContinuity, generatePersonalizedScene };`
+  )(
+    consent.CLOUD_CONSENT_VERSION,
+    consent.hasCurrentAdultCloudConsent,
+    consent.hasCurrentCloudConsentVersion
+  );
 }
 
 function baseBody(overrides = {}) {
@@ -21,6 +34,7 @@ function baseBody(overrides = {}) {
     lang: 'pt',
     profile: { name: 'Ana', work: 'designer de produto' },
     cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
     ...overrides,
   };
@@ -122,6 +136,7 @@ test('Espelho Vivo scene continuity contract', async (t) => {
         work: 'designer',
         cloudPersonalization: true,
         cloudAdultConfirmed: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
       },
       continuity: continuity({
         latestDreamTheme: 'private-dream-theme',

@@ -16,10 +16,10 @@ import { Screen, Header, EmptyState, pct } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { categoryMeta } from '../constants/content';
-import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { accentAt, alpha } from '../utils/colors';
+import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
@@ -55,6 +55,8 @@ const S = {
     en: 'The narration did not play here. Read your personal story below at your own pace.',
     pt: 'A narração não tocou aqui. Leia sua história pessoal abaixo no seu ritmo.',
   },
+  visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
+  visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   missingTitle: { en: 'This vision is no longer here', pt: 'Esta visão não está mais aqui' },
   missingBody: {
     en: 'It may have been removed. Return to your personal visions to choose another one.',
@@ -78,42 +80,34 @@ const splitNarration = (text) =>
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 
-function toPersonalVision(item, fallbackLang) {
-  if (!item || typeof item !== 'object' || !item.id) return null;
-  const itemLang = item.lang === 'en' || item.lang === 'pt' ? item.lang : fallbackLang;
-  const title = String(txt(item.title, itemLang) || '').trim();
-  const story = String(txt(item.story, itemLang) || '').trim();
-  if (!title || !story) return null;
-  return {
-    id: String(item.id),
-    title,
-    story,
-    category: item.category || 'Wealth',
-    accent: Number.isInteger(item.accent) ? item.accent : categoryMeta(item.category).accent,
-    lang: itemLang,
-    visualKey: item.visual && item.visual.cacheKey,
-  };
-}
-
 export default function VisionPlayerScreen() {
   const th = useTheme();
   const { t, lang } = useT();
   const navigation = useNavigation();
   const route = useRoute();
-  const { state, loading, toggleSavedVision, logVisionPlay } = useApp();
+  const {
+    state,
+    loading,
+    toggleSavedVision,
+    logVisionPlay,
+    personalVisualStatus,
+    ensureJourneyVisual,
+  } = useApp();
 
   const routeId =
     typeof route.params?.visionId === 'string' && route.params.visionId.trim()
       ? route.params.visionId
       : null;
-  const source = useMemo(
-    () =>
-      routeId && state && Array.isArray(state.manifestations)
-        ? state.manifestations.find((item) => item && item.id === routeId) || null
-        : null,
-    [routeId, state && state.manifestations]
+  const vision = useMemo(
+    () => personalJourneyItemsForState(state, 'vision', lang)
+      .find((item) => item.id === routeId) || null,
+    [lang, routeId, state]
   );
-  const vision = useMemo(() => toPersonalVision(source, lang), [source, lang]);
+
+  useEffect(() => {
+    if (!vision) return;
+    void ensureJourneyVisual(vision.manifestationId, vision.key, { lang: vision.lang });
+  }, [ensureJourneyVisual, vision?.id, vision?.lang]);
 
   const backToVisions = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -158,6 +152,14 @@ export default function VisionPlayerScreen() {
       navigation={navigation}
       toggleSavedVision={toggleSavedVision}
       logVisionPlay={logVisionPlay}
+      visualStatus={personalVisualStatus[vision.visualStatusKey]}
+      onRetryVisual={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        void ensureJourneyVisual(vision.manifestationId, vision.key, {
+          force: true,
+          lang: vision.lang,
+        });
+      }}
     />
   );
 }
@@ -168,6 +170,8 @@ function PersonalVisionPlayer({
   navigation,
   toggleSavedVision,
   logVisionPlay,
+  visualStatus,
+  onRetryVisual,
 }) {
   const th = useTheme();
   const { t } = useT();
@@ -513,6 +517,34 @@ function PersonalVisionPlayer({
           ) : null}
         </GradientCover>
 
+        {visualStatus?.phase === 'pending' ? (
+          <View
+            testID="vision-player-personal-visual-pending"
+            accessibilityLiveRegion="polite"
+            style={styles.visualStatusRow}
+          >
+            <ActivityIndicator size="small" color={color} />
+            <Text style={[styles.visualStatusText, { color: th.textMuted }]}>
+              {t(S.visualPreparing)}
+            </Text>
+          </View>
+        ) : visualStatus?.phase === 'error' ? (
+          <TouchableOpacity
+            testID="vision-player-personal-visual-retry"
+            activeOpacity={0.76}
+            onPress={onRetryVisual}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.visualRetry)}
+            style={[
+              styles.visualRetry,
+              { backgroundColor: alpha(color, 0.1), borderColor: alpha(color, 0.28) },
+            ]}
+          >
+            <Ionicons name="refresh" size={16} color={color} />
+            <Text style={[styles.visualRetryText, { color }]}>{t(S.visualRetry)}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {canNarrate ? (
           <>
             <View style={[styles.trackWrap, { backgroundColor: alpha(color, 0.16) }]}>
@@ -639,6 +671,26 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   captionCompact: { fontSize: 19, lineHeight: 26 },
+  visualStatusRow: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  visualStatusText: { fontSize: 12.5, lineHeight: 18, marginLeft: 8, textAlign: 'center' },
+  visualRetry: {
+    minHeight: 40,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    marginTop: 12,
+  },
+  visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
   tip: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 14 },
   waveRow: { flexDirection: 'row', alignItems: 'flex-end', height: 36 },
   wave: { width: 4, borderRadius: 2, marginRight: 5 },

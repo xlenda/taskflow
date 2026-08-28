@@ -123,6 +123,20 @@ assert.ok(
 );
 assert.ok(screen.includes('O aparelho não confirmou o agendamento. Nada foi salvo'), 'erro honesto ausente');
 assert.ok(
+  activation.includes("let activationStage = 'permission'") &&
+    activation.includes("activationStage = 'voice'") &&
+    activation.includes("activationStage = 'schedule'") &&
+    activation.includes("? 'permission_failed'") &&
+    activation.includes("? 'voice_failed'") &&
+    activation.includes(": 'failed'"),
+  'falhas de permissao, voz e agendamento precisam ter diagnosticos distintos'
+);
+assert.ok(
+  screen.includes("feedback === 'permission_failed'") &&
+    screen.includes('Não foi possível verificar a permissão do aparelho.'),
+  'falha ao consultar permissao precisa de mensagem propria'
+);
+assert.ok(
   activation.includes('narration.preparePersonal') &&
     activation.includes('wavBytesToBase64(prepared.bytes)') &&
     activation.includes('audioBase64Wav,'),
@@ -174,7 +188,7 @@ assert.ok(
   'frase do sonho deve abrir o despertador sem agendar silenciosamente'
 );
 assert.ok(
-  morning.includes('cloudAdultConfirmed === true') &&
+  morning.includes('hasCurrentAdultCloudConsent(state.profile)') &&
     morning.includes('cloudDreamConsent === true') &&
     morning.includes('transformDreamWithKnowledge'),
   'sonho só pode ir ao Gemini com consentimentos explícitos e confirmação adulta'

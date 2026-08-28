@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import Typewriter from '../../components/Typewriter';
 import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
+import { CLOUD_CONSENT_VERSION } from '../../constants/cloudConsent';
 import { UI, txt, tr } from '../../constants/i18n';
 import { FLOW, ageConfirmsAdult, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
@@ -30,10 +31,10 @@ import {
 } from '../../utils/onboardingMultiChoice';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
-// v: 4 = roteiro completo com respostas rápidas. Rascunhos anteriores podem
-// apontar para um campo de texto que agora é uma escolha e são descartados.
+// v: 5 = consentimento versionado para os processadores atuais. Rascunhos
+// anteriores são descartados para nunca converter um aceite antigo em novo.
 const DRAFT_KEY = '@celeste_onb_draft';
-const DRAFT_V = 4;
+const DRAFT_V = 5;
 const DRAFT_READ_TIMEOUT_MS = 1500;
 const CUSTOM_OPTION = CUSTOM_CHOICE_KEY;
 const initialReduceMotion = () =>
@@ -61,9 +62,12 @@ const S = {
 
 function normalizeCloudConsent(profile) {
   const source = profile && typeof profile === 'object' ? profile : {};
-  const allowed = ageConfirmsAdult(source.age) && source.cloudPersonalization === true;
+  const adult = ageConfirmsAdult(source.age);
+  const currentVersion = adult && source.cloudConsentVersion === CLOUD_CONSENT_VERSION;
+  const allowed = currentVersion && source.cloudPersonalization === true;
   return {
     ...source,
+    cloudConsentVersion: currentVersion ? CLOUD_CONSENT_VERSION : null,
     cloudPersonalization: allowed,
     cloudAdultConfirmed: allowed,
     cloudNarrationConsent: allowed,
@@ -273,6 +277,7 @@ export default function ChatOnboardingScreen({ navigation }) {
           category: inferCategory(ans.hopedChange),
           lang,
           profile: finalAnswers,
+          origin: 'onboarding-anchor',
         });
         if (!id) throw new Error('scene_not_created');
         AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
@@ -306,6 +311,7 @@ export default function ChatOnboardingScreen({ navigation }) {
     const next = { ...answers };
     if (step.key) delete next[step.key];
     if (step.key === 'age' || step.key === 'cloudPersonalization') {
+      next.cloudConsentVersion = null;
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
       next.cloudNarrationConsent = false;
@@ -332,13 +338,16 @@ export default function ChatOnboardingScreen({ navigation }) {
   const commit = (val) => {
     const next = { ...answers, [step.key]: val };
     if (step.key === 'age' && !ageConfirmsAdult(val)) {
+      next.cloudConsentVersion = null;
       next.cloudPersonalization = false;
       next.cloudAdultConfirmed = false;
       next.cloudNarrationConsent = false;
       next.cloudDreamConsent = false;
     }
     if (step.key === 'cloudPersonalization') {
-      const allowed = val === true && ageConfirmsAdult(next.age);
+      const adult = ageConfirmsAdult(next.age);
+      const allowed = val === true && adult;
+      next.cloudConsentVersion = adult ? CLOUD_CONSENT_VERSION : null;
       next.cloudPersonalization = allowed;
       next.cloudAdultConfirmed = allowed;
       next.cloudNarrationConsent = allowed;

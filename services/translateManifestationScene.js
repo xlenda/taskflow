@@ -4,6 +4,10 @@ import {
   thirdPartyNames,
 } from './generatePersonalizedScene';
 import { celestePaidApiHeaders } from './celesteApiSession';
+import {
+  CLOUD_CONSENT_VERSION,
+  hasCurrentCloudConsentVersion,
+} from '../constants/cloudConsent';
 
 const API_TIMEOUT_MS = 15000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
@@ -91,7 +95,10 @@ export async function translateManifestationScene({
   if (from === to) throw new Error('translation_languages_equal');
 
   const sourceProfile = profile && typeof profile === 'object' ? profile : {};
-  if (sourceProfile.cloudPersonalization !== true) throw new Error('cloud_consent_required');
+  if (
+    !hasCurrentCloudConsentVersion(sourceProfile) ||
+    sourceProfile.cloudPersonalization !== true
+  ) throw new Error('cloud_consent_required');
   if (!profileConfirmsAdult(sourceProfile)) throw new Error('adult_confirmation_required');
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -109,6 +116,7 @@ export async function translateManifestationScene({
         targetLang: to,
         scene: sceneForCloud(scene, sourceProfile, from),
         cloudConsent: true,
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
         adultConfirmed: true,
       }),
     });
