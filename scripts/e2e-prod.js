@@ -321,7 +321,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await typeAnswer(page, 'Alex');
 
   await page.setViewport({ width: 320, height: 480 });
-  await waitForText(page, 'envie ao Gemini somente o necessário', 30000);
+  await waitForText(page, 'processadores em nuvem somente nos recursos', 30000);
   await sleep(1000);
   await assertChips(page, ['Permitir', 'Criar no aparelho'], 'consentimento Gemini');
   const compactConsent = await page.evaluate(() => {
@@ -541,10 +541,10 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await clickTestId(page, 'morning-ritual-back');
   await waitForText(page, 'Manifestar', 20000);
 
-  // A preferência do Gemini é reversível: desligar não pede confirmação;
+  // A permissão dos processadores é reversível: desligar não pede confirmação;
   // religar exige uma confirmação nova de 18+ e de envio ao provedor.
   await clickTestId(page, 'open-profile');
-  await waitForText(page, 'Personalização e voz neural', 20000);
+  await waitForText(page, 'Processamento em nuvem', 20000);
   const geminiInitiallyOn = await page.evaluate(
     (consentVersion) => {
       const profile = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {};
@@ -575,7 +575,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     { timeout: 15000, polling: 200 }
   );
   const staleConsentDialog = await page.evaluate(() =>
-    document.body.innerText.includes('Permitir personalização com Gemini?')
+    document.body.innerText.includes('Permitir processamento em nuvem?')
   );
   if (staleConsentDialog) throw new Error('Desligar a personalização Gemini abriu confirmação indevida');
   await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
@@ -586,14 +586,12 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitAndClick(page, 'Comunidade');
   await waitForText(page, 'Ainda não há relatos publicados', 20000);
   await waitAndClick(page, 'Contar o que aconteceu');
+  await clickTestId(page, 'community-kind-evidence');
+  await clickTestId(page, 'community-circle-coragem-confianca');
   const story = 'Percebi que comecei a agir com mais confiança durante esta semana.';
-  const storyInput = await page.waitForSelector('textarea', { visible: true, timeout: 15000 });
+  const storyInput = await page.waitForSelector('[data-testid="community-story-input"]', { visible: true, timeout: 15000 });
   await storyInput.type(story, { delay: 10 });
-  await waitAndClick(
-    page,
-    'Confirmo que tenho 18 anos ou mais e autorizo o Celeste a publicar este relato se ele passar pela análise.'
-  );
-  await waitAndClick(page, 'Enviar para análise');
+  await waitAndClick(page, 'Salvar neste aparelho');
   await waitForText(page, 'Rascunho salvo neste aparelho', 20000);
   await waitForText(page, story, 20000);
   await waitAndClick(page, 'Apagar este relato');

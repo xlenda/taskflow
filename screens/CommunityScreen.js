@@ -689,6 +689,7 @@ export default function CommunityScreen() {
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
+                  testID={`community-kind-${postKind}`}
                   key={postKind}
                   onPress={() => chooseKind(postKind)}
                   style={[
@@ -715,6 +716,7 @@ export default function CommunityScreen() {
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
+                  testID={`community-circle-${circle.slug}`}
                   key={circle.slug}
                   onPress={() => chooseCircle(circle.slug)}
                   style={[
