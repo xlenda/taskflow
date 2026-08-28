@@ -339,7 +339,7 @@ assert.strictEqual(
 const contextSource = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
 const chatSource = fs.readFileSync(path.join(root, 'screens', 'onboarding', 'ChatOnboardingScreen.js'), 'utf8');
 const addManifestationSource = contextSource.match(
-  /const addManifestation = useCallback\(async \(data\) => \{[\s\S]*?\n  \}, \[translateAndStoreVariant\]\);/
+  /const addManifestation = useCallback\(async \(data\) => \{[\s\S]*?\n  \}, \[[^\]]*\]\);/
 );
 assert.ok(addManifestationSource, 'nao foi possivel localizar addManifestation');
 assert.doesNotMatch(
@@ -366,6 +366,33 @@ assert.ok(
 assert.ok(
   addManifestationSource[0].includes('localSceneUpgradeEpochRef.current = generationEpoch'),
   'fallback local novo nao pode disparar uma segunda geracao remota na mesma abertura do app'
+);
+assert.ok(
+  addManifestationSource[0].indexOf('setState((s) =>') <
+    addManifestationSource[0].indexOf('void generatePersonalizedScene({') &&
+    !addManifestationSource[0].includes('await generatePersonalizedScene({'),
+  'primeira cena remota nao pode atrasar a gravacao e o retorno do item local'
+);
+assert.ok(
+  addManifestationSource[0].includes('applyRemoteSceneUpgrade({') &&
+    addManifestationSource[0].includes('id,') &&
+    addManifestationSource[0].includes('sourceFingerprint,') &&
+    addManifestationSource[0].includes('profileFingerprint,') &&
+    addManifestationSource[0].indexOf('void generatePersonalizedScene({') <
+      addManifestationSource[0].indexOf('return id;'),
+  'geracao tardia precisa atualizar o mesmo id usando os snapshots que iniciaram a chamada'
+);
+const remoteUpgradeSource = contextSource.slice(
+  contextSource.indexOf('const applyRemoteSceneUpgrade'),
+  contextSource.indexOf('if (!writerRef.current)')
+);
+assert.ok(
+  remoteUpgradeSource.includes('generationEpoch !== generationEpochRef.current') &&
+    remoteUpgradeSource.includes('JSON.stringify(currentState.profile || {}) !== profileFingerprint') &&
+    remoteUpgradeSource.includes('currentFingerprint !== sourceFingerprint') &&
+    remoteUpgradeSource.includes('localInterpretedUpgradeCandidate(current)') &&
+    remoteUpgradeSource.includes('{ ...current, ...upgradedVariant, contentByLang }'),
+  'upgrade tardio precisa rejeitar reset, perfil/edicao alterados e preservar dados nao textuais'
 );
 assert.ok(
   contextSource.includes('TRANSLATION_BATCH_SIZE') &&
