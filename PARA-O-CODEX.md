@@ -1,42 +1,49 @@
-# Celeste - ponto de retomada
+# Celeste - estado da entrega
 
 Atualizado em 28/08/2026 (America/Sao_Paulo).
 
-## Estado seguro
+## Estado final
 
-- Codigo salvo e enviado ao GitHub no commit `a9c20d5` (`master`).
-- Producao continua na versao anterior estavel em `https://celeste-jet-two.vercel.app`.
-- A nova versao nao ficou parcialmente publicada: a esteira reprovou o teste real e fez rollback automatico.
-- A migration `supabase/migrations/006_generation_reservations.sql` ainda nao foi aplicada.
-- O arquivo temporario que continha credenciais do banco foi apagado de `D:\Temp\User`.
+- Producao publicada em `https://celeste-jet-two.vercel.app`.
+- Bundle validado: `AppEntry-67745d0af3ce0203087ce3111de5c969.js`.
+- Codigo de produto salvo no GitHub ate o commit `71b865a` antes deste registro final.
+- Migration `supabase/migrations/006_generation_reservations.sql` aplicada e revalidada.
+- Arquivos temporarios de ambiente usados na publicacao e migration foram apagados.
 
-## O que esta pronto no codigo
+## Experiencia entregue
 
-- Afirmações organizadas em Amor, Prosperidade, Carreira, Saude, Confianca e Paz.
-- Os temas sao fixos apenas para navegacao; textos e imagens continuam personalizados por respostas, sonhos, memoria e idioma.
-- Base Celeste interna com 39 cartoes e 27 fontes; ela orienta a geracao e nao aparece como catalogo pronto para o usuario.
-- Onboarding com multipla escolha, autorrelato interpretado em portugues natural e respostas nao informativas ignoradas.
-- Cena local aparece imediatamente; Claude melhora o mesmo item em segundo plano sem duplicar ou apagar progresso, visual ou edicoes.
-- Claude: provider ate 30 s; cena ate 48 s; cliente em background ate 56 s; Vercel com limite de 60 s.
-- Gemini continua responsavel por imagens e ElevenLabs por voz.
-- Correcao do armazenamento de imagem no Safari usando `ArrayBuffer` no IndexedDB.
-- Comunidade local-first, Perfil visivel, Sonhos e Despertador organizados.
-- Reserva de creditos em duas fases para cena e visual, com liberacao em falha e recuperacao apos cinco minutos.
+- Afirmacoes organizadas em Amor, Prosperidade, Carreira, Saude, Confianca e Paz.
+- Os temas sao apenas navegacao: textos e imagens sao personalizados pelas respostas, sonhos, memoria, jornada e idioma de cada pessoa.
+- Base Celeste interna com 39 cartoes e 27 fontes para orientar a geracao, sem expor um catalogo generico ao usuario.
+- Onboarding com multipla escolha, autorrelato reescrito em linguagem natural e respostas sem informacao util ignoradas.
+- Cena personalizada local aparece imediatamente; Claude melhora o mesmo item em segundo plano sem duplicar nem apagar progresso, visual ou edicoes.
+- Claude cria textos, Gemini traduz e gera imagens, ElevenLabs narra na voz escolhida.
+- Perfil, Sonhos, Despertador, Comunidade e Jornada estao acessiveis e organizados.
+- Imagens personalizadas persistem no Safari por `ArrayBuffer` no IndexedDB.
+- Reproducao de audio inclui progresso e velocidade.
 
-## Publicacao pendente
+## Seguranca e custos
 
-1. Rodar `npm run deploy:web` em `D:\Projetos\TaskFlow`.
-2. Confirmar que o teste ao vivo devolve texto com provider `anthropic`, imagem JPEG do Gemini e voz funcionando.
-3. Somente depois do deploy compativel, aplicar `supabase/migrations/006_generation_reservations.sql`.
-4. Rodar `npm run deploy:web -- --validate-production` para validar a producao com a migration nova.
-5. Conferir `git status`, registrar qualquer ajuste final e enviar ao GitHub.
+- Cena e imagem usam reserva de credito em duas fases: reserva, confirmacao no sucesso e liberacao em falha ou timeout.
+- Reservas abandonadas sao recuperadas depois de cinco minutos.
+- Limites ativos: 64 unidades por usuario/dia e 1.200 unidades globais/dia.
+- `anon` e `authenticated` nao podem executar a funcao de finalizacao; somente `service_role` pode.
+- BotID bloqueou cliente nu no teste de producao.
+- Chaves permanecem somente no backend/Vercel e nao foram adicionadas ao Git.
 
-## Historico da ultima tentativa
+## Provas da publicacao
 
-- Primeiro candidato falhou porque os novos utilitarios do backend nao entraram no pacote Vercel. O empacotador foi corrigido e ganhou teste.
-- Segundo candidato passou pacote e APIs, mas Claude excedeu o timeout antigo de 18 s. O rollback automatico restaurou a producao anterior.
-- O codigo salvo em `a9c20d5` ja contem o novo orçamento de tempo e a experiencia local-first.
+- Deploy completo aprovado e promovido pelo Vercel.
+- Texto real aprovado com `anthropic/claude-sonnet-5`.
+- Traducao aprovada com `gemini-3.7-flash`.
+- Imagem JPEG real aprovada com `gemini-3.1-flash-image`.
+- E2E de onboarding, persistencia, idempotencia, audio, despertador, sonhos, perfil, comunidade, afirmacoes e navegacao aprovado.
+- PT e EN sem vazamento entre idiomas.
+- Abertura, video, som por toque, transicoes, mascote, recuperacao de storage e estado legado aprovados.
+- Smoke em 390x844 confirmou as seis categorias e toda a navegacao, sem erros de console, JavaScript, HTTP ou overflow.
+- Validacao em 4G e CPU 4x mais lenta ficou dentro do limite aceito.
+- Producao foi revalidada depois da migration sem nova publicacao.
 
 ## Observacao local
 
-As alteracoes restantes em `scripts/e2e-shots/*.png` sao capturas nao deterministicas geradas pelos testes. Nao fazem parte do produto e nao devem entrar no proximo commit.
+As alteracoes em `scripts/e2e-shots/*.png` sao capturas nao deterministicas regeneradas pelos testes. Elas nao fazem parte da entrega e nao devem ser incluidas no commit.
