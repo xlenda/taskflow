@@ -12,6 +12,7 @@ const visual = read('api/gerar-visual.js');
 const paidAccess = read('api/_paid-access.js');
 const actorQuotaMigration = read('supabase/migrations/008_generation_actor_quota.sql');
 const actorQuotaContract = read('supabase/migrations/009_disable_legacy_generation_reserve.sql');
+const operationQuotaMigration = read('supabase/migrations/010_generation_operation_quotas.sql');
 const client = read('utils/botProtection.web.js');
 const deploy = read('scripts/deploy-celeste.js');
 const vercel = JSON.parse(read('vercel.json'));
@@ -90,6 +91,8 @@ assert.match(paidAccess, /TRUSTED_VERCEL_IP_HEADER\s*=\s*'x-vercel-forwarded-for
 assert.match(paidAccess, /createHmac\('sha256', secret\)/);
 assert.match(paidAccess, /CELESTE_ACTOR_HASH_SECRET/);
 assert.match(paidAccess, /p_actor_hash:\s*input\.actorHash/);
+assert.match(paidAccess, /result\.operationQuota\s*!==\s*true/);
+assert.match(paidAccess, /operationQuota:\s*'enforced'/);
 assert.doesNotMatch(paidAccess, /PGRST202|legacy_schema/);
 assert.doesNotMatch(paidAccess, /headers\[['"]x-forwarded-for['"]\]/);
 assert.match(actorQuotaMigration, /actor_daily_units\s+integer\s+not null\s+default 96/i);
@@ -97,6 +100,13 @@ assert.match(actorQuotaMigration, /primary key\s*\(usage_day, actor_hash\)/i);
 assert.match(actorQuotaMigration, /for update/i);
 assert.match(actorQuotaMigration, /actorRemaining/i);
 assert.match(actorQuotaContract, /'reason', 'actor_required'/i);
+assert.match(operationQuotaMigration, /actor_schema_version\s*=\s*10/i);
+assert.match(operationQuotaMigration, /celeste_generation_operation_policy/i);
+assert.match(operationQuotaMigration, /celeste_generation_user_operation_usage/i);
+assert.match(operationQuotaMigration, /celeste_generation_actor_operation_usage/i);
+assert.match(operationQuotaMigration, /p_units = any\(v_operation_policy\.allowed_units\)/i);
+assert.match(operationQuotaMigration, /'operationQuota', true/i);
+assert.match(operationQuotaMigration, /'weightedGlobalQuota', true/i);
 
 const clientFiles = [path.join(root, 'App.js')].concat(
   ['components', 'constants', 'context', 'screens', 'services', 'utils']

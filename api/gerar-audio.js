@@ -385,6 +385,11 @@ async function handler(req, res) {
     units: audioUnits(validated.value),
   });
   if (!access.ok) return sendJson(res, access.status, access.error);
+  const committedAccess = await paidAccess.commitPaidRequest(access);
+  if (!committedAccess.ok) {
+    await paidAccess.releasePaidRequest(access).catch(() => {});
+    return sendJson(res, committedAccess.status, committedAccess.error);
+  }
 
   try {
     const wav = await requestElevenLabs(validated.value, configuredModel(), apiKey);

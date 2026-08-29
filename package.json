@@ -26,6 +26,7 @@
     "verify:deploy-pipeline": "node scripts/verificar-esteira-deploy.js",
     "verify:gemini-audio": "node scripts/verificar-audio-gemini.js",
     "verify:audio-playback": "node scripts/verificar-controles-reproducao-audio.js",
+    "verify:media-ui": "node scripts/e2e-media-ui.js",
     "verify:personalized-visual": "node scripts/verificar-visual-personalizado.js",
     "verify:personal-content-suite": "node scripts/verificar-conteudo-pessoal-suite.js",
     "verify:knowledge": "node scripts/verificar-base-conhecimento.js",

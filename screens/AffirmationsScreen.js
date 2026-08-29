@@ -246,7 +246,14 @@ export default function AffirmationsScreen() {
     if (current.manifestationId && current.key) {
       void ensureJourneyVisual(current.manifestationId, current.key, { lang: current.lang });
     }
-  }, [current?.id, current?.lang, ensureDreamVisual, ensureJourneyVisual, isFocused]);
+  }, [
+    current?.id,
+    current?.lang,
+    current?.visualBrief,
+    ensureDreamVisual,
+    ensureJourneyVisual,
+    isFocused,
+  ]);
 
   // Se uma manifestação for criada, removida ou reordenada enquanto a aba
   // continua montada, a frase visível não pode trocar por baixo de um áudio ou

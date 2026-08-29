@@ -15,14 +15,14 @@ const COPY = {
   pt: {
     title: 'Ativar voz pessoal?',
     message:
-      'Para narrar com a voz escolhida, o Celeste envia à ElevenLabs somente o texto que você decidiu ouvir, o idioma e a voz selecionada. A solicitação passa pelo backend do Celeste. Nomes de outras pessoas salvos no aparelho não são enviados. O áudio é criado para esta reprodução e não é público.',
+      'Para narrar com a voz escolhida, o Celeste envia à ElevenLabs somente o texto que você decidiu ouvir, o idioma e a voz selecionada. A solicitação passa pelo backend do Celeste. Nomes de outras pessoas salvos no aparelho não são enviados. O áudio não é público e pode ficar salvo apenas neste aparelho para tocar novamente sem uma nova geração.',
     confirm: 'Ativar voz',
     cancel: 'Agora não',
   },
   en: {
     title: 'Enable your personal voice?',
     message:
-      'To narrate with your chosen voice, Celeste sends ElevenLabs only the text you chose to hear, its language and the selected voice. The request passes through Celeste\'s backend. Names of other people saved on this device are not sent. The audio is created for this playback and is not public.',
+      'To narrate with your chosen voice, Celeste sends ElevenLabs only the text you chose to hear, its language and the selected voice. The request passes through Celeste\'s backend. Names of other people saved on this device are not sent. The audio is not public and may be stored only on this device so it can play again without a new generation.',
     confirm: 'Enable voice',
     cancel: 'Not now',
   },

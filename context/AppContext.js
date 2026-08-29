@@ -1458,6 +1458,7 @@ export function AppProvider({ children }) {
         personalVisualSubjectFingerprint(currentManifestation) !== fingerprint
       ) {
         void deletePersonalVisual(cacheKey).catch(() => {});
+        setPersonalVisualPhase(id, null);
         return { ok: false, error: 'visual_cancelled' };
       }
 
@@ -1691,6 +1692,7 @@ export function AppProvider({ children }) {
         journeyVisualFingerprint(latestManifestation, latestItem, lang) !== fingerprint
       ) {
         void deletePersonalVisual(cacheKey).catch(() => {});
+        setPersonalVisualPhase(statusId, null);
         return { ok: false, error: 'visual_cancelled' };
       }
 

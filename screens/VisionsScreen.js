@@ -33,6 +33,8 @@ const S = {
   leadA: { en: 'Swipe to the vision you want to ', pt: 'Deslize até a visão em que você quer ' },
   leadB: { en: 'step into…', pt: 'entrar…' },
   personalNarration: { en: 'Your personal narration', pt: 'Sua narração pessoal' },
+  audioPreparing: { en: 'Preparing your narration', pt: 'Preparando sua narração' },
+  resumeNow: { en: 'Continue the narration', pt: 'Continuar a narração' },
   emptyTitle: { en: 'Your first vision is waiting', pt: 'Sua primeira visão está esperando' },
   emptyBody: {
     en: 'Create a manifestation and Celeste will turn your answers into a vision made only for you.',
@@ -103,6 +105,7 @@ export default function VisionsScreen() {
     lastCompletedPlaybackId,
     phase: narrationPhase,
     playPersonal,
+    resume: resumeNarration,
     stop: stopNarration,
   } = usePersonalNarration();
   const [index, setIndex] = useState(0);
@@ -115,11 +118,12 @@ export default function VisionsScreen() {
   const attemptedPlaybackRef = useRef(null);
   const isFocused = useIsFocused();
 
-  const playingId =
+  const activeVisionId =
     String(activePlaybackId || '').startsWith(PLAYBACK_PREFIX) &&
     (narrationPhase === 'loading' ||
       narrationPhase === 'playing' ||
-      narrationPhase === 'paused')
+      narrationPhase === 'paused' ||
+      narrationPhase === 'ready')
       ? activePlaybackId.slice(PLAYBACK_PREFIX.length)
       : null;
 
@@ -187,22 +191,28 @@ export default function VisionsScreen() {
       visibleVision.key,
       { lang: visibleVision.lang }
     );
-  }, [ensureJourneyVisual, isFocused, visibleVision?.id, visibleVision?.lang]);
+  }, [
+    ensureJourneyVisual,
+    isFocused,
+    visibleVision?.id,
+    visibleVision?.lang,
+    visibleVision?.visualBrief,
+  ]);
 
   useEffect(() => {
-    if (!isFocused && playingId) {
+    if (!isFocused && activeVisionId) {
       stopOwnedNarration();
     }
-  }, [isFocused, playingId, stopOwnedNarration]);
+  }, [activeVisionId, isFocused, stopOwnedNarration]);
 
   useEffect(() => () => stopOwnedNarration(), [stopOwnedNarration]);
 
   useEffect(() => {
-    if (playingId && !visions.some((vision) => vision.id === playingId)) {
+    if (activeVisionId && !visions.some((vision) => vision.id === activeVisionId)) {
       stopOwnedNarration();
     }
     setIndex((current) => Math.max(0, Math.min(current, Math.max(0, visions.length - 1))));
-  }, [visions, playingId, stopOwnedNarration]);
+  }, [activeVisionId, visions, stopOwnedNarration]);
 
   const CARD_W = Math.max(250, width - 72);
 
@@ -259,8 +269,13 @@ export default function VisionsScreen() {
   const onPlayCircle = async (vision) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const playbackId = `${PLAYBACK_PREFIX}${vision.id}`;
-    if (activePlaybackId === playbackId && playingId === vision.id) {
-      stopOwnedNarration();
+    if (activePlaybackId === playbackId && activeVisionId === vision.id) {
+      if (narrationPhase === 'paused' || narrationPhase === 'ready') {
+        setAudioFailedId(null);
+        await resumeNarration();
+      } else {
+        stopOwnedNarration();
+      }
       return;
     }
 
@@ -368,7 +383,8 @@ export default function VisionsScreen() {
                         )}
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          onPress={() => {
+                          onPress={(event) => {
+                            event.stopPropagation?.();
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                             toggleSavedVision(vision.id);
                           }}
@@ -393,23 +409,43 @@ export default function VisionsScreen() {
                       <View style={styles.slideBottom}>
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          onPress={() => onPlayCircle(vision)}
+                          onPress={(event) => {
+                            event.stopPropagation?.();
+                            void onPlayCircle(vision);
+                          }}
                           accessibilityRole="button"
-                          accessibilityLabel={playingId === vision.id ? t(S.stopNow) : t(S.playNow)}
+                          accessibilityLabel={
+                            activeVisionId === vision.id &&
+                            (narrationPhase === 'paused' || narrationPhase === 'ready')
+                              ? t(S.resumeNow)
+                              : activeVisionId === vision.id
+                              ? t(S.stopNow)
+                              : t(S.playNow)
+                          }
                           style={[styles.playCircle, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
                         >
-                          <Ionicons
-                            name={playingId === vision.id ? 'stop' : 'play'}
-                            size={20}
-                            color={accentAt(th, vision.accent)}
-                          />
+                          {activeVisionId === vision.id && narrationPhase === 'loading' ? (
+                            <ActivityIndicator size="small" color={accentAt(th, vision.accent)} />
+                          ) : (
+                            <Ionicons
+                              name={
+                                activeVisionId === vision.id && narrationPhase === 'playing'
+                                  ? 'stop'
+                                  : 'play'
+                              }
+                              size={20}
+                              color={accentAt(th, vision.accent)}
+                            />
+                          )}
                         </TouchableOpacity>
                         <View style={styles.slideMeta}>
                           <Text numberOfLines={1} style={styles.slideTitle}>
                             {vision.title}
                           </Text>
                           <Text style={styles.slideDur}>
-                            {audioFailedId === vision.id
+                            {activeVisionId === vision.id && narrationPhase === 'loading'
+                              ? t(S.audioPreparing)
+                              : audioFailedId === vision.id
                               ? t(S.audioUnavailable)
                               : t(S.personalNarration)}
                           </Text>

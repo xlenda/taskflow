@@ -322,13 +322,17 @@ export default function JourneyScreen() {
         setResetError('alarm');
         return;
       }
+      stopNarration();
+      const audioCleared = await clearAudioCache();
+      if (!audioCleared) {
+        setResetError('storage');
+        return;
+      }
       const reset = await resetAll();
       if (!reset) {
         setResetError('storage');
         return;
       }
-      stopNarration();
-      clearAudioCache();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     } finally {
       setResetBusy(false);

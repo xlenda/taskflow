@@ -30,6 +30,43 @@ const PRODUCTION_TEXT_REQUIRED = Object.freeze([
 const PRODUCTION_SECURITY_REQUIRED = Object.freeze([
   'CELESTE_ACTOR_HASH_SECRET',
 ]);
+const GENERATION_QUOTA_SCHEMA_VERSION = 10;
+const JOURNEY_VISUAL_COUNT = 13;
+const JOURNEY_VISION_AUDIO_UNITS = 6 * 32;
+const JOURNEY_AFFIRMATION_AUDIO_UNITS = 6 * 16;
+const COMPLETE_JOURNEY_AUDIO_UNITS =
+  JOURNEY_VISION_AUDIO_UNITS + JOURNEY_AFFIRMATION_AUDIO_UNITS;
+const OPERATION_QUOTA_REQUIREMENTS = Object.freeze({
+  scene: Object.freeze({
+    userDailyUnits: 12,
+    actorDailyUnits: 12,
+    allowedUnits: Object.freeze([4, 12]),
+  }),
+  visual: Object.freeze({
+    userDailyUnits: JOURNEY_VISUAL_COUNT * 8,
+    actorDailyUnits: JOURNEY_VISUAL_COUNT * 8,
+    allowedUnits: Object.freeze([8]),
+  }),
+  audio: Object.freeze({
+    userDailyUnits: COMPLETE_JOURNEY_AUDIO_UNITS,
+    actorDailyUnits: COMPLETE_JOURNEY_AUDIO_UNITS,
+    allowedUnits: Object.freeze([1, 4, 8, 12, 16, 20]),
+  }),
+  dream: Object.freeze({
+    userDailyUnits: 3,
+    actorDailyUnits: 3,
+    allowedUnits: Object.freeze([3]),
+  }),
+  translation: Object.freeze({
+    userDailyUnits: 3,
+    actorDailyUnits: 3,
+    allowedUnits: Object.freeze([3]),
+  }),
+});
+const COMPLETE_JOURNEY_DAILY_UNITS =
+  OPERATION_QUOTA_REQUIREMENTS.scene.userDailyUnits +
+  OPERATION_QUOTA_REQUIREMENTS.visual.userDailyUnits +
+  OPERATION_QUOTA_REQUIREMENTS.audio.userDailyUnits;
 
 function requireText(value, name) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -115,6 +152,51 @@ function parseJsonObject(output, label) {
   }
 }
 
+function sameIntegerSet(actual, expected) {
+  if (!Array.isArray(actual) || actual.some((value) => !Number.isInteger(value))) return false;
+  const normalized = [...new Set(actual)].sort((left, right) => left - right);
+  return (
+    normalized.length === expected.length &&
+    normalized.every((value, index) => value === expected[index])
+  );
+}
+
+function validateOperationQuotaPayload(payload) {
+  if (
+    !payload ||
+    payload.schemaVersion !== GENERATION_QUOTA_SCHEMA_VERSION ||
+    payload.reserveSignature !== true ||
+    payload.legacyReserveDisabled !== true ||
+    payload.operationQuota !== true ||
+    payload.operationQuotaVersion !== 1 ||
+    payload.weightedGlobalQuota !== true ||
+    !Number.isInteger(payload.perUserDailyUnits) ||
+    payload.perUserDailyUnits < COMPLETE_JOURNEY_DAILY_UNITS ||
+    !Number.isInteger(payload.actorDailyUnits) ||
+    payload.actorDailyUnits < COMPLETE_JOURNEY_DAILY_UNITS ||
+    !Number.isInteger(payload.globalDailyUnits) ||
+    payload.globalDailyUnits < COMPLETE_JOURNEY_DAILY_UNITS ||
+    !payload.operationPolicies ||
+    typeof payload.operationPolicies !== 'object' ||
+    Array.isArray(payload.operationPolicies)
+  ) {
+    return false;
+  }
+
+  return Object.entries(OPERATION_QUOTA_REQUIREMENTS).every(([operation, required]) => {
+    const policy = payload.operationPolicies[operation];
+    return (
+      policy &&
+      policy.enabled === true &&
+      Number.isInteger(policy.userDailyUnits) &&
+      policy.userDailyUnits >= required.userDailyUnits &&
+      Number.isInteger(policy.actorDailyUnits) &&
+      policy.actorDailyUnits >= required.actorDailyUnits &&
+      sameIntegerSet(policy.allowedUnits, required.allowedUnits)
+    );
+  });
+}
+
 function validateProductionEnvironmentOutput(output) {
   const payload = parseJsonObject(output, 'Vercel env ls');
   const envs = Array.isArray(payload.envs) ? payload.envs : [];
@@ -163,17 +245,17 @@ async function validateActorQuotaBackend(env = {}, fetchImpl = global.fetch) {
     .find(Boolean);
   if (!urlValue || !serviceKey) {
     throw new Error(
-      'Credenciais locais do backend ausentes para verificar migration 008; deploy bloqueado'
+      'Credenciais locais do backend ausentes para verificar migration 010; deploy bloqueado'
     );
   }
   if (typeof fetchImpl !== 'function') {
-    throw new Error('Verificacao da migration 008 indisponivel; deploy bloqueado');
+    throw new Error('Verificacao da migration 010 indisponivel; deploy bloqueado');
   }
   let url;
   try {
     url = new URL(urlValue);
   } catch (_error) {
-    throw new Error('URL local do backend invalida para verificar migration 008');
+    throw new Error('URL local do backend invalida para verificar migration 010');
   }
   if (
     url.protocol !== 'https:' ||
@@ -183,7 +265,7 @@ async function validateActorQuotaBackend(env = {}, fetchImpl = global.fetch) {
     url.search ||
     url.hash
   ) {
-    throw new Error('URL local do backend insegura para verificar migration 008');
+    throw new Error('URL local do backend insegura para verificar migration 010');
   }
   const headers = {
     apikey: serviceKey,
@@ -200,31 +282,27 @@ async function validateActorQuotaBackend(env = {}, fetchImpl = global.fetch) {
       { method: 'POST', headers, body: '{}' }
     );
   } catch (_error) {
-    throw new Error('Supabase indisponivel ao verificar migration 008; deploy bloqueado');
+    throw new Error('Supabase indisponivel ao verificar migration 010; deploy bloqueado');
   }
   if (!response || !response.ok) {
-    throw new Error('Migration 008 ausente ou inacessivel no Supabase; deploy bloqueado');
+    throw new Error('Migration 010 ausente ou inacessivel no Supabase; deploy bloqueado');
   }
   let payload;
   try {
     payload = await response.json();
   } catch (_error) {
-    throw new Error('Migration 008 devolveu contrato invalido; deploy bloqueado');
+    throw new Error('Migration 010 devolveu contrato invalido; deploy bloqueado');
   }
-  if (
-    !payload ||
-    ![8, 9].includes(payload.schemaVersion) ||
-    payload.reserveSignature !== true ||
-    !Number.isInteger(payload.actorDailyUnits) ||
-    payload.actorDailyUnits < 20 ||
-    payload.actorDailyUnits > 400
-  ) {
-    throw new Error('Migration 008 devolveu contrato invalido; deploy bloqueado');
+  if (!validateOperationQuotaPayload(payload)) {
+    throw new Error('Migration 010 devolveu contrato de cota invalido; deploy bloqueado');
   }
   return {
     schemaVersion: payload.schemaVersion,
     actorDailyUnits: payload.actorDailyUnits,
-    legacyReserveDisabled: payload.legacyReserveDisabled === true,
+    perUserDailyUnits: payload.perUserDailyUnits,
+    globalDailyUnits: payload.globalDailyUnits,
+    legacyReserveDisabled: true,
+    operationQuota: true,
   };
 }
 
@@ -272,7 +350,10 @@ function extractAnonymousAccessToken(payload) {
 }
 
 module.exports = {
+  COMPLETE_JOURNEY_DAILY_UNITS,
+  GENERATION_QUOTA_SCHEMA_VERSION,
   LOCAL_PUBLIC_KEY_ALIASES,
+  OPERATION_QUOTA_REQUIREMENTS,
   PRODUCTION_BACKEND_ALIASES,
   PRODUCTION_SECURITY_REQUIRED,
   PRODUCTION_TEXT_REQUIRED,
@@ -281,5 +362,6 @@ module.exports = {
   parseDeploymentOutput,
   validateLocalBuildEnvironment,
   validateActorQuotaBackend,
+  validateOperationQuotaPayload,
   validateProductionEnvironmentOutput,
 };

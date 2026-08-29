@@ -401,6 +401,18 @@ const referralSource = fs.readFileSync(referralFile, 'utf8');
 const notificationsSource = fs.readFileSync(notificationsFile, 'utf8');
 const growSource = fs.readFileSync(growFile, 'utf8');
 
+assert.ok(
+  chatSource.includes('testID="onboarding-progress"') &&
+    chatSource.includes('accessibilityRole="progressbar"') &&
+    chatSource.includes('accessibilityValue={{ min: 0, max: 100, now: progressPercent') &&
+    chatSource.includes('aria-valuenow={progressPercent}') &&
+    chatSource.includes('aria-valuetext={`${progressPercent}%`}'),
+  'o funil deve manter uma barra de progresso acessivel sem expor o total de perguntas'
+);
+assert.ok(!chatSource.includes('S.counter'), 'o total de etapas nao deve ser renderizado no funil');
+assert.ok(!chatSource.includes("'{n} of {total}'"), 'o contador total em ingles nao deve voltar ao funil');
+assert.ok(!chatSource.includes("'{n} de {total}'"), 'o contador total em portugues nao deve voltar ao funil');
+
 assert.ok(chatSource.includes('serializeMultiChoice'), 'Continuar deve serializar as escolhas combinadas');
 assert.ok(chatSource.includes('multiple={isMultiSelect}'), 'chips combinaveis devem expor estado de checkbox');
 assert.ok(

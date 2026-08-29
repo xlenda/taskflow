@@ -10,6 +10,9 @@ const CONTEXT_PATH = 'context/NarrationContext.js';
 const APP_PATH = 'App.js';
 const REVEAL_PATH = 'screens/onboarding/RevealScreen.js';
 const AFFIRMATIONS_PATH = 'screens/AffirmationsScreen.js';
+const VISIONS_PATH = 'screens/VisionsScreen.js';
+const VISION_PLAYER_PATH = 'screens/VisionPlayerScreen.js';
+const PERSONAL_NARRATION_PATH = 'utils/usePersonalNarration.js';
 
 function read(relativePath) {
   const filename = path.join(ROOT, relativePath);
@@ -346,9 +349,18 @@ function assertControlContract(source) {
   );
 }
 
-function assertRecoverySurfaceLabels(reveal, affirmations) {
+function assertRecoverySurfaceLabels(
+  reveal,
+  affirmations,
+  visions,
+  visionPlayer,
+  personalNarration
+) {
   compile(REVEAL_PATH, reveal);
   compile(AFFIRMATIONS_PATH, affirmations);
+  compile(VISIONS_PATH, visions);
+  compile(VISION_PLAYER_PATH, visionPlayer);
+  compile(PERSONAL_NARRATION_PATH, personalNarration);
 
   assert.match(reveal, /loadingAudio\s*\?\s*t\(S\.preparing\)/);
   assert.match(reveal, /playingAudio\s*\?\s*t\(S\.listening\)/);
@@ -357,6 +369,54 @@ function assertRecoverySurfaceLabels(reveal, affirmations) {
   assert.match(affirmations, /loadingAudio\s*\?\s*t\(S\.preparingAudio\)/);
   assert.match(affirmations, /readyAudio/);
   assert.match(affirmations, /await\s+resumeNarration\(\)/);
+
+  assert.match(
+    visions,
+    /narrationPhase\s*===\s*['"]ready['"]/,
+    'carrossel de visoes precisa manter o playback pronto associado ao card'
+  );
+  assert.match(
+    visions,
+    /narrationPhase\s*===\s*['"]paused['"]\s*\|\|\s*narrationPhase\s*===\s*['"]ready['"][\s\S]{0,180}await\s+resumeNarration\(\)/,
+    'segundo toque em audio pronto deve retomar a fonte existente'
+  );
+  const visionsReadyBranch = visions.indexOf("narrationPhase === 'paused' || narrationPhase === 'ready'");
+  const visionsNewRequest = visions.indexOf('const result = await playPersonal', visionsReadyBranch);
+  assert.ok(
+    visionsReadyBranch >= 0 && visionsNewRequest > visionsReadyBranch,
+    'retomada de visao pronta deve acontecer antes de qualquer nova geracao de audio'
+  );
+  assert.ok(
+    occurrences(visions, /stopPropagation\?\.\(\)/g) >= 2,
+    'acoes internas do card nao podem abrir o player por propagacao do toque'
+  );
+
+  assert.match(
+    visionPlayer,
+    /isReady\s*:\s*narrationReady/,
+    'player de visao precisa consumir o estado pronto do NarrationContext'
+  );
+  assert.match(
+    visionPlayer,
+    /if\s*\(ownsPlayback\s*&&\s*narrationReady\)\s*\{[\s\S]{0,100}\bresume\(\)/,
+    'player de visao deve retomar audio pronto em vez de reiniciar a narracao'
+  );
+  const playerReadyBranch = visionPlayer.indexOf('if (ownsPlayback && narrationReady)');
+  const playerRestart = visionPlayer.indexOf('startNarration(idx);', playerReadyBranch);
+  assert.ok(
+    playerReadyBranch >= 0 && playerRestart > playerReadyBranch,
+    'retomada do player precisa preceder o fallback que inicia uma nova narracao'
+  );
+  assert.doesNotMatch(
+    visionPlayer,
+    /\bprime\s*[,;)]|\bprime\?\.\(|\bprime\(/,
+    'VisionPlayer nao pode preparar o Audio duas vezes no mesmo toque'
+  );
+  assert.strictEqual(
+    occurrences(personalNarration, /narration\.prime\(\)/g),
+    1,
+    'usePersonalNarration deve ser o unico dono do prime da narracao pessoal'
+  );
 }
 
 function assertGlobalIntegration(appSource) {
@@ -431,6 +491,9 @@ async function main() {
   const app = read(APP_PATH);
   const reveal = read(REVEAL_PATH);
   const affirmations = read(AFFIRMATIONS_PATH);
+  const visions = read(VISIONS_PATH);
+  const visionPlayer = read(VISION_PLAYER_PATH);
+  const personalNarration = read(PERSONAL_NARRATION_PATH);
 
   compile(CONTROL_PATH, control);
   compile(CONTEXT_PATH, context);
@@ -439,7 +502,13 @@ async function main() {
   assertContextContract(context);
   await assertAggregateMetrics(context);
   assertControlContract(control);
-  assertRecoverySurfaceLabels(reveal, affirmations);
+  assertRecoverySurfaceLabels(
+    reveal,
+    affirmations,
+    visions,
+    visionPlayer,
+    personalNarration
+  );
   assertGlobalIntegration(app);
   const surfaces = auditNarrationSurfaces();
 

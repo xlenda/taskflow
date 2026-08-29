@@ -107,7 +107,7 @@ export default function VisionPlayerScreen() {
   useEffect(() => {
     if (!vision) return;
     void ensureJourneyVisual(vision.manifestationId, vision.key, { lang: vision.lang });
-  }, [ensureJourneyVisual, vision?.id, vision?.lang]);
+  }, [ensureJourneyVisual, vision?.id, vision?.lang, vision?.visualBrief]);
 
   const backToVisions = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -182,9 +182,9 @@ function PersonalVisionPlayer({
     isLoading: narrationLoading,
     isPlaying: narrationPlaying,
     isPaused: narrationPaused,
+    isReady: narrationReady,
     progress: narrationProgress,
     playPersonal,
-    prime,
     pause,
     resume,
     stop,
@@ -368,7 +368,6 @@ function PersonalVisionPlayer({
   };
 
   const startNarration = async (lineIndex) => {
-    prime?.();
     if (!canNarrate) return;
     const at = Math.min(total - 1, Math.max(0, lineIndex));
     const requestEpoch = requestEpochRef.current + 1;
@@ -427,6 +426,10 @@ function PersonalVisionPlayer({
       return;
     }
     if (ownsPlayback && narrationPaused) {
+      resume();
+      return;
+    }
+    if (ownsPlayback && narrationReady) {
       resume();
       return;
     }

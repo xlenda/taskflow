@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const {
+  COMPLETE_JOURNEY_DAILY_UNITS,
+  GENERATION_QUOTA_SCHEMA_VERSION,
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
@@ -58,6 +60,33 @@ function productionEnv(overrides = {}) {
     ],
     ...overrides,
   });
+}
+
+function operationQuotaPayload(overrides = {}) {
+  return {
+    schemaVersion: 10,
+    actorDailyUnits: 960,
+    perUserDailyUnits: 480,
+    globalDailyUnits: 1200,
+    reserveSignature: true,
+    legacyReserveDisabled: true,
+    operationQuota: true,
+    operationQuotaVersion: 1,
+    weightedGlobalQuota: true,
+    operationPolicies: {
+      scene: { userDailyUnits: 32, actorDailyUnits: 64, allowedUnits: [4, 12], enabled: true },
+      visual: { userDailyUnits: 128, actorDailyUnits: 256, allowedUnits: [8], enabled: true },
+      audio: {
+        userDailyUnits: 320,
+        actorDailyUnits: 640,
+        allowedUnits: [1, 4, 8, 12, 16, 20],
+        enabled: true,
+      },
+      dream: { userDailyUnits: 24, actorDailyUnits: 48, allowedUnits: [3], enabled: true },
+      translation: { userDailyUnits: 24, actorDailyUnits: 48, allowedUnits: [3], enabled: true },
+    },
+    ...overrides,
+  };
 }
 
 test('deploy environment fails closed without exposing values', () => {
@@ -174,7 +203,7 @@ test('deployment and anonymous session parsers keep credentials out of logs', ()
   assert.throws(() => extractAnonymousAccessToken({}), /sessao anonima valida/);
 });
 
-test('deploy probes migration 008 without spending provider quota', async () => {
+test('deploy probes migration 010 and the full 6+6 capacity without spending quota', async () => {
   const env = {
     CELESTE_SUPABASE_URL: 'https://celeste-test.supabase.co',
     CELESTE_SUPABASE_SERVICE_ROLE_KEY: 'server-service-role-key',
@@ -184,19 +213,19 @@ test('deploy probes migration 008 without spending provider quota', async () => 
     calls.push({ url, options });
     return {
       ok: true,
-      json: async () => ({
-        schemaVersion: 8,
-        actorDailyUnits: 96,
-        reserveSignature: true,
-        legacyReserveDisabled: false,
-      }),
+      json: async () => operationQuotaPayload(),
     };
   });
   assert.deepStrictEqual(result, {
-    schemaVersion: 8,
-    actorDailyUnits: 96,
-    legacyReserveDisabled: false,
+    schemaVersion: 10,
+    actorDailyUnits: 960,
+    perUserDailyUnits: 480,
+    globalDailyUnits: 1200,
+    legacyReserveDisabled: true,
+    operationQuota: true,
   });
+  assert.strictEqual(GENERATION_QUOTA_SCHEMA_VERSION, 10);
+  assert.strictEqual(COMPLETE_JOURNEY_DAILY_UNITS, 404);
   assert.strictEqual(calls.length, 1);
   assert.match(calls[0].url, /\/rpc\/celeste_generation_actor_quota_version$/);
   assert.strictEqual(calls[0].options.method, 'POST');
@@ -206,7 +235,7 @@ test('deploy probes migration 008 without spending provider quota', async () => 
 
   await assert.rejects(
     () => validateActorQuotaBackend({}, async () => ({ ok: true })),
-    /Credenciais locais.*migration 008.*deploy bloqueado/
+    /Credenciais locais.*migration 010.*deploy bloqueado/
   );
   await assert.rejects(
     () => validateActorQuotaBackend(env, async () => ({
@@ -214,14 +243,46 @@ test('deploy probes migration 008 without spending provider quota', async () => 
       status: 404,
       json: async () => ({ code: 'PGRST202' }),
     })),
-    /Migration 008 ausente.*deploy bloqueado/
+    /Migration 010 ausente.*deploy bloqueado/
   );
   await assert.rejects(
     () => validateActorQuotaBackend(env, async () => ({
       ok: true,
-      json: async () => ({ schemaVersion: 8, actorDailyUnits: 96 }),
+      json: async () => operationQuotaPayload({ schemaVersion: 9 }),
     })),
-    /contrato invalido.*deploy bloqueado/
+    /contrato.*invalido.*deploy bloqueado/
+  );
+
+  await assert.rejects(
+    () => validateActorQuotaBackend(env, async () => ({
+      ok: true,
+      json: async () => operationQuotaPayload({
+        operationPolicies: {
+          ...operationQuotaPayload().operationPolicies,
+          visual: {
+            ...operationQuotaPayload().operationPolicies.visual,
+            userDailyUnits: 96,
+          },
+        },
+      }),
+    })),
+    /Migration 010.*contrato de cota invalido.*deploy bloqueado/
+  );
+
+  await assert.rejects(
+    () => validateActorQuotaBackend(env, async () => ({
+      ok: true,
+      json: async () => operationQuotaPayload({
+        operationPolicies: {
+          ...operationQuotaPayload().operationPolicies,
+          visual: {
+            ...operationQuotaPayload().operationPolicies.visual,
+            allowedUnits: [1, 8],
+          },
+        },
+      }),
+    })),
+    /Migration 010.*contrato de cota invalido.*deploy bloqueado/
   );
 
   const opaqueCalls = [];
@@ -235,10 +296,7 @@ test('deploy probes migration 008 without spending provider quota', async () => 
       return {
         ok: true,
         json: async () => ({
-          schemaVersion: 9,
-          actorDailyUnits: 96,
-          reserveSignature: true,
-          legacyReserveDisabled: true,
+          ...operationQuotaPayload(),
         }),
       };
     }
@@ -291,6 +349,13 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /dream\.generation\?\.promptVersion === 'celeste-dream-v3'/,
     'smoke de producao precisa confirmar o transformador real de sonhos'
   );
+  assert.match(
+    deploySource,
+    /fetch\('\/api\/gerar-audio'/,
+    'smoke de producao precisa exercitar a voz real da ElevenLabs'
+  );
+  assert.match(deploySource, /results\.audio\.riff === 'RIFF'/);
+  assert.match(deploySource, /results\.audio\.wave === 'WAVE'/);
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);

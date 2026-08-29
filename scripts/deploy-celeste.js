@@ -640,6 +640,15 @@ async function liveGeminiChecks(
     cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
+  const audioBody = {
+    mode: 'personal',
+    text: 'Eu respiro com calma e volto ao que importa.',
+    narratorId: 'aurora',
+    lang: 'pt',
+    cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+  };
 
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -674,6 +683,7 @@ async function liveGeminiChecks(
       translationBody: translationInput,
       dreamBody: dreamInput,
       visualBody: visualInput,
+      audioBody: audioInput,
     }) => {
       const requestId = () => {
         const random = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
@@ -710,10 +720,34 @@ async function liveGeminiChecks(
         }
         return result;
       };
+      const postAudio = async () => {
+        const response = await fetch('/api/gerar-audio', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+            'Content-Type': 'application/json',
+            'X-Celeste-Client': 'web',
+            'X-Celeste-Request-Id': requestId(),
+          },
+          cache: 'no-store',
+          body: JSON.stringify(audioInput),
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const ascii = (from, to) => String.fromCharCode(...bytes.slice(from, to));
+        return {
+          status: response.status,
+          contentType,
+          bytes: bytes.length,
+          riff: ascii(0, 4),
+          wave: ascii(8, 12),
+        };
+      };
       const generation = await postGeneration();
       const translation = await post('/api/traduzir-cena', translationInput);
       const dream = await post('/api/transformar-sonho', dreamInput);
       const visualResult = await post('/api/gerar-visual', visualInput);
+      const audio = await postAudio();
       const visualData = visualResult.payload?.image?.data;
       const visual = {
         status: visualResult.status,
@@ -732,8 +766,8 @@ async function liveGeminiChecks(
           error: visualResult.payload?.error,
         },
       };
-      return { generation, translation, dream, visual };
-    }, { accessToken, generationBody, translationBody, dreamBody, visualBody });
+      return { generation, translation, dream, visual, audio };
+    }, { accessToken, generationBody, translationBody, dreamBody, visualBody, audioBody });
   } finally {
     await browser.close();
   }
@@ -779,7 +813,15 @@ async function liveGeminiChecks(
     visual.generation?.source === 'gemini-image',
     'Visual ao vivo nao confirmou source=gemini-image'
   );
-  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model} e visual ${visual.generation.model} passaram no navegador real`);
+  assert(
+    results.audio.status === 200 &&
+      /^audio\/wav(?:;|$)/i.test(results.audio.contentType) &&
+      results.audio.bytes > 1000 &&
+      results.audio.riff === 'RIFF' &&
+      results.audio.wave === 'WAVE',
+    `ElevenLabs ao vivo nao devolveu WAV valido: ${JSON.stringify(results.audio)}`
+  );
+  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
 }
 
 async function candidateChecks(vercelCli, candidate, env) {

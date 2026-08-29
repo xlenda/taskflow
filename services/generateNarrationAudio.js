@@ -4,6 +4,15 @@ import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { narratorPreviewUrl } from '../constants/narrators';
 import { CLOUD_CONSENT_VERSION } from '../constants/cloudConsent';
+import {
+  acquireNarrationAudio,
+  clearNarrationAudioStorage,
+  createNarrationAudioCacheKey,
+  NARRATION_AUDIO_MAX_IDLE_MS,
+  narrationAudioStorageEpoch,
+  narrationAudioStorageToken,
+  saveNarrationAudio,
+} from './narrationAudioStorage';
 
 const API_TIMEOUT_MS = 35000;
 const MAX_AUDIO_BYTES = 4_100_000;
@@ -121,26 +130,46 @@ function isWave(bytes) {
   );
 }
 
-function cacheKey({ mode, narratorId, lang, text }) {
-  return JSON.stringify([mode, narratorId, lang, mode === 'personal' ? text : 'server-preview']);
+function cacheIdentity({ mode, narratorId, lang, text }) {
+  if (mode === 'personal') {
+    const persistentKey = createNarrationAudioCacheKey({ text, narratorId, lang });
+    return { memoryKey: persistentKey, persistentKey };
+  }
+  return {
+    memoryKey: JSON.stringify([mode, narratorId, lang, 'bundled-preview']),
+    persistentKey: '',
+  };
 }
 
-function cachedAudio(key) {
+function cachedAudio(key, expectedEpoch = null) {
   const cached = audioMemoryCache.get(key);
   if (!cached) return null;
+  if (
+    Date.now() - cached.lastAccessedAt > NARRATION_AUDIO_MAX_IDLE_MS ||
+    (expectedEpoch !== null && cached.storageEpoch !== expectedEpoch)
+  ) {
+    audioMemoryCache.delete(key);
+    audioMemoryCacheBytes -= cached.bytes.byteLength;
+    return null;
+  }
   audioMemoryCache.delete(key);
+  cached.lastAccessedAt = Date.now();
   audioMemoryCache.set(key, cached);
-  return cached.slice();
+  return cached.bytes.slice();
 }
 
-function rememberAudio(key, bytes) {
+function rememberAudio(key, bytes, storageEpoch = null) {
   const copy = bytes.slice();
   const previous = audioMemoryCache.get(key);
   if (previous) {
-    audioMemoryCacheBytes -= previous.byteLength;
+    audioMemoryCacheBytes -= previous.bytes.byteLength;
     audioMemoryCache.delete(key);
   }
-  audioMemoryCache.set(key, copy);
+  audioMemoryCache.set(key, {
+    bytes: copy,
+    lastAccessedAt: Date.now(),
+    storageEpoch,
+  });
   audioMemoryCacheBytes += copy.byteLength;
 
   while (
@@ -150,17 +179,22 @@ function rememberAudio(key, bytes) {
     const oldestKey = audioMemoryCache.keys().next().value;
     const oldest = audioMemoryCache.get(oldestKey);
     audioMemoryCache.delete(oldestKey);
-    audioMemoryCacheBytes -= oldest ? oldest.byteLength : 0;
+    audioMemoryCacheBytes -= oldest ? oldest.bytes.byteLength : 0;
   }
 }
 
-export function clearNarrationAudioMemoryCache() {
+export function clearNarrationAudioMemoryCache({ persistent = true } = {}) {
   for (const pending of pendingAudioRequests.values()) {
     if (pending && pending.controller && !pending.settled) pending.controller.abort();
   }
   pendingAudioRequests.clear();
   audioMemoryCache.clear();
   audioMemoryCacheBytes = 0;
+  if (!persistent) return Promise.resolve(true);
+  return clearNarrationAudioStorage().then(
+    () => true,
+    () => false
+  );
 }
 
 export function narrationAudioMemoryCacheSize() {
@@ -362,11 +396,13 @@ export async function requestNarrationAudio({
   }
 
   if (signal && signal.aborted) throw new NarrationRequestError('audio_cancelled');
-  const key = cacheKey({ ...body, text: body.text });
-  const cached = cachedAudio(key);
+  const { memoryKey, persistentKey } = cacheIdentity({ ...body, text: body.text });
+  if (!memoryKey) throw new NarrationRequestError('text_invalid');
+  const currentStorageEpoch = requestMode === 'personal' ? narrationAudioStorageEpoch() : null;
+  const cached = cachedAudio(memoryKey, currentStorageEpoch);
   if (cached) return cached;
 
-  let pending = pendingAudioRequests.get(key);
+  let pending = pendingAudioRequests.get(memoryKey);
   if (
     pending &&
     !pending.settled &&
@@ -374,38 +410,93 @@ export async function requestNarrationAudio({
     pending.controller &&
     pending.controller.signal.aborted
   ) {
-    if (pendingAudioRequests.get(key) === pending) pendingAudioRequests.delete(key);
+    if (pendingAudioRequests.get(memoryKey) === pending) {
+      pendingAudioRequests.delete(memoryKey);
+    }
     pending = null;
   }
   if (!pending) {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const persistentEpoch = narrationAudioStorageEpoch();
     pending = {
       controller,
       consumers: 0,
       settled: false,
       promise: null,
     };
-    pending.promise = (requestMode === 'preview'
-      ? (previewLoaderImpl || loadNarratorPreview)({
-        narratorId: narrator,
-        lang: locale,
-        signal: controller ? controller.signal : undefined,
-      })
-      : fetchNarrationAudio({
-        body,
-        fetchImpl,
-        signal: controller ? controller.signal : undefined,
-        timeoutMs,
-      }))
+    const pendingSignal = controller ? controller.signal : undefined;
+    let cacheGenerationCurrent = requestMode !== 'personal';
+    pending.promise = (async () => {
+      let persistentToken = '';
+      if (requestMode === 'personal' && persistentKey) {
+        try {
+          persistentToken = await narrationAudioStorageToken();
+          const stored = await acquireNarrationAudio(persistentKey);
+          if (stored) {
+            if (pendingSignal && pendingSignal.aborted) {
+              throw new NarrationRequestError('audio_cancelled');
+            }
+            cacheGenerationCurrent =
+              narrationAudioStorageEpoch() === persistentEpoch &&
+              (await narrationAudioStorageToken()) === persistentToken;
+            return stored;
+          }
+        } catch (storageFailure) {
+          cacheGenerationCurrent = narrationAudioStorageEpoch() === persistentEpoch;
+          if (storageFailure instanceof NarrationRequestError) throw storageFailure;
+          // Storage is a best-effort private cache; playback remains available.
+        }
+      }
+
+      if (pendingSignal && pendingSignal.aborted) {
+        throw new NarrationRequestError('audio_cancelled');
+      }
+      const bytes = requestMode === 'preview'
+        ? await (previewLoaderImpl || loadNarratorPreview)({
+          narratorId: narrator,
+          lang: locale,
+          signal: pendingSignal,
+        })
+        : await fetchNarrationAudio({
+          body,
+          fetchImpl,
+          signal: pendingSignal,
+          timeoutMs,
+        });
+
+      if (requestMode === 'personal' && persistentKey) {
+        try {
+          const saved = await saveNarrationAudio({
+            cacheKey: persistentKey,
+            bytes,
+            expectedEpoch: persistentEpoch,
+            expectedToken: persistentToken,
+          });
+          cacheGenerationCurrent = saved !== false;
+        } catch (_storageError) {
+          cacheGenerationCurrent = narrationAudioStorageEpoch() === persistentEpoch;
+          // Private mode can reject persistence; keep the valid audio in this
+          // session unless a reset invalidated the generation in the meantime.
+        }
+      }
+      return bytes;
+    })()
       .then((bytes) => {
-        rememberAudio(key, bytes);
+        if (
+          requestMode !== 'personal' ||
+          (cacheGenerationCurrent && narrationAudioStorageEpoch() === persistentEpoch)
+        ) {
+          rememberAudio(memoryKey, bytes, requestMode === 'personal' ? persistentEpoch : null);
+        }
         return bytes;
       })
       .finally(() => {
         pending.settled = true;
-        if (pendingAudioRequests.get(key) === pending) pendingAudioRequests.delete(key);
+        if (pendingAudioRequests.get(memoryKey) === pending) {
+          pendingAudioRequests.delete(memoryKey);
+        }
       });
-    pendingAudioRequests.set(key, pending);
+    pendingAudioRequests.set(memoryKey, pending);
   }
 
   pending.consumers += 1;

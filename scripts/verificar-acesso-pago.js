@@ -120,6 +120,7 @@ test('paid Gemini access is identity-bound and quota-bound', { concurrency: fals
         duplicate: false,
         reserved: true,
         actorQuota: true,
+        operationQuota: true,
       }),
     };
   };
@@ -140,6 +141,7 @@ test('paid Gemini access is identity-bound and quota-bound', { concurrency: fals
   assert.ok(!calls[1].options.body.includes('203.0.113.10'), 'IP bruto nao pode sair da funcao');
   assert.ok(!calls[1].options.body.includes('valid-session-token'));
   assert.strictEqual(allowed.actorQuota, 'enforced');
+  assert.strictEqual(allowed.operationQuota, 'enforced');
   assert.strictEqual(
     calls[1].options.headers.Authorization,
     'Bearer server-service-role-key',
@@ -192,6 +194,29 @@ test('paid Gemini access is identity-bound and quota-bound', { concurrency: fals
   assert.strictEqual(calls.length, 2, 'API nova nao pode fazer downgrade para o RPC de quatro argumentos');
   assert.match(JSON.parse(calls[1].options.body).p_actor_hash, /^[0-9a-f]{64}$/);
 
+  calls.length = 0;
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith('/auth/v1/user')) {
+      return {
+        ok: true,
+        json: async () => ({ id: '00000000-0000-4000-8000-000000000001' }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ allowed: true, duplicate: false, actorQuota: true }),
+    };
+  };
+  const operationQuotaMissing = await paidAccess.authorizePaidRequest(request(), {
+    operation: 'scene',
+    units: 4,
+  });
+  assert.deepStrictEqual(operationQuotaMissing, {
+    error: 'spend_guard_unavailable',
+    status: 503,
+  });
+
   delete process.env.CELESTE_SUPABASE_URL;
   delete process.env.CELESTE_SUPABASE_ANON_KEY;
   delete process.env.CELESTE_SUPABASE_SERVICE_ROLE_KEY;
@@ -209,7 +234,12 @@ test('paid Gemini access is identity-bound and quota-bound', { concurrency: fals
     }
     return {
       ok: true,
-      json: async () => ({ allowed: true, duplicate: false, actorQuota: true }),
+      json: async () => ({
+        allowed: true,
+        duplicate: false,
+        actorQuota: true,
+        operationQuota: true,
+      }),
     };
   };
   const marketplaceAllowed = await paidAccess.authorizePaidRequest(request(), {
@@ -413,6 +443,7 @@ test('rotating anonymous UUIDs shares one atomic actor quota', { concurrency: fa
         duplicate: false,
         reserved: false,
         actorQuota: true,
+        operationQuota: true,
       }),
     };
   };
@@ -464,7 +495,7 @@ test('rotating anonymous UUIDs shares one atomic actor quota', { concurrency: fa
   assert.strictEqual(actorUnits.get(boundaryHash), 96);
 });
 
-test('migration 008 and paid routes keep actor accounting fail-closed', () => {
+test('migrations 008-010 and paid routes keep operation accounting fail-closed', () => {
   const root = path.resolve(__dirname, '..');
   const migration = fs.readFileSync(
     path.join(root, 'supabase', 'migrations', '008_generation_actor_quota.sql'),
@@ -472,6 +503,10 @@ test('migration 008 and paid routes keep actor accounting fail-closed', () => {
   );
   const contractMigration = fs.readFileSync(
     path.join(root, 'supabase', 'migrations', '009_disable_legacy_generation_reserve.sql'),
+    'utf8'
+  );
+  const operationMigration = fs.readFileSync(
+    path.join(root, 'supabase', 'migrations', '010_generation_operation_quotas.sql'),
     'utf8'
   );
   const paidSource = fs.readFileSync(path.join(root, 'api', '_paid-access.js'), 'utf8');
@@ -517,11 +552,76 @@ test('migration 008 and paid routes keep actor accounting fail-closed', () => {
   );
   assert.match(migration, /notify pgrst, 'reload schema'/i);
 
+  assert.match(operationMigration, /actor_schema_version\s+between 8 and 10/i);
+  assert.match(operationMigration, /actor_schema_version\s*=\s*10/i);
+  assert.match(
+    operationMigration,
+    /per_user_daily_units\s*=\s*greatest\(per_user_daily_units, 480\)/i
+  );
+  assert.match(
+    operationMigration,
+    /actor_daily_units\s*=\s*greatest\(actor_daily_units, 960\)/i
+  );
+  assert.doesNotMatch(
+    operationMigration,
+    /global_daily_units\s*=/i,
+    'migration 010 deve preservar o teto global ponderado administrado'
+  );
+  assert.match(operationMigration, /celeste_generation_operation_policy/i);
+  assert.match(
+    operationMigration,
+    /\('scene', 32, 64, array\[4, 12\]::smallint\[\]\)/i
+  );
+  assert.match(
+    operationMigration,
+    /\('visual', 128, 256, array\[8\]::smallint\[\]\)/i
+  );
+  assert.match(
+    operationMigration,
+    /\('audio', 320, 640, array\[1, 4, 8, 12, 16, 20\]::smallint\[\]\)/i
+  );
+  assert.match(operationMigration, /primary key \(usage_day, user_id, operation\)/i);
+  assert.match(operationMigration, /primary key \(usage_day, actor_hash, operation\)/i);
+  assert.match(operationMigration, /operation_quota_counted boolean not null default false/i);
+  assert.match(
+    operationMigration,
+    /where r\.status in \('reserved', 'committed'\)[\s\S]*group by r\.usage_day, r\.user_id, r\.operation/i
+  );
+  assert.match(
+    operationMigration,
+    /set operation_quota_counted = true[\s\S]*where status in \('reserved', 'committed'\)/i
+  );
+  assert.match(operationMigration, /p_units = any\(v_operation_policy\.allowed_units\)/i);
+  assert.match(operationMigration, /'reason', 'user_operation_limit'/i);
+  assert.match(operationMigration, /'reason', 'actor_operation_limit'/i);
+  assert.match(operationMigration, /'operationQuota', true/i);
+  assert.match(operationMigration, /'weightedGlobalQuota', true/i);
+  assert.ok(
+    (operationMigration.match(/celeste_generation_actor_operation_usage a[\s\S]{0,180}greatest\(0, a\.units - v_receipt\.units\)/gi) || []).length >= 2,
+    'release expirado e explicito devem devolver a cota ator/operacao'
+  );
+  assert.ok(
+    (operationMigration.match(/celeste_generation_user_operation_usage u[\s\S]{0,180}greatest\(0, u\.units - v_receipt\.units\)/gi) || []).length >= 2,
+    'release expirado e explicito devem devolver a cota usuario/operacao'
+  );
+  assert.match(
+    operationMigration,
+    /revoke all on table public\.celeste_generation_operation_policy[\s\S]*from public, anon, authenticated/i
+  );
+  assert.match(operationMigration, /notify pgrst, 'reload schema'/i);
+  assert.strictEqual(12 + (13 * 8), 116, '6+6 e visual ancora precisam de 116 unidades');
+  assert.ok(
+    480 - 116 >= (6 * 32) + (6 * 16),
+    'jornada completa precisa cobrir seis visoes longas e seis afirmacoes maximas'
+  );
+
   assert.match(paidSource, /TRUSTED_VERCEL_IP_HEADER\s*=\s*'x-vercel-forwarded-for'/);
   assert.doesNotMatch(paidSource, /headers\[['"]x-forwarded-for['"]\]/);
   assert.match(paidSource, /createHmac\('sha256', secret\)/);
   assert.doesNotMatch(paidSource, /PGRST202|legacy_schema/);
   assert.match(paidSource, /p_actor_hash:\s*input\.actorHash/);
+  assert.match(paidSource, /result\.operationQuota\s*!==\s*true/);
+  assert.match(paidSource, /operationQuota:\s*'enforced'/);
 
   const routeMarkers = [
     ['api/gerar-cena.js', 'providerSession.generate('],

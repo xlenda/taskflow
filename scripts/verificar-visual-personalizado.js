@@ -473,9 +473,34 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(context, /phase: 'pending'/);
     assert.match(context, /phase: 'error'/);
     assert.match(context, /personalVisualErrorStage/);
+    assert.match(
+      context,
+      /personalVisualSubjectFingerprint\(currentManifestation\)\s*!==\s*fingerprint[\s\S]{0,220}deletePersonalVisual\(cacheKey\)[\s\S]{0,100}setPersonalVisualPhase\(id,\s*null\)[\s\S]{0,100}error:\s*['"]visual_cancelled['"]/,
+      'resultado visual obsoleto deve apagar arquivo e pending antes de ser cancelado'
+    );
+    assert.match(
+      context,
+      /const ensureJourneyVisual = useCallback[\s\S]{0,1200}if \(running\)\s*\{[\s\S]{0,220}running\.fingerprint === fingerprint[\s\S]{0,120}running\.promise\.then\(\(\) => ensureJourneyVisual/,
+      'visuais da jornada com fingerprints diferentes devem ser serializados'
+    );
+    assert.match(
+      context,
+      /const ensureJourneyVisual = useCallback[\s\S]{0,7000}setPersonalVisualPhase\(statusId,\s*\{\s*phase:\s*['"]pending['"],\s*fingerprint\s*\}\)/,
+      'pending da jornada precisa carregar o fingerprint que iniciou a requisicao'
+    );
+    assert.match(
+      context,
+      /journeyVisualFingerprint\(latestManifestation, latestItem, lang\)\s*!==\s*fingerprint[\s\S]{0,220}deletePersonalVisual\(cacheKey\)[\s\S]{0,100}setPersonalVisualPhase\(statusId,\s*null\)[\s\S]{0,100}error:\s*['"]visual_cancelled['"]/,
+      'resultado obsoleto da jornada deve limpar seu status antes de ser cancelado'
+    );
     assert.match(affirmations, /ensureJourneyVisual\(current\.manifestationId, current\.key/);
     assert.match(affirmations, /ensureDreamVisual\(current\.ritualEntryId/);
     assert.match(affirmations, /force: true/);
+    assert.match(
+      affirmations,
+      /ensureJourneyVisual\(current\.manifestationId, current\.key[\s\S]{0,500}current\?\.visualBrief/,
+      'mudanca do brief da afirmacao deve disparar uma nova verificacao visual'
+    );
     assert.match(affirmationCard, /testID="personal-visual-pending"/);
     assert.match(affirmationCard, /testID="personal-visual-retry"/);
     assert.match(manifestation, /personalVisualStatus\[saved\.id\]/);
@@ -483,9 +508,19 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(manifestation, /testID="manifestation-personal-visual-retry"/);
     assert.match(manifestation, /ensurePersonalVisual\(saved\.id, \{ force: true \}\)/);
     assert.match(visions, /personalVisualStatus\[visibleVision\.visualStatusKey\]/);
+    assert.match(
+      visions,
+      /ensureJourneyVisual\([\s\S]{0,180}visibleVision\.key[\s\S]{0,420}visibleVision\?\.visualBrief/,
+      'mudanca do brief da visao visivel deve substituir o pending antigo'
+    );
     assert.match(visions, /testID="visions-personal-visual-pending"/);
     assert.match(visions, /testID="visions-personal-visual-retry"/);
     assert.match(visionPlayer, /personalVisualStatus\[vision\.visualStatusKey\]/);
+    assert.match(
+      visionPlayer,
+      /ensureJourneyVisual\(vision\.manifestationId, vision\.key[\s\S]{0,240}vision\?\.visualBrief/,
+      'player deve rever a imagem quando o brief da mesma visao mudar'
+    );
     assert.match(visionPlayer, /testID="vision-player-personal-visual-pending"/);
     assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
     assert.match(reveal, /testID="reveal-personal-visual"/);

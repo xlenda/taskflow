@@ -45,7 +45,7 @@ const initialReduceMotion = () =>
 
 // Strings locais da tela (padrão do app: {en,pt} + tr()).
 const S = {
-  counter: { en: '{n} of {total}', pt: '{n} de {total}' },
+  progress: { en: 'Conversation progress', pt: 'Progresso da conversa' },
   creating: {
     en: 'Turning your answers into a scene made for you…',
     pt: 'Transformando suas respostas em uma cena feita para você…',
@@ -483,6 +483,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   }
 
   const centered = step.type === 'statement' || step.type === 'text';
+  const progressPercent = Math.round(((idx + 1) / FLOW.length) * 100);
 
   return (
     <OnbScreen>
@@ -501,21 +502,25 @@ export default function ChatOnboardingScreen({ navigation }) {
             <Ionicons name="arrow-back" size={24} color={ONB.inkSoft} />
           </Pressable>
           <View
+            testID="onboarding-progress"
+            accessibilityRole="progressbar"
+            accessibilityLabel={tr(S.progress, lang)}
+            accessibilityValue={{ min: 0, max: 100, now: progressPercent, text: `${progressPercent}%` }}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+            aria-valuetext={`${progressPercent}%`}
             style={{ flex: 1, marginLeft: 16, height: 5, borderRadius: 3, backgroundColor: ONB.track, overflow: 'hidden' }}
           >
             <View
               style={{
-                width: `${Math.round(((idx + 1) / FLOW.length) * 100)}%`,
+                width: `${progressPercent}%`,
                 height: '100%',
                 borderRadius: 3,
                 backgroundColor: ONB.trackFill,
               }}
             />
           </View>
-          {/* Contador honesto: posição no roteiro (mesma conta da barra) */}
-          <Text style={{ marginLeft: 10, fontSize: 13, color: ONB.inkSoft, fontVariant: ['tabular-nums'] }}>
-            {tr(S.counter, lang, { n: idx + 1, total: FLOW.length })}
-          </Text>
           {step.skippable ? (
             <Pressable
               onPress={skipStep}

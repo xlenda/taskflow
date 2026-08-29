@@ -288,7 +288,17 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   console.log('  [haptics ok] movimento visual + pulsos de 8 ms continuaram na pergunta seguinte');
 
   await waitForText(page, 'que mude na sua vida', 30000); // pergunta 1 = o desejo
-  await waitForText(page, '2 de 28'); // contador ao lado da barra (28 passos no roteiro)
+  const onboardingProgress = await page.$eval('[data-testid="onboarding-progress"]', (element) => ({
+    now: Number(element.getAttribute('aria-valuenow')),
+    label: element.getAttribute('aria-label'),
+    visibleText: document.body.innerText,
+  }));
+  if (onboardingProgress.now !== 7 || onboardingProgress.label !== 'Progresso da conversa') {
+    throw new Error(`Barra de progresso divergente: ${JSON.stringify(onboardingProgress)}`);
+  }
+  if (/\b\d+\s+de\s+28\b/i.test(onboardingProgress.visibleText)) {
+    throw new Error('O total de perguntas nao deve aparecer no funil');
+  }
   await assertChips(page, ['Ter mais paz e equilíbrio', 'Outra resposta'], 'desejo');
   await waitAndClick(page, 'Ter mais paz e equilíbrio');
   await waitAndClick(page, 'Continuar');

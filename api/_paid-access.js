@@ -257,7 +257,7 @@ function reservationResult(result) {
         : 429,
     };
   }
-  if (result.actorQuota !== true) {
+  if (result.actorQuota !== true || result.operationQuota !== true) {
     return { error: 'spend_guard_unavailable', status: 503 };
   }
   // Scene and visual reserve before dispatch; the other operations commit in
@@ -267,6 +267,7 @@ function reservationResult(result) {
     duplicate: false,
     reserved: result.reserved === true,
     actorQuota: 'enforced',
+    operationQuota: 'enforced',
   };
 }
 
@@ -331,6 +332,7 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
     duplicate: reservation.duplicate,
     reserved: reservation.reserved,
     actorQuota: reservation.actorQuota,
+    operationQuota: reservation.operationQuota,
   };
 }
 

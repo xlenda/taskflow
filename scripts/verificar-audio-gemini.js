@@ -1,4 +1,5 @@
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const Module = require('module');
 const path = require('path');
@@ -134,9 +135,111 @@ async function main() {
     loaded.exports = filename;
   };
   const narrators = loadModule('constants/narrators.js');
+  const storage = loadModule('services/narrationAudioStorage.js', {
+    'expo-file-system': { Directory: class TestDirectory {}, File: class TestFile {}, Paths: {} },
+    'react-native': { Platform: { OS: 'web' } },
+  });
+  const privateText = 'Eu reconheco meu caminho com presenca e coragem.';
+  const privateKey = storage.createNarrationAudioCacheKey({
+    text: privateText,
+    narratorId: 'serena',
+    lang: 'pt',
+  });
+  const expectedDigest = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(['narration-v1', 'serena', 'pt', privateText]))
+    .digest('hex');
+  assert.strictEqual(privateKey, `narration-v1-${expectedDigest}`);
+  assert.ok(!privateKey.includes(privateText), 'chave persistente nao pode conter texto pessoal');
+  assert.notStrictEqual(
+    privateKey,
+    storage.createNarrationAudioCacheKey({ text: privateText, narratorId: 'atlas', lang: 'pt' })
+  );
+  assert.notStrictEqual(
+    privateKey,
+    storage.createNarrationAudioCacheKey({ text: privateText, narratorId: 'serena', lang: 'en' })
+  );
+  assert.strictEqual(
+    storage.narrationAudioStorageInternals.sha256Hex('abc'),
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  );
+  const now = Date.now();
+  const lruKeys = Array.from({ length: 4 }, (_, index) =>
+    storage.createNarrationAudioCacheKey({
+      text: `Audio privado numero ${index + 1}.`,
+      narratorId: 'serena',
+      lang: 'pt',
+    })
+  );
+  const lruRecords = lruKeys.map((key, index) => ({
+    key,
+    size: 100,
+    createdAt: now - (index + 1) * 1000,
+    lastAccessedAt: now - (4 - index) * 1000,
+  }));
+  assert.deepStrictEqual(
+    storage.narrationAudioStorageInternals.evictionKeys(
+      lruRecords,
+      lruKeys[3],
+      now,
+      2,
+      1000,
+      Number.MAX_SAFE_INTEGER
+    ),
+    [lruKeys[0], lruKeys[1]],
+    'LRU deve remover primeiro os audios menos recentes e preservar o atual'
+  );
+  assert.deepStrictEqual(
+    storage.narrationAudioStorageInternals.evictionKeys(
+      lruRecords,
+      lruKeys[3],
+      now,
+      40,
+      64 * 1024 * 1024,
+      2500
+    ),
+    [lruKeys[0], lruKeys[1]],
+    'cache deve expirar itens sem uso sem remover o item protegido'
+  );
+
+  const persistentAudioCache = new Map();
+  let persistentEpoch = 0;
+  let persistentReads = 0;
+  let persistentWrites = 0;
+  let persistentClears = 0;
+  let persistentSaveFailure = false;
+  const persistentKeyFor = ({ text, narratorId, lang }) =>
+    `narration-v1-${crypto
+      .createHash('sha256')
+      .update(JSON.stringify(['narration-v1', narratorId, lang, text]))
+      .digest('hex')}`;
   let paidHeadersImpl = async () => ({});
   const service = loadModule('services/generateNarrationAudio.js', {
     './celesteApiSession': { celestePaidApiHeaders: (...args) => paidHeadersImpl(...args) },
+    './narrationAudioStorage': {
+      acquireNarrationAudio: async (key) => {
+        persistentReads += 1;
+        const saved = persistentAudioCache.get(key);
+        return saved ? saved.slice() : null;
+      },
+      clearNarrationAudioStorage: async () => {
+        persistentEpoch += 1;
+        persistentClears += 1;
+        persistentAudioCache.clear();
+        return true;
+      },
+      createNarrationAudioCacheKey: persistentKeyFor,
+      narrationAudioStorageEpoch: () => persistentEpoch,
+      narrationAudioStorageToken: async () => String(persistentEpoch),
+      NARRATION_AUDIO_MAX_IDLE_MS: 30 * 24 * 60 * 60 * 1000,
+      saveNarrationAudio: async ({ cacheKey, bytes, expectedEpoch, expectedToken }) => {
+        if (persistentSaveFailure) throw new Error('storage_unavailable');
+        if (expectedEpoch !== persistentEpoch || expectedToken !== String(persistentEpoch)) return false;
+        persistentWrites += 1;
+        persistentAudioCache.set(cacheKey, bytes.slice());
+        return true;
+      },
+    },
     'expo-asset': { Asset: { fromModule: () => ({ downloadAsync: async () => {} }) } },
     'expo-file-system': { File: class TestFile {} },
     'react-native': { Platform: { OS: 'web' } },
@@ -369,7 +472,7 @@ async function main() {
       arrayBuffer: async () => wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength),
     };
   };
-  service.clearNarrationAudioMemoryCache();
+  await service.clearNarrationAudioMemoryCache();
   const previewRequest = {
     mode: 'preview',
     narratorId: 'serena',
@@ -386,6 +489,8 @@ async function main() {
   assert.strictEqual(clientOptions, undefined, 'preview local nao deve abrir requisicao');
   assert.strictEqual(clientFetchCalls, 0, 'preview local nao deve consumir endpoint');
   assert.strictEqual(service.narrationAudioMemoryCacheSize(), 1);
+  assert.strictEqual(persistentReads, 0, 'preview empacotada nao deve consultar cache pessoal');
+  assert.strictEqual(persistentWrites, 0, 'preview empacotada nao deve persistir WAV pessoal');
 
   const cachedPersonalRequest = {
     mode: 'personal',
@@ -400,10 +505,34 @@ async function main() {
   await service.requestNarrationAudio(cachedPersonalRequest);
   await service.requestNarrationAudio(cachedPersonalRequest);
   assert.strictEqual(clientFetchCalls, 1, 'texto pessoal repetido deve gerar uma unica chamada');
+  assert.strictEqual(persistentWrites, 1, 'primeira geracao pessoal deve persistir uma copia privada');
+  await service.clearNarrationAudioMemoryCache({ persistent: false });
+  await service.requestNarrationAudio(cachedPersonalRequest);
+  assert.strictEqual(
+    clientFetchCalls,
+    1,
+    'apos reiniciar a memoria, o WAV persistente deve evitar uma nova chamada paga'
+  );
+  assert.ok(persistentReads >= 2, 'cache persistente deve ser consultado apos limpar a sessao');
   await service.requestNarrationAudio({ ...cachedPersonalRequest, narratorId: 'atlas' });
   await service.requestNarrationAudio({ ...cachedPersonalRequest, lang: 'en' });
   await service.requestNarrationAudio({ ...cachedPersonalRequest, text: 'Outro texto pessoal.' });
   assert.strictEqual(clientFetchCalls, 4, 'voz, idioma e texto devem participar da chave privada');
+  assert.strictEqual(persistentAudioCache.size, 4);
+
+  persistentSaveFailure = true;
+  const privateModeRequest = {
+    ...cachedPersonalRequest,
+    text: 'Este audio continua privado mesmo sem armazenamento persistente.',
+  };
+  await service.requestNarrationAudio(privateModeRequest);
+  await service.requestNarrationAudio(privateModeRequest);
+  assert.strictEqual(
+    clientFetchCalls,
+    5,
+    'falha do armazenamento deve preservar o cache em memoria da mesma sessao'
+  );
+  persistentSaveFailure = false;
 
   const aborted = new AbortController();
   aborted.abort();
@@ -411,7 +540,7 @@ async function main() {
     () => service.requestNarrationAudio({ ...cachedPersonalRequest, signal: aborted.signal }),
     (requestError) => requestError && requestError.code === 'audio_cancelled'
   );
-  assert.strictEqual(clientFetchCalls, 4, 'requisicao cancelada nao deve consumir o endpoint');
+  assert.strictEqual(clientFetchCalls, 5, 'requisicao cancelada nao deve consumir o endpoint');
   await assert.rejects(
     () =>
       service.requestNarrationAudio({
@@ -420,9 +549,11 @@ async function main() {
       }),
     (requestError) => requestError && requestError.code === 'text_invalid'
   );
-  assert.strictEqual(clientFetchCalls, 4, 'texto grande nunca deve ser truncado silenciosamente');
+  assert.strictEqual(clientFetchCalls, 5, 'texto grande nunca deve ser truncado silenciosamente');
 
-  service.clearNarrationAudioMemoryCache();
+  await service.clearNarrationAudioMemoryCache();
+  assert.strictEqual(persistentAudioCache.size, 0, 'limpeza explicita deve apagar WAV persistente');
+  assert.ok(persistentClears >= 2, 'limpeza persistente deve acompanhar a API publica de clear');
   const networkFetch = global.fetch;
   let authorizationSignal;
   let resolveAuthorization;
@@ -507,6 +638,7 @@ async function main() {
     text: 'Uma geracao diferente que sera cancelada durante a rede.',
     fetchImpl: sharedFetch,
   });
+  await new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(liveAbortStarted, true);
   liveAbort.abort();
   await assert.rejects(
@@ -545,6 +677,7 @@ async function main() {
     signal: loneAbort.signal,
     fetchImpl: loneFetch,
   });
+  await new Promise((resolve) => setImmediate(resolve));
   assert.ok(loneUpstreamSignal, 'a geracao compartilhada precisa receber um AbortSignal');
   loneAbort.abort();
   await assert.rejects(
@@ -555,12 +688,16 @@ async function main() {
   assert.strictEqual(loneUpstreamAborted, true, 'o ultimo consumidor deve abortar a chamada paga');
   assert.strictEqual(loneUpstreamSignal.aborted, true, 'o AbortSignal upstream deve refletir o cancelamento');
 
-  service.clearNarrationAudioMemoryCache();
+  await service.clearNarrationAudioMemoryCache();
   await service.requestNarrationAudio(previewRequest);
-  assert.strictEqual(clientFetchCalls, 4, 'limpar preview local nao pode exigir rede');
+  assert.strictEqual(clientFetchCalls, 5, 'limpar preview local nao pode exigir rede');
 
   const contextSource = fs.readFileSync(path.join(ROOT, 'context/NarrationContext.js'), 'utf8');
   const serviceSource = fs.readFileSync(path.join(ROOT, 'services/generateNarrationAudio.js'), 'utf8');
+  const storageSource = fs.readFileSync(
+    path.join(ROOT, 'services', 'narrationAudioStorage.js'),
+    'utf8'
+  );
   const apiSource = fs.readFileSync(path.join(ROOT, 'api/gerar-audio.js'), 'utf8');
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'capture-narrator-previews.js')));
   const legacySamples = path.join(ROOT, 'scripts', 'amostras');
@@ -612,9 +749,34 @@ async function main() {
   assert.match(serviceSource, /MAX_AUDIO_CHUNK_CHARS\s*=\s*800/);
   assert.match(serviceSource, /MAX_PERSONAL_REQUEST_CHARS\s*=\s*MAX_AUDIO_CHUNK_CHARS/);
   assert.match(serviceSource, /audioMemoryCache/);
+  assert.match(serviceSource, /acquireNarrationAudio/);
+  assert.match(serviceSource, /saveNarrationAudio/);
+  assert.match(serviceSource, /narrationAudioStorageToken/);
+  assert.match(serviceSource, /narrationAudioStorageEpoch\(\) === persistentEpoch/);
+  assert.match(serviceSource, /cacheGenerationCurrent = saved !== false/);
+  assert.match(serviceSource, /cacheGenerationCurrent && narrationAudioStorageEpoch\(\) === persistentEpoch/);
+  assert.match(storageSource, /indexedDB\.open/);
+  assert.match(storageSource, /META_STORE_NAME\s*=\s*['"]cache-meta['"]/);
+  assert.match(storageSource, /tokenRequest\.result\?\.value !== expectedToken/);
+  assert.match(storageSource, /BroadcastChannel/);
+  assert.match(storageSource, /Paths\.cache/);
+  assert.doesNotMatch(storageSource, /Paths\.document/);
+  assert.match(storageSource, /MAX_CACHE_BYTES\s*=\s*64 \* 1024 \* 1024/);
+  assert.match(storageSource, /MAX_CACHE_ENTRIES\s*=\s*40/);
+  assert.match(storageSource, /PRUNE_INTERVAL_MS\s*=\s*24 \* 60 \* 60 \* 1000/);
+  assert.match(storageSource, /async function webPrune\(now\)/);
+  assert.match(storageSource, /async function nativePrune\(now\)/);
+  assert.match(storageSource, /await pruneStorageOnce\(now\)/);
+  assert.match(storageSource, /now - lastPrunedAt < PRUNE_INTERVAL_MS/);
+  assert.doesNotMatch(storageSource, /localStorage|AsyncStorage/);
   assert.match(serviceSource, /loadNarratorPreview/);
   assert.match(apiSource, /preview_is_bundled/);
   assert.match(apiSource, /api\.elevenlabs\.io/);
+  assert.match(
+    apiSource,
+    /authorizePaidRequest[\s\S]{0,400}commitPaidRequest\(access\)[\s\S]{0,500}requestElevenLabs/,
+    'audio deve confirmar a reserva antes de chamar a ElevenLabs'
+  );
   assert.match(apiSource, /ELEVENLABS_API_KEY/);
   assert.match(apiSource, /enable_logging:\s*'false'/);
   assert.doesNotMatch(apiSource, /GEMINI_TTS|generativelanguage/);
