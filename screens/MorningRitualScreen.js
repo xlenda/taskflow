@@ -22,7 +22,9 @@ import * as Haptics from 'expo-haptics';
 
 import { useApp } from '../context/AppContext';
 import { hasCurrentAdultCloudConsent } from '../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import PrimaryButton from '../components/PrimaryButton';
+import AiContentReportAction from '../components/AiContentReportAction';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -226,8 +228,9 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     removeDreamRitual,
   } = useApp();
   const narration = usePersonalNarration();
-  const alarmVisible = mode === 'combined';
+  const alarmVisible = mode === 'combined' && RELEASE_FEATURES.affirmationAlarm;
   const cloudDreamEnabled =
+    RELEASE_FEATURES.paidCloudProcessing &&
     hasCurrentAdultCloudConsent(state.profile) &&
     state.profile?.cloudDreamConsent === true;
 
@@ -691,7 +694,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   );
 
   const playText = useCallback(async (item) => {
-    if (!item) return;
+    if (!item || !narration.personalNarrationAvailable) return;
     const playbackId = playbackIdFor(item);
     if (isTextPlaying(item)) {
       narration.stop();
@@ -920,7 +923,11 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     if (!allowed) return;
 
     const usedByAlarm = ritual.wakeAffirmationId === `ritual:${entryId}`;
-    if (usedByAlarm && (Platform.OS === 'ios' || Platform.OS === 'android')) {
+    if (
+      usedByAlarm &&
+      RELEASE_FEATURES.affirmationAlarm &&
+      (Platform.OS === 'ios' || Platform.OS === 'android')
+    ) {
       const currentCapability = await getAffirmationAlarmCapability().catch(() => null);
       if (!currentCapability) {
         if (mountedRef.current) setDreamDeleteError(true);
@@ -1099,7 +1106,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                   <Ionicons name="list-outline" size={17} color={theme.accent} />
                   <Text style={[styles.smallButtonText, { color: theme.accent }]}>{selectedWake ? t(S.change) : t(S.choose)}</Text>
                 </Pressable>
-                {selectedWake ? (
+                {selectedWake && narration.personalNarrationAvailable ? (
                   <Pressable
                     onPress={() => playText(selectedWake)}
                     style={({ pressed }) => [styles.smallButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
@@ -1362,7 +1369,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                   })}
                 </ScrollView>
 
-                {!cloudDreamEnabled ? (
+                {RELEASE_FEATURES.paidCloudProcessing && !cloudDreamEnabled ? (
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => navigation.navigate('Profile')}
@@ -1430,21 +1437,33 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                       {result.affirmation}
                     </Text>
                     <View style={styles.resultActions}>
-                      <Pressable
-                        onPress={() => playText({ text: result.affirmation, lang: result.lang || lang, personal: true })}
-                        style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
-                      >
-                        <Ionicons name={isTextPlaying({ text: result.affirmation }) ? 'stop' : 'volume-high-outline'} size={18} color={theme.accent} />
-                        <Text style={[styles.resultButtonText, { color: theme.accent }]}>{isTextPlaying({ text: result.affirmation }) ? t(S.stop) : t(S.listenResult)}</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={useResultAsWake}
-                        style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(accentAt(theme, 2), 0.12) }, pressed && styles.pressed]}
-                      >
-                        <Ionicons name={usingResultForWake ? 'checkmark' : 'alarm-outline'} size={18} color={accentAt(theme, 2)} />
-                        <Text style={[styles.resultButtonText, { color: accentAt(theme, 2) }]}>{usingResultForWake ? t(S.usedTomorrow) : t(S.useTomorrow)}</Text>
-                      </Pressable>
+                      {narration.personalNarrationAvailable ? (
+                        <Pressable
+                          onPress={() => playText({ text: result.affirmation, lang: result.lang || lang, personal: true })}
+                          style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
+                        >
+                          <Ionicons name={isTextPlaying({ text: result.affirmation }) ? 'stop' : 'volume-high-outline'} size={18} color={theme.accent} />
+                          <Text style={[styles.resultButtonText, { color: theme.accent }]}>{isTextPlaying({ text: result.affirmation }) ? t(S.stop) : t(S.listenResult)}</Text>
+                        </Pressable>
+                      ) : null}
+                      {RELEASE_FEATURES.affirmationAlarm ? (
+                        <Pressable
+                          onPress={useResultAsWake}
+                          style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(accentAt(theme, 2), 0.12) }, pressed && styles.pressed]}
+                        >
+                          <Ionicons name={usingResultForWake ? 'checkmark' : 'alarm-outline'} size={18} color={accentAt(theme, 2)} />
+                          <Text style={[styles.resultButtonText, { color: accentAt(theme, 2) }]}>{usingResultForWake ? t(S.usedTomorrow) : t(S.useTomorrow)}</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
+                    <AiContentReportAction
+                      contentType="dream"
+                      contentRef={`dream:${entryId || 'current'}:${result.lang || lang}`}
+                      content={`${result.reflection}\n${result.affirmation}`}
+                      visualRef={currentDreamEntry?.visual?.contentFingerprint || currentDreamEntry?.visual?.cacheKey}
+                      generation={result.generation}
+                      lang={result.lang || lang}
+                    />
                     <View style={[styles.mirrorConsentRow, { borderColor: theme.border }]}>
                       <View style={[styles.mirrorConsentIcon, { backgroundColor: alpha(theme.accent, 0.1) }]}>
                         <Ionicons name="sparkles-outline" size={18} color={theme.accent} />

@@ -26,6 +26,7 @@ store-listing/
   privacy-review.md            declaracoes a confirmar antes do envio
   console-fields.json          campos comuns preparados para os consoles
   console-declarations.md      respostas candidatas de conteudo e dados
+  google-play-console-prefill.md respostas exatas da fronteira Android v1
   keyword-map.csv              portfolio inicial de termos por intencao
   experiments.md               testes de conversao apos o lancamento
   launch-checklist.md          caminho completo ate a submissao

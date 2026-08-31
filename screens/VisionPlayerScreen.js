@@ -23,6 +23,7 @@ import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
+import AiContentReportAction from '../components/AiContentReportAction';
 
 const S = {
   pageTitle: { en: 'Visions', pt: 'Visões' },
@@ -184,6 +185,7 @@ function PersonalVisionPlayer({
     isPaused: narrationPaused,
     isReady: narrationReady,
     progress: narrationProgress,
+    personalNarrationAvailable,
     playPersonal,
     pause,
     resume,
@@ -198,7 +200,7 @@ function PersonalVisionPlayer({
   const lines = useMemo(() => splitNarration(vision.story), [vision.story]);
   const caption = lines[0] || vision.title;
   const total = lines.length;
-  const canNarrate = total > 0;
+  const canNarrate = personalNarrationAvailable && total > 0;
   const playbackId = `vision:${vision.id}`;
   const ownsPlayback = activePlaybackId === playbackId;
   const playing = ownsPlayback && (narrationLoading || narrationPlaying);
@@ -627,6 +629,15 @@ function PersonalVisionPlayer({
             );
           })}
         </View>
+
+        <AiContentReportAction
+          contentType="vision"
+          contentRef={`vision:${vision.id}:${vision.lang}`}
+          content={`${vision.title}\n${vision.story}`}
+          visualRef={vision.visualKey}
+          generation={{ source: 'journey-suite' }}
+          lang={vision.lang}
+        />
 
         {completed ? (
           <View style={[styles.doneBox, { backgroundColor: alpha(color, 0.12) }]}>

@@ -8,3 +8,14 @@ dist-trigger-check/
 .env.*
 !.env.example
 scripts/e2e-shots/falha.png
+
+# Store signing and submission credentials must never enter Git.
+credentials.json
+google-service-account*.json
+play-service-account*.json
+service-account*.json
+*.jks
+*.keystore
+*.p12
+*.pem
+supabase/.temp/

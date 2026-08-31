@@ -26,6 +26,7 @@ import { personalJourneyItemsForState } from '../utils/personalJourney';
 import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
 import PrimaryButton from '../components/PrimaryButton';
+import AiContentReportAction from '../components/AiContentReportAction';
 
 const S = {
   title: { en: 'Affirmations', pt: 'Afirmações' },
@@ -104,6 +105,7 @@ export default function AffirmationsScreen() {
     activePlaybackId,
     lastCompletedPlaybackId,
     phase: narrationPhase,
+    personalNarrationAvailable,
     playPersonal,
     resume: resumeNarration,
     stop: stopNarration,
@@ -301,7 +303,7 @@ export default function AffirmationsScreen() {
   const playingAudio = ownsPlayback && narrationPhase === 'playing';
   const pausedAudio = ownsPlayback && narrationPhase === 'paused';
   const readyAudio = ownsPlayback && narrationPhase === 'ready';
-  const canHear = !!current;
+  const canHear = personalNarrationAvailable && !!current;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -464,6 +466,15 @@ export default function AffirmationsScreen() {
               // Sem onToggleSpeak: o ícone cinza de 20px saiu do card — ouvir
               // agora é o botão grande logo abaixo.
               onShare={shareIt}
+            />
+
+            <AiContentReportAction
+              contentType="affirmation"
+              contentRef={`affirmation:${current.id}:${current.speechLang || lang}`}
+              content={currentLoc.text}
+              visualRef={current.visualKey}
+              generation={{ source: current.source === 'dream' ? 'dream-result' : 'journey-suite' }}
+              lang={current.speechLang || lang}
             />
 
             <View style={styles.navRow}>

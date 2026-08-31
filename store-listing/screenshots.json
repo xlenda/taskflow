@@ -1,6 +1,49 @@
 {
   "version": 1,
   "sourceNotice": "Drafts use controlled synthetic data rendered by the real Celeste web interface. Replace raw captures with native build screenshots before submission.",
+  "googlePlayV1": {
+    "status": "native_capture_required",
+    "boundary": "Android v1 must not advertise chosen voice, paid cloud generation, public Community, accounts, purchases, ads or the affirmation alarm.",
+    "featureGraphic": {
+      "pt-BR": {
+        "headline": "Uma cena feita das suas palavras",
+        "subline": "Afirmação pessoal. Um ritual curto. Um passo possível para hoje."
+      },
+      "en-US": {
+        "headline": "A scene made from your words",
+        "subline": "A personal affirmation. A short ritual. One possible step for today."
+      }
+    },
+    "itemOverrides": [
+      {
+        "order": 2,
+        "replaceId": "chosen-voice",
+        "id": "privacy-controls",
+        "desiredNativeScreen": "profile-privacy",
+        "pt-BR": {
+          "headline": "Privacidade explicada com clareza",
+          "alt": "Tela de privacidade da Celeste explicando dados locais, denúncias opcionais e controles da pessoa."
+        },
+        "en-US": {
+          "headline": "Privacy explained in clear language",
+          "alt": "Celeste privacy screen explaining local data, optional reports, and user controls."
+        }
+      },
+      {
+        "order": 3,
+        "id": "personal-affirmations",
+        "desiredNativeScreen": "affirmations-text-card",
+        "pt-BR": {
+          "headline": "Afirmações feitas com suas respostas",
+          "alt": "Afirmação pessoal baseada na história da pessoa, com opções para guardar e denunciar o conteúdo."
+        },
+        "en-US": {
+          "headline": "Affirmations shaped by your answers",
+          "alt": "A personal affirmation based on the person's story, with options to save and report the content."
+        }
+      }
+    ]
+  },
   "items": [
     {
       "order": 1,

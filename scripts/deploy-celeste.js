@@ -33,6 +33,7 @@ const UTF8 = 'utf8';
 const VERCEL_CURL_STATUS_MARKER = '__CELESTE_VERCEL_CURL_STATUS__:';
 
 const STATIC_GATES = [
+  ['scripts/verificar-paginas-publicas.js', 'Paginas publicas de privacidade e suporte falharam'],
   ['scripts/verificar-gemini-api.js', 'Teste local da API Gemini falhou'],
   ['scripts/verificar-provedores-texto.js', 'Providers Claude/OpenAI da Celeste falharam'],
   ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],
@@ -367,7 +368,6 @@ async function vercelCurl(
     '--yes',
     '--scope',
     VERCEL_SCOPE,
-    '--no-color',
     '--',
     '--silent',
     '--show-error',
@@ -485,6 +485,29 @@ async function liveAssetChecks(baseUrl = PROD) {
   ]);
   assert(deep.status === 200, `Rota profunda em producao retornou ${deep.status}`);
 
+  const publicPages = {
+    '/privacidade': 'privacy-pt',
+    '/privacy': 'privacy-en',
+    '/suporte': 'support-pt',
+    '/support': 'support-en',
+  };
+  const livePublicPages = await Promise.all(
+    Object.entries(publicPages).map(async ([pathname, marker]) => {
+      const response = await fetchWithTimeout(`${baseUrl}${pathname}?verify=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const body = await response.text();
+      assert(response.status === 200, `${pathname} em producao retornou HTTP ${response.status}`);
+      assert(/^text\/html/i.test(contentType), `${pathname} em producao nao devolveu HTML: ${contentType}`);
+      assert(
+        body.includes(`data-celeste-public-page="${marker}"`),
+        `${pathname} em producao caiu na rota SPA ou devolveu pagina incorreta`
+      );
+      return pathname;
+    })
+  );
+
   const font = findFirst(path.join(DIST, 'assets'), (name) => /^Ionicons\..*\.ttf$/i.test(name));
   assert(font, 'Fonte Ionicons ausente do pacote');
   const fontPath = path.relative(DIST, font).split(path.sep).join('/');
@@ -506,7 +529,9 @@ async function liveAssetChecks(baseUrl = PROD) {
     'Conteudo da fonte ao vivo diverge do subset validado'
   );
   assert(videoResponse.status === 206 && /^video\/mp4/i.test(videoType), `Video sem MP4/range: ${videoResponse.status} ${videoType}`);
-  console.log(`Verificado ao vivo: bundle=${liveBundle}, fonte=${fontType}, video=${videoType}/206`);
+  console.log(
+    `Verificado ao vivo: bundle=${liveBundle}, fonte=${fontType}, video=${videoType}/206, paginas=${livePublicPages.join(',')}`
+  );
 }
 
 async function createAnonymousSmokeAccessToken() {
@@ -854,6 +879,26 @@ async function candidateChecks(vercelCli, candidate, env) {
   );
   assert(deep.status === 200, `Rota profunda do candidato retornou HTTP ${deep.status}`);
   assert(deep.body.includes(localBundle), 'Rota profunda do candidato nao carregou o bundle validado');
+
+  for (const [pathname, marker] of Object.entries({
+    '/privacidade': 'privacy-pt',
+    '/privacy': 'privacy-en',
+    '/suporte': 'support-pt',
+    '/support': 'support-en',
+  })) {
+    const page = await vercelCurl(
+      vercelCli,
+      candidate,
+      `${pathname}?celeste_candidate=${nonce}`,
+      env,
+      { headers: { 'Cache-Control': 'no-cache' } }
+    );
+    assert(page.status === 200, `${pathname} no candidato retornou HTTP ${page.status}`);
+    assert(
+      page.body.includes(`data-celeste-public-page="${marker}"`),
+      `${pathname} no candidato caiu na rota SPA ou devolveu pagina incorreta`
+    );
+  }
 
   const bundleAsset = await vercelCurl(
     vercelCli,

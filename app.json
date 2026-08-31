@@ -27,7 +27,9 @@
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO",
+        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.USE_EXACT_ALARM",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "versionCode": 1,
@@ -49,7 +51,8 @@
         }
       ],
       "expo-notifications",
-      "expo-image"
+      "expo-image",
+      "expo-font"
     ]
   }
 }

@@ -4,6 +4,11 @@ Guia de preenchimento para a versão `1.0.0`. Respostas marcadas como
 `confirmar` não devem ser copiadas para produção sem comparar com o binário e
 os contratos vigentes dos provedores.
 
+Para o Google Play, usar como fonte principal
+`google-play-console-prefill.md`. A primeira v1 Android tem uma fronteira mais
+restrita do que o site e o iOS; as tabelas multiplataforma deste arquivo não
+devem ser copiadas para o Data Safety Android sem aplicar essa fronteira.
+
 ## Identidade e distribuição
 
 | Campo | Resposta preparada | Estado |
@@ -31,8 +36,9 @@ Respostas candidatas para o questionário vigente de cada console:
 - comunicação direta entre pessoas: não;
 - conteúdo público criado por usuários: não nesta submissão; a Comunidade deve
   permanecer privada/desativada;
-- conteúdo gerado por IA: sim, opcional, com fallback local e controles de
-  consentimento separados;
+- conteúdo gerado/personalizado: sim; na v1 Android a criação paga em nuvem
+  fica bloqueada, o conteúdo local permanece disponível e existe denúncia
+  dentro do app;
 - saúde: reflexão e bem-estar, sem diagnóstico, tratamento ou aconselhamento
   médico;
 - acesso irrestrito à web: não;
@@ -50,9 +56,9 @@ não apenas pelo texto desta lista.
 | App de notícias | Não | binário final |
 | App governamental | Não | binário final |
 | Recursos financeiros | Não | binário final |
-| Criação de conta | Não | manter Supabase social desativado |
-| Exclusão de conta | Não se aplica enquanto não houver conta | revisar se autenticação entrar |
-| Health Apps Declaration | Bem-estar/reflexão; não médico | conferir opções atuais do formulário |
+| Criação de conta | Não; a sessão anônima de denúncia não é uma conta visível | manter login e Supabase social fora do Android |
+| Exclusão de conta | Não se aplica nesta v1 | a pergunta separada de exclusão de dados deve ser respondida |
+| Health Apps Declaration | `Stress management, relaxation, mental acuity`; não médico | conferir no AAB e salvar no console |
 | Acesso do revisor | Fluxo inteiro sem login | testar build de produção |
 | IARC | Sem categorias maduras conhecidas | preencher no console |
 
@@ -61,6 +67,17 @@ Tags candidatas: `Personal growth`, `Mindfulness`, `Journal`, `Meditation` e
 que apareçam e descrevam o app real.
 
 ## Apple App Privacy e Google Data Safety
+
+### Fronteira Data Safety da v1 Android
+
+No Android, as APIs pagas de Anthropic, OpenAI, Gemini e ElevenLabs falham antes
+de criar sessão ou fazer a chamada. O único fluxo intencional para fora do
+aparelho é a denúncia opcional de conteúdo, que envia ao Supabase um UUID
+pseudônimo, o conteúdo escolhido, motivo, nota opcional e metadados mínimos da
+geração. O preenchimento exato está em `google-play-console-prefill.md`.
+
+As tabelas abaixo continuam sendo o inventário para web/iOS e para uma futura
+release que habilite provedores em nuvem; não representam a v1 Android.
 
 ### Dados transmitidos fora do aparelho
 

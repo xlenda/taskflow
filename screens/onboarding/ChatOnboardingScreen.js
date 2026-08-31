@@ -19,6 +19,7 @@ import Typewriter from '../../components/Typewriter';
 import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
 import { CLOUD_CONSENT_VERSION } from '../../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../../constants/releaseFeatures';
 import { UI, txt, tr } from '../../constants/i18n';
 import { FLOW, ageConfirmsAdult, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
@@ -37,6 +38,9 @@ const DRAFT_KEY = '@celeste_onb_draft';
 const DRAFT_V = 5;
 const DRAFT_READ_TIMEOUT_MS = 1500;
 const CUSTOM_OPTION = CUSTOM_CHOICE_KEY;
+const RELEASE_FLOW = RELEASE_FEATURES.paidCloudProcessing
+  ? FLOW
+  : FLOW.filter((entry) => entry.key !== 'cloudPersonalization');
 const initialReduceMotion = () =>
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&
@@ -64,10 +68,16 @@ function normalizeCloudConsent(profile) {
   const source = profile && typeof profile === 'object' ? profile : {};
   const adult = ageConfirmsAdult(source.age);
   const currentVersion = adult && source.cloudConsentVersion === CLOUD_CONSENT_VERSION;
-  const allowed = currentVersion && source.cloudPersonalization === true;
+  const allowed =
+    RELEASE_FEATURES.paidCloudProcessing &&
+    currentVersion &&
+    source.cloudPersonalization === true;
   return {
     ...source,
-    cloudConsentVersion: currentVersion ? CLOUD_CONSENT_VERSION : null,
+    cloudConsentVersion:
+      RELEASE_FEATURES.paidCloudProcessing && currentVersion
+        ? CLOUD_CONSENT_VERSION
+        : null,
     cloudPersonalization: allowed,
     cloudAdultConfirmed: allowed,
     cloudNarrationConsent: allowed,
@@ -101,7 +111,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   const lastTypingPulse = useRef(0);
   const draftInteractionRef = useRef(false);
 
-  const step = FLOW[idx];
+  const step = RELEASE_FLOW[idx];
   const isMultiSelect = step.type === 'chips' && step.multiSelect === true;
   const shortCompactStep = step.compact && viewportHeight <= 520;
   const lines = useMemo(() => stepLines(step, answers, APP_NAME, lang), [idx, lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -222,7 +232,7 @@ export default function ChatOnboardingScreen({ navigation }) {
           draft.v === DRAFT_V &&
           Number.isInteger(draft.idx) &&
           draft.idx > 0 &&
-          draft.idx < FLOW.length &&
+          draft.idx < RELEASE_FLOW.length &&
           draft.answers &&
           typeof draft.answers === 'object'
         ) {
@@ -253,8 +263,8 @@ export default function ChatOnboardingScreen({ navigation }) {
     // a tap that completed the previous sentence.
     setInstant(false);
     let i = idx + 1;
-    while (i < FLOW.length && FLOW[i].when && !FLOW[i].when(ans)) i += 1;
-    if (i >= FLOW.length) {
+    while (i < RELEASE_FLOW.length && RELEASE_FLOW[i].when && !RELEASE_FLOW[i].when(ans)) i += 1;
+    if (i >= RELEASE_FLOW.length) {
       if (finishingRef.current) return;
       finishingRef.current = true;
       setCreationError(false);
@@ -317,7 +327,7 @@ export default function ChatOnboardingScreen({ navigation }) {
       next.cloudNarrationConsent = false;
       next.cloudDreamConsent = false;
     }
-    for (const s of FLOW) {
+    for (const s of RELEASE_FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
     }
     setAnswers(next);
@@ -330,7 +340,11 @@ export default function ChatOnboardingScreen({ navigation }) {
     setInstant(false);
     let i = idx - 1;
     // Skip statements and gated-off steps so back never lands on an auto-advancing screen.
-    while (i >= 0 && (FLOW[i].type === 'statement' || (FLOW[i].when && !FLOW[i].when(answers)))) i -= 1;
+    while (
+      i >= 0 &&
+      (RELEASE_FLOW[i].type === 'statement' ||
+        (RELEASE_FLOW[i].when && !RELEASE_FLOW[i].when(answers)))
+    ) i -= 1;
     if (i < 0) navigation.goBack();
     else setIdx(i);
   };
@@ -354,7 +368,7 @@ export default function ChatOnboardingScreen({ navigation }) {
       next.cloudDreamConsent = allowed;
     }
     // Drop answers from gated steps that became unreachable (e.g. kids after hasKids -> No).
-    for (const s of FLOW) {
+    for (const s of RELEASE_FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
     }
     setAnswers(next);
@@ -483,7 +497,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   }
 
   const centered = step.type === 'statement' || step.type === 'text';
-  const progressPercent = Math.round(((idx + 1) / FLOW.length) * 100);
+  const progressPercent = Math.round(((idx + 1) / RELEASE_FLOW.length) * 100);
 
   return (
     <OnbScreen>

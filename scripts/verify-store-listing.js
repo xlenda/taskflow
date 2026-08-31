@@ -262,7 +262,9 @@ if (appConfig.expo.android?.allowBackup !== false) {
 const blockedAndroidPermissions = [
   'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.RECORD_AUDIO',
+  'android.permission.SCHEDULE_EXACT_ALARM',
   'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.USE_EXACT_ALARM',
   'android.permission.WRITE_EXTERNAL_STORAGE',
 ];
 for (const permission of blockedAndroidPermissions) {
@@ -286,6 +288,24 @@ if (
 if (!appConfig.expo.plugins?.includes('expo-notifications')) {
   fail('expo-notifications config plugin is required for daily reminders');
 }
+try {
+  const alarmModule = JSON.parse(
+    fs.readFileSync(
+      path.join(ROOT, 'modules', 'celeste-affirmation-alarm', 'expo-module.config.json'),
+      'utf8'
+    )
+  );
+  if (
+    !Array.isArray(alarmModule.platforms) ||
+    alarmModule.platforms.length !== 1 ||
+    alarmModule.platforms[0] !== 'apple' ||
+    alarmModule.android !== undefined
+  ) {
+    fail('Android store v1 must not autolink the affirmation alarm module');
+  }
+} catch (error) {
+  fail(`affirmation alarm module config is invalid: ${error.message}`);
+}
 const splashPlugin = appConfig.expo.plugins?.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'
 );
@@ -302,6 +322,11 @@ try {
   if (eas.build?.production?.autoIncrement !== true) fail('EAS production build must auto-increment');
   if (eas.build?.production?.distribution !== 'store') {
     fail('EAS production build must use store distribution');
+  }
+  for (const profile of ['preview', 'production']) {
+    if (eas.build?.[profile]?.env?.EXPO_PUBLIC_CELESTE_ANDROID_STORE_RELEASE !== '1') {
+      fail(`EAS ${profile} must enable the Android store release boundary`);
+    }
   }
   if (!eas.submit?.production || typeof eas.submit.production !== 'object') {
     fail('EAS production submit profile is missing');

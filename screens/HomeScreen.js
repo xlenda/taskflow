@@ -24,6 +24,7 @@ import {
   CLOUD_CONSENT_VERSION,
   hasCurrentCloudConsentVersion,
 } from '../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { confirmAsync } from '../utils/confirm';
@@ -207,7 +208,9 @@ export default function HomeScreen() {
     const currentProfile = state.profile || {};
     const knownMinor = isUnder18Age(currentProfile.age);
     const currentConsentDecision =
-      !knownMinor && hasCurrentCloudConsentVersion(currentProfile);
+      RELEASE_FEATURES.paidCloudProcessing &&
+      !knownMinor &&
+      hasCurrentCloudConsentVersion(currentProfile);
     let cloudConsentVersion = currentConsentDecision ? CLOUD_CONSENT_VERSION : null;
     let cloudPersonalization =
       currentConsentDecision && currentProfile.cloudPersonalization === true;
@@ -216,7 +219,26 @@ export default function HomeScreen() {
       currentConsentDecision && currentProfile.cloudNarrationConsent === true;
     const cloudDreamConsent =
       currentConsentDecision && currentProfile.cloudDreamConsent === true;
-    if (!knownMinor && !currentConsentDecision) {
+    if (!RELEASE_FEATURES.paidCloudProcessing) {
+      cloudConsentVersion = null;
+      cloudPersonalization = false;
+      cloudAdultConfirmed = false;
+      if (
+        currentProfile.cloudConsentVersion ||
+        currentProfile.cloudPersonalization === true ||
+        currentProfile.cloudAdultConfirmed === true ||
+        currentProfile.cloudNarrationConsent === true ||
+        currentProfile.cloudDreamConsent === true
+      ) {
+        saveProfile({
+          cloudConsentVersion: null,
+          cloudPersonalization: false,
+          cloudAdultConfirmed: false,
+          cloudNarrationConsent: false,
+          cloudDreamConsent: false,
+        });
+      }
+    } else if (!knownMinor && !currentConsentDecision) {
       cloudPersonalization = await confirmAsync({
         title: t(S.consentTitle),
         message: t(S.consentBody),
@@ -446,23 +468,25 @@ export default function HomeScreen() {
             subtitle={t(S.subtitle, { name: state.name })}
             right={(
               <View style={styles.headerActions}>
-                <Pressable
-                  testID="open-community-home"
-                  accessibilityRole="button"
-                  accessibilityLabel={lang === 'en' ? 'Open community' : 'Abrir comunidade'}
-                  onPress={() => {
-                    const tabs = navigation.getParent && navigation.getParent();
-                    if (tabs && tabs.navigate) tabs.navigate('Community');
-                    else navigation.navigate('Community');
-                  }}
-                  style={({ pressed }) => [
-                    styles.communityHeaderButton,
-                    { backgroundColor: th.surface, borderColor: th.border },
-                    pressed && styles.actionPressed,
-                  ]}
-                >
-                  <Ionicons name="people-outline" size={22} color={th.accent} />
-                </Pressable>
+                {RELEASE_FEATURES.publicCommunity ? (
+                  <Pressable
+                    testID="open-community-home"
+                    accessibilityRole="button"
+                    accessibilityLabel={lang === 'en' ? 'Open community' : 'Abrir comunidade'}
+                    onPress={() => {
+                      const tabs = navigation.getParent && navigation.getParent();
+                      if (tabs && tabs.navigate) tabs.navigate('Community');
+                      else navigation.navigate('Community');
+                    }}
+                    style={({ pressed }) => [
+                      styles.communityHeaderButton,
+                      { backgroundColor: th.surface, borderColor: th.border },
+                      pressed && styles.actionPressed,
+                    ]}
+                  >
+                    <Ionicons name="people-outline" size={22} color={th.accent} />
+                  </Pressable>
+                ) : null}
                 <Pressable
                   testID="open-profile"
                   accessibilityRole="button"
@@ -564,28 +588,30 @@ export default function HomeScreen() {
           <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
         </Card>
 
-        <Card
-          testID="open-affirmation-alarm"
-          onPress={() => navigation.navigate('AffirmationAlarm')}
-          accessibilityRole="button"
-          accessibilityLabel={t(S.alarmTitle)}
-          style={[styles.morningCard, { backgroundColor: th.surface }]}
-        >
-          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 2), 0.14) }]}>
-            <Ionicons name="alarm-outline" size={22} color={accentAt(th, 2)} />
-          </View>
-          <View style={styles.morningCopy}>
-            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.alarmTitle)}</Text>
-            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
-              {morningRitual.reminderEnabled
-                ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
-                : hasWakeAffirmation
-                ? t(S.morningPrepared, { time: morningRitual.reminderTime || '07:00' })
-                : t(S.alarmEmpty)}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
-        </Card>
+        {RELEASE_FEATURES.affirmationAlarm ? (
+          <Card
+            testID="open-affirmation-alarm"
+            onPress={() => navigation.navigate('AffirmationAlarm')}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.alarmTitle)}
+            style={[styles.morningCard, { backgroundColor: th.surface }]}
+          >
+            <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 2), 0.14) }]}>
+              <Ionicons name="alarm-outline" size={22} color={accentAt(th, 2)} />
+            </View>
+            <View style={styles.morningCopy}>
+              <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.alarmTitle)}</Text>
+              <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+                {morningRitual.reminderEnabled
+                  ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
+                  : hasWakeAffirmation
+                  ? t(S.morningPrepared, { time: morningRitual.reminderTime || '07:00' })
+                  : t(S.alarmEmpty)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+          </Card>
+        ) : null}
         </View>
 
         {hasItems ? (

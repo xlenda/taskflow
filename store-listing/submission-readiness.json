@@ -2,9 +2,9 @@
   "version": 1,
   "checks": {
     "nativeApiAccess": {
-      "ready": false,
-      "evidence": null,
-      "note": "Authenticate native requests without weakening the web origin policy."
+      "ready": true,
+      "evidence": "services/celesteApiSession.js; scripts/verificar-fronteira-api-nativa.js; docs/android-store-v1-boundary.md",
+      "note": "Android v1 uses the local path and blocks paid cloud API calls fail-closed with native_attestation_required before creating a session or contacting the backend."
     },
     "nativeScreenshots": {
       "ready": false,
@@ -14,17 +14,17 @@
     "nativeFeatureValidation": {
       "ready": false,
       "evidence": null,
-      "note": "Validate voice, notifications, fallback and any platform-specific feature on devices."
+      "note": "The generated Android prebuild passed autolinking with target SDK 36 and excluded the alarm module and forbidden permissions. The signed AAB still needs validation on a physical device: ordinary reminder, local fallback, AI reporting, storage, network traffic and final packaged permissions."
     },
     "aiContentReporting": {
-      "ready": false,
-      "evidence": null,
-      "note": "Provide a user path to report inappropriate generated content."
+      "ready": true,
+      "evidence": "components/AiContentReportAction.js; services/aiContentReports.js; supabase/migrations/011_ai_content_reports.sql; scripts/verificar-denuncia-ia.js; scripts/verificar-denuncia-ia-live.js",
+      "note": "The in-app report flow is integrated on four generated-content surfaces. Supabase migrations 001-011 are synchronized in production; a live anonymous report succeeded and its report and test user were removed."
     },
     "communityReleaseBoundary": {
-      "ready": false,
-      "evidence": null,
-      "note": "Hide public Community in the store build or complete its trust and safety stack."
+      "ready": true,
+      "evidence": "constants/releaseFeatures.js; scripts/verificar-fronteira-release-android.js; docs/android-store-v1-boundary.md",
+      "note": "Android v1 hides the public Community tab, shortcut and deep link. Production community policies remain disabled by default."
     },
     "privacyFormsFinal": {
       "ready": false,

@@ -96,8 +96,8 @@ const S = {
   yourSpace: { en: 'Your space', pt: 'Seu espaço' },
   profileSettings: { en: 'Profile and settings', pt: 'Perfil e configurações' },
   profileSettingsBody: {
-    en: 'Name, language, appearance, cloud processing and privacy',
-    pt: 'Nome, idioma, aparência, processamento em nuvem e privacidade',
+    en: 'Name, language, appearance and privacy',
+    pt: 'Nome, idioma, aparência e privacidade',
   },
 
   resetCta: { en: 'Reset my journey', pt: 'Recomeçar minha jornada' },

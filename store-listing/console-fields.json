@@ -14,8 +14,8 @@
     "secondaryCategory": "Lifestyle",
     "supportsTablet": false,
     "marketingUrl": "https://celeste-jet-two.vercel.app",
-    "privacyUrl": null,
-    "supportUrl": null,
+    "privacyUrl": "https://celeste-jet-two.vercel.app/privacidade",
+    "supportUrl": "https://celeste-jet-two.vercel.app/suporte",
     "copyrightOwner": null,
     "reviewContact": null,
     "releaseMode": null,
@@ -34,11 +34,81 @@
     ],
     "containsAds": false,
     "loginRequired": false,
+    "hasUserFacingAccounts": false,
+    "anonymousSafetySession": "created_only_when_submitting_an_ai_content_report",
+    "hasActivePurchases": false,
+    "publicCommunity": false,
+    "androidSystemAlarm": false,
+    "paidCloudGeneration": false,
+    "inAppAiContentReporting": true,
     "marketingUrl": "https://celeste-jet-two.vercel.app",
-    "privacyUrl": null,
+    "privacyUrl": "https://celeste-jet-two.vercel.app/privacidade",
     "supportEmail": null,
     "targetAudienceRecommendation": "18_and_over_owner_must_confirm",
-    "territories": null
+    "territories": null,
+    "appContent": {
+      "appAccess": "all_functionality_available_without_special_access",
+      "newsApp": false,
+      "governmentApp": false,
+      "financialFeatures": "none",
+      "usesAdvertisingId": false,
+      "accountCreation": false,
+      "accountDeletionUrlRequired": false,
+      "publicUserGeneratedContent": false,
+      "directUserCommunication": false,
+      "unrestrictedWebAccess": false,
+      "aiGeneratedOrPersonalizedContent": true
+    },
+    "dataSafety": {
+      "collectsRequiredDataTypes": true,
+      "allCollectionOptional": true,
+      "processedEphemerally": false,
+      "deletionRequestMechanism": false,
+      "encryptedInTransit": "yes_after_final_aab_https_confirmation",
+      "shared": "no_only_if_owner_confirms_supabase_service_provider_exception",
+      "reportedContentMayContainDerivedPersonalDetails": true,
+      "embeddedDataTypeClassificationRequired": [
+        "name",
+        "other_info",
+        "approximate_location",
+        "health_info",
+        "other_financial_info",
+        "manually_entered_contact_names"
+      ],
+      "dataTypes": [
+        {
+          "type": "personal_info_user_ids",
+          "purposes": [
+            "app_functionality",
+            "fraud_prevention_security_compliance"
+          ]
+        },
+        {
+          "type": "app_activity_other_user_generated_content",
+          "purposes": [
+            "app_functionality",
+            "fraud_prevention_security_compliance"
+          ]
+        },
+        {
+          "type": "app_activity_other_actions",
+          "purposes": [
+            "app_functionality",
+            "fraud_prevention_security_compliance"
+          ]
+        }
+      ]
+    },
+    "healthApps": {
+      "offersHealthFeatures": true,
+      "selectedFeatures": [
+        "health_and_fitness_stress_management_relaxation_mental_acuity"
+      ],
+      "medicalFunctionality": false,
+      "healthConnect": false,
+      "offDeviceHealthDataCollection": "no_dedicated_field_but_reported_generated_text_may_mention_health"
+    },
+    "prefillGuide": "store-listing/google-play-console-prefill.md"
   },
   "releaseBoundaries": {
     "publicCommunity": false,

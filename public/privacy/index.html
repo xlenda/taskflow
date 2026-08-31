@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Celeste privacy policy: on-device data, optional cloud features, service providers and deletion controls."
+    />
+    <title>Privacy policy — Celeste</title>
+    <link rel="canonical" href="https://celeste-jet-two.vercel.app/privacy" />
+    <link rel="alternate" hreflang="pt-BR" href="https://celeste-jet-two.vercel.app/privacidade" />
+    <link rel="alternate" hreflang="en-US" href="https://celeste-jet-two.vercel.app/privacy" />
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body data-celeste-public-page="privacy-en">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <div class="shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="Celeste — home">Celeste</a>
+        <a class="language-link" href="/privacidade" lang="pt-BR" hreflang="pt-BR">Português</a>
+      </header>
+
+      <main id="content">
+        <header class="hero">
+          <p class="eyebrow">Public document · version 1.0.0</p>
+          <h1>Privacy policy</h1>
+          <p class="lead">
+            This policy explains how Celeste handles data on its website and in the
+            application identified by package <code>com.lenda.celeste</code>.
+          </p>
+          <p class="updated">Updated August 31, 2026.</p>
+        </header>
+
+        <div class="content">
+          <aside class="notice" data-owner-required="legal-contact" aria-label="Information awaiting owner confirmation">
+            <strong>Legal contact awaiting confirmation.</strong>
+            The account owner must provide the controller's legal name and a public privacy
+            email before public distribution. The <a href="/support">support page</a> will be
+            updated with that channel without changing the processing described here.
+          </aside>
+
+          <section class="section" aria-labelledby="summary">
+            <h2 id="summary">1. Summary</h2>
+            <p>
+              Personal practice data is primarily stored on the device. This release does not
+              require a personal sign-in, offer an active subscription or purchase, contain ads,
+              or use data for behavioral advertising.
+            </p>
+            <p>
+              Cloud personalization features are optional. They send only the content needed
+              after an explicit choice and, where applicable, confirmation that the person is an
+              adult. If permission is missing or a service is unavailable, Celeste keeps or
+              creates an on-device alternative.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="device">
+            <h2 id="device">2. Data stored on the device</h2>
+            <p>Depending on the features used, Celeste may store locally:</p>
+            <ul>
+              <li>name, language, visual preference and onboarding answers;</li>
+              <li>manifestations, personal scenes, affirmations, dreams, private traces and earlier chapters;</li>
+              <li>favorites, practice history, streak and completed daily bridges;</li>
+              <li>reminder or alarm time and the selected affirmation;</li>
+              <li>personal images and narration audio in a private device cache.</li>
+            </ul>
+            <p>
+              This data provides continuity and is not published. A Community draft remains
+              private when there is no authenticated account and no enabled community service.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="cloud">
+            <h2 id="cloud">3. Optional cloud processing</h2>
+            <p>
+              Celeste uses its backend as an intermediary and reduces each request to the content
+              needed for the chosen feature. Permissions for personal scenes, dream reflection
+              and neural narration are separate.
+            </p>
+            <div class="processor-list" aria-label="Services and purposes">
+              <div class="processor">
+                <strong>Supabase</strong>
+                Creates and maintains an anonymous technical session to authorize optional calls
+                and enforce limits. It is not a personal sign-in in this release. It also keeps
+                submitted AI-content reports in a restricted moderation queue.
+              </div>
+              <div class="processor">
+                <strong>Anthropic</strong>
+                Receives selected answers and minimized context to generate personal scenes and
+                Living Mirror chapters when that feature is authorized.
+              </div>
+              <div class="processor">
+                <strong>OpenAI</strong>
+                May receive the same minimized scene-text request only as failover when the primary
+                generation fails; it is not a second routine call.
+              </div>
+              <div class="processor">
+                <strong>Google Gemini</strong>
+                Receives the content needed when a person requests a cloud translation, personal
+                image or dream reflection.
+              </div>
+              <div class="processor">
+                <strong>ElevenLabs</strong>
+                Receives the final text, language and selected narrator to produce requested
+                narration.
+              </div>
+              <div class="processor">
+                <strong>Vercel and BotID</strong>
+                Host and protect the backend. They may process IP addresses, request identifiers,
+                abuse signals and technical logs for security, fraud prevention and service
+                operations.
+              </div>
+            </div>
+            <p>
+              Age range, gender, sexuality and names entered in dedicated fields for children,
+              important people or a specific person are not included in scene-generation
+              requests. Celeste also attempts to remove those names if they reappear in selected
+              free-text answers; nevertheless, do not enter third-party data or highly sensitive
+              information in free text.
+            </p>
+            <p>
+              For a new Living Mirror chapter, the prior scene and structured progress totals may
+              be sent. Full Private Trace text and full dream reports are not part of that request.
+              A dream contributes only its selected theme and feeling when that choice is enabled
+              for the individual dream.
+            </p>
+            <h3>AI-content reports</h3>
+            <p>
+              When <strong>Report this AI content</strong> is used, Celeste sends to Supabase only
+              the selected generated output of up to 4,000 characters (or a visual reference),
+              the reason, an optional note of up to 500 characters, language, technical generation
+              source, platform, app version and anonymous session
+              identifier. The prompt, original onboarding answers and raw dream report are not
+              included. The report is kept in a private safety and moderation review queue.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="media">
+            <h2 id="media">4. Voice, media, notifications and alarms</h2>
+            <ul>
+              <li>
+                Pressing Play with permission sends the selected text, language and narrator to
+                ElevenLabs. The returned audio is not published and may be kept in a private cache;
+                items unused for 30 days are periodically removed.
+              </li>
+              <li>
+                Narrator previews are bundled with the app. They contain no onboarding answers and
+                do not start a cloud generation request.
+              </li>
+              <li>
+                If dictation is used, speech recognition is supplied by the browser or operating
+                system and may follow that provider's rules. Celeste receives the transcript, does
+                not upload the raw recording itself, and sends text to Gemini only when cloud dream
+                reflection is requested and authorized.
+              </li>
+              <li>
+                In the installed app, Celeste may request notification access and, on a compatible
+                device, alarm access. The time and alarm audio remain on the device. Daily reminder
+                copy is generic and does not expose a desire, dream or affirmation on the lock screen.
+              </li>
+            </ul>
+          </section>
+
+          <section class="section" aria-labelledby="purposes">
+            <h2 id="purposes">5. Purposes, sharing and retention</h2>
+            <p>Data is handled to:</p>
+            <ul>
+              <li>deliver the practice and remember device preferences;</li>
+              <li>produce cloud content explicitly requested by the person;</li>
+              <li>play media and schedule compatible reminders or alarms;</li>
+              <li>authorize requests, limit abuse, diagnose failures and protect the service.</li>
+            </ul>
+            <p>
+              No use for ads, data sales, cross-app tracking or advertising profiles was identified
+              in this release's code. Data sent to providers is limited to the purposes above. Those
+              providers may retain technical records or content under the contracts and terms that
+              apply to the accounts used by Celeste.
+            </p>
+            <aside class="notice" data-owner-required="provider-retention">
+              <strong>External retention period to be confirmed.</strong>
+              Exact retention periods for the active Anthropic, OpenAI, Google, ElevenLabs,
+              Supabase, Vercel and BotID accounts depend on the owner's contracts and must be
+              confirmed before public distribution. Celeste does not assume processing is ephemeral.
+            </aside>
+          </section>
+
+          <section class="section" aria-labelledby="controls">
+            <h2 id="controls">6. Controls and deletion</h2>
+            <ul>
+              <li>Turn cloud processing off in Profile to prevent new uploads.</li>
+              <li>Edit or delete manifestations, dreams and traces in their respective areas.</li>
+              <li>
+                Use <strong>Profile → Reset my journey</strong> to remove the local practice,
+                auxiliary records and private cache maintained by Celeste.
+              </li>
+              <li>
+                Clearing app/site data or uninstalling the app removes the local copy according to
+                the operating system's behavior.
+              </li>
+            </ul>
+            <p>
+              There is no personal account in this release, so there is no remote account to
+              delete. If accounts are enabled, Celeste will publish an in-app and web deletion path
+              before that feature is distributed.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="security">
+            <h2 id="security">7. Security</h2>
+            <p>
+              The public site and backend use HTTPS. Celeste applies session authorization,
+              separate consent, usage limits, minimized requests, blocked unnecessary Android
+              permissions and private device storage. No system is entirely risk-free; do not
+              enter passwords, financial credentials, document numbers or another person's data.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="age-health">
+            <h2 id="age-health">8. Age and well-being notice</h2>
+            <p>
+              Profiles marked Under 18 remain on the on-device options and cannot authorize cloud
+              personalization. The final store audience selection will be set by the account owner
+              before distribution.
+            </p>
+            <p class="callout">
+              Celeste supports reflection and well-being. It is not a medical device, does not
+              diagnose or treat conditions, and is not a substitute for medical, psychological,
+              legal or financial support. In a crisis or immediate danger, contact local emergency
+              services and qualified professionals.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="changes">
+            <h2 id="changes">9. Changes to this policy</h2>
+            <p>
+              The date at the top will change when this policy changes. Before accounts, payments,
+              public Community features or a materially different use of data is enabled, Celeste
+              must explain the change and present the required controls.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="contact">
+            <h2 id="contact">10. Contact</h2>
+            <p>
+              Visit the <a href="/support">public support page</a>. The owner must still provide the
+              controller's legal name and a valid public email before store publication. No address
+              has been invented in this document.
+            </p>
+          </section>
+        </div>
+
+        <footer class="site-footer">
+          <span>Celeste · <code>com.lenda.celeste</code></span>
+          <nav class="footer-links" aria-label="Footer links">
+            <a href="/support">Support</a>
+            <a href="/privacidade" lang="pt-BR">Português</a>
+            <a href="/">Open Celeste</a>
+          </nav>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

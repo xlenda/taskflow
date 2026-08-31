@@ -32,6 +32,7 @@ import {
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
 import SectionHeading from '../components/SectionHeading';
+import AiContentReportAction from '../components/AiContentReportAction';
 
 // Dicionário local da tela (padrão useT: t(S.chave) / t(S.chave, { vars })).
 const S = {
@@ -233,6 +234,7 @@ export default function ManifestationScreen() {
     isPlaying: narrationPlaying,
     isPaused: narrationPaused,
     progress: narrationProgress,
+    personalNarrationAvailable,
     playPersonal,
     prime,
     pause,
@@ -275,7 +277,7 @@ export default function ManifestationScreen() {
   const playing = ownsPlayback && (narrationLoading || narrationPlaying);
   const narrationActive =
     ownsPlayback && (narrationLoading || narrationPlaying || narrationPaused);
-  const audioOn = lines.length > 0;
+  const audioOn = personalNarrationAvailable && lines.length > 0;
 
   const [audioFailed, setAudioFailed] = useState(false);
   const [position, setPosition] = useState(0);
@@ -1104,6 +1106,15 @@ export default function ManifestationScreen() {
         <Card style={[styles.card, { backgroundColor: th.surface }]}>
           <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
         </Card>
+
+        <AiContentReportAction
+          contentType="scene"
+          contentRef={`manifestation:${item.id}:${lang}`}
+          content={`${item.title}\n${item.affirmation}\n${item.story}`}
+          visualRef={item.visual?.contentFingerprint || item.visual?.cacheKey}
+          generation={item.generation}
+          lang={lang}
+        />
 
         {saved ? (
           <>

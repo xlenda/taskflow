@@ -25,6 +25,7 @@ import {
   CLOUD_CONSENT_VERSION,
   hasCurrentAdultCloudConsent,
 } from '../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { LEGAL_UPDATED, PRIVACY_SECTIONS, TERMS_SECTIONS } from '../constants/legal';
 import NarratorSelector from '../components/NarratorSelector';
 import { isUnder18Age } from './onboarding/flow';
@@ -285,7 +286,9 @@ export default function ProfileScreen({ navigation }) {
       (profile.cloudPersonalization === true ||
         profile.cloudNarrationConsent === true ||
         profile.cloudDreamConsent === true) &&
-      (!hasCurrentAdultCloudConsent(profile) || isUnder18Age(profile.age))
+      (!RELEASE_FEATURES.paidCloudProcessing ||
+        !hasCurrentAdultCloudConsent(profile) ||
+        isUnder18Age(profile.age))
     ) {
       saveProfile({
         cloudPersonalization: false,
@@ -348,12 +351,14 @@ export default function ProfileScreen({ navigation }) {
   const canSaveName = !!cleanName && cleanName !== state.name;
   const under18 = isUnder18Age(state.profile && state.profile.age);
   const cloudPartiallyEnabled =
+    RELEASE_FEATURES.paidCloudProcessing &&
     !under18 &&
     hasCurrentAdultCloudConsent(state.profile) &&
     (state.profile?.cloudPersonalization === true ||
       state.profile?.cloudNarrationConsent === true ||
       state.profile?.cloudDreamConsent === true);
   const cloudEnabled =
+    RELEASE_FEATURES.paidCloudProcessing &&
     !under18 &&
     state.profile &&
     state.profile.cloudPersonalization === true &&
@@ -371,6 +376,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const changeCloudPersonalization = async (nextValue) => {
+    if (nextValue && !RELEASE_FEATURES.paidCloudProcessing) return;
     if (!nextValue) {
       saveProfile({
         cloudConsentVersion: CLOUD_CONSENT_VERSION,
@@ -537,24 +543,26 @@ export default function ProfileScreen({ navigation }) {
                 })}
               </View>
 
-              <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
-                <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.narrator)}</Text>
-                <Text style={[styles.preferenceNote, { color: theme.textMuted }]}>
-                  {t(S.narratorHint)}
-                </Text>
-                <View style={styles.narratorSelector}>
-                  <NarratorSelector
-                    value={state.narration?.narratorId}
-                    onChange={(narratorId) => {
-                      setNarrator(narratorId);
-                      tap();
-                    }}
-                    lang={lang}
-                    theme={theme}
-                    variant="compact"
-                  />
+              {RELEASE_FEATURES.paidCloudProcessing ? (
+                <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
+                  <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.narrator)}</Text>
+                  <Text style={[styles.preferenceNote, { color: theme.textMuted }]}>
+                    {t(S.narratorHint)}
+                  </Text>
+                  <View style={styles.narratorSelector}>
+                    <NarratorSelector
+                      value={state.narration?.narratorId}
+                      onChange={(narratorId) => {
+                        setNarrator(narratorId);
+                        tap();
+                      }}
+                      lang={lang}
+                      theme={theme}
+                      variant="compact"
+                    />
+                  </View>
                 </View>
-              </View>
+              ) : null}
 
               <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
                 <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.mood)}</Text>
@@ -594,54 +602,56 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
 
-              <Pressable
-                testID="profile-gemini-switch"
-                accessibilityRole="switch"
-                accessibilityLabel={t(S.geminiTitle)}
-                accessibilityHint={t(
-                  under18
-                    ? S.geminiUnder18
-                    : cloudEnabled
-                      ? S.geminiOn
-                      : cloudPartiallyEnabled
-                        ? S.geminiPartial
-                        : S.geminiOff
-                )}
-                accessibilityState={{ checked: cloudEnabled, disabled: under18 }}
-                disabled={under18}
-                onPress={() => changeCloudPersonalization(!cloudEnabled)}
-                style={({ pressed }) => [
-                  styles.geminiRow,
-                  { borderTopColor: theme.border },
-                  under18 && styles.geminiDisabled,
-                  pressed && styles.linkPressed,
-                ]}
-              >
-                <View style={styles.geminiCopy}>
-                  <Text style={[styles.settingTitle, { color: theme.text }]}>{t(S.geminiTitle)}</Text>
-                  <Text style={[styles.settingNote, { color: theme.textMuted }]}>
-                    {t(
-                      under18
-                        ? S.geminiUnder18
-                        : cloudEnabled
-                          ? S.geminiOn
-                          : cloudPartiallyEnabled
-                            ? S.geminiPartial
-                            : S.geminiOff
-                    )}
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
+              {RELEASE_FEATURES.paidCloudProcessing ? (
+                <Pressable
+                  testID="profile-gemini-switch"
+                  accessibilityRole="switch"
+                  accessibilityLabel={t(S.geminiTitle)}
+                  accessibilityHint={t(
+                    under18
+                      ? S.geminiUnder18
+                      : cloudEnabled
+                        ? S.geminiOn
+                        : cloudPartiallyEnabled
+                          ? S.geminiPartial
+                          : S.geminiOff
+                  )}
+                  accessibilityState={{ checked: cloudEnabled, disabled: under18 }}
                   disabled={under18}
-                  ios_backgroundColor={alpha(theme.textMuted, 0.24)}
-                  pointerEvents="none"
-                  thumbColor={cloudEnabled ? theme.accent : '#FFFFFF'}
-                  trackColor={{ false: alpha(theme.textMuted, 0.24), true: alpha(theme.accent, 0.58) }}
-                  value={cloudEnabled}
-                />
-              </Pressable>
+                  onPress={() => changeCloudPersonalization(!cloudEnabled)}
+                  style={({ pressed }) => [
+                    styles.geminiRow,
+                    { borderTopColor: theme.border },
+                    under18 && styles.geminiDisabled,
+                    pressed && styles.linkPressed,
+                  ]}
+                >
+                  <View style={styles.geminiCopy}>
+                    <Text style={[styles.settingTitle, { color: theme.text }]}>{t(S.geminiTitle)}</Text>
+                    <Text style={[styles.settingNote, { color: theme.textMuted }]}>
+                      {t(
+                        under18
+                          ? S.geminiUnder18
+                          : cloudEnabled
+                            ? S.geminiOn
+                            : cloudPartiallyEnabled
+                              ? S.geminiPartial
+                              : S.geminiOff
+                      )}
+                    </Text>
+                  </View>
+                  <Switch
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    disabled={under18}
+                    ios_backgroundColor={alpha(theme.textMuted, 0.24)}
+                    pointerEvents="none"
+                    thumbColor={cloudEnabled ? theme.accent : '#FFFFFF'}
+                    trackColor={{ false: alpha(theme.textMuted, 0.24), true: alpha(theme.accent, 0.58) }}
+                    value={cloudEnabled}
+                  />
+                </Pressable>
+              ) : null}
             </View>
 
             <SectionTitle theme={theme}>{t(S.privacyAndData)}</SectionTitle>

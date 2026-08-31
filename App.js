@@ -30,6 +30,7 @@ import {
   CLOUD_CONSENT_VERSION,
   hasCurrentAdultCloudConsent,
 } from './constants/cloudConsent';
+import { RELEASE_FEATURES } from './constants/releaseFeatures';
 import { initCelesteBotProtection } from './utils/botProtection';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 import NarrationPlaybackControls from './components/NarrationPlaybackControls';
@@ -695,11 +696,13 @@ function Tabs() {
         component={JourneyScreen}
         options={{ title: t(S.tabJourney), tabBarTestID: 'tab-journey' }}
       />
-      <Tab.Screen
-        name="Community"
-        component={CommunityScreen}
-        options={{ title: t(S.tabCommunity), tabBarTestID: 'tab-community' }}
-      />
+      {RELEASE_FEATURES.publicCommunity ? (
+        <Tab.Screen
+          name="Community"
+          component={CommunityScreen}
+          options={{ title: t(S.tabCommunity), tabBarTestID: 'tab-community' }}
+        />
+      ) : null}
     </Tab.Navigator>
   );
 }
@@ -798,7 +801,10 @@ function RootNav() {
     repairCorruptedStorage,
   } = useApp();
   const repairStorageAndAlarm = React.useCallback(async () => {
-    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    if (
+      RELEASE_FEATURES.affirmationAlarm &&
+      (Platform.OS === 'ios' || Platform.OS === 'android')
+    ) {
       const capability = await getAffirmationAlarmCapability().catch(() => null);
       const scheduledIds = capability && capability.scheduledAlarmIds;
       if (!Array.isArray(scheduledIds)) {
@@ -843,7 +849,9 @@ function RootNav() {
         <>
           <Root.Screen name="Main" component={Tabs} />
           <Root.Screen name="MorningRitual" component={MorningRitualScreen} />
-          <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
+          {RELEASE_FEATURES.affirmationAlarm ? (
+            <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
+          ) : null}
           <Root.Screen name="DailyRitual" component={DailyRitualScreen} />
           <Root.Screen name="Profile" component={ProfileScreen} />
         </>
@@ -898,11 +906,11 @@ const linking = {
           },
           Affirm: 'afirmacoes',
           Journey: 'jornada',
-          Community: 'comunidade',
+          ...(RELEASE_FEATURES.publicCommunity ? { Community: 'comunidade' } : {}),
         },
       },
       MorningRitual: 'sonhos',
-      AffirmationAlarm: 'despertar',
+      ...(RELEASE_FEATURES.affirmationAlarm ? { AffirmationAlarm: 'despertar' } : {}),
       DailyRitual: 'ritual',
       Profile: 'perfil',
       Welcome: 'bem-vindo',
@@ -933,7 +941,7 @@ export default function App() {
           <AppProvider>
             <NarrationProvider>
               <PersistedTheme />
-              <NativeAlarmContentSync />
+              {RELEASE_FEATURES.affirmationAlarm ? <NativeAlarmContentSync /> : null}
               <StatusBar style="dark" />
               <View testID="celeste-application-layout" style={styles.applicationLayout}>
                 <View testID="celeste-navigation-frame" style={styles.navigationFrame}>

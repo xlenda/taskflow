@@ -104,6 +104,7 @@ export default function VisionsScreen() {
     activePlaybackId,
     lastCompletedPlaybackId,
     phase: narrationPhase,
+    personalNarrationAvailable,
     playPersonal,
     resume: resumeNarration,
     stop: stopNarration,
@@ -267,6 +268,7 @@ export default function VisionsScreen() {
   };
 
   const onPlayCircle = async (vision) => {
+    if (!personalNarrationAvailable) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const playbackId = `${PLAYBACK_PREFIX}${vision.id}`;
     if (activePlaybackId === playbackId && activeVisionId === vision.id) {
@@ -407,43 +409,47 @@ export default function VisionsScreen() {
                       </View>
 
                       <View style={styles.slideBottom}>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={(event) => {
-                            event.stopPropagation?.();
-                            void onPlayCircle(vision);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            activeVisionId === vision.id &&
-                            (narrationPhase === 'paused' || narrationPhase === 'ready')
-                              ? t(S.resumeNow)
-                              : activeVisionId === vision.id
-                              ? t(S.stopNow)
-                              : t(S.playNow)
-                          }
-                          style={[styles.playCircle, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
-                        >
-                          {activeVisionId === vision.id && narrationPhase === 'loading' ? (
-                            <ActivityIndicator size="small" color={accentAt(th, vision.accent)} />
-                          ) : (
-                            <Ionicons
-                              name={
-                                activeVisionId === vision.id && narrationPhase === 'playing'
-                                  ? 'stop'
-                                  : 'play'
-                              }
-                              size={20}
-                              color={accentAt(th, vision.accent)}
-                            />
-                          )}
-                        </TouchableOpacity>
+                        {personalNarrationAvailable ? (
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={(event) => {
+                              event.stopPropagation?.();
+                              void onPlayCircle(vision);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              activeVisionId === vision.id &&
+                              (narrationPhase === 'paused' || narrationPhase === 'ready')
+                                ? t(S.resumeNow)
+                                : activeVisionId === vision.id
+                                ? t(S.stopNow)
+                                : t(S.playNow)
+                            }
+                            style={[styles.playCircle, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
+                          >
+                            {activeVisionId === vision.id && narrationPhase === 'loading' ? (
+                              <ActivityIndicator size="small" color={accentAt(th, vision.accent)} />
+                            ) : (
+                              <Ionicons
+                                name={
+                                  activeVisionId === vision.id && narrationPhase === 'playing'
+                                    ? 'stop'
+                                    : 'play'
+                                }
+                                size={20}
+                                color={accentAt(th, vision.accent)}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        ) : null}
                         <View style={styles.slideMeta}>
                           <Text numberOfLines={1} style={styles.slideTitle}>
                             {vision.title}
                           </Text>
                           <Text style={styles.slideDur}>
-                            {activeVisionId === vision.id && narrationPhase === 'loading'
+                            {!personalNarrationAvailable
+                              ? t(S.audioUnavailable)
+                              : activeVisionId === vision.id && narrationPhase === 'loading'
                               ? t(S.audioPreparing)
                               : audioFailedId === vision.id
                               ? t(S.audioUnavailable)

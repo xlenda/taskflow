@@ -260,21 +260,24 @@ export default function RevealScreen({ navigation, route }) {
                 ],
               }}
             >
-              <View style={styles.voiceBlock}>
-                <Text style={styles.sectionLabel}>{t(S.voiceTitle)}</Text>
-                <Text style={styles.voiceHint}>{t(S.voiceHint)}</Text>
-                <NarratorSelector
-                  value={selectedNarratorId}
-                  onChange={(narratorId) => {
-                    setSelectedNarratorId(narratorId);
-                    setNarrator(narratorId);
-                  }}
-                  lang={lang}
-                  variant="compact"
-                />
-              </View>
+              {narration.personalNarrationAvailable ? (
+                <View style={styles.voiceBlock}>
+                  <Text style={styles.sectionLabel}>{t(S.voiceTitle)}</Text>
+                  <Text style={styles.voiceHint}>{t(S.voiceHint)}</Text>
+                  <NarratorSelector
+                    value={selectedNarratorId}
+                    onChange={(narratorId) => {
+                      setSelectedNarratorId(narratorId);
+                      setNarrator(narratorId);
+                    }}
+                    lang={lang}
+                    variant="compact"
+                  />
+                </View>
+              ) : null}
 
-              <Pressable
+              {narration.personalNarrationAvailable ? (
+                <Pressable
                 onPress={toggleAudio}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -319,8 +322,11 @@ export default function RevealScreen({ navigation, route }) {
                   </Text>
                 </View>
                 <Ionicons name="headset-outline" size={21} color={ONB.surfaceSoft} />
-              </Pressable>
-              {audioFailed ? <Text style={styles.audioFail}>{t(S.audioFail)}</Text> : null}
+                </Pressable>
+              ) : null}
+              {narration.personalNarrationAvailable && audioFailed ? (
+                <Text style={styles.audioFail}>{t(S.audioFail)}</Text>
+              ) : null}
 
               {m.visual?.cacheKey ? (
                 <GradientCover

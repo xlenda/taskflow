@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Screen, EmptyState } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { useT } from '../utils/useT';
 import { todayISO } from '../utils/date';
 import { selectDailyRitual, dailyRitualNarration } from '../utils/dailyRitual';
@@ -117,6 +118,7 @@ export default function DailyRitualScreen() {
   const {
     activePlaybackId,
     phase: narrationPhase,
+    personalNarrationAvailable,
     playPersonal,
     pause,
     resume,
@@ -259,15 +261,17 @@ export default function DailyRitualScreen() {
     setPaused(false);
     setAudioFailed(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    const result = await playPersonal({
-      text: dailyRitualNarration(ritual, ritual.lang || lang),
-      lang: ritual.lang || lang,
-      playbackId,
-    });
+    const result = personalNarrationAvailable
+      ? await playPersonal({
+          text: dailyRitualNarration(ritual, ritual.lang || lang),
+          lang: ritual.lang || lang,
+          playbackId,
+        })
+      : { ok: false, error: 'personal_narration_unavailable' };
     if (!mountedRef.current || startEpochRef.current !== epoch) return;
     if (!result?.ok && result?.error !== 'audio_cancelled') setAudioFailed(true);
     setPhase('running');
-  }, [lang, phase, playPersonal, playbackId, ritual]);
+  }, [lang, phase, personalNarrationAvailable, playPersonal, playbackId, ritual]);
 
   const togglePause = useCallback(async () => {
     if (paused) {
@@ -286,7 +290,7 @@ export default function DailyRitualScreen() {
   }, [bridgeDone, day, sourceManifestation, toggleBridgeCompletion]);
 
   const evolve = useCallback(async () => {
-    if (!sourceManifestation || evolving) return;
+    if (!RELEASE_FEATURES.paidCloudProcessing || !sourceManifestation || evolving) return;
     setEvolving(true);
     setEvolutionError(false);
     const result = await evolveManifestation(sourceManifestation.id);
@@ -531,7 +535,7 @@ export default function DailyRitualScreen() {
                   onPress={openChapter}
                 />
               </View>
-            ) : mirrorStatus?.canEvolve ? (
+            ) : RELEASE_FEATURES.paidCloudProcessing && mirrorStatus?.canEvolve ? (
               <PrimaryButton
                 testID="evolve-living-mirror"
                 variant="soft"

@@ -114,8 +114,8 @@ const COPY = {
     en: 'Your device did not confirm cancellation. The alarm remains marked as active.',
   },
   webUnsupported: {
-    pt: 'No site você pode preparar e ouvir a frase. Para acordar com um alarme real, use o app instalado em um iPhone ou Android compatível.',
-    en: 'On the website you can prepare and preview the phrase. For a real wake-up alarm, use the installed app on a compatible iPhone or Android device.',
+    pt: 'No site você pode preparar e ouvir a frase. Para acordar com um alarme real, use o app instalado em um iPhone compatível.',
+    en: 'On the website you can prepare and preview the phrase. For a real wake-up alarm, use the installed app on a compatible iPhone.',
   },
   nativeMissing: {
     pt: 'Este app ainda não tem o módulo nativo necessário para criar um despertador real.',

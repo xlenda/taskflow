@@ -15,15 +15,23 @@
 
 ## Produto e build
 
-- [ ] autenticar chamadas nativas ao backend; a política de `Origin` atual foi
-  validada apenas na web;
+- [x] fechar as chamadas nativas pagas sem atestação antes de criar sessão ou
+  acessar o backend; a v1 Android usa somente o fallback local;
 - [ ] substituir os rascunhos web por screenshots dos builds nativos;
 - [ ] gravar preview nativo, localizar legendas e criar thumbnail;
-- [ ] validar voz, notificações, consentimentos e fallback local no binário;
+- [ ] validar lembrete comum, denúncia de IA, armazenamento, tráfego e fallback
+  local no AAB instalado em Android físico;
 - [ ] testar AlarmKit em iPhone compatível antes de anunciá-lo;
-- [ ] incluir mecanismo de denúncia para conteúdo gerado inadequado;
-- [ ] ocultar a Comunidade no build de loja ou concluir conta, moderação,
-  denúncia, bloqueio, exclusão e documentos próprios;
+- [x] incluir mecanismo de denúncia para conteúdo gerado inadequado nas quatro
+  superfícies e validar o envio real no Supabase de produção;
+- [x] sincronizar as migrations Supabase `001` a `011`; o smoke live da denúncia
+  passou e removeu a denúncia e o usuário criados para o teste;
+- [x] ocultar aba, atalho e deep link da Comunidade na v1 Android e manter as
+  políticas remotas desabilitadas por padrão;
+- [x] excluir da v1 Android o despertador exato, seu módulo nativo e suas
+  permissões, além da geração/narração paga em nuvem;
+- [x] validar no prebuild Android `compileSdk`/`targetSdk` 36, package,
+  `versionCode`, autolinking e remoções explícitas de permissões;
 - [ ] conferir todos os SDKs e permissões do arquivo enviado;
 - [ ] gerar builds assinados com versão e número de build definitivos.
 
@@ -32,7 +40,7 @@
 - [ ] informar nome legal, copyright e email público de suporte;
 - [ ] publicar política de privacidade em HTTPS;
 - [ ] publicar página de suporte em HTTPS com contato real;
-- [ ] preencher `store-listing/urls.json`;
+- [x] preencher `store-listing/urls.json` com os caminhos públicos preparados;
 - [ ] confirmar disponibilidade do nome composto nas duas lojas;
 - [ ] confirmar preço, territórios e forma de liberação;
 - [ ] decidir público-alvo inicial e faixas etárias;

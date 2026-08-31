@@ -445,12 +445,14 @@ async function main() {
   );
 
   const moduleConfig = JSON.parse(fs.readFileSync(moduleConfigFile, 'utf8'));
-  assert.deepStrictEqual(moduleConfig.platforms, ['apple', 'android']);
+  assert.deepStrictEqual(
+    moduleConfig.platforms,
+    ['apple'],
+    'a primeira release Android nao deve autoligar o modulo de despertador'
+  );
   assert.deepStrictEqual(moduleConfig.apple.modules, ['CelesteAffirmationAlarmModule']);
   assert.strictEqual(moduleConfig.apple.podspecPath, './ios/CelesteAffirmationAlarm.podspec');
-  assert.deepStrictEqual(moduleConfig.android.modules, [
-    'expo.modules.celesteaffirmationalarm.CelesteAffirmationAlarmModule',
-  ]);
+  assert.strictEqual(moduleConfig.android, undefined);
 
   const moduleSwift = fs.readFileSync(moduleSwiftFile, 'utf8');
   for (const method of ['getCapability', 'requestAuthorization', 'schedule', 'cancel', 'test']) {

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Política de privacidade da Celeste: dados locais, recursos opcionais em nuvem, fornecedores e controles de exclusão."
+    />
+    <title>Política de privacidade — Celeste</title>
+    <link rel="canonical" href="https://celeste-jet-two.vercel.app/privacidade" />
+    <link rel="alternate" hreflang="pt-BR" href="https://celeste-jet-two.vercel.app/privacidade" />
+    <link rel="alternate" hreflang="en-US" href="https://celeste-jet-two.vercel.app/privacy" />
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body data-celeste-public-page="privacy-pt">
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+    <div class="shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="Celeste — início">Celeste</a>
+        <a class="language-link" href="/privacy" lang="en-US" hreflang="en-US">English</a>
+      </header>
+
+      <main id="conteudo">
+        <header class="hero">
+          <p class="eyebrow">Documento público · versão 1.0.0</p>
+          <h1>Política de privacidade</h1>
+          <p class="lead">
+            Esta política descreve como a Celeste trata dados no site e no aplicativo
+            identificado pelo pacote <code>com.lenda.celeste</code>.
+          </p>
+          <p class="updated">Atualizada em 31 de agosto de 2026.</p>
+        </header>
+
+        <div class="content">
+          <aside class="notice" data-owner-required="legal-contact" aria-label="Informação pendente do titular">
+            <strong>Contato legal pendente de confirmação.</strong>
+            O nome legal do responsável e o e-mail público de privacidade precisam ser
+            informados pelo titular da conta da loja antes da distribuição pública. A
+            <a href="/suporte">página de suporte</a> será atualizada com esse canal sem
+            alterar a forma de tratamento descrita aqui.
+          </aside>
+
+          <section class="section" aria-labelledby="resumo">
+            <h2 id="resumo">1. Resumo</h2>
+            <p>
+              A prática pessoal é guardada principalmente no aparelho. Esta versão não
+              exige login pessoal, não oferece assinatura ou compra ativa, não contém
+              anúncios e não usa os dados para publicidade comportamental.
+            </p>
+            <p>
+              Recursos de personalização em nuvem são opcionais. Eles só enviam o conteúdo
+              necessário depois de uma escolha expressa e, quando aplicável, confirmação de
+              que a pessoa é adulta. Se a autorização estiver ausente ou o serviço estiver
+              indisponível, a Celeste mantém ou cria uma alternativa local.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="local">
+            <h2 id="local">2. Dados guardados no aparelho</h2>
+            <p>Conforme os recursos usados, a Celeste pode guardar localmente:</p>
+            <ul>
+              <li>nome, idioma, preferência visual e respostas do questionário inicial;</li>
+              <li>manifestações, cenas pessoais, afirmações, sonhos, rastros privados e capítulos anteriores;</li>
+              <li>favoritos, histórico de práticas, sequência e pontes diárias concluídas;</li>
+              <li>horário do lembrete ou alarme e a afirmação escolhida;</li>
+              <li>imagens pessoais e áudio de narração em cache privado no aparelho.</li>
+            </ul>
+            <p>
+              Esses dados dão continuidade à experiência e não são publicados. Um rascunho
+              de Comunidade permanece privado quando não há conta autenticada e serviço
+              comunitário habilitado.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="nuvem">
+            <h2 id="nuvem">3. Processamento opcional em nuvem</h2>
+            <p>
+              A Celeste usa seu próprio backend como intermediário e reduz cada pedido ao
+              conteúdo necessário para a função escolhida. As autorizações para cena pessoal,
+              reflexão de sonho e narração neural são separadas.
+            </p>
+            <div class="processor-list" aria-label="Serviços e finalidades">
+              <div class="processor">
+                <strong>Supabase</strong>
+                Cria e mantém uma sessão técnica anônima para autorizar chamadas opcionais e
+                aplicar limites. Não é um login pessoal nesta versão. Também guarda, numa fila
+                restrita de moderação, denúncias de conteúdo de IA enviadas pela pessoa.
+              </div>
+              <div class="processor">
+                <strong>Anthropic</strong>
+                Recebe respostas selecionadas e contexto reduzido para gerar cenas pessoais e
+                capítulos do Espelho Vivo quando essa função é autorizada.
+              </div>
+              <div class="processor">
+                <strong>OpenAI</strong>
+                Pode receber o mesmo pedido reduzido de texto de cena apenas como alternativa
+                quando a geração principal falha; não é uma segunda chamada de rotina.
+              </div>
+              <div class="processor">
+                <strong>Google Gemini</strong>
+                Recebe o conteúdo necessário quando a pessoa pede tradução, imagem pessoal ou
+                reflexão de sonho em nuvem.
+              </div>
+              <div class="processor">
+                <strong>ElevenLabs</strong>
+                Recebe o texto final, idioma e narrador escolhidos para produzir a narração
+                solicitada.
+              </div>
+              <div class="processor">
+                <strong>Vercel e BotID</strong>
+                Hospedam e protegem o backend. Podem tratar endereço IP, identificadores de
+                solicitação, sinais de abuso e logs técnicos para segurança, prevenção de fraude
+                e operação do serviço.
+              </div>
+            </div>
+            <p>
+              Faixa etária, gênero, sexualidade e nomes inseridos nos campos próprios para
+              filhos, pessoas importantes ou uma pessoa específica não entram no pedido de
+              geração de cena. A Celeste também tenta remover esses nomes se reaparecerem em
+              respostas livres selecionadas; ainda assim, não inclua dados de terceiros ou
+              informações altamente sensíveis em texto livre.
+            </p>
+            <p>
+              Para um novo capítulo do Espelho Vivo, podem ser enviados a cena anterior e
+              totais estruturados de progresso. O texto completo dos Rastros privados e o relato
+              completo de sonhos não fazem parte desse pedido. Um sonho contribui somente com
+              tema e sentimento escolhidos quando essa opção é ativada para aquele sonho.
+            </p>
+            <h3>Denúncia de conteúdo de IA</h3>
+            <p>
+              Ao usar <strong>Denunciar este conteúdo de IA</strong>, a Celeste envia ao Supabase
+              somente a saída gerada selecionada de até 4.000 caracteres (ou referência visual),
+              o motivo, uma nota opcional de até 500 caracteres, idioma, origem técnica da
+              geração, plataforma, versão do app e o
+              identificador da sessão anônima. O prompt, as respostas originais do questionário e
+              o relato bruto do sonho não entram na denúncia. O registro fica numa fila privada
+              para análise de segurança e moderação.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="voz">
+            <h2 id="voz">4. Voz, mídia, notificações e alarme</h2>
+            <ul>
+              <li>
+                Tocar em Reproduzir com autorização envia o texto escolhido, idioma e narrador
+                para a ElevenLabs. O áudio devolvido não é publicado e pode ser guardado em cache
+                privado; itens sem uso por 30 dias são removidos periodicamente.
+              </li>
+              <li>
+                As prévias dos narradores já vêm com o aplicativo e não contêm respostas do
+                questionário nem iniciam uma geração em nuvem.
+              </li>
+              <li>
+                Se a pessoa usar ditado, o reconhecimento de fala pertence ao navegador ou ao
+                sistema operacional e pode seguir as regras desse fornecedor. A Celeste recebe a
+                transcrição, não envia a gravação bruta por conta própria e só envia o texto ao
+                Gemini quando a reflexão em nuvem é solicitada e autorizada.
+              </li>
+              <li>
+                No aplicativo instalado, a Celeste pode pedir acesso a notificações e, em aparelho
+                compatível, a alarmes. O horário e o áudio do alarme ficam no aparelho. O texto da
+                notificação diária é genérico e não mostra desejo, sonho ou afirmação na tela
+                bloqueada.
+              </li>
+            </ul>
+          </section>
+
+          <section class="section" aria-labelledby="uso">
+            <h2 id="uso">5. Finalidades, compartilhamento e retenção</h2>
+            <p>Os dados são tratados para:</p>
+            <ul>
+              <li>entregar a prática e lembrar preferências no aparelho;</li>
+              <li>produzir o conteúdo em nuvem solicitado pela pessoa;</li>
+              <li>reproduzir mídia e agendar lembretes ou alarmes compatíveis;</li>
+              <li>autorizar chamadas, limitar abuso, diagnosticar falhas e proteger o serviço.</li>
+            </ul>
+            <p>
+              Não foi identificado no código desta versão uso para anúncios, venda de dados,
+              rastreamento entre aplicativos ou criação de perfil publicitário. Dados enviados
+              a fornecedores são limitados às finalidades acima. Esses fornecedores podem manter
+              registros técnicos ou conteúdo conforme os contratos e termos aplicáveis às contas
+              usadas pela Celeste.
+            </p>
+            <aside class="notice" data-owner-required="provider-retention">
+              <strong>Prazo externo a confirmar.</strong>
+              Os prazos exatos de retenção nas contas ativas de Anthropic, OpenAI, Google,
+              ElevenLabs, Supabase, Vercel e BotID dependem dos contratos do titular e precisam
+              ser confirmados antes da distribuição pública. A Celeste não presume que o
+              processamento seja efêmero.
+            </aside>
+          </section>
+
+          <section class="section" aria-labelledby="controles">
+            <h2 id="controles">6. Controles e exclusão</h2>
+            <ul>
+              <li>Desative o processamento em nuvem no Perfil para impedir novos envios.</li>
+              <li>Edite ou apague manifestações, sonhos e rastros nas áreas correspondentes.</li>
+              <li>
+                Use <strong>Perfil → Recomeçar minha jornada</strong> para apagar a prática local,
+                os registros auxiliares e o cache privado mantido pela Celeste.
+              </li>
+              <li>
+                Limpar os dados do aplicativo/site ou desinstalar o aplicativo remove a cópia
+                local conforme o comportamento do sistema operacional.
+              </li>
+            </ul>
+            <p>
+              Não há conta pessoal nesta versão, portanto não existe uma conta remota para excluir.
+              Se contas forem ativadas, a Celeste publicará um caminho de exclusão dentro do app e
+              na web antes desse recurso ser distribuído.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="seguranca">
+            <h2 id="seguranca">7. Segurança</h2>
+            <p>
+              O site e o backend público usam HTTPS. A Celeste aplica autorização de sessão,
+              consentimento separado, limites de uso, redução dos pedidos, bloqueio de permissões
+              desnecessárias no Android e armazenamento privado no aparelho. Nenhum sistema é
+              totalmente livre de risco; evite inserir senhas, credenciais financeiras, números
+              de documentos ou dados de outra pessoa.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="idade-saude">
+            <h2 id="idade-saude">8. Idade e aviso de bem-estar</h2>
+            <p>
+              Perfis indicados como menores de 18 anos permanecem nas opções locais e não podem
+              autorizar a personalização em nuvem. A seleção etária final da ficha da loja será
+              definida pelo titular antes da distribuição.
+            </p>
+            <p class="callout">
+              A Celeste apoia reflexão e bem-estar. Não é dispositivo médico, não faz diagnóstico
+              ou tratamento e não substitui atendimento médico, psicológico, jurídico ou
+              financeiro. Em situação de risco ou crise, procure imediatamente serviços de
+              emergência e profissionais qualificados da sua região.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="mudancas">
+            <h2 id="mudancas">9. Mudanças nesta política</h2>
+            <p>
+              A data no topo será alterada quando esta política mudar. Antes de ativar contas,
+              pagamentos, Comunidade pública ou uma forma materialmente diferente de tratar
+              dados, a Celeste deverá explicar a mudança e apresentar os controles necessários.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="contato">
+            <h2 id="contato">10. Contato</h2>
+            <p>
+              Consulte a <a href="/suporte">página pública de suporte</a>. O titular ainda precisa
+              fornecer o nome legal do responsável e um e-mail público válido antes da publicação
+              nas lojas. Nenhum endereço foi inventado neste documento.
+            </p>
+          </section>
+        </div>
+
+        <footer class="site-footer">
+          <span>Celeste · <code>com.lenda.celeste</code></span>
+          <nav class="footer-links" aria-label="Links do rodapé">
+            <a href="/suporte">Suporte</a>
+            <a href="/privacy" lang="en-US">English</a>
+            <a href="/">Abrir Celeste</a>
+          </nav>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

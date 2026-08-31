@@ -7,6 +7,7 @@ import {
   CLOUD_CONSENT_VERSION,
   hasCurrentAdultCloudConsent,
 } from '../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { ageConfirmsAdult } from '../screens/onboarding/flow';
 import { redactThirdPartyNames, thirdPartyNames } from '../services/generatePersonalizedScene';
 import { confirmAsync } from './confirm';
@@ -39,6 +40,9 @@ export function usePersonalNarration() {
   const narratorId = state?.narration?.narratorId || DEFAULT_NARRATOR_ID;
 
   const ensureConsent = useCallback(async () => {
+    if (!RELEASE_FEATURES.paidCloudProcessing) {
+      return { ok: false, error: 'personal_narration_unavailable' };
+    }
     const profile = state?.profile || {};
     if (!ageConfirmsAdult(profile.age)) {
       return { ok: false, error: 'adult_confirmation_required' };
@@ -111,6 +115,7 @@ export function usePersonalNarration() {
   return {
     ...narration,
     narratorId,
+    personalNarrationAvailable: RELEASE_FEATURES.paidCloudProcessing,
     playPersonal,
     preparePersonal,
   };
