@@ -42,9 +42,9 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 - Preencher nas paginas publicas o nome legal, o email publico de suporte e o
   prazo de retencao confirmado nos contratos dos provedores.
-- Recarregar os creditos da API Anthropic ou configurar outro provedor pago e
-  validado. O ultimo canario recebeu saldo insuficiente e a esteira reverteu o
-  candidato automaticamente; nao contornar esse portao.
+- Manter saldo operacional nos provedores pagos. O canario da publicacao de
+  31/08/2026 aprovou Anthropic, Gemini, geracao visual e ElevenLabs no navegador
+  real; uma publicacao futura deve continuar respeitando esse mesmo portao.
 - Reexecutar `npm run deploy:web:vercel-env` e confirmar os quatro caminhos
   HTTPS antes de cadastra-los no Google Play.
 
@@ -70,8 +70,10 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## Concluido no banco e na fronteira Android
 
-- As migrations Supabase `001` a `011` estao sincronizadas no projeto de
+- As migrations Supabase `001` a `012` estao sincronizadas no projeto de
   producao.
+- A producao web `dpl_GZjA2uRmhmiFgGjZ4CxbBtFBL62h` passou pelos portoes e esta
+  ativa em `https://celeste-jet-two.vercel.app`.
 - O smoke live criou uma sessao anonima, enviou uma denuncia pela RPC e confirmou
   a persistencia. A denuncia e o usuario de teste foram removidos ao final.
 - As politicas remotas da Comunidade continuam desabilitadas por padrao; aba,
