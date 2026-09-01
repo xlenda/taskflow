@@ -322,7 +322,9 @@ assert.ok(
     visions.includes('testID="visions-personal-visual-pending"') &&
     visions.includes('testID="visions-personal-visual-retry"') &&
     visions.includes('force: true') &&
-    visionPlayer.includes('visualKey={vision.visualKey}') &&
+    visionPlayer.includes('visualKey={primaryVisualKey}') &&
+    visionPlayer.includes('visualKey={secondaryLayerKey}') &&
+    visionPlayer.includes('vision-player-secondary-visual') &&
     visionPlayer.includes('personalVisualStatus[vision.visualStatusKey]') &&
     visionPlayer.includes('testID="vision-player-personal-visual-pending"') &&
     visionPlayer.includes('testID="vision-player-personal-visual-retry"') &&

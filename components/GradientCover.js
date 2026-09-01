@@ -20,6 +20,9 @@ export default function GradientCover({
   intensity = 1,
   visualKey,
   testID,
+  imageTransition = 280,
+  onVisualReady,
+  onVisualError,
 }) {
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
@@ -40,6 +43,9 @@ export default function GradientCover({
         <Image
           source={{ uri: personalVisualUri }}
           contentFit="cover"
+          transition={imageTransition}
+          onLoad={onVisualReady}
+          onError={onVisualError}
           accessible={false}
           style={StyleSheet.absoluteFillObject}
         />

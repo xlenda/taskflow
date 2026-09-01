@@ -125,11 +125,15 @@ function personalJourneyItemsForState(state, kind, requestedLang) {
   const suite = sourceObject(suites[lang]);
   const source = kind === 'vision' ? suite.visions : suite.affirmations;
   const visuals = sourceObject(anchor.journeyVisuals);
+  const storyEdits = sourceObject(sourceObject(anchor.journeyStoryEditsByLang)[lang]);
 
   return (Array.isArray(source) ? source : []).map((entry) => {
     const key = itemKey(kind, entry.category);
     return {
       ...entry,
+      ...(kind === 'vision' && clean(storyEdits[key], 1200)
+        ? { story: clean(storyEdits[key], 1200), userEdited: true }
+        : {}),
       key,
       id: `${anchor.id}:${key}`,
       manifestationId: anchor.id,
@@ -138,7 +142,15 @@ function personalJourneyItemsForState(state, kind, requestedLang) {
       speechLang: lang,
       accent: CATEGORY_ACCENTS[entry.category] ?? 0,
       visualKey: visuals[key] && visuals[key].cacheKey,
+      secondaryVisualKey:
+        kind === 'vision' && visuals[`${key}:secondary`]
+          ? visuals[`${key}:secondary`].cacheKey
+          : undefined,
       visualStatusKey: journeyVisualStatusKey(anchor.id, key),
+      secondaryVisualStatusKey:
+        kind === 'vision'
+          ? journeyVisualStatusKey(anchor.id, `${key}:secondary`)
+          : undefined,
       personalized: true,
       source: kind,
     };

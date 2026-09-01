@@ -7,6 +7,8 @@ import {
   ScrollView,
   useWindowDimensions,
   ActivityIndicator,
+  Animated,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
@@ -58,6 +60,15 @@ const S = {
   },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  editStory: { en: 'Edit story', pt: 'Editar história' },
+  editStoryHint: {
+    en: 'Adjust the story so it sounds like you. Your personal image will stay the same.',
+    pt: 'Ajuste a história para ficar com a sua voz. Sua imagem pessoal continuará a mesma.',
+  },
+  cancel: { en: 'Cancel', pt: 'Cancelar' },
+  saveChanges: { en: 'Save', pt: 'Salvar' },
+  nextUp: { en: 'Next up', pt: 'Próximo' },
+  openNext: { en: 'Open next vision', pt: 'Abrir próxima visão' },
   missingTitle: { en: 'This vision is no longer here', pt: 'Esta visão não está mais aqui' },
   missingBody: {
     en: 'It may have been removed. Return to your personal visions to choose another one.',
@@ -81,6 +92,27 @@ const splitNarration = (text) =>
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 
+const narrationWeight = (sentence) => {
+  const words = String(sentence || '').trim().split(/\s+/).filter(Boolean).length;
+  const pauses = (String(sentence || '').match(/[,;:—–]/g) || []).length * 0.35;
+  return Math.max(1, words + pauses + 0.8);
+};
+
+const buildNarrationTimeline = (lines) => {
+  const weights = lines.map(narrationWeight);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  let consumed = 0;
+  const starts = weights.map((weight) => {
+    const start = consumed / totalWeight;
+    consumed += weight;
+    return start;
+  });
+  const ends = weights.map((_, index) =>
+    index + 1 < starts.length ? starts[index + 1] : 1
+  );
+  return { starts, ends };
+};
+
 export default function VisionPlayerScreen() {
   const th = useTheme();
   const { t, lang } = useT();
@@ -93,22 +125,43 @@ export default function VisionPlayerScreen() {
     logVisionPlay,
     personalVisualStatus,
     ensureJourneyVisual,
+    updateJourneyVisionStory,
   } = useApp();
 
   const routeId =
     typeof route.params?.visionId === 'string' && route.params.visionId.trim()
       ? route.params.visionId
       : null;
-  const vision = useMemo(
-    () => personalJourneyItemsForState(state, 'vision', lang)
-      .find((item) => item.id === routeId) || null,
-    [lang, routeId, state]
+  const visions = useMemo(
+    () => personalJourneyItemsForState(state, 'vision', lang),
+    [lang, state]
   );
+  const vision = useMemo(
+    () => visions.find((item) => item.id === routeId) || null,
+    [routeId, visions]
+  );
+  const nextVision = useMemo(() => {
+    if (!vision || visions.length < 2) return null;
+    const index = visions.findIndex((item) => item.id === vision.id);
+    return index >= 0 ? visions[(index + 1) % visions.length] : null;
+  }, [vision, visions]);
 
   useEffect(() => {
     if (!vision) return;
-    void ensureJourneyVisual(vision.manifestationId, vision.key, { lang: vision.lang });
-  }, [ensureJourneyVisual, vision?.id, vision?.lang, vision?.visualBrief]);
+    let active = true;
+    void (async () => {
+      const primary = await ensureJourneyVisual(vision.manifestationId, vision.key, {
+        lang: vision.lang,
+      });
+      if (!active || !primary?.ok || splitNarration(vision.story).length < 2) return;
+      await ensureJourneyVisual(vision.manifestationId, `${vision.key}:secondary`, {
+        lang: vision.lang,
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [ensureJourneyVisual, vision?.id, vision?.lang, vision?.story, vision?.visualBrief]);
 
   const backToVisions = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -148,15 +201,26 @@ export default function VisionPlayerScreen() {
 
   return (
     <PersonalVisionPlayer
+      key={vision.id}
       vision={vision}
       state={state}
       navigation={navigation}
       toggleSavedVision={toggleSavedVision}
       logVisionPlay={logVisionPlay}
+      updateJourneyVisionStory={updateJourneyVisionStory}
+      nextVision={nextVision}
       visualStatus={personalVisualStatus[vision.visualStatusKey]}
+      secondaryVisualStatus={personalVisualStatus[vision.secondaryVisualStatusKey]}
       onRetryVisual={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         void ensureJourneyVisual(vision.manifestationId, vision.key, {
+          force: true,
+          lang: vision.lang,
+        });
+      }}
+      onRetrySecondaryVisual={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        void ensureJourneyVisual(vision.manifestationId, `${vision.key}:secondary`, {
           force: true,
           lang: vision.lang,
         });
@@ -171,8 +235,12 @@ function PersonalVisionPlayer({
   navigation,
   toggleSavedVision,
   logVisionPlay,
+  updateJourneyVisionStory,
+  nextVision,
   visualStatus,
+  secondaryVisualStatus,
   onRetryVisual,
+  onRetrySecondaryVisual,
 }) {
   const th = useTheme();
   const { t } = useT();
@@ -198,8 +266,21 @@ function PersonalVisionPlayer({
   const isSaved = state.savedVisions.includes(vision.id);
   const catLabel = CAT[vision.category] ? t(CAT[vision.category]) : String(vision.category || '');
   const lines = useMemo(() => splitNarration(vision.story), [vision.story]);
-  const caption = lines[0] || vision.title;
   const total = lines.length;
+  const timeline = useMemo(() => buildNarrationTimeline(lines), [lines]);
+  const secondaryStartIndex = useMemo(() => {
+    if (timeline.starts.length < 2) return Number.POSITIVE_INFINITY;
+    let closestIndex = 1;
+    for (let index = 2; index < timeline.starts.length; index += 1) {
+      if (
+        Math.abs(timeline.starts[index] - 0.5) <
+        Math.abs(timeline.starts[closestIndex] - 0.5)
+      ) {
+        closestIndex = index;
+      }
+    }
+    return closestIndex;
+  }, [timeline]);
   const canNarrate = personalNarrationAvailable && total > 0;
   const playbackId = `vision:${vision.id}`;
   const ownsPlayback = activePlaybackId === playbackId;
@@ -209,6 +290,25 @@ function PersonalVisionPlayer({
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftStory, setDraftStory] = useState(vision.story);
+
+  const safeIdx = Math.min(Math.max(idx, 0), Math.max(0, total - 1));
+  const caption = lines[safeIdx] || vision.title;
+  const captionOpacity = useRef(new Animated.Value(1)).current;
+  const captionTranslateY = useRef(new Animated.Value(0)).current;
+  const animatedCaptionIndexRef = useRef(safeIdx);
+  const secondaryOpacity = useRef(new Animated.Value(0)).current;
+  const [secondaryReady, setSecondaryReady] = useState(false);
+  const primaryVisualKey = vision.visualKey || vision.secondaryVisualKey;
+  const secondaryLayerKey = vision.visualKey ? vision.secondaryVisualKey : null;
+  const reachedSecondaryVisual = safeIdx >= secondaryStartIndex;
+  const secondaryStatusRelevant =
+    reachedSecondaryVisual && !!(secondaryVisualStatus || secondaryLayerKey);
+  const wantsSecondaryVisual = !!secondaryLayerKey && reachedSecondaryVisual;
+  const showsSecondaryVisual = wantsSecondaryVisual && secondaryReady;
+  const activeVisualKey = showsSecondaryVisual ? secondaryLayerKey : primaryVisualKey;
+  const activeVisualStatus = secondaryStatusRelevant ? secondaryVisualStatus : visualStatus;
 
   const requestEpochRef = useRef(0);
   const playbackStartedRef = useRef(false);
@@ -218,6 +318,48 @@ function PersonalVisionPlayer({
   const ownedPlaybackIdRef = useRef(playbackId);
   const playbackOffsetRatioRef = useRef(0);
   const logged = useRef(false);
+
+  useEffect(() => {
+    if (animatedCaptionIndexRef.current === safeIdx) return undefined;
+    animatedCaptionIndexRef.current = safeIdx;
+    captionOpacity.stopAnimation();
+    captionTranslateY.stopAnimation();
+    captionOpacity.setValue(0);
+    captionTranslateY.setValue(8);
+    const animation = Animated.parallel([
+      Animated.timing(captionOpacity, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.timing(captionTranslateY, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [captionOpacity, captionTranslateY, safeIdx]);
+
+  useEffect(() => {
+    if (!editing) setDraftStory(vision.story);
+  }, [editing, vision.id, vision.story]);
+
+  useEffect(() => {
+    setSecondaryReady(false);
+    secondaryOpacity.setValue(0);
+  }, [secondaryOpacity, secondaryLayerKey]);
+
+  useEffect(() => {
+    const animation = Animated.timing(secondaryOpacity, {
+      toValue: showsSecondaryVisual ? 1 : 0,
+      duration: 420,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [secondaryOpacity, showsSecondaryVisual]);
 
   useEffect(() => {
     activePlaybackIdRef.current = activePlaybackId;
@@ -268,8 +410,10 @@ function PersonalVisionPlayer({
     setStarted(false);
     setCompleted(false);
     setFailed(false);
+    setEditing(false);
+    setDraftStory(vision.story);
     logged.current = false;
-  }, [playbackId, stop, vision.lang]);
+  }, [playbackId, stop, vision.lang, vision.story]);
 
   useEffect(() => {
     if (!ownsPlayback) return;
@@ -281,14 +425,14 @@ function PersonalVisionPlayer({
     const offset = playbackOffsetRatioRef.current;
     const overallProgress = offset + remainingProgress * (1 - offset);
     if (total > 0) {
-      setIdx(
-        Math.min(total - 1, Math.max(0, Math.floor(overallProgress * total)))
-      );
+      const nextIndex = timeline.ends.findIndex((end) => overallProgress < end);
+      setIdx(nextIndex < 0 ? total - 1 : nextIndex);
     }
   }, [
     narrationPlaying,
     narrationProgress,
     ownsPlayback,
+    timeline,
     total,
   ]);
 
@@ -374,7 +518,7 @@ function PersonalVisionPlayer({
     const at = Math.min(total - 1, Math.max(0, lineIndex));
     const requestEpoch = requestEpochRef.current + 1;
     requestEpochRef.current = requestEpoch;
-    playbackOffsetRatioRef.current = at > 0 ? at / total : 0;
+    playbackOffsetRatioRef.current = timeline.starts[at] || 0;
     manualStopRef.current = false;
     playbackStartedRef.current = false;
     ownsAttemptRef.current = true;
@@ -458,6 +602,39 @@ function PersonalVisionPlayer({
     moveToLine(idx + 1);
   };
 
+  const beginStoryEdit = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    stopVoice();
+    setDraftStory(vision.story);
+    setEditing(true);
+  };
+
+  const saveStoryEdit = () => {
+    const story = draftStory.trim();
+    if (!story) return;
+    const saved = updateJourneyVisionStory(
+      vision.manifestationId,
+      vision.key,
+      vision.lang,
+      story
+    );
+    if (!saved) return;
+    stopVoice();
+    setIdx(0);
+    setStarted(false);
+    setCompleted(false);
+    setFailed(false);
+    logged.current = false;
+    setEditing(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  };
+
+  const goToNextVision = () => {
+    if (!nextVision) return;
+    stopVoice();
+    navigation.replace('VisionPlayer', { visionId: nextVision.id });
+  };
+
   return (
     <Screen>
       <View style={styles.navRow}>
@@ -470,59 +647,148 @@ function PersonalVisionPlayer({
         >
           <Ionicons name="chevron-back" size={20} color={color} />
         </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-            toggleSavedVision(vision.id);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={isSaved ? t(S.unsave) : t(S.save)}
-          style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
-        >
-          <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={18} color={color} />
-        </TouchableOpacity>
+        <View style={styles.navActions}>
+          <TouchableOpacity
+            testID="vision-player-edit-story"
+            activeOpacity={0.7}
+            onPress={beginStoryEdit}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.editStory)}
+            style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
+          >
+            <Ionicons name="pencil-outline" size={18} color={color} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              toggleSavedVision(vision.id);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={isSaved ? t(S.unsave) : t(S.save)}
+            style={[styles.navBtn, { backgroundColor: alpha(color, 0.14) }]}
+          >
+            <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={18} color={color} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Header title={vision.title} subtitle={t(S.subtitle, { category: catLabel })} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <GradientCover
-          accent={vision.accent}
-          visualKey={vision.visualKey}
-          radius={26}
-          style={[styles.stage, compact && styles.stageCompact]}
-        >
-          <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
-            <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
-            <Text style={styles.pillText}>{catLabel}</Text>
-          </View>
-          <Text numberOfLines={compact ? 5 : 7} style={[styles.caption, compact && styles.captionCompact]}>
-            {caption}
-          </Text>
-          {canNarrate ? (
-            <View style={styles.waveRow}>
-              {Array.from({ length: 22 }).map((_, barIndex) => {
-                const active = (barIndex / 22) * 100 <= progress;
-                const height = 8 + ((barIndex * 13) % 26);
-                return (
-                  <View
-                    key={barIndex}
-                    style={[
-                      styles.wave,
-                      {
-                        height,
-                        backgroundColor: active ? '#FFFFFF' : alpha('#FFFFFF', 0.35),
-                      },
-                    ]}
-                  />
-                );
-              })}
+        {editing ? (
+          <View
+            accessibilityRole="summary"
+            style={[
+              styles.editCard,
+              { backgroundColor: th.surface, borderColor: alpha(color, 0.24) },
+            ]}
+          >
+            <Text style={[styles.editTitle, { color: th.text }]}>{t(S.editStory)}</Text>
+            <Text style={[styles.editHint, { color: th.textMuted }]}>{t(S.editStoryHint)}</Text>
+            <TextInput
+              testID="vision-player-story-input"
+              value={draftStory}
+              onChangeText={setDraftStory}
+              multiline
+              maxLength={1200}
+              autoFocus
+              textAlignVertical="top"
+              accessibilityLabel={t(S.editStory)}
+              style={[
+                styles.storyInput,
+                { color: th.text, borderColor: th.border, backgroundColor: th.bg },
+              ]}
+            />
+            <View style={styles.editButtons}>
+              <PrimaryButton
+                testID="vision-player-story-cancel"
+                label={t(S.cancel)}
+                variant="ghost"
+                accent={vision.accent}
+                onPress={() => {
+                  setDraftStory(vision.story);
+                  setEditing(false);
+                }}
+                style={styles.editButton}
+              />
+              <PrimaryButton
+                testID="vision-player-story-save"
+                label={t(S.saveChanges)}
+                icon="checkmark"
+                accent={vision.accent}
+                disabled={!draftStory.trim()}
+                onPress={saveStoryEdit}
+                style={styles.editButton}
+              />
             </View>
-          ) : null}
-        </GradientCover>
+          </View>
+        ) : null}
 
-        {visualStatus?.phase === 'pending' ? (
+        <View testID="vision-player-stage" style={[styles.stage, compact && styles.stageCompact]}>
+          <GradientCover
+            accent={vision.accent}
+            visualKey={primaryVisualKey}
+            radius={0}
+            style={StyleSheet.absoluteFillObject}
+          />
+          {secondaryLayerKey ? (
+            <Animated.View
+              testID="vision-player-secondary-visual"
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFillObject, { opacity: secondaryOpacity }]}
+            >
+              <GradientCover
+                accent={vision.accent}
+                visualKey={secondaryLayerKey}
+                radius={0}
+                onVisualReady={() => setSecondaryReady(true)}
+                onVisualError={() => setSecondaryReady(false)}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </Animated.View>
+          ) : null}
+          <View style={[styles.stageContent, compact && styles.stageContentCompact]}>
+            <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
+              <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
+              <Text style={styles.pillText}>{catLabel}</Text>
+            </View>
+            <Animated.Text
+              testID="vision-player-caption"
+              accessibilityLiveRegion="polite"
+              numberOfLines={compact ? 5 : 7}
+              style={[
+                styles.caption,
+                compact && styles.captionCompact,
+                { opacity: captionOpacity, transform: [{ translateY: captionTranslateY }] },
+              ]}
+            >
+              {caption}
+            </Animated.Text>
+            {canNarrate ? (
+              <View style={styles.waveRow}>
+                {Array.from({ length: 22 }).map((_, barIndex) => {
+                  const active = (barIndex / 22) * 100 <= progress;
+                  const height = 8 + ((barIndex * 13) % 26);
+                  return (
+                    <View
+                      key={barIndex}
+                      style={[
+                        styles.wave,
+                        {
+                          height,
+                          backgroundColor: active ? '#FFFFFF' : alpha('#FFFFFF', 0.35),
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {activeVisualStatus?.phase === 'pending' ? (
           <View
             testID="vision-player-personal-visual-pending"
             accessibilityLiveRegion="polite"
@@ -533,11 +799,11 @@ function PersonalVisionPlayer({
               {t(S.visualPreparing)}
             </Text>
           </View>
-        ) : visualStatus?.phase === 'error' ? (
+        ) : activeVisualStatus?.phase === 'error' ? (
           <TouchableOpacity
             testID="vision-player-personal-visual-retry"
             activeOpacity={0.76}
-            onPress={onRetryVisual}
+            onPress={secondaryStatusRelevant ? onRetrySecondaryVisual : onRetryVisual}
             accessibilityRole="button"
             accessibilityLabel={t(S.visualRetry)}
             style={[
@@ -634,16 +900,42 @@ function PersonalVisionPlayer({
           contentType="vision"
           contentRef={`vision:${vision.id}:${vision.lang}`}
           content={`${vision.title}\n${vision.story}`}
-          visualRef={vision.visualKey}
+          visualRef={activeVisualKey}
           generation={{ source: 'journey-suite' }}
           lang={vision.lang}
         />
 
         {completed ? (
-          <View style={[styles.doneBox, { backgroundColor: alpha(color, 0.12) }]}>
-            <Ionicons name="checkmark-circle" size={20} color={color} />
-            <Text style={[styles.doneText, { color }]}>{t(S.done)}</Text>
-          </View>
+          <>
+            <View style={[styles.doneBox, { backgroundColor: alpha(color, 0.12) }]}>
+              <Ionicons name="checkmark-circle" size={20} color={color} />
+              <Text style={[styles.doneText, { color }]}>{t(S.done)}</Text>
+            </View>
+            {nextVision ? (
+              <TouchableOpacity
+                testID="vision-player-next-up"
+                activeOpacity={0.78}
+                onPress={goToNextVision}
+                accessibilityRole="button"
+                accessibilityLabel={`${t(S.openNext)}: ${nextVision.title}`}
+                style={[
+                  styles.nextCard,
+                  { backgroundColor: th.surface, borderColor: alpha(color, 0.22) },
+                ]}
+              >
+                <View style={[styles.nextIcon, { backgroundColor: alpha(color, 0.12) }]}>
+                  <Ionicons name="play-forward" size={18} color={color} />
+                </View>
+                <View style={styles.nextCopy}>
+                  <Text style={[styles.nextEyebrow, { color }]}>{t(S.nextUp)}</Text>
+                  <Text numberOfLines={2} style={[styles.nextTitle, { color: th.text }]}>
+                    {nextVision.title}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={19} color={th.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </>
         ) : (
           <PrimaryButton
             label={t(S.finish)}
@@ -666,8 +958,26 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   navRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
   navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  stage: { height: 320, padding: 20, justifyContent: 'space-between' },
-  stageCompact: { height: 200, padding: 16 },
+  navActions: { flexDirection: 'row', gap: 10 },
+  editCard: { borderWidth: 1, borderRadius: 20, padding: 16, marginBottom: 16 },
+  editTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' },
+  editHint: { fontSize: 12.5, lineHeight: 18, marginTop: 4 },
+  storyInput: {
+    minHeight: 170,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    fontSize: 14.5,
+    lineHeight: 22,
+    marginTop: 12,
+  },
+  editButtons: { flexDirection: 'row', marginTop: 12, gap: 10 },
+  editButton: { flex: 1 },
+  stage: { height: 320, borderRadius: 26, overflow: 'hidden' },
+  stageCompact: { height: 200 },
+  stageContent: { flex: 1, padding: 20, justifyContent: 'space-between' },
+  stageContentCompact: { padding: 16 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -740,6 +1050,19 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   doneText: { fontSize: 13.5, fontWeight: '700', marginLeft: 10, flex: 1 },
+  nextCard: {
+    minHeight: 78,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    marginTop: 12,
+  },
+  nextIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  nextCopy: { flex: 1, marginHorizontal: 12 },
+  nextEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '800', textTransform: 'uppercase' },
+  nextTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700', marginTop: 2 },
   finishButton: { marginTop: 20 },
   bottomSpace: { height: 32 },
 });

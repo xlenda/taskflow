@@ -31,7 +31,8 @@ const PRODUCTION_SECURITY_REQUIRED = Object.freeze([
   'CELESTE_ACTOR_HASH_SECRET',
 ]);
 const GENERATION_QUOTA_SCHEMA_VERSION = 10;
-const JOURNEY_VISUAL_COUNT = 13;
+// 1 anchor + 6 primary visions + 6 secondary visions + 6 affirmations.
+const JOURNEY_VISUAL_COUNT = 19;
 const JOURNEY_VISION_AUDIO_UNITS = 6 * 32;
 const JOURNEY_AFFIRMATION_AUDIO_UNITS = 6 * 16;
 const COMPLETE_JOURNEY_AUDIO_UNITS =

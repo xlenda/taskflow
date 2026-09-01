@@ -495,7 +495,7 @@ test('rotating anonymous UUIDs shares one atomic actor quota', { concurrency: fa
   assert.strictEqual(actorUnits.get(boundaryHash), 96);
 });
 
-test('migrations 008-010 and paid routes keep operation accounting fail-closed', () => {
+test('migrations 008-012 and paid routes keep operation accounting fail-closed', () => {
   const root = path.resolve(__dirname, '..');
   const migration = fs.readFileSync(
     path.join(root, 'supabase', 'migrations', '008_generation_actor_quota.sql'),
@@ -507,6 +507,10 @@ test('migrations 008-010 and paid routes keep operation accounting fail-closed',
   );
   const operationMigration = fs.readFileSync(
     path.join(root, 'supabase', 'migrations', '010_generation_operation_quotas.sql'),
+    'utf8'
+  );
+  const visualCapacityMigration = fs.readFileSync(
+    path.join(root, 'supabase', 'migrations', '012_secondary_vision_visual_capacity.sql'),
     'utf8'
   );
   const paidSource = fs.readFileSync(path.join(root, 'api', '_paid-access.js'), 'utf8');
@@ -575,6 +579,10 @@ test('migrations 008-010 and paid routes keep operation accounting fail-closed',
   assert.match(
     operationMigration,
     /\('visual', 128, 256, array\[8\]::smallint\[\]\)/i
+  );
+  assert.match(
+    visualCapacityMigration,
+    /\('visual', 176, 352, array\[8\]::smallint\[\], true\)/i
   );
   assert.match(
     operationMigration,

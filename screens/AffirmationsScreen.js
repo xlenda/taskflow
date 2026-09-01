@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   Share,
   ActivityIndicator,
+  Modal,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -27,6 +30,14 @@ import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
+import AffirmationShareCard, {
+  AFFIRMATION_SHARE_LAYOUT_SIZE,
+} from '../components/AffirmationShareCard';
+import {
+  AFFIRMATION_SHARE_STATUS,
+  createAffirmationShareFile,
+  shareAffirmationCard,
+} from '../utils/shareAffirmationCard';
 
 const S = {
   title: { en: 'Affirmations', pt: 'Afirmações' },
@@ -41,6 +52,18 @@ const S = {
   resumeAudio: { en: 'Resume the audio', pt: 'Continuar o áudio' },
   stopListen: { en: 'Stop the audio', pt: 'Parar o áudio' },
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
+  sharePreviewTitle: { en: 'Ready for Stories', pt: 'Pronto para Stories' },
+  sharePreviewBody: {
+    en: 'Preview the vertical 9:16 image before sharing it.',
+    pt: 'Confira a imagem vertical 9:16 antes de compartilhar.',
+  },
+  shareImage: { en: 'Share 9:16 image', pt: 'Compartilhar imagem 9:16' },
+  sharePreparing: { en: 'Preparing image', pt: 'Preparando imagem' },
+  shareFallback: {
+    en: 'The image could not be shared here. We will use the text version.',
+    pt: 'A imagem não pôde ser compartilhada aqui. Vamos usar a versão em texto.',
+  },
+  close: { en: 'Close', pt: 'Fechar' },
   copied: { en: 'Copied ✓', pt: 'Copiado ✓' },
   emptyTitle: { en: 'No affirmations here', pt: 'Nenhuma afirmação por aqui' },
   emptyBody: {
@@ -92,6 +115,7 @@ const seedIndex = (len) => (len > 0 ? dayHash(todayISO()) % len : 0);
 export default function AffirmationsScreen() {
   const theme = useTheme();
   const { t, lang } = useT();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const {
     state,
     loading,
@@ -117,12 +141,23 @@ export default function AffirmationsScreen() {
   const [audioFailed, setAudioFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(null);
+  const [sharePreview, setSharePreview] = useState(false);
+  const [shareCardLaidOut, setShareCardLaidOut] = useState(false);
+  const [shareVisualReady, setShareVisualReady] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareFailed, setShareFailed] = useState(false);
+  const [preparedShareFile, setPreparedShareFile] = useState(null);
+  const [preparedShareSignature, setPreparedShareSignature] = useState('');
   const isFocused = useIsFocused();
 
   const audioRunRef = useRef(0);
   const activePlaybackIdRef = useRef(activePlaybackId);
   const handledCompletionRef = useRef(null);
   const attemptedPlaybackRef = useRef(null);
+  const shareCardRef = useRef(null);
+  const sharePreviewCardRef = useRef(null);
+  const shareCardSignatureRef = useRef('');
+  const shareVisualLoadedRef = useRef(false);
 
   useEffect(() => {
     activePlaybackIdRef.current = activePlaybackId;
@@ -238,6 +273,13 @@ export default function AffirmationsScreen() {
   const currentVisualStatus = current?.visualStatusKey
     ? personalVisualStatus[current.visualStatusKey]
     : null;
+  const shareCardSignature = [
+    currentId || '',
+    current?.visualKey || '',
+    current?.text || '',
+    current?.category || current?.source || '',
+    lang,
+  ].join('|');
 
   useEffect(() => {
     if (!isFocused || !current) return;
@@ -265,7 +307,64 @@ export default function AffirmationsScreen() {
     setAudioFailed(false);
     setManual(null);
     setCopied(false);
+    setSharePreview(false);
+    setShareCardLaidOut(false);
+    setShareVisualReady(false);
+    setShareBusy(false);
+    setShareFailed(false);
+    setPreparedShareFile(null);
+    setPreparedShareSignature('');
+    shareVisualLoadedRef.current = false;
   }, [currentId, stopSpeech]);
+
+  useEffect(() => {
+    const changed = shareCardSignatureRef.current !== shareCardSignature;
+    shareCardSignatureRef.current = shareCardSignature;
+    if (!sharePreview || !changed) return;
+    setPreparedShareFile(null);
+    setPreparedShareSignature('');
+    setShareFailed(false);
+    setShareVisualReady(!current?.visualKey);
+    shareVisualLoadedRef.current = false;
+  }, [current?.visualKey, shareCardSignature, sharePreview]);
+
+  const shareCardReady = shareCardLaidOut && shareVisualReady;
+  const preparedShareFileIsCurrent =
+    !!preparedShareFile && preparedShareSignature === shareCardSignature;
+
+  useEffect(() => {
+    if (
+      Platform.OS !== 'web' ||
+      !sharePreview ||
+      !shareCardReady ||
+      preparedShareFileIsCurrent ||
+      !shareCardRef.current
+    ) {
+      return undefined;
+    }
+    let active = true;
+    const captureSignature = shareCardSignature;
+    createAffirmationShareFile({ viewRef: shareCardRef })
+      .then((file) => {
+        if (!active || shareCardSignatureRef.current !== captureSignature) return;
+        setPreparedShareFile(file);
+        setPreparedShareSignature(captureSignature);
+      })
+      .catch(() => {
+        if (active && shareCardSignatureRef.current === captureSignature) {
+          setShareFailed(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [preparedShareFileIsCurrent, shareCardReady, shareCardSignature, sharePreview]);
+
+  useEffect(() => {
+    if (!sharePreview || shareVisualReady) return undefined;
+    const timer = setTimeout(() => setShareVisualReady(true), 1800);
+    return () => clearTimeout(timer);
+  }, [sharePreview, shareVisualReady]);
 
   if (loading || !state) {
     return (
@@ -304,6 +403,12 @@ export default function AffirmationsScreen() {
   const pausedAudio = ownsPlayback && narrationPhase === 'paused';
   const readyAudio = ownsPlayback && narrationPhase === 'ready';
   const canHear = personalNarrationAvailable && !!current;
+  const sharePreviewWidth = Math.max(
+    150,
+    Math.min(windowWidth - 48, (windowHeight - 250) * (9 / 16), 360)
+  );
+  const sharePreviewHeight = sharePreviewWidth * (16 / 9);
+  const sharePreviewScale = sharePreviewWidth / AFFIRMATION_SHARE_LAYOUT_SIZE.width;
 
   // Compartilhar é o único laço de aquisição orgânica do app — e no desktop
   // (Firefox, boa parte do Chrome) Share.share simplesmente rejeita porque a
@@ -314,7 +419,7 @@ export default function AffirmationsScreen() {
   // web, dismissedAction no aparelho) — e copiar nesse caso anunciava
   // "Copiado ✓" de algo que a pessoa acabou de recusar. Desistir é desistir:
   // sai calado.
-  const shareIt = async () => {
+  const shareTextFallback = async () => {
     if (!currentLoc) return;
     const texto = `“${currentLoc.text}” — ${APP_NAME}\n${APP_URL}`;
     setManual(null);
@@ -341,6 +446,61 @@ export default function AffirmationsScreen() {
     // Sem compartilhar e sem área de transferência o botão terminava em
     // silêncio. Mostrar o texto para copiar à mão é o mínimo honesto.
     setManual(texto);
+  };
+
+  const openSharePreview = () => {
+    if (!currentLoc) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setManual(null);
+    setShareCardLaidOut(false);
+    setShareVisualReady(!current.visualKey);
+    setShareBusy(false);
+    setShareFailed(false);
+    setPreparedShareFile(null);
+    setPreparedShareSignature('');
+    shareVisualLoadedRef.current = false;
+    setSharePreview(true);
+  };
+
+  const closeSharePreview = () => {
+    if (shareBusy) return;
+    setSharePreview(false);
+    setShareFailed(false);
+    setPreparedShareFile(null);
+    setPreparedShareSignature('');
+    shareVisualLoadedRef.current = false;
+  };
+
+  const shareVerticalCard = async () => {
+    if (!currentLoc || !shareCardReady || shareBusy) return;
+    setShareBusy(true);
+    setShareFailed(false);
+    try {
+      const result = await shareAffirmationCard({
+        viewRef: shareCardRef,
+        file: preparedShareFileIsCurrent ? preparedShareFile : null,
+        title: t(S.share),
+      });
+      if (result?.status === AFFIRMATION_SHARE_STATUS.CANCELLED) return;
+      setSharePreview(false);
+      setPreparedShareFile(null);
+      setPreparedShareSignature('');
+    } catch (_error) {
+      setShareFailed(true);
+      setSharePreview(false);
+      await shareTextFallback();
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const sharePreviewAction = async () => {
+    if (Platform.OS === 'web' && shareFailed && !preparedShareFileIsCurrent) {
+      setSharePreview(false);
+      await shareTextFallback();
+      return;
+    }
+    await shareVerticalCard();
   };
 
   const toggleSpeak = async () => {
@@ -465,7 +625,7 @@ export default function AffirmationsScreen() {
               }}
               // Sem onToggleSpeak: o ícone cinza de 20px saiu do card — ouvir
               // agora é o botão grande logo abaixo.
-              onShare={shareIt}
+              onShare={openSharePreview}
             />
 
             <AiContentReportAction
@@ -583,11 +743,12 @@ export default function AffirmationsScreen() {
           <>
             {/* Compartilhar agora é o secundário. */}
             <PrimaryButton
+              testID="affirmation-share-open"
               label={copied ? t(S.copied) : t(S.share)}
               icon="share-outline"
               accent={meta.accent}
               variant="ghost"
-              onPress={shareIt}
+              onPress={openSharePreview}
               style={{ marginTop: 12 }}
             />
 
@@ -653,6 +814,127 @@ export default function AffirmationsScreen() {
         )}
         <View style={{ height: 28 }} />
       </ScrollView>
+
+      <Modal
+        visible={sharePreview}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={closeSharePreview}
+      >
+        <View style={styles.shareModalBackdrop}>
+          {Platform.OS === 'web' && currentLoc ? (
+            <View
+              pointerEvents="none"
+              accessible={false}
+              aria-hidden
+              style={styles.shareCaptureHost}
+            >
+              <AffirmationShareCard
+                ref={shareCardRef}
+                testID="affirmation-share-capture-card"
+                affirmation={currentLoc.text}
+                categoryLabel={currentCategoryLabel}
+                accent={meta.accent}
+                visualKey={current.visualKey}
+                onLayout={() => setShareCardLaidOut(true)}
+                onVisualReady={() => {
+                  if (shareVisualLoadedRef.current) return;
+                  shareVisualLoadedRef.current = true;
+                  setPreparedShareFile(null);
+                  setPreparedShareSignature('');
+                  setShareVisualReady(true);
+                }}
+                onVisualError={() => setShareVisualReady(true)}
+              />
+            </View>
+          ) : null}
+          <ScrollView
+            style={[styles.shareModalSheet, { backgroundColor: theme.surface }]}
+            contentContainerStyle={styles.shareModalContent}
+            showsVerticalScrollIndicator={false}
+            accessibilityViewIsModal
+          >
+            <View style={styles.shareModalHeader}>
+              <View style={styles.shareModalCopy}>
+                <Text style={[styles.shareModalTitle, { color: theme.text }]}>
+                  {t(S.sharePreviewTitle)}
+                </Text>
+                <Text style={[styles.shareModalBody, { color: theme.textMuted }]}>
+                  {t(S.sharePreviewBody)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                testID="affirmation-share-preview-close"
+                activeOpacity={0.72}
+                disabled={shareBusy}
+                onPress={closeSharePreview}
+                accessibilityRole="button"
+                accessibilityLabel={t(S.close)}
+                style={[styles.shareModalClose, { backgroundColor: alpha(theme.textMuted, 0.1) }]}
+              >
+                <Ionicons name="close" size={21} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {currentLoc ? (
+              <View
+                style={[
+                  styles.sharePreviewViewport,
+                  { width: sharePreviewWidth, height: sharePreviewHeight },
+                ]}
+              >
+                <AffirmationShareCard
+                  ref={Platform.OS === 'web' ? sharePreviewCardRef : shareCardRef}
+                  affirmation={currentLoc.text}
+                  categoryLabel={currentCategoryLabel}
+                  accent={meta.accent}
+                  visualKey={current.visualKey}
+                  onLayout={Platform.OS === 'web' ? undefined : () => setShareCardLaidOut(true)}
+                  onVisualReady={Platform.OS === 'web' ? undefined : () => setShareVisualReady(true)}
+                  onVisualError={Platform.OS === 'web' ? undefined : () => setShareVisualReady(true)}
+                  style={{
+                    position: 'absolute',
+                    left: (sharePreviewWidth - AFFIRMATION_SHARE_LAYOUT_SIZE.width) / 2,
+                    top: (sharePreviewHeight - AFFIRMATION_SHARE_LAYOUT_SIZE.height) / 2,
+                    transform: [{ scale: sharePreviewScale }],
+                  }}
+                />
+              </View>
+            ) : null}
+
+            {shareFailed ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={[styles.shareError, { color: theme.textMuted }]}
+              >
+                {t(S.shareFallback)}
+              </Text>
+            ) : null}
+
+            <PrimaryButton
+              testID="affirmation-share-preview-submit"
+              label={
+                shareBusy ||
+                (Platform.OS === 'web' && !preparedShareFileIsCurrent && !shareFailed)
+                  ? t(S.sharePreparing)
+                  : shareFailed
+                  ? t(S.share)
+                  : t(S.shareImage)
+              }
+              icon="share-social-outline"
+              accent={meta.accent}
+              disabled={
+                shareBusy ||
+                !shareCardReady ||
+                (Platform.OS === 'web' && !preparedShareFileIsCurrent && !shareFailed)
+              }
+              onPress={sharePreviewAction}
+              style={styles.shareModalButton}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -704,6 +986,46 @@ const styles = StyleSheet.create({
   manualText: { fontSize: 13, lineHeight: 20, marginTop: 8 },
   manualClose: { alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   manualCloseText: { fontSize: 13.5, fontWeight: '700' },
+  shareModalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(5,12,22,0.68)',
+  },
+  shareModalSheet: {
+    width: '100%',
+    maxWidth: 430,
+    maxHeight: '96%',
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  shareModalContent: {
+    padding: 16,
+  },
+  shareModalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
+  shareModalCopy: { flex: 1, paddingRight: 12 },
+  shareModalTitle: { fontSize: 18, lineHeight: 24, fontWeight: '800' },
+  shareModalBody: { fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  shareModalClose: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareModalButton: { marginTop: 14 },
+  sharePreviewViewport: { alignSelf: 'center', overflow: 'hidden' },
+  // O alvo web fica fora da viewport, mas preserva os 360x640 sem transformacao.
+  // Assim a captura nao rasteriza a miniatura reduzida exibida em celulares.
+  shareCaptureHost: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    width: AFFIRMATION_SHARE_LAYOUT_SIZE.width,
+    height: AFFIRMATION_SHARE_LAYOUT_SIZE.height,
+  },
+  shareError: { fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 10 },
   favText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
   favCat: { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.2, marginTop: 6 },
 });

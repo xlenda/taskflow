@@ -518,9 +518,12 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(visionPlayer, /personalVisualStatus\[vision\.visualStatusKey\]/);
     assert.match(
       visionPlayer,
-      /ensureJourneyVisual\(vision\.manifestationId, vision\.key[\s\S]{0,240}vision\?\.visualBrief/,
+      /ensureJourneyVisual\(vision\.manifestationId, vision\.key[\s\S]{0,700}vision\?\.visualBrief/,
       'player deve rever a imagem quando o brief da mesma visao mudar'
     );
+    assert.match(context, /`vision:\$\{category\}:secondary`/);
+    assert.match(visionPlayer, /`\$\{vision\.key\}:secondary`/);
+    assert.match(visionPlayer, /secondaryVisualKey/);
     assert.match(visionPlayer, /testID="vision-player-personal-visual-pending"/);
     assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
     assert.match(reveal, /testID="reveal-personal-visual"/);

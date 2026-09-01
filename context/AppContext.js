@@ -244,6 +244,7 @@ const sanitizePersonalVisualReceipt = (value) => {
 const JOURNEY_VISUAL_KEYS = new Set(
   JOURNEY_CATEGORIES.flatMap((category) => [
     `vision:${category}`,
+    `vision:${category}:secondary`,
     `affirmation:${category}`,
   ])
 );
@@ -259,6 +260,28 @@ const sanitizeJourneyVisuals = (value) => {
   return output;
 };
 
+const sanitizeJourneyStoryEdits = (value) => {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const output = {};
+  ['pt', 'en'].forEach((lang) => {
+    const entries = source[lang] && typeof source[lang] === 'object' && !Array.isArray(source[lang])
+      ? source[lang]
+      : {};
+    const localized = {};
+    Object.entries(entries).forEach(([key, story]) => {
+      if (
+        !key.startsWith('vision:') ||
+        key.endsWith(':secondary') ||
+        !JOURNEY_VISUAL_KEYS.has(key)
+      ) return;
+      const safeStory = shortText(story, 1200);
+      if (safeStory) localized[key] = safeStory;
+    });
+    if (Object.keys(localized).length) output[lang] = localized;
+  });
+  return output;
+};
+
 const journeyItemForManifestation = (manifestation, journeyKey, lang) => {
   if (!manifestation || !JOURNEY_VISUAL_KEYS.has(journeyKey)) return null;
   const locale = lang === 'en' ? 'en' : 'pt';
@@ -266,15 +289,29 @@ const journeyItemForManifestation = (manifestation, journeyKey, lang) => {
   const collection = journeyKey.startsWith('vision:')
     ? suite?.visions
     : suite?.affirmations;
-  return (Array.isArray(collection) ? collection : []).find(
-    (item) => item && item.key === journeyKey
+  const baseKey = journeyKey.endsWith(':secondary')
+    ? journeyKey.slice(0, -':secondary'.length)
+    : journeyKey;
+  const item = (Array.isArray(collection) ? collection : []).find(
+    (candidate) => candidate && candidate.key === baseKey
   ) || null;
+  if (!item || !journeyKey.endsWith(':secondary')) return item;
+  const alternativeDirection = locale === 'en'
+    ? 'Alternative later view of the same aspiration, with a distinctly different camera angle and light.'
+    : 'Visão posterior alternativa da mesma aspiração, com ângulo de câmera e luz claramente diferentes.';
+  return {
+    ...item,
+    key: journeyKey,
+    visualBrief: shortText(`${alternativeDirection} ${item.visualBrief}`, 420),
+  };
 };
 
 const journeyCompositionVariant = (journeyKey) => {
   const category = String(journeyKey || '').split(':')[1];
   const index = Math.max(0, JOURNEY_CATEGORIES.indexOf(category));
-  return journeyKey.startsWith('affirmation:') ? index + 6 : index;
+  return journeyKey.startsWith('affirmation:') || journeyKey.endsWith(':secondary')
+    ? index + 6
+    : index;
 };
 
 const journeyVisualFingerprint = (manifestation, item, lang) =>
@@ -538,6 +575,7 @@ function mergeDefensivo(parsed) {
       anchorAnswers,
       journeySuiteByLang,
       journeyVisuals: sanitizeJourneyVisuals(m.journeyVisuals),
+      journeyStoryEditsByLang: sanitizeJourneyStoryEdits(m.journeyStoryEditsByLang),
       title,
       category,
       lang: itemLang,
@@ -2322,6 +2360,7 @@ export function AppProvider({ children }) {
             ? {
                 visual: null,
                 journeyVisuals: {},
+                journeyStoryEditsByLang: {},
                 journeySuiteByLang: buildPersonalJourneySuites({
                   desire: journeyOriginTitle,
                   profile: Object.keys(m.anchorAnswers || {}).length
@@ -2371,6 +2410,42 @@ export function AppProvider({ children }) {
       }, 0);
     }
   }, [ensurePersonalVisual, setPersonalVisualPhase]);
+
+  const updateJourneyVisionStory = useCallback((manifestationId, rawJourneyKey, rawLang, value) => {
+    const id = shortText(manifestationId, 120);
+    const journeyKey = shortText(rawJourneyKey, 80);
+    const lang = rawLang === 'en' ? 'en' : 'pt';
+    const story = shortText(value, 1200);
+    const saved = stateRef.current?.manifestations?.find((item) => item.id === id);
+    if (
+      !saved ||
+      !story ||
+      !journeyKey.startsWith('vision:') ||
+      journeyKey.endsWith(':secondary') ||
+      !JOURNEY_VISUAL_KEYS.has(journeyKey) ||
+      !journeyItemForManifestation(saved, journeyKey, lang)
+    ) {
+      return false;
+    }
+    setState((currentState) => ({
+      ...currentState,
+      manifestations: currentState.manifestations.map((manifestation) =>
+        manifestation.id !== id
+          ? manifestation
+          : {
+              ...manifestation,
+              journeyStoryEditsByLang: {
+                ...(manifestation.journeyStoryEditsByLang || {}),
+                [lang]: {
+                  ...(manifestation.journeyStoryEditsByLang?.[lang] || {}),
+                  [journeyKey]: story,
+                },
+              },
+            }
+      ),
+    }));
+    return true;
+  }, []);
 
   const addEvidence = useCallback((id, text) => {
     const body = String(text || '').trim().slice(0, 280);
@@ -3219,6 +3294,7 @@ export function AppProvider({ children }) {
       ensureJourneyVisual,
       ensureDreamVisual,
       updateManifestation,
+      updateJourneyVisionStory,
       addEvidence,
       updateEvidence,
       removeEvidence,
@@ -3266,6 +3342,7 @@ export function AppProvider({ children }) {
       ensureJourneyVisual,
       ensureDreamVisual,
       updateManifestation,
+      updateJourneyVisionStory,
       addEvidence,
       updateEvidence,
       removeEvidence,

@@ -75,7 +75,7 @@ function operationQuotaPayload(overrides = {}) {
     weightedGlobalQuota: true,
     operationPolicies: {
       scene: { userDailyUnits: 32, actorDailyUnits: 64, allowedUnits: [4, 12], enabled: true },
-      visual: { userDailyUnits: 128, actorDailyUnits: 256, allowedUnits: [8], enabled: true },
+      visual: { userDailyUnits: 176, actorDailyUnits: 352, allowedUnits: [8], enabled: true },
       audio: {
         userDailyUnits: 320,
         actorDailyUnits: 640,
@@ -225,7 +225,7 @@ test('deploy probes migration 010 and the full 6+6 capacity without spending quo
     operationQuota: true,
   });
   assert.strictEqual(GENERATION_QUOTA_SCHEMA_VERSION, 10);
-  assert.strictEqual(COMPLETE_JOURNEY_DAILY_UNITS, 404);
+  assert.strictEqual(COMPLETE_JOURNEY_DAILY_UNITS, 452);
   assert.strictEqual(calls.length, 1);
   assert.match(calls[0].url, /\/rpc\/celeste_generation_actor_quota_version$/);
   assert.strictEqual(calls[0].options.method, 'POST');
