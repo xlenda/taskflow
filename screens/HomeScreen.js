@@ -585,6 +585,25 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
+        <Card
+          testID="open-dream-journal"
+          onPress={() => navigation.navigate('MorningRitual', { focus: 'dream' })}
+          accessibilityRole="button"
+          accessibilityLabel={t(S.openMorning)}
+          style={[styles.morningCard, { backgroundColor: th.surface }]}
+        >
+          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 3), 0.14) }]}>
+            <Ionicons name="moon-outline" size={22} color={accentAt(th, 3)} />
+          </View>
+          <View style={styles.morningCopy}>
+            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.morningTitle)}</Text>
+            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+              {dreamCount > 0 ? t(S.morningSaved, { n: dreamCount }) : t(S.morningEmpty)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+        </Card>
+
         {RELEASE_FEATURES.practicePlan ? (
           <Card
             testID="open-practice-plan"
@@ -609,25 +628,6 @@ export default function HomeScreen() {
             <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
           </Card>
         ) : null}
-
-        <Card
-          testID="open-dream-journal"
-          onPress={() => navigation.navigate('MorningRitual', { focus: 'dream' })}
-          accessibilityRole="button"
-          accessibilityLabel={t(S.openMorning)}
-          style={[styles.morningCard, { backgroundColor: th.surface }]}
-        >
-          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 3), 0.14) }]}>
-            <Ionicons name="moon-outline" size={22} color={accentAt(th, 3)} />
-          </View>
-          <View style={styles.morningCopy}>
-            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.morningTitle)}</Text>
-            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
-              {dreamCount > 0 ? t(S.morningSaved, { n: dreamCount }) : t(S.morningEmpty)}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
-        </Card>
 
         {RELEASE_FEATURES.affirmationAlarm ? (
           <Card
