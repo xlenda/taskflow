@@ -831,3 +831,45 @@ deve ser confundido com o prompt de nuvem `celeste-dream-v2`.
 
 A relação entre Base, Memória e Jornada está documentada em
 [`ARQUITETURA-CEREBRO-CELESTE.md`](./ARQUITETURA-CEREBRO-CELESTE.md).
+
+## 20. Plano Celeste — contrato de prática em Android e iPhone
+
+O Plano Celeste transforma uma visão e uma afirmação já escolhidas em uma
+rotina opcional de um a quatro lembretes comuns por dia. A pessoa ajusta os
+horários e os dias. Os avisos não são alarmes exatos, não prometem disparo no
+segundo escolhido e nunca bloqueiam o aparelho ou outros aplicativos.
+
+Ao abrir o aviso, a visão e a afirmação permanecem visíveis em texto grande. A
+pessoa lê da própria tela e repete a afirmação duas vezes; o progresso aparece
+como `1/2` e `2/2`. O microfone começa somente depois de um toque explícito e
+pode ser interrompido. `Agora não` e `Adiar 10 min` continuam disponíveis sem
+fala. Se o reconhecedor local não estiver disponível, a permissão for negada ou
+a leitura não for reconhecida, a Celeste oferece conclusão manual acessível.
+
+O reconhecimento dessa prática é aceito somente no dispositivo quando o
+aparelho e o idioma oferecem suporte; não existe fallback silencioso para um
+serviço de nuvem. Áudio e transcrição são efêmeros: não entram no estado, em
+backup, logs ou chamadas de rede. O único registro persistente é um recibo local
+mínimo, como dia, horário, método e pontuação de correspondência, sem o texto
+reconhecido.
+
+Antes de comunicar o recurso nas lojas, o contrato precisa passar em Android e
+iPhone físicos, incluindo permissão concedida e negada, reconhecedor local
+presente e ausente, duas leituras, falhas, cancelamento, adiamento, app encerrado,
+tela bloqueada, reinício, mudança de fuso e tecnologias assistivas. O Android
+continua sem `SCHEDULE_EXACT_ALARM` e `USE_EXACT_ALARM`; o AlarmKit do iPhone é
+um recurso separado.
+
+### Evolução planejada — ciclos de prática
+
+A primeira versão mantém a visão e a afirmação escolhidas até a própria pessoa
+alterá-las. A evolução seguinte organiza a prática em ciclos de 7 dias. Ao fim
+de cada ciclo, a Celeste apresenta um resumo local de constância e horários e
+oferece três decisões explícitas: continuar por mais 7 dias, ajustar o conteúdo
+atual ou iniciar uma nova visão/afirmação. Nada é substituído silenciosamente.
+
+Os ciclos podem formar jornadas de 7, 21 ou 30 dias. Conteúdos anteriores ficam
+no histórico da pessoa, e sugestões futuras devem considerar o objetivo
+escolhido sem prometer resultado nem ativar uma nova frase sem confirmação.
+Essa revisão semanal é roadmap pós-v1 e não deve ser anunciada na ficha da loja
+antes de estar implementada e validada nos dois sistemas.

@@ -22,12 +22,21 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 - Manifestacoes, afirmacoes, sonhos e Rastros ficam armazenados no aparelho.
 - A pessoa pode editar itens individuais e usar `Recomeçar minha jornada` para
   remover a pratica local.
+- No Plano Celeste, audio e transcricao da leitura sao descartados. Somente um
+  recibo minimo da pratica fica localmente, sem o texto reconhecido.
 
 ## Recursos por plataforma
 
 - O despertador com afirmacao usa AlarmKit e so deve ser revisado em iPhone
   compativel. A web e o Android nao anunciam nem simulam esse alarme do sistema.
 - O lembrete do Ritual de Um Minuto usa notificacao local quando permitido.
+- O Plano Celeste usa de um a quatro lembretes locais comuns; nao e alarme exato
+  e pode sofrer atraso do sistema. Ele nao bloqueia o aparelho.
+- Visao e afirmacao ficam visiveis durante a pratica. O microfone comeca
+  somente apos toque e a afirmacao e lida duas vezes, com progresso `1/2` e
+  `2/2`. O app aceita apenas reconhecimento no dispositivo quando suportado;
+  caso contrario, oferece conclusao manual acessivel.
+- `Agora nao` e `Adiar 10 min` permanecem disponiveis sem exigir fala.
 
 ## Comunidade
 
@@ -41,6 +50,11 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 3. Abrir a Cena-Âncora, a Ponte de Hoje e o Ritual de Um Minuto.
 4. Em Sonhos, registrar um relato curto e gerar a afirmacao local.
 5. Em Perfil, conferir os controles de voz, privacidade e reset.
+6. Abrir o Plano Celeste pela Inicio, escolher uma visao e uma afirmacao e
+   testar um lembrete comum.
+7. Tocar para iniciar o microfone, ler a frase visivel duas vezes e conferir o
+   progresso `1/2` e `2/2`; testar tambem cancelamento, adiamento e conclusao
+   manual.
 
 ## Caminhos de teste
 
@@ -50,6 +64,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   tocar `Transformar em afirmacao`.
 - Ritual: `Inicio > Seu minuto Celeste`; o lembrete local aparece nas opcoes do
   ritual quando o build suporta notificacoes.
+- Plano Celeste: `Inicio > Plano Celeste`; a visao e a afirmacao permanecem na
+  tela. Audio e transcricao nao sao retidos nem enviados.
 - Despertador: `Inicio > Despertador com afirmacao`; requer app instalado em
   iPhone compativel e permissao de Alarmes. Nao testar como recurso Android.
 - Privacidade: `Perfil > Privacidade e dados`.

@@ -21,6 +21,24 @@ function read(relative) {
   return fs.readFileSync(file, 'utf8').trim();
 }
 
+function readRoot(relative) {
+  const file = path.join(ROOT, relative);
+  if (!fs.existsSync(file)) {
+    fail(`missing project evidence: ${relative}`);
+    return '';
+  }
+  return fs.readFileSync(file, 'utf8').trim();
+}
+
+function normalizedText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function assertMax(label, value, max) {
   if (!String(value).trim()) fail(`${label}: must not be empty`);
   if (value.length > max) fail(`${label}: ${value.length}/${max} characters`);
@@ -260,8 +278,9 @@ if (appConfig.expo.android?.allowBackup !== false) {
   fail('Android backups must be disabled for local private app data');
 }
 const blockedAndroidPermissions = [
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
   'android.permission.READ_EXTERNAL_STORAGE',
-  'android.permission.RECORD_AUDIO',
   'android.permission.SCHEDULE_EXACT_ALARM',
   'android.permission.SYSTEM_ALERT_WINDOW',
   'android.permission.USE_EXACT_ALARM',
@@ -272,18 +291,70 @@ for (const permission of blockedAndroidPermissions) {
     fail(`unused Android permission must be blocked: ${permission}`);
   }
 }
+const allowedAndroidPermissions = appConfig.expo.android?.permissions;
+if (
+  !Array.isArray(allowedAndroidPermissions) ||
+  allowedAndroidPermissions.length !== 1 ||
+  allowedAndroidPermissions[0] !== 'android.permission.RECORD_AUDIO'
+) {
+  fail('Android explicit permission allowlist must contain only RECORD_AUDIO for Plano Celeste');
+}
+if (appConfig.expo.android?.blockedPermissions?.includes('android.permission.RECORD_AUDIO')) {
+  fail('RECORD_AUDIO cannot be both explicitly allowed and blocked');
+}
 if (appConfig.expo.ios?.config?.usesNonExemptEncryption !== false) {
   fail('iOS export compliance must declare that the app does not use non-exempt encryption');
 }
 const audioPlugin = appConfig.expo.plugins?.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-audio'
 );
+const microphoneDisclosure = audioPlugin?.[1]?.microphonePermission;
+const normalizedMicrophoneDisclosure = normalizedText(microphoneDisclosure);
+const requiredDisclosureIdeas = [
+  'celeste',
+  'microfone',
+  'somente',
+  'toca',
+  'duas repeticoes',
+  'afirmacao exibida',
+  'audio nao e armazenado',
+];
 if (
   !audioPlugin ||
-  audioPlugin[1]?.microphonePermission !== false ||
-  audioPlugin[1]?.recordAudioAndroid !== false
+  typeof microphoneDisclosure !== 'string' ||
+  microphoneDisclosure.length < 80 ||
+  microphoneDisclosure.length > 320 ||
+  requiredDisclosureIdeas.some((idea) => !normalizedMicrophoneDisclosure.includes(idea)) ||
+  audioPlugin[1]?.recordAudioAndroid !== false ||
+  audioPlugin[1]?.enableBackgroundPlayback !== false
 ) {
-  fail('expo-audio must be configured for playback without microphone permission');
+  fail('expo-audio must describe the tap-triggered two-repeat practice and disable recording/background playback outside that foreground flow');
+}
+if (microphoneDisclosure !== appConfig.expo.ios?.infoPlist?.NSMicrophoneUsageDescription) {
+  fail('expo-audio and iOS microphone disclosures must describe the same restricted practice');
+}
+const normalizedSpeechDisclosure = normalizedText(
+  appConfig.expo.ios?.infoPlist?.NSSpeechRecognitionUsageDescription
+);
+for (const idea of [
+  'reconhecimento de fala no aparelho',
+  'duas repeticoes',
+  'transcricao nao e armazenada',
+]) {
+  if (!normalizedSpeechDisclosure.includes(idea)) {
+    fail(`iOS speech recognition disclosure is incomplete: ${idea}`);
+  }
+}
+for (const broadUse of [
+  'sempre ativo',
+  'em segundo plano',
+  'gravar suas conversas',
+  'gravar audio para uso futuro',
+  'usar o microfone a qualquer momento',
+]) {
+  if (normalizedMicrophoneDisclosure.includes(broadUse)) {
+    fail(`microphone disclosure permits overly broad use: ${broadUse}`);
+  }
 }
 if (!appConfig.expo.plugins?.includes('expo-notifications')) {
   fail('expo-notifications config plugin is required for daily reminders');
@@ -305,6 +376,91 @@ try {
   }
 } catch (error) {
   fail(`affirmation alarm module config is invalid: ${error.message}`);
+}
+
+try {
+  const speechModule = JSON.parse(
+    readRoot('modules/celeste-practice-speech/expo-module.config.json')
+  );
+  const speechManifest = readRoot(
+    'modules/celeste-practice-speech/android/src/main/AndroidManifest.xml'
+  );
+  const speechKotlin = readRoot(
+    'modules/celeste-practice-speech/android/src/main/java/expo/modules/celestepracticespeech/CelestePracticeSpeechModule.kt'
+  );
+  const declaredPermissions = [...speechManifest.matchAll(/<uses-permission\s+android:name="([^"]+)"/g)]
+    .map((match) => match[1]);
+  if (
+    !Array.isArray(speechModule.platforms) ||
+    !speechModule.platforms.includes('android') ||
+    !Array.isArray(speechModule.android?.modules) ||
+    speechModule.android.modules.length !== 1
+  ) {
+    fail('CelestePracticeSpeech must be the explicit Android module that justifies RECORD_AUDIO');
+  }
+  if (
+    declaredPermissions.length !== 1 ||
+    declaredPermissions[0] !== 'android.permission.RECORD_AUDIO'
+  ) {
+    fail('CelestePracticeSpeech Android manifest must request only RECORD_AUDIO');
+  }
+  if (
+    !speechKotlin.includes('SpeechRecognizer.createOnDeviceSpeechRecognizer(') ||
+    !speechKotlin.includes('SpeechRecognizer.isOnDeviceRecognitionAvailable(') ||
+    !speechKotlin.includes('Manifest.permission.RECORD_AUDIO') ||
+    /SpeechRecognizer\.createSpeechRecognizer\s*\(|FileOutputStream|FileInputStream|MediaRecorder|AudioRecord|SharedPreferences|HttpURLConnection|okhttp/i.test(speechKotlin)
+  ) {
+    fail('CelestePracticeSpeech must use on-device recognition without recording, storage or network clients');
+  }
+} catch (error) {
+  fail(`practice speech module evidence is invalid: ${error.message}`);
+}
+
+const practiceSpeechSource = readRoot('services/practiceSpeech.js');
+const practiceRitualSource = readRoot('screens/PracticeRitualScreen.js');
+const practiceUtilsSource = readRoot('utils/practicePlan.js');
+const appContextSource = readRoot('context/AppContext.js');
+const releaseFeatureSource = readRoot('constants/releaseFeatures.js');
+const listeningBlock = practiceRitualSource.slice(
+  practiceRitualSource.indexOf('const startListening'),
+  practiceRitualSource.indexOf('const confirmAccessibleReading')
+);
+const completionBlock = appContextSource.slice(
+  appContextSource.indexOf('const completePracticePlanSlot'),
+  appContextSource.indexOf('const saveMorningRitualPreferences')
+);
+const receiptBlock = practiceUtilsSource.slice(
+  practiceUtilsSource.indexOf('export function sanitizePracticeReceipt'),
+  practiceUtilsSource.indexOf('export function sanitizePracticeReceipts')
+);
+if (
+  !releaseFeatureSource.includes("onDevicePracticeSpeech: platformOS === 'android' || platformOS === 'ios'") ||
+  !listeningBlock.includes('capability?.onDevice !== true') ||
+  !listeningBlock.includes('getCapability({ locale })') ||
+  !listeningBlock.includes('capability = await requestPermission({ locale })') ||
+  !listeningBlock.includes('recognize({ locale })') ||
+  !practiceRitualSource.includes('onPress={startListening}')
+) {
+  fail('microphone permission must be requested from a tap and accepted only for on-device practice speech');
+}
+if (
+  /AsyncStorage|FileSystem|MediaRecorder|AudioRecord|fetch\s*\(/.test(practiceSpeechSource) ||
+  /transcript|candidate|audio(?:Data|Uri|Path|Base64)?\s*:/i.test(completionBlock) ||
+  /source\.(?:transcript|normalizedTranscript|audio|candidates)/.test(receiptBlock) ||
+  !completionBlock.includes('contentFingerprint: practiceContentFingerprint({') ||
+  !receiptBlock.includes('contentFingerprint,')
+) {
+  fail('Plano Celeste must not persist or upload microphone audio or recognized transcription');
+}
+const normalizedRitualSource = normalizedText(practiceRitualSource);
+for (const disclosureIdea of [
+  'microfone so comeca quando voce tocar',
+  'nao salva o audio nem a transcricao',
+  'reconhecimento no aparelho',
+]) {
+  if (!normalizedRitualSource.includes(disclosureIdea)) {
+    fail(`practice screen is missing restricted microphone disclosure: ${disclosureIdea}`);
+  }
 }
 const splashPlugin = appConfig.expo.plugins?.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'
@@ -344,6 +500,55 @@ if (consoleFields) {
   }
   if (consoleFields.googlePlay?.packageName !== appConfig.expo.android?.package) {
     fail('console-fields Google package name differs from app.json');
+  }
+
+  const dataSafety = consoleFields.googlePlay?.dataSafety;
+  const declaredDataTypes = Array.isArray(dataSafety?.dataTypes) ? dataSafety.dataTypes : [];
+  if (dataSafety?.collectsRequiredDataTypes !== true || declaredDataTypes.length === 0) {
+    fail('Data Safety must not claim that the app collects no data; optional AI reports leave the device');
+  }
+  if (declaredDataTypes.some((entry) => /audio|voice|microphone/i.test(String(entry?.type || '')))) {
+    fail('Plano Celeste local speech must not be declared as collected Audio Data without contrary AAB evidence');
+  }
+}
+
+const googlePlayPrefill = normalizedText(read('google-play-console-prefill.md'));
+const privacyReview = normalizedText(read('privacy-review.md'));
+const reviewNotes = normalizedText(read('review-notes.md'));
+const publicPrivacyPt = normalizedText(readRoot('public/privacidade/index.html'));
+const publicPrivacyEn = normalizedText(readRoot('public/privacy/index.html'));
+
+for (const [label, document, requiredIdeas] of [
+  ['Google Play prefill', googlePlayPrefill, [
+    'record_audio',
+    'nao transmite audio ou transcricao para fora do aparelho',
+    'reconhecimento local',
+    'nao acrescenta `audio files`',
+    'aab final',
+  ]],
+  ['privacy review', privacyReview, [
+    'record_audio` nao significa coleta',
+    'audio e transcricao permanecem efemeros e locais',
+    'nao ha fallback de rede, log, backup ou sdk',
+  ]],
+  ['review notes', reviewNotes, [
+    'microfone comeca somente apos toque',
+    'reconhecimento no dispositivo',
+    'audio e transcricao nao sao retidos nem enviados',
+  ]],
+  ['public privacy pt-BR', publicPrivacyPt, [
+    'microfone so comeca apos um toque',
+    'aceita apenas reconhecimento no dispositivo',
+    'nao sao guardados, enviados ao backend, incluidos em backup nem escritos em logs',
+  ]],
+  ['public privacy en-US', publicPrivacyEn, [
+    'microphone starts only after a tap',
+    'accepts only on-device recognition',
+    'not stored, sent to the backend, included in backups or written to logs',
+  ]],
+]) {
+  for (const idea of requiredIdeas) {
+    if (!document.includes(idea)) fail(`${label} is missing restricted microphone evidence: ${idea}`);
   }
 }
 

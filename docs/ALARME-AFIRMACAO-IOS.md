@@ -1,5 +1,10 @@
 # Despertador com afirmacao no iOS
 
+> Este documento descreve o despertador AlarmKit. O Plano Celeste e separado:
+> usa lembretes locais comuns, mostra a visao e a afirmacao para leitura, pede
+> duas repeticoes por voz quando o reconhecimento no dispositivo esta
+> disponivel e nunca bloqueia o aparelho.
+
 Esta integracao agenda um despertador real do AlarmKit cuja faixa de alerta e a
 afirmacao sintetizada no aparelho. Nao e um lembrete posterior ao despertar.
 

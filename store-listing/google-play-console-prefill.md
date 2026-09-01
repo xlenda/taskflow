@@ -23,6 +23,9 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 | Compras ou assinaturas | Não | nenhum SDK de billing nem produto ativo identificado |
 | Despertador Android | Não aparece e não entra no binário | módulo autoligado apenas para Apple; permissões de alarme exato bloqueadas em `app.json` |
 | Lembrete comum | Sim, opcional | `expo-notifications`; não é despertador nem alarme exato |
+| Plano Celeste | Sim, opcional | um a quatro lembretes comuns; visão e afirmação visíveis; duas repetições para registrar a prática |
+| Microfone | Sim, somente após toque | `RECORD_AUDIO` atende ao reconhecimento no dispositivo do Plano Celeste; sem fallback para nuvem e com conclusão manual acessível |
+| Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de cena, tradução, imagem, sonho e voz | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
 | Denúncia de conteúdo gerado | Sim, dentro do app | `components/AiContentReportAction.js`, quatro telas integradas, RPC endurecida em `supabase/migrations/011_ai_content_reports.sql` e smoke live aprovado |
@@ -40,10 +43,12 @@ Supabase de produção. O smoke live criou uma sessão anônima, enviou uma den�
 pela RPC e confirmou a gravação; em seguida, a denúncia e o usuário de teste
 foram removidos. As políticas da Comunidade continuam desabilitadas por padrão.
 
-O prebuild Android também confirmou `compileSdk`/`targetSdk` 36, package
-`com.lenda.celeste`, `versionCode` 1, ausência do módulo de despertador no
-autolinking e remoção explícita das permissões de alarme exato, microfone,
-overlay e armazenamento legado. A verificação do autolinking passou.
+A configuração e as dependências instaladas fixam SDK 57 com
+`compileSdk`/`targetSdk` 36, package `com.lenda.celeste` e `versionCode` local 1.
+Um novo prebuild a partir da árvore final ainda precisa confirmar o autolinking
+de `CelestePracticeSpeech`, `RECORD_AUDIO` e a ausência de alarme exato, overlay,
+armazenamento legado e foreground service. O AAB final deve repetir essa inspeção
+antes do envio.
 
 ### Ainda não comprovado sem o AAB final
 
@@ -51,6 +56,9 @@ overlay e armazenamento legado. A verificação do autolinking passou.
 - presença das variáveis públicas Supabase no perfil EAS `production`;
 - funcionamento da denúncia, da notificação e do armazenamento no AAB instalado
   em um Android físico;
+- funcionamento do Plano Celeste com a afirmação visível, progresso `1/2` e
+  `2/2`, permissão concedida/negada, reconhecedor local disponível/ausente,
+  conclusão manual, cancelamento e adiamento;
 - tráfego de rede do binário confirmando que, fora uma denúncia escolhida pela
   pessoa, nenhuma API paga é contatada;
 - screenshots capturados desse mesmo build.
@@ -85,8 +93,10 @@ growth`, `Mindfulness`, `Journal`, `Meditation` e `Well-being`.
 - Nota opcional para revisão:
 
 > A versão Android não exige cadastro nem login. Conclua o onboarding usando a
-> opção de criação no aparelho. A Comunidade, o despertador e os recursos pagos
-> em nuvem não fazem parte desta versão.
+> opção de criação no aparelho. O Plano Celeste usa lembretes comuns e pode
+> pedir o microfone somente quando você tocar para iniciar uma prática. A
+> Comunidade, o despertador exato e os recursos pagos em nuvem não fazem parte
+> desta versão.
 
 ### Ads
 
@@ -158,6 +168,14 @@ O Google define coleta como transmissão para fora do aparelho e exige declarar
 dados pseudônimos. Portanto, **não** marcar “nenhum dado coletado”: ao enviar
 uma denúncia, o app grava a evidência no Supabase para moderação.
 
+O Plano Celeste pede `RECORD_AUDIO`, mas seu fluxo de voz não transmite áudio ou
+transcrição para fora do aparelho. A frase permanece visível, a pessoa toca
+para iniciar e a repete duas vezes; o reconhecimento local só é usado quando
+suportado. A Celeste descarta áudio e texto reconhecido e guarda apenas um
+recibo local sem a transcrição. Assim, esse fluxo, isoladamente, não acrescenta
+`Audio files` nem um novo tipo coletado ao Data Safety. Confirmar por inspeção
+de tráfego e do AAB final antes de copiar essa conclusão para o console.
+
 ### Data collection and security
 
 | Pergunta | Resposta preparada | Condição |
@@ -216,8 +234,10 @@ tipos como ausentes sem fazer essa análise.
 Não há campos nem fluxos intencionais para:
 
 - e-mail, telefone, endereço, raça/etnia, crenças ou orientação sexual;
-- mensagens, fotos, vídeos, áudio, arquivos, calendário ou acesso ao catálogo
-  de contatos do sistema;
+- mensagens, fotos, vídeos, arquivos, calendário ou acesso ao catálogo de
+  contatos do sistema;
+- áudio transmitido ou coletado: a permissão de microfone existe somente para o
+  reconhecimento local e efêmero do Plano Celeste;
 - histórico de busca, lista de apps instalados;
 - crash logs, diagnostics ou outros dados de desempenho;
 - Device or other IDs.
@@ -283,8 +303,12 @@ Texto preparado para o campo de notas, se aparecer:
 
 > No sign-in or review credentials are required. On first launch, select a
 > language and complete onboarding. Choose on-device creation; the first Anchor
-> Scene is available locally. Community, affirmation alarm, purchases, ads and
-> paid cloud generation are not included in this Android release. To test
+> Scene is available locally. To test Celeste Plan, open it from Home, select a
+> vision and affirmation, enable an ordinary reminder, then tap to start the
+> microphone and read the visible affirmation twice. Audio and transcripts are
+> not retained or uploaded; Not now, Snooze 10 min and an accessible manual
+> completion remain available. Community, exact affirmation alarm, purchases,
+> ads and paid cloud generation are not included in this Android release. To test
 > in-app AI content reporting, open a generated scene, vision, affirmation or
 > dream result, tap “Report this AI content”, select a reason and submit.
 
@@ -305,7 +329,10 @@ Texto preparado para o campo de notas, se aparecer:
 11. rotina e responsável por analisar as denúncias recebidas;
 12. tipo/data da conta Play para saber se o teste fechado de 12 pessoas por 14
     dias é obrigatório;
-13. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout.
+13. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout;
+14. confirmação em Android físico de que o Plano Celeste nunca bloqueia o
+    aparelho, mantém o texto visível, descarta áudio/transcrição e usa somente
+    lembretes comuns e reconhecimento local quando suportado.
 
 ## Fontes oficiais consultadas
 

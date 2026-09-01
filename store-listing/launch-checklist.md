@@ -21,6 +21,13 @@
 - [ ] gravar preview nativo, localizar legendas e criar thumbnail;
 - [ ] validar lembrete comum, denúncia de IA, armazenamento, tráfego e fallback
   local no AAB instalado em Android físico;
+- [ ] validar Plano Celeste em Android e iPhone físicos: texto sempre visível,
+  toque para microfone, duas leituras (`1/2` e `2/2`), reconhecedor local
+  disponível/ausente, permissão negada, conclusão manual, cancelamento,
+  `Agora não` e `Adiar 10 min`;
+- [ ] confirmar por inspeção de tráfego, logs e backup que áudio e transcrição
+  do Plano Celeste não são armazenados nem enviados e que o app nunca bloqueia
+  o aparelho;
 - [ ] testar AlarmKit em iPhone compatível antes de anunciá-lo;
 - [x] incluir mecanismo de denúncia para conteúdo gerado inadequado nas quatro
   superfícies e validar o envio real no Supabase de produção;
@@ -30,8 +37,10 @@
   políticas remotas desabilitadas por padrão;
 - [x] excluir da v1 Android o despertador exato, seu módulo nativo e suas
   permissões, além da geração/narração paga em nuvem;
-- [x] validar no prebuild Android `compileSdk`/`targetSdk` 36, package,
-  `versionCode`, autolinking e remoções explícitas de permissões;
+- [ ] regenerar o prebuild a partir da árvore final do Plano Celeste e confirmar SDK 57 com
+  `compileSdk`/`targetSdk` 36, package, `versionCode`, autolinking do módulo de
+  voz, `RECORD_AUDIO` e remoções explícitas de alarmes exatos, overlay e
+  armazenamento legado, além da ausência de foreground service de áudio;
 - [ ] conferir todos os SDKs e permissões do arquivo enviado;
 - [ ] gerar builds assinados com versão e número de build definitivos.
 
@@ -54,6 +63,8 @@
 - [ ] escolher `Health & Fitness` e `Lifestyle`;
 - [ ] preencher classificação indicativa pelo comportamento do binário;
 - [ ] preencher App Privacy com contratos e retenção confirmados;
+- [ ] conferir descrições de uso de microfone e reconhecimento de fala e
+  explicar nas notas que o Plano Celeste usa processamento local e efêmero;
 - [ ] responder direitos de conteúdo e export compliance;
 - [ ] enviar screenshots e preview nativos por idioma;
 - [ ] associar build, notas de revisão e forma de liberação;
@@ -67,6 +78,9 @@
 - [ ] preencher público-alvo, IARC e declarações de conteúdo;
 - [ ] preencher Health Apps Declaration;
 - [ ] preencher Data Safety com o binário final;
+- [ ] declarar e justificar `RECORD_AUDIO`; confirmar que o fluxo local não
+  adiciona `Audio files` coletado/compartilhado e que não há permissão de alarme
+  exato;
 - [ ] declarar ausência de anúncios, contas e compras somente após confirmar;
 - [ ] enviar ícone, feature graphic, screenshots e vídeo localizado;
 - [ ] concluir teste fechado exigido para o tipo da conta, quando aplicável;

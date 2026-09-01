@@ -40,6 +40,12 @@ import {
   initialDailyRitualNotificationUrl,
   subscribeDailyRitualNotificationUrls,
 } from './services/dailyRitualReminder';
+import {
+  cancelPracticePlanReminders,
+  configurePracticePlanNotifications,
+  initialPracticePlanNotificationUrl,
+  subscribePracticePlanNotificationUrls,
+} from './services/practicePlanReminders';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -51,6 +57,8 @@ import CommunityScreen from './screens/CommunityScreen';
 import MorningRitualScreen from './screens/MorningRitualScreen';
 import AffirmationAlarmScreen from './screens/AffirmationAlarmScreen';
 import DailyRitualScreen from './screens/DailyRitualScreen';
+import PracticePlanScreen from './screens/PracticePlanScreen';
+import PracticeRitualScreen from './screens/PracticeRitualScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 import WelcomeScreen from './screens/onboarding/WelcomeScreen';
@@ -821,6 +829,10 @@ function RootNav() {
     }
     const reminders = await cancelOrphanedDailyRitualReminders();
     if (!reminders.ok) return false;
+    if (RELEASE_FEATURES.practicePlan) {
+      const practiceReminders = await cancelPracticePlanReminders();
+      if (!practiceReminders.ok) return false;
+    }
     return repairCorruptedStorage();
   }, [repairCorruptedStorage]);
   // O <html lang> vem "en" do export do Expo. Com o app em português isso faz
@@ -853,6 +865,12 @@ function RootNav() {
             <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
           ) : null}
           <Root.Screen name="DailyRitual" component={DailyRitualScreen} />
+          {RELEASE_FEATURES.practicePlan ? (
+            <>
+              <Root.Screen name="PracticePlan" component={PracticePlanScreen} />
+              <Root.Screen name="PracticeRitual" component={PracticeRitualScreen} />
+            </>
+          ) : null}
           <Root.Screen name="Profile" component={ProfileScreen} />
         </>
       ) : (
@@ -878,14 +896,22 @@ const linking = {
   prefixes: [APP_URL, 'celeste://'],
   async getInitialURL() {
     const url = await Linking.getInitialURL();
-    return url || initialDailyRitualNotificationUrl();
+    if (url) return url;
+    const practicePlanUrl = RELEASE_FEATURES.practicePlan
+      ? await initialPracticePlanNotificationUrl()
+      : null;
+    return practicePlanUrl || initialDailyRitualNotificationUrl();
   },
   subscribe(listener) {
     const linkingSubscription = Linking.addEventListener('url', ({ url }) => listener(url));
     const unsubscribeNotifications = subscribeDailyRitualNotificationUrls(listener);
+    const unsubscribePracticePlanNotifications = RELEASE_FEATURES.practicePlan
+      ? subscribePracticePlanNotificationUrls(listener)
+      : () => {};
     return () => {
       linkingSubscription.remove();
       unsubscribeNotifications();
+      unsubscribePracticePlanNotifications();
     };
   },
   config: {
@@ -912,6 +938,9 @@ const linking = {
       MorningRitual: 'sonhos',
       ...(RELEASE_FEATURES.affirmationAlarm ? { AffirmationAlarm: 'despertar' } : {}),
       DailyRitual: 'ritual',
+      ...(RELEASE_FEATURES.practicePlan
+        ? { PracticePlan: 'plano', PracticeRitual: 'pratica/:slotId' }
+        : {}),
       Profile: 'perfil',
       Welcome: 'bem-vindo',
       Referral: 'convite',
@@ -929,6 +958,7 @@ const linking = {
 export default function App() {
   React.useEffect(() => {
     configureDailyRitualNotifications();
+    if (RELEASE_FEATURES.practicePlan) configurePracticePlanNotifications();
   }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>

@@ -15,7 +15,9 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com a afirmação que você escolheu."
+        "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com a afirmação que você escolheu.",
+        "NSMicrophoneUsageDescription": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",
+        "NSSpeechRecognitionUsageDescription": "A Celeste usa reconhecimento de fala no aparelho para conferir duas repetições da afirmação exibida. A transcrição não é armazenada."
       }
     },
     "android": {
@@ -25,12 +27,16 @@
       },
       "allowBackup": false,
       "blockedPermissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO",
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.USE_EXACT_ALARM",
         "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
       ],
       "versionCode": 1,
       "package": "com.lenda.celeste"
@@ -39,7 +45,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false,
+          "enableBackgroundPlayback": false,
+          "microphonePermission": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",
           "recordAudioAndroid": false
         }
       ],

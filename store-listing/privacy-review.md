@@ -14,6 +14,7 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 | Sonho em nuvem | transcricao, sentimento, tema e contexto reduzido | backend Celeste e Google Gemini | interpretar o sonho e criar reflexao e afirmacao | consentimento separado; fallback local |
 | Espelho Vivo | cena anterior e progresso estruturado | backend Celeste e Anthropic; OpenAI somente como failover | criar novo capitulo | acao explicita; rastros completos ficam fora |
 | Pratica local | manifestacoes, sonhos e historico | aparelho | continuidade do produto | edicao, exclusao e reset local |
+| Plano Celeste | audio temporario da leitura; visao e afirmacao escolhidas | reconhecedor no dispositivo quando suportado | comparar duas repeticoes e registrar a pratica | toque explicito; texto visivel; sem fallback para nuvem; audio/transcricao descartados; conclusao manual acessivel |
 | Comunidade | rascunho escolhido | local hoje; Supabase planejado | envio moderado futuro | nao anunciar como publico nesta versao |
 
 ## Pontos a declarar ou confirmar
@@ -26,6 +27,9 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 - Logs operacionais, IP, protecao contra abuso e prazos de retencao na Vercel.
 - Qualquer analytics, crash reporting ou attribution adicionado ao build nativo.
 - Permissoes de notificacao, microfone/reconhecimento de fala e AlarmKit.
+- No Plano Celeste, `RECORD_AUDIO` nao significa coleta: confirmar no binario e
+  no trafego que audio e transcricao permanecem efemeros e locais, enquanto o
+  recibo minimo sem texto reconhecido fica somente no aparelho.
 
 ## Respostas que nao podem ser presumidas
 
@@ -35,6 +39,9 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 - `Criptografado em transito`: confirmar em todos os endpoints do build final.
 - `Exclusao disponivel`: hoje existe reset local; se contas forem ativadas, as
   lojas exigem exclusao da conta e dos dados associados.
+- `Audio Data nao coletado`: para o Plano Celeste, marcar assim somente depois
+  de provar no build assinado que nao ha fallback de rede, log, backup ou SDK
+  que transmita a leitura.
 
 ## Bloqueios antes da revisao
 
@@ -42,6 +49,8 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 - publicar uma pagina de suporte com contato real;
 - adicionar mecanismo para denunciar conteudo gerado inadequado;
 - validar permissoes e manifests do build nativo;
+- testar em Android e iPhone fisicos o reconhecimento local, texto visivel,
+  duas repeticoes (`1/2` e `2/2`), cancelamento, adiamento e fallback manual;
 - preencher App Privacy e Data Safety a partir do binario final;
 - se Comunidade for ativada, publicar regras, moderacao, denuncia e bloqueio;
 - se contas forem ativadas, oferecer exclusao dentro do app e pela web.

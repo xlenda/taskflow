@@ -59,6 +59,7 @@ não apenas pelo texto desta lista.
 | Criação de conta | Não; a sessão anônima de denúncia não é uma conta visível | manter login e Supabase social fora do Android |
 | Exclusão de conta | Não se aplica nesta v1 | a pergunta separada de exclusão de dados deve ser respondida |
 | Health Apps Declaration | `Stress management, relaxation, mental acuity`; não médico | conferir no AAB e salvar no console |
+| Foreground service | Não na v1 Android | confirmar no AAB que `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` estão ausentes |
 | Acesso do revisor | Fluxo inteiro sem login | testar build de produção |
 | IARC | Sem categorias maduras conhecidas | preencher no console |
 
@@ -75,6 +76,12 @@ de criar sessão ou fazer a chamada. O único fluxo intencional para fora do
 aparelho é a denúncia opcional de conteúdo, que envia ao Supabase um UUID
 pseudônimo, o conteúdo escolhido, motivo, nota opcional e metadados mínimos da
 geração. O preenchimento exato está em `google-play-console-prefill.md`.
+
+O Plano Celeste pede microfone somente após um toque e usa reconhecimento no
+dispositivo quando suportado. A pessoa lê a afirmação que continua visível e a
+repete duas vezes (`1/2` e `2/2`). Áudio e transcrição são descartados sem envio
+ou armazenamento; somente um recibo mínimo fica local. Validar essa fronteira
+novamente no AAB assinado e no tráfego de um Android físico.
 
 As tabelas abaixo continuam sendo o inventário para web/iOS e para uma futura
 release que habilite provedores em nuvem; não representam a v1 Android.
@@ -98,9 +105,13 @@ release que habilite provedores em nuvem; não representam a v1 Android.
 - relato completo dos Rastros de Mudança;
 - favoritos e visões salvas;
 - configuração local do lembrete e do alarme;
+- horários, dias, seleção e recibos mínimos do Plano Celeste, sem áudio ou
+  transcrição reconhecida;
 - nomes de filhos, pessoas importantes e pessoa específica nos campos próprios;
 - áudio bruto de ditado: a Celeste recebe a transcrição fornecida pelo sistema,
   não envia a gravação por conta própria.
+- áudio e transcrição do Plano Celeste: efêmeros e locais; a prática não faz
+  fallback silencioso para reconhecimento em nuvem.
 
 ### Respostas que ainda dependem de contrato ou binário
 
@@ -129,6 +140,8 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 - redução de movimento respeitada na abertura;
 - legendas no preview da loja;
 - áudio não ser o único meio de receber uma afirmação.
+- afirmação permanecer visível durante a escuta e conclusão manual acessível
+  existir quando o reconhecimento local não puder ser usado.
 
 ## Acesso para revisão
 
@@ -139,4 +152,8 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 5. Ativar consentimento adulto separado para testar cena, sonho e narração em
    nuvem.
 6. Testar notificações no app instalado.
-7. Testar o despertador somente em iPhone compatível com o módulo nativo.
+7. Abrir o Plano Celeste, tocar para iniciar o microfone e ler a afirmação
+   visível duas vezes; conferir `1/2`, `2/2`, cancelamento, `Agora não`,
+   `Adiar 10 min` e conclusão manual.
+8. Testar o despertador somente em iPhone compatível com o módulo nativo; ele é
+   separado dos lembretes comuns do Plano Celeste.

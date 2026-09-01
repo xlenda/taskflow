@@ -1,5 +1,10 @@
 # Despertador com afirmacao no Android
 
+> Este documento descreve o prototipo de despertador exato, que continua fora
+> da v1 Android. O Plano Celeste e outro recurso: usa lembretes comuns por
+> `expo-notifications`, nao pede permissao de alarme exato, nao bloqueia o
+> aparelho e mantem `Agora nao` e `Adiar 10 min` disponiveis sem fala.
+
 O modulo `celeste-affirmation-alarm` usa um `AlarmManager` do Android para
 agendar o proximo horario escolhido, um `BroadcastReceiver` para reagendar a
 proxima ocorrencia semanal e um foreground service curto para reproduzir a

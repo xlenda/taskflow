@@ -1,0 +1,11 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["CelestePracticeSpeechModule"],
+    "podspecPath": "./ios/CelestePracticeSpeech.podspec",
+    "swiftModuleName": "CelestePracticeSpeech"
+  },
+  "android": {
+    "modules": ["expo.modules.celestepracticespeech.CelestePracticeSpeechModule"]
+  }
+}

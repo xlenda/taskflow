@@ -58,6 +58,7 @@ const STATIC_GATES = [
   ['scripts/verificar-espelho-vivo-api.js', 'Contrato privado do Espelho Vivo falhou'],
   ['scripts/verificar-ritual-um-minuto.js', 'Ritual de Um Minuto falhou'],
   ['scripts/verificar-lembrete-ritual.js', 'Lembrete nativo do Ritual falhou'],
+  ['scripts/verificar-plano-celeste.js', 'Plano Celeste, lembretes ou voz local falharam'],
   ['scripts/verificar-ritual-matinal.js', 'Despertador e bonus de sonho falharam'],
   ['scripts/verificar-alarme-afirmacao.js', 'Contrato do alarme de afirmacao falhou'],
   ['scripts/verificar-tela-despertador.js', 'Tela e confirmacao do despertador falharam'],

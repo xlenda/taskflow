@@ -12,6 +12,12 @@ import { isNarratorId } from '../constants/narrators';
 import { todayISO, streakFrom } from '../utils/date';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
 import {
+  createPracticeReceipt,
+  normalizePracticePlan,
+  practiceContentFingerprint,
+} from '../utils/practicePlan';
+import { personalAffirmationsForState } from '../utils/personalAffirmations';
+import {
   JOURNEY_CATEGORIES,
   buildPersonalJourneySuites,
   journeyVisualStatusKey,
@@ -58,6 +64,7 @@ import {
   validateLocalCommunityStoriesBackup,
 } from '../services/communityStories';
 import { cancelDailyRitualReminder } from '../services/dailyRitualReminder';
+import { cancelPracticePlanReminders } from '../services/practicePlanReminders';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
@@ -128,6 +135,18 @@ const validTime = (value) => {
 };
 const shortText = (value, max) =>
   typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+
+function practiceOptionsForState(state) {
+  const lang = state?.lang === 'en' ? 'en' : 'pt';
+  const affirmations = personalAffirmationsForState(state);
+  const visions = personalJourneyItemsForState(state, 'vision', lang);
+  return {
+    affirmations,
+    affirmationIds: affirmations.map((item) => shortText(item?.id, 160)).filter(Boolean),
+    visions,
+    visionIds: visions.map((item) => shortText(item?.id, 160)).filter(Boolean),
+  };
+}
 const validDay = (value) =>
   typeof value === 'string' &&
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -718,6 +737,7 @@ function mergeDefensivo(parsed) {
   );
   st.savedVisions = st.savedVisions.filter((id) => personalVisionIds.has(id));
   st.visionPlays = st.visionPlays.filter((play) => personalVisionIds.has(play.visionId));
+  st.practicePlan = normalizePracticePlan(st.practicePlan, practiceOptionsForState(st));
 
   const wakeId = st.morningRitual.wakeAffirmationId;
   const validWakeId =
@@ -795,6 +815,7 @@ export function AppProvider({ children }) {
   const pendingImportRevisionRef = useRef(0);
   const pendingImportFinalizeRef = useRef(null);
   const pendingStoragePreparationRef = useRef(null);
+  const practicePlanCleanupRef = useRef(false);
   const writerRef = useRef(null);
   stateRef.current = state;
 
@@ -1175,6 +1196,65 @@ export function AppProvider({ children }) {
       storageRepairRef.current = false;
     }
   }, [loadStoredState, storageCorrupt]);
+
+  useEffect(() => {
+    if (
+      !state ||
+      !hydratedRef.current ||
+      storageMutationRef.current ||
+      pendingResetRevisionRef.current ||
+      pendingImportRevisionRef.current
+    ) return;
+
+    const normalized = normalizePracticePlan(
+      state.practicePlan || initialState().practicePlan,
+      practiceOptionsForState(state)
+    );
+    if (JSON.stringify(normalized) !== JSON.stringify(state.practicePlan)) {
+      setState((current) => current
+        ? {
+            ...current,
+            practicePlan: normalizePracticePlan(
+              current.practicePlan || initialState().practicePlan,
+              practiceOptionsForState(current)
+            ),
+          }
+        : current);
+      return;
+    }
+
+    // A selected manifestation/dream may be deleted while recurring reminders
+    // still exist. Normalization marks that plan inactive+syncError instead of
+    // silently retargeting another personal text; this effect removes the
+    // entire notification family, including unpersisted 10-minute snoozes.
+    if (normalized.enabled || !normalized.syncError || practicePlanCleanupRef.current) return;
+    practicePlanCleanupRef.current = true;
+    void cancelPracticePlanReminders().then((result) => {
+      if (!result?.ok || !mountedRef.current) return;
+      setState((current) => {
+        if (!current) return current;
+        const latest = normalizePracticePlan(
+          current.practicePlan || initialState().practicePlan,
+          practiceOptionsForState(current)
+        );
+        if (latest.enabled || !latest.syncError) return current;
+        return {
+          ...current,
+          practicePlan: normalizePracticePlan(
+            {
+              ...latest,
+              enabled: false,
+              syncError: false,
+              notificationIdsBySlot: {},
+            },
+            practiceOptionsForState(current)
+          ),
+        };
+      });
+    }).finally(() => {
+      practicePlanCleanupRef.current = false;
+    });
+  }, [state]);
 
   useEffect(() => {
     if (!state || !hydratedRef.current || !writerRef.current) return;
@@ -2610,6 +2690,9 @@ export function AppProvider({ children }) {
     let preparationPromise = null;
     try {
       preparationPromise = (async () => {
+        // Inclui lembretes recorrentes e eventuais adiamentos de 10 minutos.
+        const planCancellation = await cancelPracticePlanReminders();
+        if (!planCancellation.ok) throw new Error('practice_plan_cancel_failed');
         communityToken = await beginCommunityDataReset();
         // Privacy-sensitive auxiliary records must be gone before the empty
         // onboarding can ever become visible again.
@@ -2747,6 +2830,91 @@ export function AppProvider({ children }) {
       }
       return { ...s, dailyRitual: next };
     });
+  }, []);
+
+  const savePracticePlan = useCallback((value) => {
+    setState((s) => {
+      const current = normalizePracticePlan(
+        s.practicePlan || initialState().practicePlan,
+        practiceOptionsForState(s)
+      );
+      const requested = typeof value === 'function' ? value(current) : value;
+      const source = requested && typeof requested === 'object' && !Array.isArray(requested)
+        ? { ...current, ...requested }
+        : current;
+      return {
+        ...s,
+        practicePlan: normalizePracticePlan(source, practiceOptionsForState(s)),
+      };
+    });
+  }, []);
+
+  const completePracticePlanSlot = useCallback(({ slotId, method = 'speech', score = 0 } = {}) => {
+    const requestedSlotId = shortText(slotId, 80);
+    if (!requestedSlotId) return false;
+
+    const completedAt = new Date().toISOString();
+    const day = todayISO();
+    const prepareCompletion = (sourceState) => {
+      if (!sourceState) return null;
+      const options = practiceOptionsForState(sourceState);
+      const current = normalizePracticePlan(
+        sourceState.practicePlan || initialState().practicePlan,
+        options
+      );
+      const slot = current.slots.find((item) => item.id === requestedSlotId && item.enabled);
+      if (!slot?.affirmationId || !slot?.visionId) return null;
+      const affirmation = options.affirmations.find((item) => item.id === slot.affirmationId);
+      const vision = options.visions.find((item) => item.id === slot.visionId);
+      if (!affirmation || !vision) return null;
+      const visionTitle = shortText(vision.title || vision.sourceTitle, 180);
+      const visionBody = shortText(vision.story || vision.text || vision.title, 1400);
+      const receipt = createPracticeReceipt(
+        {
+          slotId: slot.id,
+          affirmationId: slot.affirmationId,
+          visionId: slot.visionId,
+          completedAt,
+          day,
+          method,
+          score,
+          contentFingerprint: practiceContentFingerprint({
+            affirmationText: shortText(affirmation.text, 800),
+            visionText: `${visionTitle}\n${visionBody}`,
+          }),
+        },
+        { ...options, slots: current.slots }
+      );
+      return receipt ? { current, options, receipt, slot } : null;
+    };
+
+    // Return a reliable synchronous acceptance result to the screen. The state
+    // updater validates the same IDs/content again before writing the receipt.
+    if (!prepareCompletion(stateRef.current)) return false;
+    setState((s) => {
+      const prepared = prepareCompletion(s);
+      if (!prepared) return s;
+      const { current, options, receipt, slot } = prepared;
+      const affirmationDates = Array.isArray(s.affirmationDates) ? s.affirmationDates : [];
+      const visionPlays = Array.isArray(s.visionPlays) ? s.visionPlays : [];
+      const nextAffirmationDates = !affirmationDates.includes(receipt.day)
+        ? [receipt.day, ...affirmationDates]
+        : affirmationDates;
+      const nextVisionPlays = [
+        { visionId: slot.visionId, date: receipt.day },
+        ...visionPlays,
+      ].slice(0, 200);
+      return {
+        ...s,
+        affirmationDates: nextAffirmationDates,
+        visionPlays: nextVisionPlays,
+        practicePlan: normalizePracticePlan(
+          { ...current, receipts: [receipt, ...current.receipts] },
+          options
+        ),
+      };
+    });
+    return true;
   }, []);
 
   const saveMorningRitualPreferences = useCallback((patch) => {
@@ -2977,6 +3145,13 @@ export function AppProvider({ children }) {
               ({ visual: _deviceOnlyDreamVisual, ...entry }) => entry
             ),
           },
+          practicePlan: {
+            ...((stateRef.current || initialState()).practicePlan || {}),
+            enabled: false,
+            notificationIdsBySlot: {},
+            permission: 'unknown',
+            syncError: false,
+          },
         },
         communityStories,
       },
@@ -3028,6 +3203,16 @@ export function AppProvider({ children }) {
         useInLivingMirror: false,
       })),
     };
+    restored.practicePlan = normalizePracticePlan(
+      {
+        ...(restored.practicePlan || initialState().practicePlan),
+        enabled: false,
+        notificationIdsBySlot: {},
+        permission: 'unknown',
+        syncError: false,
+      },
+      practiceOptionsForState(restored)
+    );
     if (
       pendingResetRevisionRef.current ||
       pendingImportRevisionRef.current ||
@@ -3066,6 +3251,15 @@ export function AppProvider({ children }) {
         stateRef.current?.dailyRitual?.notificationId
       );
       if (!reminderCancelled.ok) {
+        cancelCommunityDataReset(communityToken);
+        storageMutationRef.current = null;
+        setStorageMutation(null);
+        return { ok: false, erro: 'reminder_cancel_failed' };
+      }
+      // O backup substitui o estado inteiro; nenhum adiamento antigo deve
+      // sobreviver mesmo que seu identificador não estivesse persistido.
+      const planRemindersCancelled = await cancelPracticePlanReminders();
+      if (!planRemindersCancelled.ok) {
         cancelCommunityDataReset(communityToken);
         storageMutationRef.current = null;
         setStorageMutation(null);
@@ -3312,6 +3506,8 @@ export function AppProvider({ children }) {
       setMood,
       setNarrator,
       saveDailyRitualPreferences,
+      savePracticePlan,
+      completePracticePlanSlot,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,
@@ -3360,6 +3556,8 @@ export function AppProvider({ children }) {
       setMood,
       setNarrator,
       saveDailyRitualPreferences,
+      savePracticePlan,
+      completePracticePlanSlot,
       saveMorningRitualPreferences,
       saveDreamRitual,
       markDreamRitualPracticed,

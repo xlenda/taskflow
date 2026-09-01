@@ -102,6 +102,15 @@ const S = {
   },
   morningPrepared: { en: 'Affirmation chosen for {time}', pt: 'Afirmação escolhida para {time}' },
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
+  practicePlanTitle: { en: 'Celeste Plan', pt: 'Plano Celeste' },
+  practicePlanEmpty: {
+    en: 'Choose your vision, affirmation, and moments of the day',
+    pt: 'Escolha sua visão, afirmação e momentos do dia',
+  },
+  practicePlanActive: {
+    en: 'Reminders at {times}',
+    pt: 'Lembretes às {times}',
+  },
   openMorning: { en: 'Share your dream', pt: 'Contar meu sonho' },
   openProfile: { en: 'Open profile and settings', pt: 'Abrir perfil e configurações' },
   yourDay: { en: 'Your day', pt: 'Seu dia' },
@@ -326,6 +335,13 @@ export default function HomeScreen() {
   const morningRitual = state.morningRitual || {};
   const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
+  const practicePlan = state.practicePlan || {};
+  const practicePlanTimes = Array.isArray(practicePlan.slots)
+    ? practicePlan.slots
+        .filter((slot) => slot && slot.enabled !== false && typeof slot.time === 'string')
+        .map((slot) => slot.time)
+    : [];
+  const practicePlanActive = practicePlan.enabled === true && practicePlanTimes.length > 0;
   const hasItems = state.manifestations.length > 0;
   const anchorScene =
     state.manifestations.find((item) => item.id === state.anchorSceneId) ||
@@ -566,6 +582,31 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('DailyRitual')}
               style={styles.minuteButton}
             />
+          </Card>
+        ) : null}
+
+        {RELEASE_FEATURES.practicePlan ? (
+          <Card
+            testID="open-practice-plan"
+            onPress={() => navigation.navigate('PracticePlan')}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.practicePlanTitle)}
+            style={[styles.morningCard, { backgroundColor: th.surface }]}
+          >
+            <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 1), 0.14) }]}>
+              <Ionicons name="notifications-outline" size={22} color={accentAt(th, 1)} />
+            </View>
+            <View style={styles.morningCopy}>
+              <Text style={[styles.morningTitle, { color: th.text }]}>
+                {t(S.practicePlanTitle)}
+              </Text>
+              <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+                {practicePlanActive
+                  ? t(S.practicePlanActive, { times: practicePlanTimes.join(' · ') })
+                  : t(S.practicePlanEmpty)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
           </Card>
         ) : null}
 

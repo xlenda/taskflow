@@ -10,7 +10,11 @@ um runtime Android, a mesma fronteira continua ativa.
 - abas Manifestar, Visões, Afirmações e Jornada;
 - Perfil no cabeçalho da Home;
 - diário de sonhos e Ritual de Um Minuto;
-- lembretes comuns do Ritual de Um Minuto via `expo-notifications`.
+- lembretes comuns do Ritual de Um Minuto via `expo-notifications`;
+- Plano Celeste opcional, com um a quatro lembretes comuns por dia. Ao abrir a
+  prática, a visão e a afirmação escolhidas ficam visíveis em texto grande; a
+  afirmação precisa ser lida e repetida duas vezes para registrar a conclusão
+  por voz (`1/2` e `2/2`).
 
 ## O que não aparece no Android
 
@@ -30,11 +34,34 @@ permissões e declaração do Google Play sejam reativados juntos.
 O módulo `celeste-affirmation-alarm` é autoligado somente na plataforma Apple.
 O código-fonte Android foi preservado para uma versão futura, mas não participa
 do projeto Android gerado. Como defesa adicional, o `app.json` bloqueia as
-permissões `SCHEDULE_EXACT_ALARM` e `USE_EXACT_ALARM`. Permissões compartilhadas
-por recursos que continuam ativos não são removidas: `POST_NOTIFICATIONS`,
-`RECEIVE_BOOT_COMPLETED` e `WAKE_LOCK` podem atender aos lembretes comuns;
-`FOREGROUND_SERVICE_MEDIA_PLAYBACK` pode atender à reprodução normal de áudio.
+permissões `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `FOREGROUND_SERVICE` e
+`FOREGROUND_SERVICE_MEDIA_PLAYBACK`. O plugin `expo-audio` também mantém
+`enableBackgroundPlayback=false`: reprodução em segundo plano e controles na
+tela bloqueada ficaram fora da v1 Android. Permissões compartilhadas por recursos
+que continuam ativos não são removidas: `POST_NOTIFICATIONS`,
+`RECEIVE_BOOT_COMPLETED` e `WAKE_LOCK` podem atender aos lembretes comuns.
 Nenhuma delas reativa o despertador exato ou seu módulo nativo.
+
+Os lembretes do Plano Celeste também usam `expo-notifications`: não são alarmes
+exatos e podem sofrer atraso por regras do sistema, economia de bateria ou
+restrições do fabricante. O plano não usa tela sobreposta, Acessibilidade,
+modo quiosque nem administração do aparelho e nunca bloqueia o restante do
+celular. `Agora não` e `Adiar 10 min` permanecem disponíveis sem exigir fala.
+
+## Microfone no Plano Celeste
+
+`RECORD_AUDIO` é pedido somente quando a pessoa toca para iniciar a prática por
+voz. A frase continua visível enquanto o microfone escuta; não é necessário
+decorá-la. Em Android compatível, a Celeste aceita apenas o reconhecedor no
+dispositivo e não troca silenciosamente para reconhecimento em nuvem. Se o
+recurso local ou o idioma não estiver disponível, se a permissão for negada ou
+se as duas tentativas assistidas falharem, a interface oferece uma conclusão
+manual acessível.
+
+O áudio e a transcrição produzidos durante essa verificação não são guardados,
+enviados ao backend nem escritos em logs. Fica no aparelho somente um recibo
+mínimo da prática, como dia, horário, método e pontuação de correspondência, sem
+o texto reconhecido. A pessoa pode cancelar a escuta a qualquer momento.
 
 A interface nativa acompanha a mesma fronteira do backend: onboarding, Home e
 Perfil não oferecem consentimento de nuvem quando a sessão nativa não pode ser

@@ -19,6 +19,13 @@ export function releaseFeaturesForPlatform(
     androidStoreBoundary,
     publicCommunity: !androidStoreBoundary,
     affirmationAlarm: platformOS !== 'android',
+    // Common local notifications stay inside the Android store boundary. The
+    // plan never enables the exact-alarm module and speech is requested only
+    // from the foreground ritual after a clear disclosure. Web speech engines
+    // may use a remote service, so the privacy-preserving native verifier is
+    // offered only on Android and Apple builds.
+    practicePlan: true,
+    onDevicePracticeSpeech: platformOS === 'android' || platformOS === 'ios',
     paidCloudProcessing: platformOS === 'web',
   });
 }
