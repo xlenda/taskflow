@@ -5,8 +5,8 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { APP_URL, ONB } from '../constants/brand';
 
-const VIDEO_PATH = '/video/celeste-abertura.mp4?v=feneco-1';
-const POSTER_PATH = '/video/celeste-abertura-poster.jpg?v=feneco-1';
+const VIDEO_PATH = '/video/celeste-abertura.mp4?v=feneco-2';
+const POSTER_PATH = '/video/celeste-abertura-poster.jpg?v=feneco-2';
 const mediaUrl = (path) => (Platform.OS === 'web' ? path : `${APP_URL}${path}`);
 const initialReduceMotion = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.matchMedia) return null;
@@ -40,7 +40,8 @@ export default function WelcomeVideo({
     instance.keepScreenOnWhilePlaying = false;
   });
   const shouldPlay = reduceMotion === false || motionOverride;
-  const mediaFit = fullBleed && height >= width ? 'cover' : 'contain';
+  // Keep the complete 9:16 character visible on every screen proportion.
+  const mediaFit = 'contain';
   const reportPlaybackIssue = useCallback(() => {
     setPlaybackBlocked(true);
     if (onPlaybackIssue) onPlaybackIssue();

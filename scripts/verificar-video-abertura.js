@@ -53,6 +53,7 @@ assert.ok(component.includes('accessibilityLabel={soundLabel}'), 'controle de so
 assert.ok(component.includes("player.addListener('playToEnd', onFinished)"), 'fim do video nao avanca a abertura');
 assert.ok(component.includes('player.loop = loop'), 'configuracao de loop nao chega ao player');
 assert.ok(component.includes('fullBleed && styles.fullBleed'), 'modo de abertura sem bordas ausente');
+assert.ok(component.includes("const mediaFit = 'contain'"), 'abertura nao pode recortar o personagem');
 assert.ok(component.includes("width: '100%'"), 'video precisa preencher a largura responsiva');
 assert.ok(component.includes("height: '100%'"), 'video precisa preencher a altura responsiva');
 assert.ok(brand.includes("welcomeBackground: '#759ACE'"), 'cor medida da abertura esta ausente');
