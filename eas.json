@@ -12,6 +12,7 @@
     },
     "production": {
       "distribution": "store",
+      "environment": "production",
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_CELESTE_ANDROID_STORE_RELEASE": "1"
@@ -19,6 +20,10 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal"
+      }
+    }
   }
 }

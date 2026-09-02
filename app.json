@@ -59,7 +59,8 @@
       ],
       "expo-notifications",
       "expo-image",
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ]
   }
 }

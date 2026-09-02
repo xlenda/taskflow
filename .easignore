@@ -1,0 +1,24 @@
+node_modules/
+dist/
+dist-trigger-check/
+.vercel/
+.expo/
+.env
+.env.local
+.env.*
+!.env.example
+
+# Materiais de auditoria e da ficha da loja nao entram no binario Android.
+store-listing/
+scripts/e2e-shots/
+
+# Credenciais de assinatura e submissao nunca entram no upload do build.
+credentials.json
+google-service-account*.json
+play-service-account*.json
+service-account*.json
+*.jks
+*.keystore
+*.p12
+*.pem
+supabase/.temp/
