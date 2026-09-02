@@ -34,7 +34,7 @@ precisa guardar comprovantes e confirmar uso comercial antes da submissão.
 4. Confirmar os termos comerciais da ElevenLabs para a conta que gera áudio.
 5. Atualizar `submission-readiness.json` com o caminho das evidências.
 
-## Evidência técnica registrada em 31/08/2026
+## Evidência técnica atualizada em 02/09/2026
 
 - `@expo/vector-icons` 15.1.1: licença MIT arquivada na dependência instalada
   (`node_modules/@expo/vector-icons/LICENSE`). A interface usa Ionicons por esse
@@ -46,9 +46,9 @@ precisa guardar comprovantes e confirmar uso comercial antes da submissão.
 - SHA-256 do ícone `assets/icon-celeste-v2.png`:
   `05C1F374055F4BECA21AF8A8EE6C72E027BFC2DFCFB66A122B2F204DE5136671`.
 - SHA-256 do vídeo `public/video/celeste-abertura.mp4`:
-  `2C195C6386668E725D42DBA540457A15BB2BF7ABC17A100F17BD0CDD944297C9`.
+  `39155E3EADAEB0BAC0B054921E7B68D28950407E7C1537A0240C91A105BE3D99`.
 - SHA-256 do poster `public/video/celeste-abertura-poster.jpg`:
-  `58CB1C097252DB0C7CF4C930375CA2ED5DDE4858BF93A2D4542D2A69F98168D6`.
+  `03F4B5DD189411C3CF5AE15457B53DB337940F9A4947B2ACC5A9C508ACA34446`.
 
 Esses hashes identificam exatamente os arquivos auditados, mas não substituem
 os comprovantes comerciais da Celi, do vídeo, do ícone gerado por IA e das

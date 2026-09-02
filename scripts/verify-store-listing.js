@@ -182,6 +182,24 @@ try {
   fail(`screenshots.json is invalid: ${error.message}`);
 }
 
+function screenshotItemsForPlatform(platform) {
+  if (!screenshotSpec || !Array.isArray(screenshotSpec.items)) return [];
+  if (platform !== 'google-play') return screenshotSpec.items;
+  const overrides = new Map(
+    (screenshotSpec.googlePlayV1?.itemOverrides || []).map((item) => [item.order, item])
+  );
+  return screenshotSpec.items.map((item) => {
+    const override = overrides.get(item.order);
+    if (!override) return item;
+    return {
+      ...item,
+      ...override,
+      'pt-BR': { ...item['pt-BR'], ...override['pt-BR'] },
+      'en-US': { ...item['en-US'], ...override['en-US'] },
+    };
+  });
+}
+
 if (screenshotSpec) {
   if (!Array.isArray(screenshotSpec.items) || screenshotSpec.items.length !== 8) {
     fail('screenshots.json must contain exactly 8 primary screenshots');
@@ -200,13 +218,52 @@ if (screenshotSpec) {
       }
     });
   }
+
+  if (
+    screenshotSpec.googlePlayV1?.status !== 'native_capture_required' ||
+    screenshotSpec.googlePlayV1?.artifactStatus !== 'controlled_web_draft_not_for_submission'
+  ) {
+    fail('Google Play web renders must remain explicitly marked as non-submission drafts');
+  }
+
+  const googleBoundaryTerms =
+    /\b(voice|voices|narration|narrator|listen|audio|alarm|voz|vozes|narra[cç][aã]o|narrador|ou[cç]a|ouvir|[aá]udio|alarme|despertador)\b/i;
+  for (const item of screenshotItemsForPlatform('google-play')) {
+    for (const locale of ['pt-BR', 'en-US']) {
+      const localized = item[locale] || {};
+      assertMax(`${locale} Google screenshot ${item.order} headline`, localized.headline || '', 48);
+      assertMax(`${locale} Google screenshot ${item.order} alt`, localized.alt || '', 140);
+      if (googleBoundaryTerms.test(`${localized.headline || ''} ${localized.alt || ''}`)) {
+        fail(`${locale} Google screenshot ${item.order} advertises a feature outside the Android v1 boundary`);
+      }
+    }
+  }
+  for (const locale of ['pt-BR', 'en-US']) {
+    const feature = screenshotSpec.googlePlayV1?.featureGraphic?.[locale] || {};
+    assertMax(`${locale} Google feature headline`, feature.headline || '', 60);
+    assertMax(`${locale} Google feature subline`, feature.subline || '', 120);
+    if (googleBoundaryTerms.test(`${feature.headline || ''} ${feature.subline || ''}`)) {
+      fail(`${locale} Google feature graphic advertises a feature outside the Android v1 boundary`);
+    }
+  }
 }
 
 if (screenshotSpec && Array.isArray(screenshotSpec.items)) {
   for (const platform of ['apple', 'google-play']) {
     const dimensions = platform === 'apple' ? [1290, 2796] : [1080, 1920];
+    const items = screenshotItemsForPlatform(platform);
     for (const locale of ['pt-BR', 'en-US']) {
-      for (const item of screenshotSpec.items) {
+      const directory = path.join(FINAL, platform, locale);
+      const expectedFiles = new Set(
+        items.map((item) => `${String(item.order).padStart(2, '0')}-${item.id}.jpg`)
+      );
+      const actualFiles = fs.existsSync(directory)
+        ? fs.readdirSync(directory).filter((file) => /^\d{2}-.*\.jpg$/i.test(file))
+        : [];
+      for (const extra of actualFiles.filter((file) => !expectedFiles.has(file))) {
+        fail(`stale ${platform}/${locale} screenshot outside the current plan: ${extra}`);
+      }
+      for (const item of items) {
         assertImage(
           path.join(platform, locale, `${String(item.order).padStart(2, '0')}-${item.id}.jpg`),
           dimensions[0],
@@ -475,9 +532,15 @@ try {
   if (eas.build?.preview?.distribution !== 'internal') {
     fail('EAS preview build must use internal distribution');
   }
+  if (eas.build?.preview?.environment !== 'production') {
+    fail('EAS preview build must load the same production environment as the store build');
+  }
   if (eas.build?.production?.autoIncrement !== true) fail('EAS production build must auto-increment');
   if (eas.build?.production?.distribution !== 'store') {
     fail('EAS production build must use store distribution');
+  }
+  if (eas.build?.production?.environment !== 'production') {
+    fail('EAS production build must load the production environment');
   }
   for (const profile of ['preview', 'production']) {
     if (eas.build?.[profile]?.env?.EXPO_PUBLIC_CELESTE_ANDROID_STORE_RELEASE !== '1') {
@@ -486,6 +549,9 @@ try {
   }
   if (!eas.submit?.production || typeof eas.submit.production !== 'object') {
     fail('EAS production submit profile is missing');
+  }
+  if (eas.submit?.production?.android?.track !== 'internal') {
+    fail('The first Android submission must target the internal testing track');
   }
 } catch (error) {
   fail(`eas.json is invalid: ${error.message}`);

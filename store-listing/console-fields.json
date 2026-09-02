@@ -23,6 +23,11 @@
   },
   "googlePlay": {
     "packageName": "com.lenda.celeste",
+    "developerAccountType": "organization_confirmed_by_owner_2026-09-02",
+    "developerAccountStatus": "new_organization_account_to_be_created_from_scratch_confirmed_2026-09-02",
+    "organizationCountry": "BR",
+    "organizationTaxIdStatus": "cnpj_available_owner_confirmed_2026-09-02_enter_only_in_google_play_console",
+    "organizationDunsStatus": "owner_confirmation_pending",
     "appOrGame": "app",
     "category": "Health & Fitness",
     "tagCandidates": [
@@ -100,6 +105,7 @@
       ]
     },
     "healthApps": {
+      "categoryDecision": "health_and_fitness_with_organization_account_confirmed_by_owner_2026-09-02",
       "offersHealthFeatures": true,
       "selectedFeatures": [
         "health_and_fitness_stress_management_relaxation_mental_acuity"

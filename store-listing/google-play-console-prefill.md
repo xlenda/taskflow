@@ -281,21 +281,21 @@ saúde. Classificar esse caso conforme a seção Data Safety.
 
 ## 6. Metadados e imagens específicos da v1 Android
 
-Os arquivos em `pt-BR/google-play` e `en-US/google-play` foram ajustados para
-não prometer voz escolhida nem geração em nuvem. Os textos Apple permanecem
-inalterados.
+Os arquivos em `pt-BR/google-play` e `en-US/google-play` não prometem voz
+escolhida, narração paga, geração em nuvem, Comunidade pública nem despertador.
+Os textos e materiais Apple permanecem inalterados.
 
-Não enviar os rascunhos Google atuais sem substituir ou refazer:
+Os rascunhos visuais da Google Play seguem o plano `googlePlayV1` de
+`screenshots.json`: o screenshot 2 mostra os controles de privacidade, o
+screenshot 3 mantém a afirmação em texto e a opção de denúncia, e a feature
+graphic fala somente em afirmação, ritual curto e passo possível. O enquadramento
+da Ponte de Hoje preserva o título completo e o exemplo da Jornada usa um nome
+curto sem reticências.
 
-- screenshot 2 anuncia voz escolhida;
-- os alts do screenshot 3 ainda têm uma versão Apple que menciona ouvir;
-- a feature graphic atual menciona voz escolhida;
-- todas as imagens atuais foram renderizadas da interface web, não do AAB.
-
-O plano Android seguro está registrado em `screenshots.json` dentro de
-`googlePlayV1`. Ele deve orientar as capturas nativas; os arquivos antigos em
-`assets/final/google-play` continuam apenas como rascunhos e não são evidência
-de submissão.
+Esses arquivos continuam marcados como `controlled_web_draft_not_for_submission`:
+foram renderizados da interface web com dados sintéticos controlados, não do AAB
+assinado. Antes da submissão, recapturar as mesmas oito telas no build Android
+final e manter `nativeScreenshots` como pendente até essa evidência existir.
 
 ## 7. Acesso para revisão
 

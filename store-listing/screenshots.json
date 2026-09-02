@@ -3,6 +3,7 @@
   "sourceNotice": "Drafts use controlled synthetic data rendered by the real Celeste web interface. Replace raw captures with native build screenshots before submission.",
   "googlePlayV1": {
     "status": "native_capture_required",
+    "artifactStatus": "controlled_web_draft_not_for_submission",
     "boundary": "Android v1 must not advertise chosen voice, paid cloud generation, public Community, accounts, purchases, ads or the affirmation alarm.",
     "featureGraphic": {
       "pt-BR": {
@@ -19,6 +20,7 @@
         "order": 2,
         "replaceId": "chosen-voice",
         "id": "privacy-controls",
+        "source": "profile-privacy",
         "desiredNativeScreen": "profile-privacy",
         "pt-BR": {
           "headline": "Privacidade explicada com clareza",
@@ -32,6 +34,7 @@
       {
         "order": 3,
         "id": "personal-affirmations",
+        "source": "affirmations-text-card",
         "desiredNativeScreen": "affirmations-text-card",
         "pt-BR": {
           "headline": "Afirmações feitas com suas respostas",

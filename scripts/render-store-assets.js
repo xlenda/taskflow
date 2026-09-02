@@ -7,6 +7,7 @@ const STORE = path.join(ROOT, 'store-listing');
 const RAW = path.join(STORE, 'assets', 'raw');
 const OUTPUT = path.join(STORE, 'assets', 'final');
 const ICON = path.join(ROOT, 'assets', 'icon-celeste-v2.png');
+const REQUESTED_PLATFORM = String(process.env.STORE_PLATFORM || '').trim();
 function resolveChromium() {
   const candidates = [
     process.env.CHROME_PATH,
@@ -42,18 +43,24 @@ const backgroundByOrder = {
   8: '#EDF6F0',
 };
 
-const featureCopy = {
-  'pt-BR': {
-    eyebrow: 'CELESTE',
-    headline: 'Uma cena feita das suas palavras',
-    subline: 'Afirmação pessoal. Voz escolhida. Um passo possível para hoje.',
-  },
-  'en-US': {
-    eyebrow: 'CELESTE',
-    headline: 'A scene made from your words',
-    subline: 'A personal affirmation. Your chosen voice. One possible step for today.',
-  },
-};
+const featureCopy = screenshots.googlePlayV1 && screenshots.googlePlayV1.featureGraphic;
+
+function itemsForPlatform(platform) {
+  if (platform !== 'google-play') return screenshots.items;
+  const overrides = new Map(
+    (screenshots.googlePlayV1 && screenshots.googlePlayV1.itemOverrides || []).map((item) => [item.order, item])
+  );
+  return screenshots.items.map((item) => {
+    const override = overrides.get(item.order);
+    if (!override) return item;
+    return {
+      ...item,
+      ...override,
+      'pt-BR': { ...item['pt-BR'], ...override['pt-BR'] },
+      'en-US': { ...item['en-US'], ...override['en-US'] },
+    };
+  });
+}
 
 function dataUrl(file) {
   const extension = path.extname(file).slice(1).replace('jpg', 'jpeg');
@@ -141,7 +148,11 @@ function screenshotHtml({ platform, item, locale, source, icon }) {
 }
 
 function featureHtml(locale, icon) {
+  if (!featureCopy || !featureCopy[locale]) {
+    throw new Error(`Missing Google Play v1 feature graphic copy for ${locale}`);
+  }
   const copy = featureCopy[locale];
+  const eyebrow = copy.eyebrow || 'CELESTE';
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -166,7 +177,7 @@ function featureHtml(locale, icon) {
 </head>
 <body>
   <div class="copy">
-    <div class="eyebrow">${copy.eyebrow}</div>
+    <div class="eyebrow">${escapeHtml(eyebrow)}</div>
     <div class="line"></div>
     <h1>${escapeHtml(copy.headline)}</h1>
     <p>${escapeHtml(copy.subline)}</p>
@@ -221,11 +232,25 @@ async function renderIcon(browser, size, destination, transparent) {
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-sandbox'] });
   const icon = dataUrl(ICON);
   try {
-    for (const [platform, spec] of Object.entries(PLATFORMS)) {
+    const selectedPlatforms = REQUESTED_PLATFORM ? [REQUESTED_PLATFORM] : Object.keys(PLATFORMS);
+    if (selectedPlatforms.some((platform) => !PLATFORMS[platform])) {
+      throw new Error(`Unsupported STORE_PLATFORM: ${REQUESTED_PLATFORM}`);
+    }
+    for (const platform of selectedPlatforms) {
+      const spec = PLATFORMS[platform];
+      const items = itemsForPlatform(platform);
       for (const locale of ['pt-BR', 'en-US']) {
         const target = path.join(OUTPUT, platform, locale);
         fs.mkdirSync(target, { recursive: true });
-        for (const item of screenshots.items) {
+        const expectedFiles = new Set(
+          items.map((item) => `${String(item.order).padStart(2, '0')}-${item.id}.${spec.extension}`)
+        );
+        for (const existing of fs.readdirSync(target)) {
+          if (/^\d{2}-.*\.jpg$/i.test(existing) && !expectedFiles.has(existing)) {
+            fs.rmSync(path.join(target, existing));
+          }
+        }
+        for (const item of items) {
           const sourceName = (item.sources && item.sources[platform]) || item.source;
           const sourceFile = path.join(RAW, platform, locale, `${sourceName}.png`);
           if (!fs.existsSync(sourceFile)) throw new Error(`Missing raw screenshot: ${sourceFile}`);
@@ -243,23 +268,27 @@ async function renderIcon(browser, size, destination, transparent) {
       }
     }
 
-    const featureDirectory = path.join(OUTPUT, 'google-play', 'feature-graphic');
-    fs.mkdirSync(featureDirectory, { recursive: true });
-    for (const locale of ['pt-BR', 'en-US']) {
-      await renderPage(
-        browser,
-        { width: 1024, height: 500, deviceScaleFactor: 1 },
-        featureHtml(locale, icon),
-        path.join(featureDirectory, `${locale}.jpg`),
-        'jpeg',
-        96
-      );
+    if (selectedPlatforms.includes('google-play')) {
+      const featureDirectory = path.join(OUTPUT, 'google-play', 'feature-graphic');
+      fs.mkdirSync(featureDirectory, { recursive: true });
+      for (const locale of ['pt-BR', 'en-US']) {
+        await renderPage(
+          browser,
+          { width: 1024, height: 500, deviceScaleFactor: 1 },
+          featureHtml(locale, icon),
+          path.join(featureDirectory, `${locale}.jpg`),
+          'jpeg',
+          96
+        );
+      }
     }
 
-    const iconDirectory = path.join(OUTPUT, 'icons');
-    fs.mkdirSync(iconDirectory, { recursive: true });
-    await renderIcon(browser, 1024, path.join(iconDirectory, 'apple-icon-1024.png'), false);
-    await renderIcon(browser, 512, path.join(iconDirectory, 'google-play-icon-512.png'), true);
+    if (!REQUESTED_PLATFORM) {
+      const iconDirectory = path.join(OUTPUT, 'icons');
+      fs.mkdirSync(iconDirectory, { recursive: true });
+      await renderIcon(browser, 1024, path.join(iconDirectory, 'apple-icon-1024.png'), false);
+      await renderIcon(browser, 512, path.join(iconDirectory, 'google-play-icon-512.png'), true);
+    }
   } finally {
     await browser.close();
   }
