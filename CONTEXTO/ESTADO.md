@@ -19,7 +19,7 @@ Onde um documento do repositório discorda do código, vale o código.
 - **Produção:** `https://celeste-jet-two.vercel.app`
   - Definida como constante única em `scripts/deploy-celeste.js:12` (`const PROD = ...`).
   - Confirmada em `.env.example:7` (`EXPO_PUBLIC_CELESTE_API_URL`) e em `docs/RETOMADA-CELESTE.md:8`.
-  - Projeto Vercel: escopo `xlendas-projects`, projeto `celeste` (`scripts/deploy-celeste.js:13-16`).
+  - Projeto Vercel: organização validada pelo ID técnico, projeto `celeste` (`scripts/deploy-celeste.js:13-16`).
 - **Repositório local canônico:** `D:\Projetos\TaskFlow` (a pasta `C:\Users\XuXa\Downloads\TaskFlow` é junction para o mesmo lugar). `docs/RETOMADA-CELESTE.md:223` diz explicitamente: "Trabalhar sempre em `D:\Projetos\TaskFlow`".
 
 ---
@@ -295,6 +295,6 @@ Não é configuração de conveniência: é a trava que impede dado íntimo de s
 
 - **Último commit:** `eecb0b77a77cbc589dd67fcdf15c26b9a7ac7a36` — "Corrige privacidade e cancelamento das geracoes Gemini", 26/08/2026 00:48.
 - **Modificados:** 0. **Não rastreados:** 0. `git status --porcelain` volta vazio: **worktree limpo, nada de trabalho importante fora do versionamento.**
-- **Remote:** `origin` → `https://github.com/xlenda/taskflow.git` (fetch e push). Note o descompasso de nome: o repositório no GitHub chama `taskflow`, o produto chama Celeste. O TaskFlow é o nome antigo.
+- **Remote:** `origin` configurado para fetch e push; confirme o endereço real com `git remote get-url origin`. O produto chama Celeste.
 - **Branch:** `master`, sincronizada com `origin/master` (mesmo SHA nas duas pontas — nada pendente de push).
 - **Ritmo:** 8 commits desde 20/08, sete deles entre 25 e 26/08. Repositório em atividade intensa e recente.

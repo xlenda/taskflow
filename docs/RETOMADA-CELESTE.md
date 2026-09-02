@@ -52,7 +52,8 @@ Deployment: `dpl_Ac4gFaCQqsn7iuYaXYHtj8wKrhvb`
   campo do diário, posiciona o teclado e permite transformar e salvar o relato
   como afirmação personalizada.
 - O fluxo foi validado em `320x480`, `390x844` e desktop, inclusive após reload.
-- A publicação foi vinculada e validada contra a equipe `xlendas-projects` e o
+- A publicação foi vinculada e validada contra a organização identificada no
+  arquivo local da Vercel e o
   projeto `celeste` antes do envio para impedir deploy no projeto errado.
 
 Portões desta publicação:

@@ -7,7 +7,7 @@ Atualizado em 29/08/2026 (America/Sao_Paulo).
 - Aplicacao publicada em `https://celeste-jet-two.vercel.app`.
 - Deploy aprovado: `dpl_9Cagv7GR47Smvkejc8dBcxfnK61c`.
 - Bundle validado: `AppEntry-e78da52d65cf198b0e2f21c743ecd557.js`.
-- Repositorio: `https://github.com/xlenda/taskflow`.
+- Repositório: usar o remote `origin` configurado e confirmar com `git remote get-url origin`.
 - Correcao atual de funil e midia: commit `cace228`.
 
 ## Experiencia entregue

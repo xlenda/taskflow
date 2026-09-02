@@ -20,11 +20,11 @@ const {
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.resolve(ROOT, 'dist');
 const PROD = 'https://celeste-jet-two.vercel.app';
-const VERCEL_SCOPE = 'xlendas-projects';
 const SERVER_CONSTANT_FILES = ['cloudConsent.js'];
 const SERVER_UTIL_FILES = ['profileSemantics.js', 'selfDescription.js'];
 const VERCEL_PROJECT = 'celeste';
 const VERCEL_ORG_ID = 'team_cFfjLrJklzEd8k1IOcGcBjXv';
+const VERCEL_SCOPE = VERCEL_ORG_ID;
 const VERCEL_PROJECT_ID = 'prj_MlPNJAFLd3AtJdafeqwcLzFs6xBA';
 const NODE = process.execPath;
 const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';

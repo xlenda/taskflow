@@ -1,7 +1,7 @@
-# MERCADO.md — Doutrina de produto do Lenda
+# MERCADO.md — Doutrina de produto da Celeste
 
 Regras permanentes para os três apps. Nada aqui muda quando o código muda. Estado de app vive em outro arquivo.
-Fontes: dossiê 3S da mentoria; 15 fichas de concorrentes + auditoria adversarial (25/08/2026); entrega 1.2; dossiê Astro & Tarot (4.787 comentários do Google Play BR, agosto/2026); memórias do Lenda.
+Fontes: dossiê 3S da mentoria; 15 fichas de concorrentes + auditoria adversarial (25/08/2026); entrega 1.2; dossiê Astro & Tarot (4.787 comentários do Google Play BR, agosto/2026); memórias da Celeste.
 
 ---
 
@@ -138,10 +138,10 @@ Os 15 concorrentes pontuam alto nos 3S e **entre 2,3 e 3,2 em confiança. Nenhum
 
 **O custo de não resolver:** num app de natureza, errar não é bug, é a planta morta do cliente ("Killed my Japanese Pine"). Num app de astrologia, a avaliação mais curtida do maior app do Brasil é **"o serviço é amador, ñ consigo confiar na informação"** (Astrolink, 20 curtidas).
 
-**A doutrina do Lenda, sem exceção:**
+**A doutrina da Celeste, sem exceção:**
 1. **Dado ausente não vira card.** Sem base, o bloco não renderiza. Nunca rega para inseto, adubação para peixe, toxicidade sem base, tabela para a cultura errada, ranking global falso.
 2. **Toda resposta fecha com o recibo da fonte** — obra, autor, século — separando o que é tradição do que é convenção moderna ou síntese. O recibo fecha, nunca abre (seção 7).
-3. **Nunca inventar dado técnico** — nem número, nem fonte, nem precisão que o dado não tem. Vale igual para o usuário e para o Lenda.
+3. **Nunca inventar dado técnico** — nem número, nem fonte, nem precisão que o dado não tem. Vale igual para o usuário e para a Celeste.
 
 Complementos: confiança em porcentagem exibida, botão "está errado" em toda resposta (resolve o "Dicots" do Seek, onde o app parece ter respondido e não respondeu) e disclaimer forte na pergunta perigosa — "é tóxico, dá para comer?" é a pergunta nº1 do nicho de natureza e o líder global ignora há oito anos.
 
@@ -177,7 +177,7 @@ Anula tudo se for quebrado: **nunca criativo que mente** (72 das 170 negativas d
 
 ---
 
-## 7. As leis do Lenda
+## 7. As leis da Celeste
 
 **Quente primeiro, ficha depois como recibo.** Toda superfície abre com aplicação prática e reflexão; o dado técnico (signo, grau, fase da lua, obra/autor/século) fecha como recibo. *Porquê:* ele leu um "Pensamento do Dia" que abria com "♊ Gêmeos, 🌖 Quarto Minguante..." e não entendeu — ficha na frente mata a retenção (04/08/2026). Confirmado de fora: linguagem acessível é o tema nº1 dos comentários positivos do mercado.
 
