@@ -227,7 +227,7 @@ if (screenshotSpec) {
   }
 
   const googleBoundaryTerms =
-    /\b(voice|voices|narration|narrator|listen|audio|alarm|voz|vozes|narra[cç][aã]o|narrador|ou[cç]a|ouvir|[aá]udio|alarme|despertador)\b/i;
+    /(?<![\p{L}\p{N}_])(?:voice|voices|narration|narrator|listen|audio|alarm|voz|vozes|narra[cç][aã]o|narrador|ou[cç]a|ouvir|[aá]udio|alarme|despertador)(?![\p{L}\p{N}_])/iu;
   for (const item of screenshotItemsForPlatform('google-play')) {
     for (const locale of ['pt-BR', 'en-US']) {
       const localized = item[locale] || {};

@@ -4,6 +4,19 @@
 
 Este formulário reúne somente as decisões e confirmações que não podem ser inventadas. O restante da ficha da Celeste já está preparado para preenchimento automático.
 
+## O que será feito automaticamente
+
+- gerar, assinar e validar o AAB Android;
+- preparar e preencher textos, categoria e declarações técnicas da ficha;
+- organizar e enviar ícone, feature graphic e capturas aprovadas;
+- configurar a trilha interna e enviar o primeiro build;
+- revisar permissões, versão, manifest, políticas e erros apontados pelo Google;
+- manter os arquivos de publicação versionados no GitHub.
+
+O titular não precisa copiar manualmente esses dados. Depois que a conta estiver
+criada e o navegador estiver conectado, o preenchimento técnico poderá ser feito
+diretamente no Play Console.
+
 ## Formulário mínimo do titular
 
 Responda aos seis blocos abaixo em uma única mensagem.
