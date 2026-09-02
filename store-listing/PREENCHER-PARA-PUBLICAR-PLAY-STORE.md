@@ -28,7 +28,7 @@ Responda aos seis blocos abaixo em uma única mensagem.
 - Nome legal exato da organização: `______________________________`
 - País de registro da organização: **`BRASIL` — confirmado pelo titular em 02/09/2026**
 - CNPJ da organização: **`DISPONÍVEL` — confirmado pelo titular em 02/09/2026; informar somente no Google**
-- D-U-N-S da organização: `JÁ TENHO` / `PRECISO SOLICITAR` / `NÃO SEI`
+- D-U-N-S da organização (obrigatório para a conta nova de Organização, salvo exceção formal do Google): `JÁ TENHO` / `PRECISO SOLICITAR` / `NÃO SEI`
 - Após a criação, o painel mostra organização, identidade, e-mail e telefone verificados: `SIM` / `NÃO` / `AINDA NÃO CRIADA`
 
 Não copie documentos ou códigos de verificação para este arquivo. Faça essas etapas diretamente no Google.
@@ -61,13 +61,14 @@ Importante: depois que um aplicativo é oferecido gratuitamente, esse mesmo paco
 
 O Google exige conta de organização para prestadores de aplicativos de saúde. Escolha uma opção que corresponda verdadeiramente ao produto:
 
-- `A` — Manter **Saúde e fitness**, com a declaração de bem-estar, gerenciamento de estresse, relaxamento e acuidade mental, sem função médica. Confirmo que a conta será **Organização** e que a verificação correspondente, inclusive D-U-N-S quando aplicável, será concluída diretamente no Google Play Console.
+- `A` — Manter **Saúde e fitness**, com a declaração de bem-estar, gerenciamento de estresse, relaxamento e acuidade mental, sem função médica. Confirmo que a conta será **Organização** e que a verificação correspondente, inclusive o D-U-N-S obrigatório, será concluída diretamente no Google Play Console.
 - `B` — Solicitar um reposicionamento verdadeiro como **Lifestyle/Estilo de vida** e desenvolvimento pessoal, sem alegações de saúde. Essa escolha exige revisar textos, funcionalidades, ficha da loja e declarações antes de qualquer envio; ela não pode ser usada apenas para trocar o rótulo de um produto que continue oferecendo recursos de saúde.
 
 Escolha: **`A` — confirmada pelo titular em 02/09/2026**
 
 Permanece pendente concluir diretamente no Google a verificação da organização
-e o D-U-N-S, caso o Play Console solicite.
+e informar o D-U-N-S. Se a organização ainda não tiver esse número, a solicitação
+gratuita à Dun & Bradstreet pode levar até 30 dias.
 
 ### 4. Privacidade e Data Safety
 
@@ -117,7 +118,7 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 ## Ações exclusivas do titular
 
 - Criar uma conta Google Play de **Organização nova**, pagar a taxa de cadastro e concluir a verificação diretamente no Google.
-- Informar no Google o nome legal e os dados da organização exatamente como constam nos registros oficiais, além do D-U-N-S quando solicitado.
+- Informar no Google o nome legal e os dados da organização exatamente como constam nos registros oficiais, além do D-U-N-S obrigatório.
 - Enviar ao Google, e nunca ao repositório ou ao chat, documentos e comprovantes pedidos para verificação de identidade.
 - Digitar códigos de autenticação e aceitar termos diretamente no Play Console.
 - Confirmar nome legal, contato público, público-alvo, territórios, política de retenção, direitos dos materiais e declarações de privacidade.
