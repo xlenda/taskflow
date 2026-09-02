@@ -59,7 +59,7 @@
 
 ## App Store Connect
 
-- [ ] criar registro com bundle ID `com.lenda.celeste`;
+- [ ] criar registro com bundle ID `com.celesteapp.affirmations`;
 - [ ] escolher `Health & Fitness` e `Lifestyle`;
 - [ ] preencher classificação indicativa pelo comportamento do binário;
 - [ ] preencher App Privacy com contratos e retenção confirmados;
@@ -72,7 +72,7 @@
 
 ## Google Play Console
 
-- [ ] criar app com package `com.lenda.celeste`;
+- [ ] criar app com package `com.celesteapp.affirmations`;
 - [ ] escolher `Health & Fitness` e até cinco tags disponíveis;
 - [ ] informar website, email de suporte e política de privacidade;
 - [ ] preencher público-alvo, IARC e declarações de conteúdo;

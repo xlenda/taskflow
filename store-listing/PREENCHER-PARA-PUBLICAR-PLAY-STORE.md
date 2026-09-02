@@ -98,7 +98,7 @@ Também autorizo marcar individualmente no Play Console os assets criados ou edi
 ## Informações já preparadas para preenchimento automático
 
 - Aplicativo: **Celeste: Afirmações Diárias**
-- Pacote Android: `com.lenda.celeste`
+- Pacote Android: `com.celesteapp.affirmations`
 - Versão inicial: `1.0.0`
 - Idioma principal: português do Brasil
 - Idioma adicional: inglês dos Estados Unidos
@@ -126,7 +126,7 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 
 ## Atenção ao prazo de verificação Android
 
-Até **30/09/2026**, o pacote precisa estar registrado por um desenvolvedor verificado para atender às novas exigências de verificação Android. O Google tenta registrar automaticamente os aplicativos elegíveis, mas o status de `com.lenda.celeste` deverá ser conferido no Play Console.
+Até **30/09/2026**, o pacote precisa estar registrado por um desenvolvedor verificado para atender às novas exigências de verificação Android. O Google tenta registrar automaticamente os aplicativos elegíveis, mas o status de `com.celesteapp.affirmations` deverá ser conferido no Play Console.
 
 ## Fontes oficiais
 

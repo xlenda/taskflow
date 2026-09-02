@@ -40,7 +40,7 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## Google Play Console
 
-- Criar ou confirmar o app `com.lenda.celeste`, a Play App Signing e a conta de
+- Criar ou confirmar o app `com.celesteapp.affirmations`, a Play App Signing e a conta de
   servico usada pelo EAS Submit.
 - Informar email de suporte, URLs HTTPS de privacidade e suporte, territorios e
   trilha inicial.
@@ -78,10 +78,10 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - Na v1 Android, o cliente tambem bloqueia geracao e narracao pagas antes de
   criar sessao Supabase ou chamar o backend. A experiencia usa o fallback local.
 - No iOS, habilitar App Attest para o Team ID e o bundle
-  `com.lenda.celeste`, enviar atestacao/assertion por chamada e guardar no
+  `com.celesteapp.affirmations`, enviar atestacao/assertion por chamada e guardar no
   servidor a chave publica e o contador de cada instalacao.
 - Antes de habilitar nuvem paga numa versao Android futura, vincular
-  `com.lenda.celeste` e a Play App Signing a um projeto Google Cloud com Play
+  `com.celesteapp.affirmations` e a Play App Signing a um projeto Google Cloud com Play
   Integrity, enviar Standard Integrity Token e valida-lo no backend com uma
   conta de servico autorizada.
 - Nunca substituir atestacao por segredo embutido, identificador do aparelho ou
@@ -100,7 +100,7 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - A v1 Android exclui o despertador exato, seu modulo e suas permissoes, e
   bloqueia as APIs pagas de cena, traducao, imagem, sonho e voz.
 - A configuração e as dependências instaladas fixam SDK 57 com
-  `compileSdk`/`targetSdk` 36, package `com.lenda.celeste` e `versionCode` local 1.
+  `compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
   O novo prebuild da árvore final ainda precisa confirmar autolinking,
   `RECORD_AUDIO` e a ausência de alarme exato, overlay, armazenamento legado e
   foreground service de áudio.

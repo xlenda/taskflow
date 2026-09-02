@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "buildNumber": "1",
-      "bundleIdentifier": "com.lenda.celeste",
+      "bundleIdentifier": "com.celesteapp.affirmations",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -39,7 +39,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "versionCode": 1,
-      "package": "com.lenda.celeste"
+      "package": "com.celesteapp.affirmations"
     },
     "plugins": [
       [

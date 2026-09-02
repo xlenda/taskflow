@@ -28,7 +28,7 @@ function publicPage({ route, directory, marker, language }) {
     `${route}: canonical incorreto`
   );
   assert(html.includes('href="/legal.css"'), `${route}: CSS compartilhado ausente`);
-  assert(html.includes('com.lenda.celeste'), `${route}: pacote do app ausente`);
+  assert(html.includes('com.celesteapp.affirmations'), `${route}: pacote do app ausente`);
   assert(!/example\.(?:com|org)|support@celeste|contato@celeste|TODO|TBD/i.test(html), `${route}: contato ou placeholder inventado`);
   return html;
 }

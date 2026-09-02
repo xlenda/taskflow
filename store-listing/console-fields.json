@@ -8,7 +8,7 @@
     "ownerConfirmationRequired": true
   },
   "apple": {
-    "bundleId": "com.lenda.celeste",
+    "bundleId": "com.celesteapp.affirmations",
     "skuSuggestion": "celeste-ios-001",
     "primaryCategory": "Health & Fitness",
     "secondaryCategory": "Lifestyle",
@@ -22,7 +22,7 @@
     "territories": null
   },
   "googlePlay": {
-    "packageName": "com.lenda.celeste",
+    "packageName": "com.celesteapp.affirmations",
     "developerAccountType": "organization_confirmed_by_owner_2026-09-02",
     "developerAccountStatus": "new_organization_account_to_be_created_from_scratch_confirmed_2026-09-02",
     "organizationCountry": "BR",

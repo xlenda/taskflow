@@ -1,7 +1,7 @@
 # Google Play Console — preenchimento preparado da v1 Android
 
 Este documento vale somente para a versão Android `1.0.0` criada com o perfil
-EAS `production` e o package `com.lenda.celeste`. Ele separa o que está
+EAS `production` e o package `com.celesteapp.affirmations`. Ele separa o que está
 comprovado no repositório do que ainda depende da titular ou da inspeção do AAB
 assinado. O projeto Supabase de produção já foi validado; nenhuma credencial ou
 segredo é registrado neste documento.
@@ -44,7 +44,7 @@ pela RPC e confirmou a gravação; em seguida, a denúncia e o usuário de teste
 foram removidos. As políticas da Comunidade continuam desabilitadas por padrão.
 
 A configuração e as dependências instaladas fixam SDK 57 com
-`compileSdk`/`targetSdk` 36, package `com.lenda.celeste` e `versionCode` local 1.
+`compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
 Um novo prebuild a partir da árvore final ainda precisa confirmar o autolinking
 de `CelestePracticeSpeech`, `RECORD_AUDIO` e a ausência de alarme exato, overlay,
 armazenamento legado e foreground service. O AAB final deve repetir essa inspeção

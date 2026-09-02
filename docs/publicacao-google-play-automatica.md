@@ -2,7 +2,7 @@
 
 O script `scripts/publicar-google-play.ps1` prepara uma release da Celeste sem
 alterar o aplicativo, sem pedir senha e sem gravar credenciais. Ele trabalha
-somente com o package `com.lenda.celeste`, o perfil EAS `production` e, quando
+somente com o package `com.celesteapp.affirmations`, o perfil EAS `production` e, quando
 solicitado, a trilha `internal` do Google Play.
 
 ## Antes do primeiro uso

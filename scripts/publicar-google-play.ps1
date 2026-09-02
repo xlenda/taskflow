@@ -237,8 +237,8 @@ foreach ($file in @('package.json', 'app.json', 'eas.json', '.easignore')) {
 $package = Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
 $app = Get-Content -LiteralPath (Join-Path $root 'app.json') -Raw | ConvertFrom-Json
 $easConfig = Get-Content -LiteralPath (Join-Path $root 'eas.json') -Raw | ConvertFrom-Json
-if ($package.name -ne 'celeste' -or $app.expo.android.package -ne 'com.lenda.celeste') {
-  throw 'Este script so publica a Celeste (com.lenda.celeste).'
+if ($package.name -ne 'celeste' -or $app.expo.android.package -ne 'com.celesteapp.affirmations') {
+  throw 'Este script so publica a Celeste (com.celesteapp.affirmations).'
 }
 
 $projectId = ''

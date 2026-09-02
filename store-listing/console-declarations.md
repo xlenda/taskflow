@@ -16,7 +16,7 @@ devem ser copiadas para o Data Safety Android sem aplicar essa fronteira.
 | Tipo | App | pronto |
 | Idioma principal | Português (Brasil) | pronto |
 | Idioma adicional | Inglês (Estados Unidos) | pronto |
-| Bundle ID / package | `com.lenda.celeste` | pronto |
+| Bundle ID / package | `com.celesteapp.affirmations` | pronto |
 | Versão | `1.0.0` | pronto |
 | Categoria | Saúde e fitness / Health & Fitness | pronto |
 | Categoria Apple secundária | Estilo de vida / Lifestyle | pronto |
