@@ -132,6 +132,32 @@ const instructions = geminiBody.systemInstruction.parts[0].text;
 assert.match(instructions, /never a decoding, prediction/i);
 assert.match(instructions, /celeste-knowledge-v2/);
 assert.match(instructions, /first person, believable/i);
+assert.deepStrictEqual(
+  geminiBody.generationConfig.thinkingConfig,
+  { thinkingLevel: 'low' },
+  'a reflexao curta deve usar thinking baixo para preservar latencia e tokens da resposta'
+);
+assert.strictEqual(
+  geminiBody.generationConfig.maxOutputTokens,
+  1800,
+  'o limite deve reservar espaco para thinking e para o JSON completo'
+);
+assert.strictEqual(
+  Object.hasOwn(geminiBody.generationConfig, 'temperature'),
+  false,
+  'Gemini 3 deve usar a temperatura padrao do modelo'
+);
+const nonGeminiThreeBody = internals.buildGeminiRequest(
+  validated.value,
+  123,
+  '',
+  'gemini-2.5-flash'
+);
+assert.strictEqual(
+  Object.hasOwn(nonGeminiThreeBody.generationConfig, 'thinkingConfig'),
+  false,
+  'modelos anteriores ao Gemini 3 nao devem receber thinkingLevel incompatível'
+);
 assert.match(instructions, /Never quote, restate, summarize, paraphrase, retell/i);
 assert.match(instructions, /The dream itself is the primary source of meaning/i);
 assert.match(instructions, /broad emotional dynamic/i);
@@ -324,6 +350,10 @@ for (const response of graphicNightmareEchoes) {
   const previousTerms = process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED;
   process.env.GEMINI_API_KEY = 'test-key';
   process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
+  const generationMetadataLogs = [];
+  internals.setGenerationMetadataLoggerForTests((metadata) => {
+    generationMetadataLogs.push(metadata);
+  });
   let fetchCalls = 0;
   let sent;
   global.fetch = async (url, options) => {
@@ -470,6 +500,94 @@ for (const response of graphicNightmareEchoes) {
       'a recontagem deve receber uma tentativa de reparo especifica'
     );
 
+    now = 2_500;
+    const truncationRequests = [];
+    const truncationLogStart = generationMetadataLogs.length;
+    const privateDreamSentinel = 'SEGREDO_RELATO_NAO_LOGAR em um caminho tranquilo.';
+    const privateOutputSentinel = 'SEGREDO_SAIDA_NAO_LOGAR';
+    const maxTokensPayload = validDreamPayload();
+    maxTokensPayload.candidates[0].finishReason = 'MAX_TOKENS';
+    const otherwiseValidTruncatedDream = JSON.parse(
+      maxTokensPayload.candidates[0].content.parts[0].text
+    );
+    otherwiseValidTruncatedDream.reflection += ` ${privateOutputSentinel}.`;
+    maxTokensPayload.candidates[0].content.parts[0].text = JSON.stringify(
+      otherwiseValidTruncatedDream
+    );
+    internals.setGenerationClockForTests(() => now);
+    global.fetch = async (_url, options) => {
+      truncationRequests.push(JSON.parse(options.body));
+      now += 100;
+      return truncationRequests.length === 1
+        ? { ok: true, json: async () => maxTokensPayload }
+        : { ok: true, json: async () => validDreamPayload() };
+    };
+    res = responseMock();
+    await api(request({ ...validBody, dream: privateDreamSentinel }), res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(truncationRequests.length, 2, 'MAX_TOKENS deve consumir somente o retry existente');
+    assert.match(
+      truncationRequests[1].systemInstruction.parts[0].text,
+      /QUALITY REPAIR FOR THIS RETRY[\s\S]*output-token limit[\s\S]*complete JSON object concisely/,
+      'o retry truncado deve pedir JSON completo e conciso'
+    );
+    const repairMarker = 'QUALITY REPAIR FOR THIS RETRY:\n';
+    const truncationRepairText = truncationRequests[1].systemInstruction.parts[0].text
+      .split(repairMarker)[1]
+      .trim();
+    assert.ok(
+      truncationRepairText.length <= 200,
+      `instrucao de reparo truncado ficou longa: ${truncationRepairText.length}`
+    );
+    const truncationLogs = generationMetadataLogs.slice(truncationLogStart);
+    assert.deepStrictEqual(truncationLogs, [{
+      event: 'retry',
+      attempt: 1,
+      code: 'generation_truncated',
+      finishReason: 'MAX_TOKENS',
+    }]);
+    const serializedTruncationLogs = JSON.stringify(truncationLogs);
+    assert.ok(!serializedTruncationLogs.includes(privateDreamSentinel));
+    assert.ok(!serializedTruncationLogs.includes(privateOutputSentinel));
+    assert.ok(!serializedTruncationLogs.includes(process.env.GEMINI_API_KEY));
+
+    let exhaustedTruncationCalls = 0;
+    const exhaustedTruncationLogStart = generationMetadataLogs.length;
+    global.fetch = async () => {
+      exhaustedTruncationCalls += 1;
+      now += 100;
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }],
+        }),
+      };
+    };
+    res = responseMock();
+    await api(request({ ...validBody, dream: privateDreamSentinel }), res);
+    assert.strictEqual(res.statusCode, 502);
+    assert.deepStrictEqual(res.payload, { error: 'invalid_generation' });
+    assert.strictEqual(exhaustedTruncationCalls, 2, 'truncamento persistente nao pode exceder duas tentativas');
+    const exhaustedTruncationLogs = generationMetadataLogs.slice(exhaustedTruncationLogStart);
+    assert.deepStrictEqual(exhaustedTruncationLogs, [
+      {
+        event: 'retry',
+        attempt: 1,
+        code: 'generation_truncated',
+        finishReason: 'MAX_TOKENS',
+      },
+      {
+        event: 'failed',
+        attempt: 2,
+        code: 'generation_truncated',
+        finishReason: 'MAX_TOKENS',
+      },
+    ]);
+    const serializedExhaustedLogs = JSON.stringify(exhaustedTruncationLogs);
+    assert.ok(!serializedExhaustedLogs.includes(privateDreamSentinel));
+    assert.ok(!serializedExhaustedLogs.includes(privateOutputSentinel));
+    assert.ok(!serializedExhaustedLogs.includes(process.env.GEMINI_API_KEY));
+
     now = 3_000;
     deadlineCalls = 0;
     internals.setGenerationClockForTests(() => now);
@@ -533,6 +651,25 @@ for (const response of graphicNightmareEchoes) {
     assert.strictEqual(res.statusCode, 413);
     assert.strictEqual(res.payload.error, 'payload_too_large');
     assert.strictEqual(fetchCalls, 1, 'payload grande nao pode chegar ao Gemini');
+    const allowedMetadataKeys = new Set(['event', 'attempt', 'code', 'finishReason', 'issueCodes']);
+    assert.ok(
+      generationMetadataLogs.every((metadata) =>
+        Object.keys(metadata).every((key) => allowedMetadataKeys.has(key))
+      ),
+      'logs de geracao devem conter somente metadados explicitamente permitidos'
+    );
+    assert.ok(
+      generationMetadataLogs.every((metadata) =>
+        (metadata.event === 'retry' || metadata.event === 'failed') &&
+        Number.isInteger(metadata.attempt) &&
+        metadata.attempt >= 1 &&
+        metadata.attempt <= 2 &&
+        /^[a-z0-9_]+$/.test(metadata.code) &&
+        (!metadata.finishReason || metadata.finishReason === 'MAX_TOKENS') &&
+        (!metadata.issueCodes || metadata.issueCodes.every((code) => /^[a-z0-9_]+$/.test(code)))
+      ),
+      'valores dos metadados de geracao devem permanecer limitados a codigos seguros'
+    );
   } finally {
     global.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.GEMINI_API_KEY;

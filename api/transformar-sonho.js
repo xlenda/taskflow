@@ -13,6 +13,29 @@ const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 12 * 1024;
 const GENERATION_DEADLINE_MS = 12_500;
 const MIN_REPAIR_BUDGET_MS = 2_000;
+const TRUNCATION_REPAIR_INSTRUCTION =
+  'The previous response reached its output-token limit. Return the complete JSON object concisely, preserving every required field and using only supplied facts.';
+const SAFE_GENERATION_LOG_CODES = new Set([
+  'generation_blocked',
+  'generation_timeout',
+  'generation_truncated',
+  'generation_unavailable',
+  'invalid_generation',
+]);
+const SAFE_EVALUATION_LOG_CODES = new Set([
+  'affirmation_not_first_person',
+  'dependency_language',
+  'diagnosis_or_clinical_claim',
+  'dream_recall_echo',
+  'generic_content',
+  'graphic_dream_echo',
+  'invalid_dream_structure',
+  'literal_dream_interpretation',
+  'manipulative_retention',
+  'missing_dream_uncertainty',
+  'missing_personal_anchor',
+  'outcome_promise',
+]);
 const FEELINGS = new Set(['', 'calm', 'joyful', 'curious', 'anxious', 'confused', 'powerful']);
 const THEMES = new Set(['auto', 'clarity', 'courage', 'peace', 'connection', 'abundance', 'renewal']);
 const DREAM_PROFILE_LIMITS = Object.freeze({
@@ -46,12 +69,20 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 let botVerifier = checkBotId;
 let generationClock = () => Date.now();
+const defaultGenerationMetadataLogger = (metadata) => {
+  process.emitWarning(JSON.stringify(metadata), {
+    type: 'CelesteDreamGenerationWarning',
+    code: 'CELESTE_DREAM_GENERATION',
+  });
+};
+let generationMetadataLogger = defaultGenerationMetadataLogger;
 
 class DreamGenerationError extends Error {
-  constructor(code, evaluation) {
+  constructor(code, evaluation, metadata) {
     super(code);
     this.code = code;
     if (evaluation) this.evaluation = evaluation;
+    if (metadata) this.metadata = metadata;
   }
 }
 
@@ -235,7 +266,11 @@ function deterministicSeed(input) {
   return value || 1;
 }
 
-function buildGeminiRequest(input, seed, repairInstruction = '') {
+function supportsThinkingLevel(model) {
+  return /^gemini-3(?:[.-]|$)/i.test(cleanText(model, 80));
+}
+
+function buildGeminiRequest(input, seed, repairInstruction = '', model = DEFAULT_MODEL) {
   const knowledgePack = celesteBrain.buildKnowledgePack('dream', input);
   const systemInstruction = [
     buildSystemInstruction(input),
@@ -269,8 +304,8 @@ function buildGeminiRequest(input, seed, repairInstruction = '') {
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: responseSchema(),
-      temperature: 0.45,
-      maxOutputTokens: 700,
+      ...(supportsThinkingLevel(model) ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
+      maxOutputTokens: 1800,
       seed,
     },
     safetySettings: [
@@ -301,12 +336,43 @@ const GRAPHIC_NIGHTMARE_ECHO = [
 ];
 
 function extractCandidateText(payload) {
-  const parts = payload && payload.candidates && payload.candidates[0] &&
-    payload.candidates[0].content && payload.candidates[0].content.parts;
+  const candidate = payload && payload.candidates && payload.candidates[0];
+  const finishReason = cleanText(candidate && candidate.finishReason, 40).toUpperCase();
+  if (finishReason === 'MAX_TOKENS') {
+    throw new DreamGenerationError('generation_truncated', undefined, { finishReason });
+  }
+  const parts = candidate && candidate.content && candidate.content.parts;
   if (!Array.isArray(parts)) throw new DreamGenerationError('invalid_generation');
   const text = parts.map((part) => (part && typeof part.text === 'string' ? part.text : '')).join('').trim();
   if (!text) throw new DreamGenerationError('generation_blocked');
   return text;
+}
+
+function safeMetadataCode(value, allowedCodes) {
+  const code = cleanText(value, 64).toLowerCase();
+  return allowedCodes.has(code) ? code : '';
+}
+
+function logGenerationMetadata(event, attempt, error) {
+  const metadata = {
+    event,
+    attempt,
+    code: safeMetadataCode(error && error.code, SAFE_GENERATION_LOG_CODES) || 'unknown_generation_error',
+  };
+  if (error?.metadata?.finishReason === 'MAX_TOKENS') {
+    metadata.finishReason = 'MAX_TOKENS';
+  }
+  const issueCodes = Array.isArray(error?.evaluation?.issues)
+    ? error.evaluation.issues
+        .map((issue) => safeMetadataCode(issue && issue.code, SAFE_EVALUATION_LOG_CODES))
+        .filter(Boolean)
+        .filter((code, index, codes) => codes.indexOf(code) === index)
+        .slice(0, 12)
+    : [];
+  if (issueCodes.length) metadata.issueCodes = issueCodes;
+  try {
+    generationMetadataLogger(metadata);
+  } catch (_error) {}
 }
 
 function validateGeneratedDream(raw, input) {
@@ -393,7 +459,7 @@ async function requestGemini(
         fetch(`${GEMINI_ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify(buildGeminiRequest(input, seed, repairInstruction)),
+          body: JSON.stringify(buildGeminiRequest(input, seed, repairInstruction, model)),
           signal: controller.signal,
         }),
         timeout,
@@ -537,9 +603,17 @@ async function handler(req, res) {
         requireGenerationBudget(generationDeadline);
         break;
       } catch (error) {
-        if (attempt !== 0 || error?.code !== 'invalid_generation') throw error;
-        repairInstruction = celesteBrain.buildRepairInstruction(error.evaluation);
+        const truncated = error?.code === 'generation_truncated';
+        const canRetry = attempt === 0 && (error?.code === 'invalid_generation' || truncated);
+        if (!canRetry) {
+          logGenerationMetadata('failed', attempt + 1, error);
+          throw error;
+        }
+        repairInstruction = truncated
+          ? TRUNCATION_REPAIR_INSTRUCTION
+          : celesteBrain.buildRepairInstruction(error.evaluation);
         requireGenerationBudget(generationDeadline, MIN_REPAIR_BUDGET_MS);
+        logGenerationMetadata('retry', attempt + 1, error);
       }
     }
     const knowledgePack = celesteBrain.buildKnowledgePack('dream', validated.value);
@@ -559,6 +633,7 @@ async function handler(req, res) {
   } catch (error) {
     if (error && error.code === 'generation_blocked') return sendError(res, 422, error.code);
     if (error && error.code === 'generation_timeout') return sendError(res, 504, error.code);
+    if (error && error.code === 'generation_truncated') return sendError(res, 502, 'invalid_generation');
     if (error && error.code === 'invalid_generation') return sendError(res, 502, error.code);
     return sendError(res, 503, 'generation_unavailable');
   }
@@ -582,6 +657,7 @@ module.exports._internals = {
   resetSecurityForTests: () => {
     botVerifier = checkBotId;
     generationClock = () => Date.now();
+    generationMetadataLogger = defaultGenerationMetadataLogger;
     paidAccess.resetAuthorizerForTests();
   },
   setBotVerifierForTests: (verifier) => {
@@ -589,6 +665,11 @@ module.exports._internals = {
   },
   setGenerationClockForTests: (clock) => {
     generationClock = typeof clock === 'function' ? clock : () => Date.now();
+  },
+  setGenerationMetadataLoggerForTests: (logger) => {
+    generationMetadataLogger = typeof logger === 'function'
+      ? logger
+      : defaultGenerationMetadataLogger;
   },
   setPaidAccessAuthorizerForTests: paidAccess.setAuthorizerForTests,
 };
