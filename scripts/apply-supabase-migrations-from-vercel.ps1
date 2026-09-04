@@ -17,6 +17,10 @@ if ($nodeMajor -lt 20 -or $nodeMajor -gt 25) {
   throw "Celeste exige Node 20 a 25; encontrado Node $nodeMajor."
 }
 $nodeHome = Split-Path -Parent $nodeExecutable
+$npxExecutable = Join-Path $nodeHome 'npx.cmd'
+if (-not (Test-Path -LiteralPath $npxExecutable -PathType Leaf)) {
+  throw 'npx.cmd nao foi encontrado ao lado do Node selecionado.'
+}
 
 $env:Path = "$nodeHome;$env:Path"
 $env:NODE_USE_SYSTEM_CA = '1'
@@ -69,7 +73,7 @@ end
 $celeste_contract$;
 '@
   $sql = $sql.Replace('__VERSION__', $expectedVersion).Replace('__LEGACY__', $expectedLegacy)
-  & npx --yes supabase@latest db query `
+  & $npxExecutable --yes supabase@latest db query `
     --db-url $env:CELESTE_MIGRATION_DB_URL `
     --output-format json `
     $sql | Out-Null
@@ -98,7 +102,7 @@ function Invoke-ReportEndpointSmoke(
       throw 'O smoke devolveu um identificador anonimo invalido.'
     }
     $cleanupSql = "delete from auth.users where id = '$reporterId'::uuid;"
-    & npx --yes supabase@latest db query `
+    & $npxExecutable --yes supabase@latest db query `
       --db-url $env:CELESTE_MIGRATION_DB_URL `
       --output-format json `
       $cleanupSql | Out-Null
@@ -108,7 +112,7 @@ function Invoke-ReportEndpointSmoke(
 }
 
 try {
-  & npx --yes vercel@latest env pull $tempFile --environment=production --yes
+  & $npxExecutable --yes vercel@latest env pull $tempFile --environment=production --yes
   if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel obter o ambiente da Vercel.' }
 
   $dbUrl = Get-PulledEnvironmentValue 'POSTGRES_URL_NON_POOLING'
@@ -138,7 +142,7 @@ try {
     }
 
     if ($Action -eq 'report-expansion') {
-      $historyOutput = & npx --yes supabase@latest migration list `
+      $historyOutput = & $npxExecutable --yes supabase@latest migration list `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
         --output-format json
       if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel auditar o historico remoto.' }
@@ -153,11 +157,12 @@ try {
         throw 'O historico remoto precisa estar exatamente em 001-012 antes da expansao.'
       }
 
-      & npx --yes supabase@latest db query `
+      $migration013Path = Join-Path $PSScriptRoot '..\supabase\migrations\013_ai_content_report_gateway.sql'
+      & $npxExecutable --yes supabase@latest db query `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --file (Join-Path $PSScriptRoot '..\supabase\migrations\013_ai_content_report_gateway.sql')
+        --file $migration013Path
       if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
-      & npx --yes supabase@latest migration repair `
+      & $npxExecutable --yes supabase@latest migration repair `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
         --status applied `
         --yes `
@@ -173,7 +178,7 @@ try {
       Invoke-AiReportContractCheck 'expansion'
       Invoke-ReportEndpointSmoke 'expansion'
 
-      & npx --yes supabase@latest db push `
+      & $npxExecutable --yes supabase@latest db push `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
         --include-all `
         --yes
@@ -184,12 +189,12 @@ try {
       Write-Output 'Migration 014 aplicada: RPC legada revogada e gateway final validado.'
     }
 
-    & npx --yes supabase@latest migration list --db-url $env:CELESTE_MIGRATION_DB_URL
+    & $npxExecutable --yes supabase@latest migration list --db-url $env:CELESTE_MIGRATION_DB_URL
     if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel confirmar o historico remoto.' }
   } elseif ($Action -eq 'push') {
-    & npx --yes supabase@latest db push --db-url $env:CELESTE_MIGRATION_DB_URL
+    & $npxExecutable --yes supabase@latest db push --db-url $env:CELESTE_MIGRATION_DB_URL
   } else {
-    & npx --yes supabase@latest migration list --db-url $env:CELESTE_MIGRATION_DB_URL
+    & $npxExecutable --yes supabase@latest migration list --db-url $env:CELESTE_MIGRATION_DB_URL
   }
   if ($LASTEXITCODE -ne 0) { throw "Supabase migration $Action falhou." }
 } finally {
