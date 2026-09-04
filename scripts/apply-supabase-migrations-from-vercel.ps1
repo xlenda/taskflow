@@ -29,13 +29,82 @@ $tempFile = Join-Path $tempRoot ("vercel-env-$([guid]::NewGuid().ToString('N')).
 $tempArtifacts = @($tempFile)
 
 function Get-PulledEnvironmentValue([string]$Name) {
+  # `vercel env pull` intentionally redacts sensitive values. If an operator
+  # supplied a local-only process value, prefer it without writing it to disk.
+  $processValue = [Environment]::GetEnvironmentVariable($Name, 'Process')
+  if ($processValue -and $processValue -ne '[SENSITIVE]') { return $processValue }
   $entry = Get-Content -LiteralPath $tempFile |
     Where-Object { $_ -match "^$([regex]::Escape($Name))=" } |
     Select-Object -First 1
   if (-not $entry) { return $null }
   $rawValue = $entry.Substring($entry.IndexOf('=') + 1).Trim()
-  if ($rawValue.StartsWith('"')) { return $rawValue | ConvertFrom-Json }
-  return $rawValue
+  $value = if ($rawValue.StartsWith('"')) { $rawValue | ConvertFrom-Json } else { $rawValue }
+  if (-not $value -or $value -eq '[SENSITIVE]') { return $null }
+  return $value
+}
+
+function Invoke-AiReportContractCheck(
+  [ValidateSet('expansion', 'final')]
+  [string]$Mode
+) {
+  $expectedVersion = if ($Mode -eq 'expansion') { '1' } else { '2' }
+  $expectedLegacy = if ($Mode -eq 'expansion') { 'false' } else { 'true' }
+  $sql = @'
+do $celeste_contract$
+declare
+  contract jsonb := public.celeste_ai_content_report_gateway_version();
+begin
+  if contract is null
+     or contract->>'schemaVersion' <> '__VERSION__'
+     or contract->>'serverGateway' <> 'true'
+     or contract->>'userQuota' <> 'true'
+     or contract->>'actorQuota' <> 'true'
+     or contract->>'globalQuota' <> 'true'
+     or contract->>'retentionDays' <> '180'
+     or contract->>'legacyClientSubmitDisabled' <> '__LEGACY__'
+     or contract->>'deleteAll' <> 'true' then
+    raise exception 'celeste_ai_report_contract_invalid';
+  end if;
+end
+$celeste_contract$;
+'@
+  $sql = $sql.Replace('__VERSION__', $expectedVersion).Replace('__LEGACY__', $expectedLegacy)
+  & npx --yes supabase@latest db query `
+    --db-url $env:CELESTE_MIGRATION_DB_URL `
+    --output json `
+    $sql | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "O contrato $Mode de denuncia nao foi confirmado diretamente no banco."
+  }
+}
+
+function Invoke-ReportEndpointSmoke(
+  [ValidateSet('expansion', 'final')]
+  [string]$Mode
+) {
+  [Environment]::SetEnvironmentVariable('CELESTE_AI_REPORT_ROLLOUT', $Mode, 'Process')
+  [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SKIP_REPORT_ENDPOINT', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_DB_CONTRACT_VERIFIED', '1', 'Process')
+  $smokeOutput = & node (Join-Path $PSScriptRoot 'verificar-denuncia-ia-live.js')
+  $smokeExit = $LASTEXITCODE
+  $smokeOutput | Where-Object { $_ -notmatch '^REPORTER_ID_TO_DELETE=' } | Write-Output
+
+  $reporterLine = $smokeOutput |
+    Where-Object { $_ -match '^REPORTER_ID_TO_DELETE=[0-9a-f-]{36}$' } |
+    Select-Object -First 1
+  if ($reporterLine) {
+    $reporterId = $reporterLine.Substring('REPORTER_ID_TO_DELETE='.Length)
+    if ($reporterId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+      throw 'O smoke devolveu um identificador anonimo invalido.'
+    }
+    $cleanupSql = "delete from auth.users where id = '$reporterId'::uuid;"
+    & npx --yes supabase@latest db query `
+      --db-url $env:CELESTE_MIGRATION_DB_URL `
+      --output json `
+      $cleanupSql | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel remover o usuario anonimo do smoke.' }
+  }
+  if ($smokeExit -ne 0) { throw "O endpoint de denuncia falhou no modo $Mode." }
 }
 
 try {
@@ -59,79 +128,50 @@ try {
     $serviceKey = Get-PulledEnvironmentValue 'CELESTE_SUPABASE_SERVICE_ROLE_KEY'
     if (-not $serviceKey) { $serviceKey = Get-PulledEnvironmentValue 'SUPABASE_SECRET_KEY' }
     if (-not $serviceKey) { $serviceKey = Get-PulledEnvironmentValue 'SUPABASE_SERVICE_ROLE_KEY' }
-    if (-not $supabaseUrl -or -not $publicKey -or -not $serviceKey) {
-      throw 'As credenciais de verificacao do Supabase nao estao disponiveis na Vercel.'
+    if (-not $supabaseUrl -or -not $publicKey) {
+      throw 'A URL e a chave publica de verificacao do Supabase nao estao disponiveis na Vercel.'
     }
     [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SUPABASE_URL', $supabaseUrl, 'Process')
     [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SUPABASE_PUBLIC_KEY', $publicKey, 'Process')
-    [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SUPABASE_SERVICE_KEY', $serviceKey, 'Process')
+    if ($serviceKey) {
+      [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SUPABASE_SERVICE_KEY', $serviceKey, 'Process')
+    }
 
     if ($Action -eq 'report-expansion') {
-      $baselineOutput = & node (Join-Path $PSScriptRoot 'verificar-supabase-baseline-live.js')
-      $baselineExit = $LASTEXITCODE
-      $baselineOutput | Write-Output
-      if ($baselineExit -ne 0) { throw 'O schema remoto anterior nao passou na auditoria.' }
-      $baselineModeLine = $baselineOutput |
-        Where-Object { $_ -match '^BASELINE_MODE=' } |
-        Select-Object -First 1
-      $baselineVersionLine = $baselineOutput |
-        Where-Object { $_ -match '^BASELINE_VERSION=' } |
-        Select-Object -First 1
-      if (-not $baselineModeLine -or $baselineVersionLine -ne 'BASELINE_VERSION=012') {
-        throw 'A auditoria nao confirmou o baseline seguro ate a migration 012.'
+      $historyOutput = & npx --yes supabase@latest migration list `
+        --db-url $env:CELESTE_MIGRATION_DB_URL `
+        --output json
+      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel auditar o historico remoto.' }
+      $history = ($historyOutput -join "`n") | ConvertFrom-Json
+      $remoteVersions = @(
+        $history.migrations |
+          Where-Object { $_.remote } |
+          ForEach-Object { [string]$_.remote }
+      )
+      $expectedVersions = @(1..12 | ForEach-Object { $_.ToString('000') })
+      if (($remoteVersions -join ',') -ne ($expectedVersions -join ',')) {
+        throw 'O historico remoto precisa estar exatamente em 001-012 antes da expansao.'
       }
-      $baselineMode = $baselineModeLine.Substring('BASELINE_MODE='.Length)
-      $baselineVersions = if ($baselineMode -eq 'complete') {
-        1..12 | ForEach-Object { $_.ToString('000') }
-      } elseif ($baselineMode -eq 'generation_only') {
-        @('004', '005', '006', '008', '009', '010', '011', '012')
-      } else {
-        throw "Modo de schema remoto inesperado: $baselineMode"
-      }
+
+      & npx --yes supabase@latest db query `
+        --db-url $env:CELESTE_MIGRATION_DB_URL `
+        --file (Join-Path $PSScriptRoot '..\supabase\migrations\013_ai_content_report_gateway.sql')
+      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
       & npx --yes supabase@latest migration repair `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
         --status applied `
         --yes `
-        @baselineVersions
-      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel registrar o historico validado 001-012.' }
-
-      # Marca 014 apenas durante o push para que a expansao 013 seja aplicada
-      # isoladamente. O finally sempre devolve 014 ao estado pendente.
-      & npx --yes supabase@latest migration repair `
-        --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --status applied `
-        --yes `
-        014
-      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel preparar o push isolado da migration 013.' }
-      try {
-        & npx --yes supabase@latest db push `
-          --db-url $env:CELESTE_MIGRATION_DB_URL `
-          --include-all `
-          --yes
-        if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
-      } finally {
-        & npx --yes supabase@latest migration repair `
-          --db-url $env:CELESTE_MIGRATION_DB_URL `
-          --status reverted `
-          --yes `
-          014
-        if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel restaurar 014 ao estado pendente.' }
+        013
+      if ($LASTEXITCODE -ne 0) {
+        throw 'A migration 013 foi aplicada, mas nao foi possivel registrar seu historico.'
       }
-
-      [Environment]::SetEnvironmentVariable('CELESTE_AI_REPORT_ROLLOUT', 'expansion', 'Process')
-      [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SKIP_REPORT_ENDPOINT', '1', 'Process')
-      & node (Join-Path $PSScriptRoot 'verificar-denuncia-ia-live.js')
-      if ($LASTEXITCODE -ne 0) { throw 'A expansao 013 nao passou no smoke remoto.' }
+      Invoke-AiReportContractCheck 'expansion'
       Write-Output 'Migration 013 validada. Publique com CELESTE_AI_REPORT_ROLLOUT=expansion antes do cutover.'
     } else {
       # Antes de revogar o cliente legado, prova que o endpoint novo ja esta
       # publicado e operante contra o contrato de expansao.
-      [Environment]::SetEnvironmentVariable('CELESTE_AI_REPORT_ROLLOUT', 'expansion', 'Process')
-      [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SKIP_REPORT_ENDPOINT', $null, 'Process')
-      & node (Join-Path $PSScriptRoot 'verificar-denuncia-ia-live.js')
-      if ($LASTEXITCODE -ne 0) {
-        throw 'O endpoint novo nao passou no smoke; cutover 014 cancelado.'
-      }
+      Invoke-AiReportContractCheck 'expansion'
+      Invoke-ReportEndpointSmoke 'expansion'
 
       & npx --yes supabase@latest db push `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
@@ -139,9 +179,8 @@ try {
         --yes
       if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar o cutover 014.' }
 
-      [Environment]::SetEnvironmentVariable('CELESTE_AI_REPORT_ROLLOUT', 'final', 'Process')
-      & node (Join-Path $PSScriptRoot 'verificar-denuncia-ia-live.js')
-      if ($LASTEXITCODE -ne 0) { throw 'O contrato final 014 nao passou no smoke remoto.' }
+      Invoke-AiReportContractCheck 'final'
+      Invoke-ReportEndpointSmoke 'final'
       Write-Output 'Migration 014 aplicada: RPC legada revogada e gateway final validado.'
     }
 
@@ -160,6 +199,7 @@ try {
   [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SUPABASE_SERVICE_KEY', $null, 'Process')
   [Environment]::SetEnvironmentVariable('CELESTE_AI_REPORT_ROLLOUT', $null, 'Process')
   [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_SKIP_REPORT_ENDPOINT', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('CELESTE_RELEASE_DB_CONTRACT_VERIFIED', $null, 'Process')
   foreach ($artifact in $tempArtifacts) {
     if (Test-Path -LiteralPath $artifact) {
       $resolvedArtifact = [System.IO.Path]::GetFullPath($artifact)

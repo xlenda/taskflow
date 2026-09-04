@@ -44,13 +44,17 @@ $tempFile = Join-Path $tempRoot ("deploy-env-$([guid]::NewGuid().ToString('N')).
 
 function Get-PulledEnvironmentValue([string[]]$Names) {
   foreach ($name in $Names) {
+    # Sensitive production values remain redacted in the temporary file. A
+    # local-only process value, when explicitly supplied, never touches disk.
+    $processValue = [Environment]::GetEnvironmentVariable($name, 'Process')
+    if ($processValue -and $processValue -ne '[SENSITIVE]') { return $processValue }
     $entry = Get-Content -LiteralPath $tempFile |
       Where-Object { $_ -match "^$([regex]::Escape($name))=" } |
       Select-Object -First 1
     if (-not $entry) { continue }
     $rawValue = $entry.Substring($entry.IndexOf('=') + 1).Trim()
-    if ($rawValue.StartsWith('"')) { return $rawValue | ConvertFrom-Json }
-    return $rawValue
+    $value = if ($rawValue.StartsWith('"')) { $rawValue | ConvertFrom-Json } else { $rawValue }
+    if ($value -and $value -ne '[SENSITIVE]') { return $value }
   }
   return $null
 }
@@ -72,20 +76,23 @@ try {
     'CELESTE_SUPABASE_SERVICE_ROLE_KEY',
     'SUPABASE_SECRET_KEY'
   )
+  $databaseUrl = Get-PulledEnvironmentValue @('POSTGRES_URL_NON_POOLING')
   if (
     -not $supabaseUrl -or
-    -not $supabaseSecret -or
-    $supabaseSecret -eq '[SENSITIVE]'
+    -not $databaseUrl
   ) {
-    throw 'As credenciais privadas exigidas pelo portao de deploy nao estao disponiveis na Vercel.'
+    throw 'A URL do Supabase ou a conexao direta exigida pelo portao de deploy nao esta disponivel.'
   }
 
   [Environment]::SetEnvironmentVariable('CELESTE_SUPABASE_URL', $supabaseUrl, 'Process')
-  [Environment]::SetEnvironmentVariable(
-    'CELESTE_SUPABASE_SERVICE_ROLE_KEY',
-    $supabaseSecret,
-    'Process'
-  )
+  [Environment]::SetEnvironmentVariable('CELESTE_MIGRATION_DB_URL', $databaseUrl, 'Process')
+  if ($supabaseSecret -and $supabaseSecret -ne '[SENSITIVE]') {
+    [Environment]::SetEnvironmentVariable(
+      'CELESTE_SUPABASE_SERVICE_ROLE_KEY',
+      $supabaseSecret,
+      'Process'
+    )
+  }
 
   $deployArguments = @((Join-Path $PSScriptRoot 'deploy-celeste.js'))
   if ($Action -ne 'deploy') { $deployArguments += "--$Action" }
@@ -94,6 +101,7 @@ try {
 } finally {
   [Environment]::SetEnvironmentVariable('CELESTE_SUPABASE_URL', $null, 'Process')
   [Environment]::SetEnvironmentVariable('CELESTE_SUPABASE_SERVICE_ROLE_KEY', $null, 'Process')
+  [Environment]::SetEnvironmentVariable('CELESTE_MIGRATION_DB_URL', $null, 'Process')
   Pop-Location -ErrorAction SilentlyContinue
   if (Test-Path -LiteralPath $tempFile) {
     $resolvedArtifact = [System.IO.Path]::GetFullPath($tempFile)

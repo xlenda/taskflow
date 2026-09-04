@@ -5,6 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 const url = process.env.CELESTE_RELEASE_SUPABASE_URL;
 const publicKey = process.env.CELESTE_RELEASE_SUPABASE_PUBLIC_KEY;
 const serviceKey = process.env.CELESTE_RELEASE_SUPABASE_SERVICE_KEY;
+const databaseContractVerified = process.env.CELESTE_RELEASE_DB_CONTRACT_VERIFIED === '1';
 const rolloutMode = String(process.env.CELESTE_AI_REPORT_ROLLOUT || 'final').trim().toLowerCase();
 const skipEndpoint = process.env.CELESTE_RELEASE_SKIP_REPORT_ENDPOINT === '1';
 const rawAppOrigin = String(
@@ -13,11 +14,12 @@ const rawAppOrigin = String(
 if (!['final', 'expansion'].includes(rolloutMode)) {
   throw new Error('CELESTE_AI_REPORT_ROLLOUT must be final or expansion.');
 }
-if (
-  !url || !publicKey || !serviceKey ||
-  [url, publicKey, serviceKey].some((value) => value === '[SENSITIVE]')
-) {
-  throw new Error('Supabase release credentials are unavailable.');
+if (!url || !publicKey || [url, publicKey].some((value) => value === '[SENSITIVE]')) {
+  throw new Error('Supabase public release credentials are unavailable.');
+}
+const hasServiceKey = Boolean(serviceKey && serviceKey !== '[SENSITIVE]');
+if (!hasServiceKey && !databaseContractVerified) {
+  throw new Error('The database contract was not verified and the service key is unavailable.');
 }
 let appOrigin;
 try {
@@ -34,20 +36,38 @@ const clientOptions = {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 };
 const reporter = createClient(url, publicKey, clientOptions);
-const administrator = createClient(url, serviceKey, clientOptions);
+const administrator = hasServiceKey ? createClient(url, serviceKey, clientOptions) : null;
 
 let reportId = null;
 let reporterId = null;
+let reporterAccessToken = null;
 
 async function cleanup() {
   if (reportId) {
-    const { error } = await administrator.from('ai_content_reports').delete().eq('id', reportId);
-    if (error) throw new Error(`report cleanup failed: ${error.message}`);
+    if (administrator) {
+      const { error } = await administrator.from('ai_content_reports').delete().eq('id', reportId);
+      if (error) throw new Error(`report cleanup failed: ${error.message}`);
+    } else if (reporterAccessToken) {
+      const response = await fetch(`${appOrigin}/api/denunciar-conteudo-ia`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${reporterAccessToken}`,
+          'X-Celeste-Client': 'web',
+          Origin: appOrigin,
+        },
+      });
+      if (response.status !== 204) throw new Error('report endpoint cleanup failed');
+    } else {
+      throw new Error('report cleanup identity is unavailable');
+    }
     reportId = null;
   }
-  if (reporterId) {
+  if (reporterId && administrator) {
     const { error } = await administrator.auth.admin.deleteUser(reporterId);
     if (error) throw new Error(`anonymous user cleanup failed: ${error.message}`);
+    reporterId = null;
+  } else if (reporterId) {
+    console.log(`REPORTER_ID_TO_DELETE=${reporterId}`);
     reporterId = null;
   }
 }
@@ -63,6 +83,7 @@ function assertSubmission(result) {
 }
 
 async function submitDirect(contentRef) {
+  assert.ok(administrator, 'service role is required for a direct RPC smoke');
   const actorHash = crypto
     .createHash('sha256')
     .update(`celeste-release-report:${reporterId}:${Date.now()}`)
@@ -137,40 +158,43 @@ async function submitThroughEndpoint(contentRef, accessToken) {
 }
 
 async function main() {
-  const { data: version, error: versionError } = await administrator.rpc(
-    'celeste_ai_content_report_gateway_version'
-  );
-  if (versionError) throw new Error(`gateway version failed: ${versionError.message}`);
-  const expectedVersion = rolloutMode === 'expansion' ? 1 : 2;
-  const expectedLegacyDisabled = rolloutMode === 'final';
-  assert.deepStrictEqual(
-    {
-      schemaVersion: version && version.schemaVersion,
-      serverGateway: version && version.serverGateway,
-      userQuota: version && version.userQuota,
-      actorQuota: version && version.actorQuota,
-      globalQuota: version && version.globalQuota,
-      retentionDays: version && version.retentionDays,
-      legacyClientSubmitDisabled: version && version.legacyClientSubmitDisabled,
-      deleteAll: version && version.deleteAll,
-    },
-    {
-      schemaVersion: expectedVersion,
-      serverGateway: true,
-      userQuota: true,
-      actorQuota: true,
-      globalQuota: true,
-      retentionDays: 180,
-      legacyClientSubmitDisabled: expectedLegacyDisabled,
-      deleteAll: true,
-    },
-    `o backend remoto nao publicou o contrato ${rolloutMode} esperado`
-  );
+  if (administrator) {
+    const { data: version, error: versionError } = await administrator.rpc(
+      'celeste_ai_content_report_gateway_version'
+    );
+    if (versionError) throw new Error(`gateway version failed: ${versionError.message}`);
+    const expectedVersion = rolloutMode === 'expansion' ? 1 : 2;
+    const expectedLegacyDisabled = rolloutMode === 'final';
+    assert.deepStrictEqual(
+      {
+        schemaVersion: version && version.schemaVersion,
+        serverGateway: version && version.serverGateway,
+        userQuota: version && version.userQuota,
+        actorQuota: version && version.actorQuota,
+        globalQuota: version && version.globalQuota,
+        retentionDays: version && version.retentionDays,
+        legacyClientSubmitDisabled: version && version.legacyClientSubmitDisabled,
+        deleteAll: version && version.deleteAll,
+      },
+      {
+        schemaVersion: expectedVersion,
+        serverGateway: true,
+        userQuota: true,
+        actorQuota: true,
+        globalQuota: true,
+        retentionDays: 180,
+        legacyClientSubmitDisabled: expectedLegacyDisabled,
+        deleteAll: true,
+      },
+      `o backend remoto nao publicou o contrato ${rolloutMode} esperado`
+    );
+  }
 
   const { data: authData, error: authError } = await reporter.auth.signInAnonymously();
   if (authError) throw new Error(`anonymous sign-in failed: ${authError.message}`);
   reporterId = authData && authData.user && authData.user.id;
   const accessToken = authData && authData.session && authData.session.access_token;
+  reporterAccessToken = accessToken;
   assert.match(reporterId || '', /^[0-9a-f-]{36}$/i);
   assert.ok(typeof accessToken === 'string' && accessToken.length >= 20, 'anonymous token is missing');
 

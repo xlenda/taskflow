@@ -10,11 +10,14 @@ const { loadProjectEnv } = require('@expo/env');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const {
   anonymousSignupHeaders,
+  aiReportRolloutMode,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
   validateAiReportGatewayBackend,
+  validateAiReportGatewayPayload,
   validateActorQuotaBackend,
   validateLocalBuildEnvironment,
+  validateOperationQuotaPayload,
   validateProductionEnvironmentOutput,
 } = require('./deploy-celeste-guards');
 
@@ -159,6 +162,65 @@ function resolveVercelCli() {
   throw new Error('CLI da Vercel nao encontrada no PATH');
 }
 
+function resolveNpxCli() {
+  const executable = path.join(
+    path.dirname(process.execPath),
+    process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  );
+  assert(fs.existsSync(executable), 'npx nao encontrado ao lado do Node selecionado');
+  return executable;
+}
+
+async function validateBackendContractsThroughDatabase() {
+  const rawDbUrl = String(process.env.CELESTE_MIGRATION_DB_URL || '').trim();
+  let dbUrl;
+  try {
+    dbUrl = new URL(rawDbUrl);
+  } catch (_error) {
+    throw new Error('POSTGRES_URL_NON_POOLING invalida; deploy bloqueado');
+  }
+  assert(
+    ['postgres:', 'postgresql:'].includes(dbUrl.protocol) && dbUrl.username && dbUrl.password,
+    'POSTGRES_URL_NON_POOLING incompleta; deploy bloqueado'
+  );
+
+  const sql = [
+    'select',
+    '  public.celeste_generation_actor_quota_version() as "actorQuota",',
+    '  public.celeste_ai_content_report_gateway_version() as "aiReport";',
+  ].join('\n');
+  const { stdout } = await runCapture(
+    resolveNpxCli(),
+    ['--yes', 'supabase@latest', 'db', 'query', '--db-url', rawDbUrl, '--output', 'json', sql],
+    {
+      env: { ...process.env, NO_COLOR: '1' },
+      failure: 'Nao foi possivel verificar os contratos diretamente no Supabase',
+      timeoutMs: 120_000,
+    }
+  );
+  let result;
+  try {
+    result = JSON.parse(stdout.trim());
+  } catch (_error) {
+    throw new Error('Consulta de contratos do Supabase devolveu JSON invalido');
+  }
+  const row = result && Array.isArray(result.rows) && result.rows.length === 1
+    ? result.rows[0]
+    : null;
+  if (!row || !validateOperationQuotaPayload(row.actorQuota)) {
+    throw new Error('Migration 010 devolveu contrato de cota invalido; deploy bloqueado');
+  }
+  const rolloutMode = aiReportRolloutMode(process.env);
+  if (!validateAiReportGatewayPayload(row.aiReport, rolloutMode)) {
+    throw new Error('Migrations 013/014 devolveram contrato de gateway invalido; deploy bloqueado');
+  }
+  return {
+    actorQuota: row.actorQuota,
+    reportGateway: row.aiReport,
+    rolloutMode,
+  };
+}
+
 async function validateDeploymentEnvironment(vercelCli) {
   loadProjectEnv(ROOT, { mode: 'production', silent: true });
   validateLocalBuildEnvironment(process.env);
@@ -181,14 +243,22 @@ async function validateDeploymentEnvironment(vercelCli) {
     }
   );
   validateProductionEnvironmentOutput(stdout);
-  const actorQuota = await validateActorQuotaBackend(
-    process.env,
-    (url, options) => fetchWithTimeout(url, options, 10000)
-  );
-  const reportGateway = await validateAiReportGatewayBackend(
-    process.env,
-    (url, options) => fetchWithTimeout(url, options, 10000)
-  );
+  let actorQuota;
+  let reportGateway;
+  if (String(process.env.CELESTE_MIGRATION_DB_URL || '').trim()) {
+    const contracts = await validateBackendContractsThroughDatabase();
+    actorQuota = contracts.actorQuota;
+    reportGateway = contracts.reportGateway;
+  } else {
+    actorQuota = await validateActorQuotaBackend(
+      process.env,
+      (url, options) => fetchWithTimeout(url, options, 10000)
+    );
+    reportGateway = await validateAiReportGatewayBackend(
+      process.env,
+      (url, options) => fetchWithTimeout(url, options, 10000)
+    );
+  }
   console.log(
     `Ambiente de deploy validado: cota de ator schema ${actorQuota.schemaVersion} e gateway de denuncia schema ${reportGateway.schemaVersion}.`
   );
