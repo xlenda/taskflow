@@ -94,8 +94,11 @@ for (const [lang, copy] of Object.entries(cloud.question)) {
     assert.match(copy, new RegExp(provider), `${lang}: consentimento nao declara ${provider}`);
   }
 }
-assert.match(cloud.question.en, /Anthropic[\s\S]*OpenAI (?:only )?as failover/);
-assert.match(cloud.question.pt, /Anthropic[\s\S]*OpenAI (?:apenas )?como alternativa(?: em caso de falha)?/);
+assert.match(cloud.question.en, /Anthropic[\s\S]*OpenAI (?:is its|(?:only )?as) failover/);
+assert.match(
+  cloud.question.pt,
+  /Anthropic[\s\S]*OpenAI (?:é sua|(?:apenas )?como) alternativa(?: em caso de falha)?/
+);
 assert.match(cloud.question.en, /Gemini[\s\S]*translates[\s\S]*images[\s\S]*dreams/);
 assert.match(cloud.question.pt, /Gemini[\s\S]*traduz[\s\S]*imagens[\s\S]*sonhos/);
 assert.match(cloud.question.en, /ElevenLabs[\s\S]*narrates/);
@@ -454,7 +457,7 @@ assert.ok(referralSource.includes('T.referralTitle'), 'pergunta de codigo de ind
 
 const draftVersion = chatSource.match(/const\s+DRAFT_V\s*=\s*(\d+)\s*;/);
 assert.ok(draftVersion, 'DRAFT_V nao encontrado');
-assert.strictEqual(Number(draftVersion[1]), 5, 'DRAFT_V deve ser 5 para invalidar consentimentos e controles antigos');
+assert.strictEqual(Number(draftVersion[1]), 6, 'DRAFT_V deve ser 6 para invalidar consentimentos e controles antigos');
 assert.ok(chatSource.includes('draft.v === DRAFT_V'), 'restauracao deve validar DRAFT_V');
 assert.ok(chatSource.includes('DRAFT_READ_TIMEOUT_MS'), 'restauracao do rascunho precisa de limite de espera');
 assert.ok(chatSource.includes('if (!draftLoaded)'), 'quiz nao pode aceitar resposta antes de restaurar o rascunho');
