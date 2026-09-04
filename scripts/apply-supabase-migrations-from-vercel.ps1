@@ -30,7 +30,8 @@ $tempRoot = Join-Path $tempBase 'celeste-play-release'
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 $resolvedTempRoot = [System.IO.Path]::GetFullPath($tempRoot).TrimEnd('\') + '\'
 $tempFile = Join-Path $tempRoot ("vercel-env-$([guid]::NewGuid().ToString('N')).local")
-$tempArtifacts = @($tempFile)
+$tempProject = Join-Path $tempRoot ("report-expansion-$([guid]::NewGuid().ToString('N'))")
+$tempArtifacts = @($tempFile, $tempProject)
 
 function Get-PulledEnvironmentValue([string]$Name) {
   # `vercel env pull` intentionally redacts sensitive values. If an operator
@@ -157,19 +158,23 @@ try {
         throw 'O historico remoto precisa estar exatamente em 001-012 antes da expansao.'
       }
 
-      $migration013Path = Join-Path $PSScriptRoot '..\supabase\migrations\013_ai_content_report_gateway.sql'
-      & $npxExecutable --yes supabase@latest db query `
-        --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --file $migration013Path
-      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
-      & $npxExecutable --yes supabase@latest migration repair `
-        --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --status applied `
-        --yes `
-        013
-      if ($LASTEXITCODE -ne 0) {
-        throw 'A migration 013 foi aplicada, mas nao foi possivel registrar seu historico.'
+      $sourceMigrations = Join-Path $PSScriptRoot '..\supabase\migrations'
+      $temporaryMigrations = Join-Path $tempProject 'supabase\migrations'
+      New-Item -ItemType Directory -Path $temporaryMigrations -Force | Out-Null
+      foreach ($number in 1..13) {
+        $version = $number.ToString('000')
+        $matches = @(Get-ChildItem -LiteralPath $sourceMigrations -File |
+          Where-Object { $_.Name.StartsWith("$version`_", [System.StringComparison]::Ordinal) })
+        if ($matches.Count -ne 1) { throw "Migration local $version ausente ou duplicada." }
+        Copy-Item -LiteralPath $matches[0].FullName -Destination $temporaryMigrations
       }
+
+      & $npxExecutable --yes supabase@latest db push `
+        --workdir $tempProject `
+        --db-url $env:CELESTE_MIGRATION_DB_URL `
+        --include-all `
+        --yes
+      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
       Invoke-AiReportContractCheck 'expansion'
       Write-Output 'Migration 013 validada. Publique com CELESTE_AI_REPORT_ROLLOUT=expansion antes do cutover.'
     } else {
@@ -211,7 +216,11 @@ try {
       if (-not $resolvedArtifact.StartsWith($resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw 'Um artefato temporario saiu do diretorio permitido.'
       }
-      Remove-Item -LiteralPath $resolvedArtifact -Force
+      if (Test-Path -LiteralPath $resolvedArtifact -PathType Container) {
+        Remove-Item -LiteralPath $resolvedArtifact -Recurse -Force
+      } else {
+        Remove-Item -LiteralPath $resolvedArtifact -Force
+      }
     }
   }
 }
