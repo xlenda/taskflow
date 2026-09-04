@@ -191,7 +191,17 @@ async function validateBackendContractsThroughDatabase() {
   ].join('\n');
   const { stdout } = await runCapture(
     resolveNpxCli(),
-    ['--yes', 'supabase@latest', 'db', 'query', '--db-url', rawDbUrl, '--output', 'json', sql],
+    [
+      '--yes',
+      'supabase@latest',
+      'db',
+      'query',
+      '--db-url',
+      rawDbUrl,
+      '--output-format',
+      'json',
+      sql,
+    ],
     {
       env: { ...process.env, NO_COLOR: '1' },
       failure: 'Nao foi possivel verificar os contratos diretamente no Supabase',

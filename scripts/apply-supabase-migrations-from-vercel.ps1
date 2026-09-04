@@ -71,7 +71,7 @@ $celeste_contract$;
   $sql = $sql.Replace('__VERSION__', $expectedVersion).Replace('__LEGACY__', $expectedLegacy)
   & npx --yes supabase@latest db query `
     --db-url $env:CELESTE_MIGRATION_DB_URL `
-    --output json `
+    --output-format json `
     $sql | Out-Null
   if ($LASTEXITCODE -ne 0) {
     throw "O contrato $Mode de denuncia nao foi confirmado diretamente no banco."
@@ -100,7 +100,7 @@ function Invoke-ReportEndpointSmoke(
     $cleanupSql = "delete from auth.users where id = '$reporterId'::uuid;"
     & npx --yes supabase@latest db query `
       --db-url $env:CELESTE_MIGRATION_DB_URL `
-      --output json `
+      --output-format json `
       $cleanupSql | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel remover o usuario anonimo do smoke.' }
   }
@@ -140,7 +140,7 @@ try {
     if ($Action -eq 'report-expansion') {
       $historyOutput = & npx --yes supabase@latest migration list `
         --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --output json
+        --output-format json
       if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel auditar o historico remoto.' }
       $history = ($historyOutput -join "`n") | ConvertFrom-Json
       $remoteVersions = @(
