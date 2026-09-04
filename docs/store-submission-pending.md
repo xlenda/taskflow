@@ -9,9 +9,13 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## EAS e assinatura
 
-- Fazer login na conta Expo correta e vincular o projeto com `eas init`. O
-  `extra.eas.projectId` so deve ser gravado depois que a conta proprietaria for
-  confirmada.
+- Concluido em 04/09/2026: organizacao Expo `@celestegroup` criada para separar
+  os aplicativos e projeto novo `@celestegroup/celeste` vinculado ao projectId
+  `77a85252-9dc6-431c-952b-76b9a7fda44b`. O package permanece
+  `com.celesteapp.affirmations`; Natural Lens e os proximos apps devem usar
+  outros projetos, packages e credenciais.
+- Concluido em 04/09/2026: variaveis publicas de producao da Celeste cadastradas
+  no escopo do projeto EAS, sem chaves privadas no Git.
 - Confirmar se `1` e o ultimo `android.versionCode` e `ios.buildNumber` usados.
   Se ja houver uma versao publicada, sincronizar o valor real com
   `eas build:version:set` antes do primeiro build de producao.

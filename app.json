@@ -61,6 +61,12 @@
       "expo-image",
       "expo-font",
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "77a85252-9dc6-431c-952b-76b9a7fda44b"
+      }
+    },
+    "owner": "celestegroup"
   }
 }

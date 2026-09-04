@@ -5,16 +5,28 @@ alterar o aplicativo, sem pedir senha e sem gravar credenciais. Ele trabalha
 somente com o package `com.celesteapp.affirmations`, o perfil EAS `production` e, quando
 solicitado, a trilha `internal` do Google Play.
 
+## Organizacao dos aplicativos
+
+A conta Expo de empresa e `@celestegroup` (`Celeste Group`). Ela funciona como
+o conteiner compartilhado dos aplicativos, mas cada produto deve permanecer em
+um projeto independente, com package, credenciais de assinatura, variaveis e
+builds proprios. A Celeste usa exclusivamente `@celestegroup/celeste`, projectId
+`77a85252-9dc6-431c-952b-76b9a7fda44b` e package
+`com.celesteapp.affirmations`. O Natural Lens e os proximos aplicativos devem
+receber outros projetos e packages; nunca devem reutilizar o projectId ou a
+chave Android da Celeste.
+
 ## Antes do primeiro uso
 
 1. Use Node `>=20.19.4` e `<26`. O script escolhe automaticamente a versao mais
    nova em `C:\DevCache\node24\node-v*\node.exe`. Para outro Node portatil,
    defina `CELESTE_NODE_HOME` com a pasta que contem `node.exe`, `npm.cmd` e
    `npx.cmd`; essa escolha explicita tem prioridade.
-2. Fora do script, entre na conta Expo proprietaria e vincule o projeto. O
-   `extra.eas.projectId` precisa existir no `app.json`; o script nunca cria nem
-   troca esse vinculo.
-3. No ambiente EAS `production`, configure como `plaintext` ou `sensitive`:
+2. Entre com um usuario que seja Owner ou Admin de `@celestegroup`. O projeto
+   Celeste ja esta vinculado; o script confirma o `extra.eas.projectId` e nunca
+   cria nem troca esse vinculo.
+3. No ambiente EAS `production` do projeto Celeste, mantenha como `plaintext`
+   ou `sensitive`:
    `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_CELESTE_API_URL` e uma entre
    `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
 4. Para auto-submit, crie antes o app no Google Play Console e cadastre no EAS
