@@ -567,7 +567,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     };
     assertNoPaidAttemptBeforeConsent();
     await clickTestId(page, 'open-profile');
-    await waitForText(page, 'Processamento em nuvem', 20000);
+    await waitForText(page, 'Processamento opcional em nuvem', 20000);
     await clickTestId(page, 'profile-gemini-switch');
     await waitForText(page, 'Confirme que você tem 18 anos ou mais', 15000);
     await waitAndClick(page, 'Tenho 18+ · Permitir', 30000, {
@@ -671,7 +671,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   // A permissão dos processadores é reversível: desligar não pede confirmação;
   // religar exige uma confirmação nova de 18+ e de envio ao provedor.
   await clickTestId(page, 'open-profile');
-  await waitForText(page, 'Processamento em nuvem', 20000);
+  await waitForText(page, 'Processamento opcional em nuvem', 20000);
   const geminiInitiallyOn = await page.evaluate(
     (consentVersion) => {
       const profile = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {};
