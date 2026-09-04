@@ -165,9 +165,12 @@ function resolveVercelCli() {
 function resolveNpxCli() {
   const executable = path.join(
     path.dirname(process.execPath),
-    process.platform === 'win32' ? 'npx.cmd' : 'npx'
+    'node_modules',
+    'npm',
+    'bin',
+    'npx-cli.js'
   );
-  assert(fs.existsSync(executable), 'npx nao encontrado ao lado do Node selecionado');
+  assert(fs.existsSync(executable), 'npx-cli.js nao encontrado ao lado do Node selecionado');
   return executable;
 }
 
@@ -190,8 +193,9 @@ async function validateBackendContractsThroughDatabase() {
     '  public.celeste_ai_content_report_gateway_version() as "aiReport";',
   ].join(' ');
   const { stdout } = await runCapture(
-    resolveNpxCli(),
+    NODE,
     [
+      resolveNpxCli(),
       '--yes',
       'supabase@latest',
       'db',
