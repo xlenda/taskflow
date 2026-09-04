@@ -188,7 +188,7 @@ async function validateBackendContractsThroughDatabase() {
     'select',
     '  public.celeste_generation_actor_quota_version() as "actorQuota",',
     '  public.celeste_ai_content_report_gateway_version() as "aiReport";',
-  ].join('\n');
+  ].join(' ');
   const { stdout } = await runCapture(
     resolveNpxCli(),
     [

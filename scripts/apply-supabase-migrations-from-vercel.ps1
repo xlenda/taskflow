@@ -55,31 +55,35 @@ function Invoke-AiReportContractCheck(
   $expectedVersion = if ($Mode -eq 'expansion') { '1' } else { '2' }
   $expectedLegacy = if ($Mode -eq 'expansion') { 'false' } else { 'true' }
   $sql = @'
-do $celeste_contract$
-declare
-  contract jsonb := public.celeste_ai_content_report_gateway_version();
-begin
-  if contract is null
-     or contract->>'schemaVersion' <> '__VERSION__'
-     or contract->>'serverGateway' <> 'true'
-     or contract->>'userQuota' <> 'true'
-     or contract->>'actorQuota' <> 'true'
-     or contract->>'globalQuota' <> 'true'
-     or contract->>'retentionDays' <> '180'
-     or contract->>'legacyClientSubmitDisabled' <> '__LEGACY__'
-     or contract->>'deleteAll' <> 'true' then
-    raise exception 'celeste_ai_report_contract_invalid';
-  end if;
-end
-$celeste_contract$;
+select (
+  contract is not null
+  and contract->>'schemaVersion' = '__VERSION__'
+  and contract->>'serverGateway' = 'true'
+  and contract->>'userQuota' = 'true'
+  and contract->>'actorQuota' = 'true'
+  and contract->>'globalQuota' = 'true'
+  and contract->>'retentionDays' = '180'
+  and contract->>'legacyClientSubmitDisabled' = '__LEGACY__'
+  and contract->>'deleteAll' = 'true'
+) as valid
+from (select public.celeste_ai_content_report_gateway_version() as contract) checked;
 '@
+  $sql = ($sql -replace '\s+', ' ').Trim()
   $sql = $sql.Replace('__VERSION__', $expectedVersion).Replace('__LEGACY__', $expectedLegacy)
-  & $npxExecutable --yes supabase@latest db query `
+  $contractOutput = & $npxExecutable --yes supabase@latest db query `
     --db-url $env:CELESTE_MIGRATION_DB_URL `
     --output-format json `
-    $sql | Out-Null
+    $sql
   if ($LASTEXITCODE -ne 0) {
     throw "O contrato $Mode de denuncia nao foi confirmado diretamente no banco."
+  }
+  try {
+    $contractResult = ($contractOutput -join "`n") | ConvertFrom-Json
+  } catch {
+    throw "O contrato $Mode de denuncia devolveu JSON invalido."
+  }
+  if (-not $contractResult.rows -or $contractResult.rows.Count -ne 1 -or $contractResult.rows[0].valid -ne $true) {
+    throw "O contrato $Mode de denuncia diverge do esperado."
   }
 }
 
@@ -154,27 +158,32 @@ try {
           ForEach-Object { [string]$_.remote }
       )
       $expectedVersions = @(1..12 | ForEach-Object { $_.ToString('000') })
-      if (($remoteVersions -join ',') -ne ($expectedVersions -join ',')) {
-        throw 'O historico remoto precisa estar exatamente em 001-012 antes da expansao.'
+      $baselineHistory = $expectedVersions -join ','
+      $expandedHistory = @($expectedVersions + '013') -join ','
+      $currentHistory = $remoteVersions -join ','
+      if ($currentHistory -ne $baselineHistory -and $currentHistory -ne $expandedHistory) {
+        throw 'O historico remoto precisa estar em 001-012 ou 001-013 para a expansao.'
       }
 
-      $sourceMigrations = Join-Path $PSScriptRoot '..\supabase\migrations'
-      $temporaryMigrations = Join-Path $tempProject 'supabase\migrations'
-      New-Item -ItemType Directory -Path $temporaryMigrations -Force | Out-Null
-      foreach ($number in 1..13) {
-        $version = $number.ToString('000')
-        $matches = @(Get-ChildItem -LiteralPath $sourceMigrations -File |
-          Where-Object { $_.Name.StartsWith("$version`_", [System.StringComparison]::Ordinal) })
-        if ($matches.Count -ne 1) { throw "Migration local $version ausente ou duplicada." }
-        Copy-Item -LiteralPath $matches[0].FullName -Destination $temporaryMigrations
-      }
+      if ($currentHistory -eq $baselineHistory) {
+        $sourceMigrations = Join-Path $PSScriptRoot '..\supabase\migrations'
+        $temporaryMigrations = Join-Path $tempProject 'supabase\migrations'
+        New-Item -ItemType Directory -Path $temporaryMigrations -Force | Out-Null
+        foreach ($number in 1..13) {
+          $version = $number.ToString('000')
+          $matches = @(Get-ChildItem -LiteralPath $sourceMigrations -File |
+            Where-Object { $_.Name.StartsWith("$version`_", [System.StringComparison]::Ordinal) })
+          if ($matches.Count -ne 1) { throw "Migration local $version ausente ou duplicada." }
+          Copy-Item -LiteralPath $matches[0].FullName -Destination $temporaryMigrations
+        }
 
-      & $npxExecutable --yes supabase@latest db push `
-        --workdir $tempProject `
-        --db-url $env:CELESTE_MIGRATION_DB_URL `
-        --include-all `
-        --yes
-      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
+        & $npxExecutable --yes supabase@latest db push `
+          --workdir $tempProject `
+          --db-url $env:CELESTE_MIGRATION_DB_URL `
+          --include-all `
+          --yes
+        if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration de expansao 013.' }
+      }
       Invoke-AiReportContractCheck 'expansion'
       Write-Output 'Migration 013 validada. Publique com CELESTE_AI_REPORT_ROLLOUT=expansion antes do cutover.'
     } else {
