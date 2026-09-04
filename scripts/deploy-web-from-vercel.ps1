@@ -28,11 +28,18 @@ $nodeHome = Split-Path -Parent $nodeExecutable
 
 $env:Path = "$nodeHome;$env:Path"
 $env:CI = '1'
-if (
+$pythonPackages = if (
   $env:CELESTE_PYTHON_PACKAGES -and
-  (Test-Path -LiteralPath $env:CELESTE_PYTHON_PACKAGES)
+  (Test-Path -LiteralPath $env:CELESTE_PYTHON_PACKAGES -PathType Container)
 ) {
-  $env:PYTHONPATH = $env:CELESTE_PYTHON_PACKAGES
+  $env:CELESTE_PYTHON_PACKAGES
+} elseif (Test-Path -LiteralPath 'C:\DevCache\celeste-python-packages' -PathType Container) {
+  'C:\DevCache\celeste-python-packages'
+} else {
+  $null
+}
+if ($pythonPackages) {
+  $env:PYTHONPATH = $pythonPackages
 }
 
 $preferredDriveReady = Test-Path -LiteralPath 'D:\' -PathType Container -ErrorAction SilentlyContinue
