@@ -54,7 +54,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#E6EFF8"
+          "backgroundColor": "#E6EFF8",
+          "image": "./assets/mascot/celi.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
         }
       ],
       "expo-notifications",
