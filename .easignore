@@ -3,6 +3,7 @@ dist/
 dist-trigger-check/
 .vercel/
 .expo/
+.playwright-cli/
 .env
 .env.local
 .env.*

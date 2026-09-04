@@ -57,6 +57,7 @@ const morning = read('screens/MorningRitualScreen.js');
 const alarmScreen = read('screens/AffirmationAlarmScreen.js');
 const profile = read('screens/ProfileScreen.js');
 const onboarding = read('screens/onboarding/ChatOnboardingScreen.js');
+const onboardingFlow = read('screens/onboarding/flow.js');
 const personalNarration = read('utils/usePersonalNarration.js');
 const affirmations = read('screens/AffirmationsScreen.js');
 const manifestation = read('screens/ManifestationScreen.js');
@@ -97,7 +98,9 @@ assert.ok(
 assert.ok(
   home.includes('if (!RELEASE_FEATURES.paidCloudProcessing)') &&
     profile.includes('RELEASE_FEATURES.paidCloudProcessing ? (') &&
-    onboarding.includes("FLOW.filter((entry) => entry.key !== 'cloudPersonalization')"),
+    !onboardingFlow.includes("id: 'cloudPersonalization'") &&
+    onboarding.includes('cloudConsentVersion: null') &&
+    onboarding.includes('cloudPersonalization: false'),
   'Native store builds must not offer cloud processing that the API boundary rejects'
 );
 assert.ok(

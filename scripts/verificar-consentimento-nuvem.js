@@ -87,14 +87,19 @@ assert.match(
   /restored\.profile\s*=\s*normalizeCloudConsentProfile\(restored\.profile,[\s\S]*forceReconsent:\s*true/
 );
 assert.match(appContext, /const profile = normalizeCloudConsentProfile\(candidate/);
-assert.match(chat, /next\.cloudConsentVersion\s*=\s*adult\s*\?\s*CLOUD_CONSENT_VERSION/);
+assert.match(chat, /function\s+withCloudProcessingDisabled\(profile\)/);
+assert.match(
+  chat,
+  /cloudConsentVersion:\s*null,[\s\S]*cloudPersonalization:\s*false,[\s\S]*cloudAdultConfirmed:\s*false,[\s\S]*cloudNarrationConsent:\s*false,[\s\S]*cloudDreamConsent:\s*false/
+);
+assert.doesNotMatch(chat, /CLOUD_CONSENT_VERSION|key\s*!==\s*['"]cloudPersonalization['"]/);
 for (const source of [profile, narration]) {
   assert.match(source, /cloudConsentVersion:\s*CLOUD_CONSENT_VERSION/);
 }
 assert.match(home, /cloudConsentVersion\s*=\s*CLOUD_CONSENT_VERSION/);
 assert.match(home, /saveProfile\(\{[\s\S]*cloudConsentVersion,/);
 assert.strictEqual(CLOUD_CONSENT_VERSION, 'celeste-cloud-processors-v2');
-assert.match(chat, /const\s+DRAFT_V\s*=\s*6\s*;/);
+assert.match(chat, /const\s+DRAFT_V\s*=\s*7\s*;/);
 
 process.stdout.write(
   `Consentimento de nuvem ${CLOUD_CONSENT_VERSION} OK: legado bloqueado, aceite atual e backup sem bypass.\n`

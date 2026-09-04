@@ -73,6 +73,19 @@ for (const [label, html] of [
   assert(/data-owner-required="provider-retention"/.test(html), `${label}: retenção contratual pendente não sinalizada`);
 }
 
+assert(
+  privacyPt.includes('O questionário inicial cria a primeira prática no aparelho') &&
+    privacyPt.includes('afirmação, visão, Cena-Âncora, frase de sonho ou frase própria') &&
+    privacyPt.includes('visão ou Cena-Âncora e a afirmação'),
+  'Privacidade PT não descreve onboarding local, despertador completo e Plano com Cena-Âncora'
+);
+assert(
+  privacyEn.includes('Onboarding creates the first practice on the device') &&
+    privacyEn.includes('affirmation, vision, Anchor Scene, dream phrase or personal phrase') &&
+    privacyEn.includes('vision or Anchor Scene and the affirmation'),
+  'Privacy EN não descreve onboarding local, despertador completo e Plano com Anchor Scene'
+);
+
 assert(privacyPt.includes('href="/suporte"'), 'Privacidade PT não aponta para suporte');
 assert(privacyPt.includes('href="/privacy"'), 'Privacidade PT não aponta para inglês');
 assert(privacyEn.includes('href="/support"'), 'Privacy EN não aponta para suporte');
@@ -87,6 +100,19 @@ for (const [label, html, privacyRoute] of [
   assert(html.includes('mailto:suporte@celestegroup.biz'), `${label}: e-mail público confirmado ausente`);
   assert(/(?:emergência|emergency)/i.test(html), `${label}: orientação de emergência ausente`);
 }
+
+assert(
+  supportPt.includes('deixa a nuvem desligada') &&
+    supportPt.includes('afirmação, visão, Cena-Âncora, frase de sonho ou frase') &&
+    supportPt.includes('A visão ou Cena-Âncora e a afirmação'),
+  'Suporte PT não acompanha o onboarding local e os conteúdos novos'
+);
+assert(
+  supportEn.includes('leaves cloud processing off') &&
+    supportEn.includes('affirmation, vision, Anchor Scene, dream phrase or personal') &&
+    supportEn.includes('The vision or Anchor Scene and the affirmation'),
+  'Support EN não acompanha o onboarding local e os conteúdos novos'
+);
 
 const css = read(path.join('public', 'legal.css'));
 assert(css.includes(':focus-visible'), 'Páginas públicas sem foco de teclado visível');

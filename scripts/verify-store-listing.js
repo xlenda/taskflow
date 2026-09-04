@@ -581,8 +581,36 @@ if (consoleFields) {
 const googlePlayPrefill = normalizedText(read('google-play-console-prefill.md'));
 const privacyReview = normalizedText(read('privacy-review.md'));
 const reviewNotes = normalizedText(read('review-notes.md'));
+const consoleDeclarations = normalizedText(read('console-declarations.md'));
 const publicPrivacyPt = normalizedText(readRoot('public/privacidade/index.html'));
 const publicPrivacyEn = normalizedText(readRoot('public/privacy/index.html'));
+
+for (const [label, document] of [
+  ['Google Play prefill', googlePlayPrefill],
+  ['review notes', reviewNotes],
+  ['console declarations', consoleDeclarations],
+]) {
+  if (
+    document.includes('criar no aparelho') ||
+    document.includes('choose on-device creation') ||
+    document.includes('usar a opcao local')
+  ) {
+    fail(`${label} still tells the reviewer to choose a cloud-consent option removed from onboarding`);
+  }
+}
+
+if (
+  !googlePlayPrefill.includes('visao ou cena-ancora e afirmacao') &&
+  !googlePlayPrefill.includes('vision or anchor scene and an affirmation')
+) {
+  fail('Google Play review path must cover a vision or Anchor Scene plus the repeated affirmation');
+}
+if (!reviewNotes.includes('afirmacao, visao, cena-ancora, frase de sonho ou frase propria')) {
+  fail('Review notes must describe every personal-content alarm choice');
+}
+if (!privacyReview.includes('visao ou cena-ancora e afirmacao escolhidas')) {
+  fail('Privacy review must describe the Anchor Scene option stored by Celeste Plan');
+}
 
 for (const [label, document, requiredIdeas] of [
   ['Google Play prefill', googlePlayPrefill, [

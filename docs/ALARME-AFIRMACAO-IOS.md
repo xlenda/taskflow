@@ -1,12 +1,14 @@
-# Despertador com afirmacao no iOS
+# Despertador com conteudo pessoal no iOS
 
 > Este documento descreve o despertador AlarmKit. O Plano Celeste e separado:
-> usa lembretes locais comuns, mostra a visao e a afirmacao para leitura, pede
-> duas repeticoes por voz quando o reconhecimento no dispositivo esta
+> usa lembretes locais comuns, mostra a visao ou Cena-Ancora e a afirmacao para
+> leitura, pede duas repeticoes da afirmacao por voz quando o reconhecimento no dispositivo esta
 > disponivel e nunca bloqueia o aparelho.
 
 Esta integracao agenda um despertador real do AlarmKit cuja faixa de alerta e a
-afirmacao sintetizada no aparelho. Nao e um lembrete posterior ao despertar.
+conteudo pessoal sintetizado no aparelho. A pessoa pode escolher uma afirmacao,
+visao, Cena-Ancora, frase de sonho ou frase propria. Nao e um lembrete posterior
+ao despertar.
 
 ## O que esta implementado
 
@@ -60,8 +62,8 @@ test(payload) -> { ok, alarmId, scheduledFor?, soundFileName?, reason? }
 ```
 
 `schedule` recebe UUID, `time` (`HH:mm`), `hour`, `minute`, dias ISO, titulo,
-afirmacao, locale, identificador opcional de voz, nome-base opcional de som e a
-opcao de pedir autorizacao. `test` usa os mesmos dados de audio e
+conteudo no campo tecnico legado `affirmation`, locale, identificador opcional
+de voz, nome-base opcional de som e a opcao de pedir autorizacao. `test` usa os mesmos dados de audio e
 `delaySeconds`. O adaptador JavaScript considera sucesso somente uma resposta
 nativa explicita com `{ ok: true }` depois de `AlarmManager.schedule` retornar.
 
@@ -75,8 +77,8 @@ instalada. O escritor cria um CAF Linear PCM de 16 bits no diretorio
 O scaffold limita a faixa a 29 segundos, mantendo margem abaixo da regra de 30
 segundos usada por sons personalizados do sistema. Esse limite e conservador:
 o comportamento final do AlarmKit, o formato CAF gerado por cada voz e a
-entrega com o aparelho bloqueado ainda precisam de validacao em hardware. Uma
-afirmacao longa falha com `affirmation_audio_too_long`; ela nao e cortada sem
+entrega com o aparelho bloqueado ainda precisam de validacao em hardware. Um
+conteudo longo falha com `affirmation_audio_too_long`; ele nao e cortado sem
 avisar.
 
 O alarme e somente do tipo alert. Nao ha countdown, pausa ou soneca customizada,
@@ -99,7 +101,8 @@ o `Info.plist` final contem `NSAlarmKitUsageDescription`. Em um iPhone com iOS
 1. concessao, negacao e alteracao posterior da permissao em Ajustes;
 2. alarme de teste com tela bloqueada, app encerrado, modo silencioso e Foco;
 3. voz pt-BR e en-US, incluindo identificador de voz indisponivel;
-4. afirmacoes proximas do limite de 29 segundos;
+4. afirmacao, visao, Cena-Ancora, frase de sonho e frase propria proximas do
+   limite de 29 segundos;
 5. recorrencia, troca de fuso e horario de verao;
 6. reagendamento do mesmo UUID e cancelamento apos reiniciar o app;
 7. ausencia de arquivos CAF antigos depois de substituir ou cancelar.

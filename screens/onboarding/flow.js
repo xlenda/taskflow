@@ -553,21 +553,6 @@ export const FLOW = [
     when: (answers) => answers.manifestingSomeone === true,
   },
   {
-    id: 'cloudPersonalization',
-    type: 'boolean',
-    key: 'cloudPersonalization',
-    textSize: 21,
-    shortTextSize: 16,
-    compact: true,
-    question: {
-      en: 'Are you 18 or older and do you allow optional cloud processing? Anthropic creates scenes, with OpenAI as failover and Gemini as a compatibility fallback. Gemini also translates, creates images and interprets dreams; ElevenLabs narrates. Only needed data is sent; saved names stay on this device.',
-      pt: 'Você tem 18 anos ou mais e permite processamento opcional em nuvem? A Anthropic cria cenas, com OpenAI como alternativa e Gemini como compatibilidade. Gemini também traduz, cria imagens e interpreta sonhos; ElevenLabs narra. Só o necessário é enviado; nomes salvos ficam no aparelho.',
-    },
-    yesLabel: { en: 'Allow', pt: 'Permitir' },
-    noLabel: { en: 'Create on device', pt: 'Criar no aparelho' },
-    when: (answers) => ageConfirmsAdult(answers.age),
-  },
-  {
     id: 'thanks',
     type: 'statement',
     pause: 1800,

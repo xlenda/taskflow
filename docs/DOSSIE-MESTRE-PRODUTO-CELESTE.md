@@ -487,8 +487,9 @@ Princípios de RLS:
 
 - os **44 prints originais** preservados no histórico do clone foram comparados
   com o roteiro do Celeste e com a versão completa anterior do fluxo;
-- o chat voltou a ter as **21 perguntas originais**; somada à autorização explícita
-  do Gemini, são **22 perguntas em 28 etapas** dentro da conversa;
+- o chat voltou a ter as **21 perguntas originais**, distribuídas em **27 etapas**;
+  o onboarding cria a primeira prática localmente e não inclui pergunta de
+  autorização de nuvem;
 - a pergunta **Tem um código de indicação?** voltou ao caminho anterior ao chat,
   e a pergunta de nova manifestação continua na tela principal após o onboarding;
 - perguntas íntimas como idade, gênero, sexualidade, passado e relacionamento
@@ -545,9 +546,9 @@ Princípios de RLS:
   `GEMINI_API_KEY` fica somente no ambiente do servidor e não entra em
   `EXPO_PUBLIC_*`, no bundle do cliente, no corpo enviado ao provedor nem na
   resposta da função;
-- antes do primeiro envio à nuvem, a interface pede confirmação explícita de
-  **18 anos ou mais** e consentimento para usar o Gemini; escolher **Usar local**
-  mantém a geração no aparelho;
+- depois do onboarding local, antes do primeiro envio opcional à nuvem, a
+  interface pede confirmação explícita de **18 anos ou mais** e consentimento
+  para os processadores informados; escolher **Usar local** mantém a geração no aparelho;
 - somente o desejo, a categoria, o idioma e as respostas de perfil que podem
   alterar a cena são enviados. Preferências de interface, histórico de prática e
   Rastros de Mudança ficam fora da requisição, e falhas não registram o conteúdo
@@ -834,13 +835,13 @@ A relação entre Base, Memória e Jornada está documentada em
 
 ## 20. Plano Celeste — contrato de prática em Android e iPhone
 
-O Plano Celeste transforma uma visão e uma afirmação já escolhidas em uma
-rotina opcional de um a quatro lembretes comuns por dia. A pessoa ajusta os
-horários e os dias. Os avisos não são alarmes exatos, não prometem disparo no
+O Plano Celeste transforma uma visão ou Cena-Âncora e uma afirmação já escolhidas
+em uma rotina opcional de um a quatro lembretes comuns por dia. A pessoa ajusta
+os horários e os dias. Os avisos não são alarmes exatos, não prometem disparo no
 segundo escolhido e nunca bloqueiam o aparelho ou outros aplicativos.
 
-Ao abrir o aviso, a visão e a afirmação permanecem visíveis em texto grande. A
-pessoa lê da própria tela e repete a afirmação duas vezes; o progresso aparece
+Ao abrir o aviso, a visão ou Cena-Âncora e a afirmação permanecem visíveis em
+texto grande. A pessoa lê da própria tela e repete a afirmação duas vezes; o progresso aparece
 como `1/2` e `2/2`. O microfone começa somente depois de um toque explícito e
 pode ser interrompido. `Agora não` e `Adiar 10 min` continuam disponíveis sem
 fala. Se o reconhecedor local não estiver disponível, a permissão for negada ou
@@ -862,11 +863,11 @@ um recurso separado.
 
 ### Evolução planejada — ciclos de prática
 
-A primeira versão mantém a visão e a afirmação escolhidas até a própria pessoa
-alterá-las. A evolução seguinte organiza a prática em ciclos de 7 dias. Ao fim
+A primeira versão mantém a visão ou Cena-Âncora e a afirmação escolhidas até a
+própria pessoa alterá-las. A evolução seguinte organiza a prática em ciclos de 7 dias. Ao fim
 de cada ciclo, a Celeste apresenta um resumo local de constância e horários e
 oferece três decisões explícitas: continuar por mais 7 dias, ajustar o conteúdo
-atual ou iniciar uma nova visão/afirmação. Nada é substituído silenciosamente.
+atual ou iniciar uma nova visão ou Cena-Âncora com afirmação. Nada é substituído silenciosamente.
 
 Os ciclos podem formar jornadas de 7, 21 ou 30 dias. Conteúdos anteriores ficam
 no histórico da pessoa, e sugestões futuras devem considerar o objetivo

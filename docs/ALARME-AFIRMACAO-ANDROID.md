@@ -1,4 +1,4 @@
-# Despertador com afirmacao no Android
+# Despertador com conteudo pessoal no Android
 
 > Este documento descreve o prototipo de despertador exato, que continua fora
 > da v1 Android. O Plano Celeste e outro recurso: usa lembretes comuns por
@@ -7,8 +7,9 @@
 
 O modulo `celeste-affirmation-alarm` usa um `AlarmManager` do Android para
 agendar o proximo horario escolhido, um `BroadcastReceiver` para reagendar a
-proxima ocorrencia semanal e um foreground service curto para reproduzir a
-afirmacao. Ele funciona apenas em development builds e builds Android
+proxima ocorrencia semanal e um foreground service curto para reproduzir o
+conteudo escolhido. Ele aceita afirmacao, visao, Cena-Ancora, frase de sonho ou
+frase propria e funciona apenas em development builds e builds Android
 instalados que incorporam o modulo local. Expo Go e web nao possuem o modulo e
 respondem com `supported: false`; nao existe timer JavaScript de substituicao.
 
@@ -34,7 +35,7 @@ Quando a tela fornece `audioBase64Wav`, o modulo valida RIFF/WAVE PCM16,
 tamanho e duracao novamente e grava o WAV em `filesDir/affirmation-alarms`.
 Esse diretorio e privado ao app. A escrita usa arquivo temporario e rename; o
 novo `PendingIntent` e confirmado antes de o alarme e o WAV anteriores serem
-removidos. O token da versao impede que um alarme antigo toque uma frase nova.
+removidos. O token da versao impede que um alarme antigo toque um conteudo novo.
 
 Sem WAV selecionado, o service usa `TextToSpeech` local como alternativa. Nem
 o texto nem os bytes do audio sao enviados pelo modulo a qualquer servidor.

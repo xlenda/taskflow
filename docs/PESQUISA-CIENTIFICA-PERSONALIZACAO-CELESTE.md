@@ -319,8 +319,8 @@ Imagem literal segura
 
 No código-fonte de 27/08/2026:
 
-- a base `celeste-knowledge-v2` é carregada no servidor em cada nova
-  Cena-Âncora criada com Gemini, inclusive depois do onboarding;
+- a base `celeste-knowledge-v2` é carregada no servidor em cada nova Cena-Âncora
+  criada em nuvem somente depois do onboarding e do opt-in adulto explícito;
 - o prompt `celeste-scene-v7` recebe uma seleção de quatro a oito cartões, nunca
   os 39 cartões ou os documentos completos;
 - o prompt de sonho em nuvem `celeste-dream-v2` recebe somente cartões do escopo

@@ -28,7 +28,7 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 | Compras ou assinaturas | Não | nenhum SDK de billing nem produto ativo identificado |
 | Despertador Android | Não aparece e não entra no binário | módulo autoligado apenas para Apple; permissões de alarme exato bloqueadas em `app.json` |
 | Lembrete comum | Sim, opcional | `expo-notifications`; não é despertador nem alarme exato |
-| Plano Celeste | Sim, opcional | um a quatro lembretes comuns; visão e afirmação visíveis; duas repetições para registrar a prática |
+| Plano Celeste | Sim, opcional | um a quatro lembretes comuns; visão ou Cena-Âncora e afirmação visíveis; duas repetições da afirmação para registrar a prática |
 | Microfone | Sim, somente após toque | `RECORD_AUDIO` atende ao reconhecimento no dispositivo do Plano Celeste; sem fallback para nuvem e com conclusão manual acessível |
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de cena, tradução, imagem, sonho e voz | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
@@ -61,7 +61,7 @@ antes do envio.
 - presença das variáveis públicas Supabase no perfil EAS `production`;
 - funcionamento da denúncia, da notificação e do armazenamento no AAB instalado
   em um Android físico;
-- funcionamento do Plano Celeste com a afirmação visível, progresso `1/2` e
+- funcionamento do Plano Celeste com a visão ou Cena-Âncora e a afirmação visíveis, progresso `1/2` e
   `2/2`, permissão concedida/negada, reconhecedor local disponível/ausente,
   conclusão manual, cancelamento e adiamento;
 - tráfego de rede do binário confirmando que, fora uma denúncia escolhida pela
@@ -97,8 +97,9 @@ growth`, `Mindfulness`, `Journal`, `Meditation` e `Well-being`.
 - **Login, conta de demonstração, código ou instrução restrita:** Não se aplica.
 - Nota opcional para revisão:
 
-> A versão Android não exige cadastro nem login. Conclua o onboarding usando a
-> opção de criação no aparelho. O Plano Celeste usa lembretes comuns e pode
+> A versão Android não exige cadastro nem login. Conclua o onboarding; a primeira
+> Cena-Âncora é criada automaticamente no aparelho, com a nuvem desligada. O
+> Plano Celeste usa lembretes comuns e pode
 > pedir o microfone somente quando você tocar para iniciar uma prática. A
 > Comunidade, o despertador exato e os recursos pagos em nuvem não fazem parte
 > desta versão.
@@ -315,12 +316,12 @@ final e manter `nativeScreenshots` como pendente até essa evidência existir.
 Texto preparado para o campo de notas, se aparecer:
 
 > No sign-in or review credentials are required. On first launch, select a
-> language and complete onboarding. Choose on-device creation; the first Anchor
-> Scene is available locally. To test Celeste Plan, open it from Home, select a
-> vision and affirmation, enable an ordinary reminder, then tap to start the
+> language and complete onboarding. The first Anchor Scene is created on the
+> device automatically, with cloud processing off. To test Celeste Plan, open it
+> from Home, select a vision or Anchor Scene and an affirmation, enable an ordinary reminder, then tap to start the
 > microphone and read the visible affirmation twice. Audio and transcripts are
 > not retained or uploaded; Not now, Snooze 10 min and an accessible manual
-> completion remain available. Community, exact affirmation alarm, purchases,
+> completion remain available. Community, the exact personal-content alarm, purchases,
 > ads and paid cloud generation are not included in this Android release. To test
 > in-app AI content reporting, open a generated scene, vision, affirmation or
 > dream result, tap “Report this AI content”, select a reason and submit.
@@ -344,8 +345,8 @@ Texto preparado para o campo de notas, se aparecer:
     dias é obrigatório;
 12. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout;
 13. confirmação em Android físico de que o Plano Celeste nunca bloqueia o
-    aparelho, mantém o texto visível, descarta áudio/transcrição e usa somente
-    lembretes comuns e reconhecimento local quando suportado.
+    aparelho, mantém a visão ou Cena-Âncora e a afirmação visíveis, descarta
+    áudio/transcrição e usa somente lembretes comuns e reconhecimento local quando suportado.
 
 ## Fontes oficiais consultadas
 

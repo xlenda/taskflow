@@ -18,7 +18,7 @@ import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { useT } from '../utils/useT';
 import { todayISO } from '../utils/date';
 import { personalAffirmationsForState } from '../utils/personalAffirmations';
-import { personalJourneyItemsForState } from '../utils/personalJourney';
+import { personalVisionOptionsForState } from '../utils/personalJourney';
 import { normalizePracticePlan, practiceContentFingerprint } from '../utils/practicePlan';
 import { evaluateSpeechMatch } from '../utils/speechMatch';
 import {
@@ -43,7 +43,7 @@ const S = {
     pt: 'O microfone só começa quando você tocar. A Celeste não salva o áudio nem a transcrição e só usa reconhecimento no aparelho.',
     en: 'The microphone only starts when you tap. Celeste stores neither audio nor transcript and only uses on-device recognition.',
   },
-  visionLabel: { pt: '1. Leia sua visão', en: '1. Read your vision' },
+  visionLabel: { pt: '1. Leia sua visão ou Cena-Âncora', en: '1. Read your vision or Anchor Scene' },
   affirmationLabel: { pt: '2. Repita esta afirmação duas vezes', en: '2. Repeat this affirmation twice' },
   progress: { pt: '{n} de 2 repetições confirmadas', en: '{n} of 2 repetitions confirmed' },
   ready: { pt: 'Quando estiver pronta, toque e leia a frase destacada.', en: 'When ready, tap and read the highlighted sentence.' },
@@ -93,8 +93,8 @@ const S = {
   finish: { pt: 'Voltar para o início', en: 'Return Home' },
   missingTitle: { pt: 'Prática não encontrada', en: 'Practice not found' },
   missingBody: {
-    pt: 'Abra o Plano Celeste para escolher uma visão, uma afirmação e seus horários.',
-    en: 'Open the Celeste Plan to choose a vision, an affirmation, and your times.',
+    pt: 'Abra o Plano Celeste para escolher uma visão ou Cena-Âncora, uma afirmação e seus horários.',
+    en: 'Open the Celeste Plan to choose a vision or Anchor Scene, an affirmation, and your times.',
   },
   openPlan: { pt: 'Abrir Plano Celeste', en: 'Open Celeste Plan' },
 };
@@ -126,7 +126,7 @@ export default function PracticeRitualScreen() {
 
   const affirmations = useMemo(() => personalAffirmationsForState(state), [state]);
   const visions = useMemo(
-    () => personalJourneyItemsForState(state, 'vision', lang),
+    () => personalVisionOptionsForState(state, lang),
     [lang, state]
   );
   const plan = useMemo(

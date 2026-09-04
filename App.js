@@ -27,7 +27,7 @@ import { NarrationProvider, useNarration } from './context/NarrationContext';
 import { useT } from './utils/useT';
 import { confirmAsync } from './utils/confirm';
 import { wavBytesToBase64 } from './utils/audioBase64';
-import { alarmAffirmationText } from './utils/personalAffirmations';
+import { resolvePersonalAlarmContent } from './utils/personalAffirmations';
 import { detectLang } from './constants/i18n';
 import {
   CLOUD_CONSENT_VERSION,
@@ -234,67 +234,7 @@ function PersistedTheme() {
 }
 
 function alarmContentForState(state) {
-  const ritual = state && state.morningRitual;
-  const wakeId = ritual && ritual.wakeAffirmationId;
-  if (!ritual || !wakeId) return null;
-
-  if (wakeId.startsWith('manifestation:')) {
-    const manifestationId = wakeId.slice('manifestation:'.length);
-    const manifestation = (state.manifestations || []).find((item) => item.id === manifestationId);
-    const text = alarmAffirmationText(manifestation && manifestation.affirmation);
-    if (text) {
-      return {
-        id: wakeId,
-        text,
-        lang: manifestation.lang === 'en' ? 'en' : 'pt',
-      };
-    }
-  }
-
-  if (wakeId.startsWith('ritual:')) {
-    const entryId = wakeId.slice('ritual:'.length);
-    const entry = ((ritual && ritual.entries) || []).find((item) => item.id === entryId);
-    const text = alarmAffirmationText(entry && entry.affirmation);
-    if (text) {
-      return {
-        id: wakeId,
-        text,
-        lang: entry.lang === 'en' ? 'en' : 'pt',
-      };
-    }
-  }
-
-  if (wakeId === 'custom') {
-    const text = alarmAffirmationText(ritual.wakeAffirmationText);
-    if (text) {
-      return {
-        id: 'custom',
-        text,
-        lang: ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt',
-      };
-    }
-  }
-
-  const firstManifestation = (state.manifestations || []).find(
-    (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
-  );
-  if (firstManifestation) {
-    return {
-      id: `manifestation:${firstManifestation.id}`,
-      text: alarmAffirmationText(firstManifestation.affirmation),
-      lang: firstManifestation.lang === 'en' ? 'en' : 'pt',
-    };
-  }
-
-  const firstDream = ((ritual && ritual.entries) || []).find(
-    (item) => typeof item.affirmation === 'string' && item.affirmation.trim()
-  );
-  if (!firstDream) return null;
-  return {
-    id: `ritual:${firstDream.id}`,
-    text: alarmAffirmationText(firstDream.affirmation),
-    lang: firstDream.lang === 'en' ? 'en' : 'pt',
-  };
+  return resolvePersonalAlarmContent(state);
 }
 
 function hasSavedNarrationConsent(state) {

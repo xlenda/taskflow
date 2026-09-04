@@ -33,6 +33,10 @@ import { transformDreamWithKnowledge } from '../services/transformDream';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { confirmAsync } from '../utils/confirm';
 import {
+  personalAlarmContentForState,
+  resolvePersonalAlarmContent,
+} from '../utils/personalAffirmations';
+import {
   DEFAULT_AFFIRMATION_ALARM_ID,
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
@@ -45,13 +49,13 @@ const S = {
     pt: 'Receba uma reflexão construtiva e uma afirmação só sua.',
     en: 'Receive a constructive reflection and an affirmation of your own.',
   },
-  wakeTitle: { pt: 'A afirmação será o alarme', en: 'Your affirmation is the alarm' },
+  wakeTitle: { pt: 'Seu conteúdo será o alarme', en: 'Your content is the alarm' },
   wakeBody: {
-    pt: 'Escolha ou escreva a frase que tocará no horário marcado para acordar você.',
-    en: 'Choose or write the words that will play at the scheduled time to wake you.',
+    pt: 'Escolha uma afirmação, visão, Cena-Âncora, frase de sonho ou escreva o que tocará ao despertar.',
+    en: 'Choose an affirmation, vision, Anchor Scene, dream phrase, or write what will play when you wake.',
   },
-  noAffirmation: { pt: 'Nenhuma afirmação escolhida', en: 'No affirmation selected' },
-  choose: { pt: 'Escolher afirmação', en: 'Choose affirmation' },
+  noAffirmation: { pt: 'Nenhum conteúdo escolhido', en: 'No content selected' },
+  choose: { pt: 'Escolher conteúdo', en: 'Choose content' },
   change: { pt: 'Trocar', en: 'Change' },
   preview: { pt: 'Ouvir prévia', en: 'Hear preview' },
   stop: { pt: 'Parar', en: 'Stop' },
@@ -59,16 +63,16 @@ const S = {
   saveWake: { pt: 'Ativar despertador', en: 'Turn alarm on' },
   checkingAlarm: { pt: 'Verificando o despertador deste aparelho…', en: 'Checking this device alarm…' },
   webUnsupported: {
-    pt: 'No site você pode escolher a frase, o horário e ouvir a prévia. Para ela tocar como despertador e acordar você, use o app instalado no iPhone.',
-    en: 'On the website you can choose the affirmation, time and hear a preview. To play it as an alarm that wakes you, use the installed iPhone app.',
+    pt: 'No site você pode escolher o conteúdo, o horário e ouvir a prévia. Para ele tocar como despertador e acordar você, use o app instalado no iPhone.',
+    en: 'On the website you can choose the content, time, and hear a preview. To play it as an alarm that wakes you, use the installed iPhone app.',
   },
   notScheduled: {
     pt: 'Nenhum despertador está ativo. A prévia funciona agora.',
     en: 'No alarm is active. The preview works now.',
   },
   nativePending: {
-    pt: 'Este aparelho ainda não tem o módulo nativo necessário para usar a afirmação como despertador real.',
-    en: 'This device does not yet have the native module required to use the affirmation as a real alarm.',
+    pt: 'Este aparelho ainda não tem o módulo nativo necessário para usar o conteúdo escolhido como despertador real.',
+    en: 'This device does not yet have the native module required to use the selected content as a real alarm.',
   },
   alarmScheduled: { pt: 'Despertador ativado para {time}.', en: 'Alarm set for {time}.' },
   alarmDenied: {
@@ -80,8 +84,8 @@ const S = {
     en: 'The alarm was not activated. Try again in the installed app.',
   },
   alarmSyncFailed: {
-    pt: 'A frase do despertador não pôde ser confirmada. Desative-o ou escolha a frase novamente antes de confiar nele.',
-    en: 'The alarm affirmation could not be confirmed. Turn it off or choose the affirmation again before relying on it.',
+    pt: 'O conteúdo do despertador não pôde ser confirmado. Desative-o ou escolha o conteúdo novamente antes de confiar nele.',
+    en: 'The alarm content could not be confirmed. Turn it off or choose the content again before relying on it.',
   },
   alarmBusy: { pt: 'Ativando o despertador…', en: 'Turning the alarm on…' },
   audioUnavailable: {
@@ -146,14 +150,14 @@ const S = {
     pt: 'Uma reflexão construtiva está guardada aqui.',
     en: 'A constructive reflection is saved here.',
   },
-  pickerTitle: { pt: 'Afirmação para despertar', en: 'Wake-up affirmation' },
+  pickerTitle: { pt: 'Conteúdo para despertar', en: 'Wake-up content' },
   pickerBody: {
-    pt: 'Escolha uma frase criada a partir da sua manifestação ou de um sonho.',
-    en: 'Choose a phrase created from your manifestation or one of your dreams.',
+    pt: 'Escolha entre suas afirmações, visões, Cena-Âncora e frases de sonhos.',
+    en: 'Choose from your affirmations, visions, Anchor Scene, and dream phrases.',
   },
   noPersonalOptions: {
-    pt: 'Crie uma manifestação ou conte um sonho para receber sua primeira afirmação.',
-    en: 'Create a manifestation or share a dream to receive your first affirmation.',
+    pt: 'Crie uma manifestação ou conte um sonho para receber seu primeiro conteúdo pessoal.',
+    en: 'Create a manifestation or share a dream to receive your first personal content.',
   },
   customLabel: { pt: 'Minha própria afirmação', en: 'My own affirmation' },
   customPlaceholder: {
@@ -174,8 +178,12 @@ const S = {
   },
   cancel: { pt: 'Cancelar', en: 'Cancel' },
   close: { pt: 'Fechar', en: 'Close' },
-  personal: { pt: 'Sua', en: 'Yours' },
-  celeste: { pt: 'Celeste', en: 'Celeste' },
+  affirmation: { pt: 'Afirmação', en: 'Affirmation' },
+  vision: { pt: 'Visão', en: 'Vision' },
+  anchor: { pt: 'Cena-Âncora', en: 'Anchor Scene' },
+  dream: { pt: 'Sonho', en: 'Dream' },
+  manifestation: { pt: 'Manifestação', en: 'Manifestation' },
+  yours: { pt: 'Sua frase', en: 'Your phrase' },
 };
 
 const FEELINGS = [
@@ -283,40 +291,11 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const mountedRef = useRef(true);
   const voiceAvailable = useMemo(() => !!recognitionClass(), []);
 
-  const wakeOptions = useMemo(() => {
-    const manifestations = (state.manifestations || [])
-      .filter((item) => typeof item.affirmation === 'string' && item.affirmation.trim())
-      .map((item) => ({
-        id: `manifestation:${item.id}`,
-        text: item.affirmation.trim(),
-        lang: item.lang === 'en' ? 'en' : 'pt',
-        personal: true,
-        source: 'manifestation',
-      }));
-    const dreams = ((ritual && ritual.entries) || [])
-      .filter((entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim())
-      .map((entry) => ({
-        id: `ritual:${entry.id}`,
-        text: entry.affirmation.trim(),
-        lang: entry.lang === 'en' ? 'en' : 'pt',
-        personal: true,
-        source: 'dream',
-      }));
-    return [...manifestations, ...dreams];
-  }, [state.manifestations, ritual && ritual.entries]);
-
-  const selectedWake = useMemo(() => {
-    const active = wakeOptions.find((item) => item.id === ritual.wakeAffirmationId);
-    if (active) return active;
-    if (ritual.wakeAffirmationId !== 'custom' || !clean(ritual.wakeAffirmationText)) return null;
-    return {
-      id: 'custom',
-      text: clean(ritual.wakeAffirmationText),
-      lang: ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt',
-      personal: true,
-      source: 'custom',
-    };
-  }, [wakeOptions, ritual.wakeAffirmationId, ritual.wakeAffirmationText, ritual.wakeAffirmationLang]);
+  const wakeOptions = useMemo(
+    () => personalAlarmContentForState(state).filter((item) => item.source !== 'custom'),
+    [state]
+  );
+  const selectedWake = useMemo(() => resolvePersonalAlarmContent(state), [state]);
 
   const dreamEntries = Array.isArray(ritual.entries) ? ritual.entries : [];
   const usingResultForWake = !!result && ritual.wakeAffirmationId === `ritual:${entryId}`;
@@ -974,7 +953,22 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
 
   const renderOption = useCallback(({ item }) => {
     const selected = ritual.wakeAffirmationId === item.id;
-    const color = accentAt(theme, item.personal ? 1 : 2);
+    const sourceLabel =
+      item.source === 'dream'
+        ? t(S.dream)
+        : item.source === 'vision'
+        ? t(S.vision)
+        : item.source === 'anchor'
+        ? t(S.anchor)
+        : item.source === 'custom'
+        ? t(S.yours)
+        : item.source === 'affirmation'
+        ? t(S.affirmation)
+        : t(S.manifestation);
+    const color = accentAt(
+      theme,
+      item.source === 'dream' ? 1 : item.source === 'vision' ? 2 : item.source === 'anchor' ? 0 : 3
+    );
     return (
       <Pressable
         onPress={() => selectWake(item)}
@@ -991,7 +985,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
         ]}
       >
         <View style={[styles.sourceTag, { backgroundColor: alpha(color, 0.13) }]}>
-          <Text style={[styles.sourceText, { color }]}>{item.personal ? t(S.personal) : t(S.celeste)}</Text>
+          <Text style={[styles.sourceText, { color }]}>{sourceLabel}</Text>
         </View>
         <Text style={[styles.pickerText, { color: theme.text }]}>{item.text}</Text>
         <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={selected ? theme.accent : theme.textMuted} />

@@ -159,6 +159,38 @@ function personalJourneyItemsForState(state, kind, requestedLang) {
   });
 }
 
+function personalVisionOptionsForState(state, requestedLang) {
+  const visions = personalJourneyItemsForState(state, 'vision', requestedLang);
+  const anchor = anchorManifestationForState(state);
+  if (!anchor) return visions;
+  const story = clean(anchor.story, 1200);
+  const manifestationId = clean(anchor.id, 120);
+  if (!story || !manifestationId) return visions;
+  const lang = requestedLang === 'en' || requestedLang === 'pt'
+    ? requestedLang
+    : state && state.lang === 'en'
+    ? 'en'
+    : 'pt';
+  const sourceTitle = clean(anchor.title, 120);
+  const label = lang === 'en' ? 'Anchor Scene' : 'Cena-Âncora';
+  const anchorOption = {
+    id: `anchor:${manifestationId}`,
+    key: 'anchor-scene',
+    manifestationId,
+    category: anchor.category || 'Personal',
+    title: sourceTitle ? `${label}: ${sourceTitle}` : label,
+    story,
+    generatedStory: story,
+    sourceTitle,
+    lang,
+    speechLang: lang,
+    accent: CATEGORY_ACCENTS[anchor.category] ?? 0,
+    personalized: true,
+    source: 'anchor',
+  };
+  return [...visions, anchorOption];
+}
+
 function validPersonalJourneyIds(state, kind) {
   return new Set(personalJourneyItemsForState(state, kind).map((item) => item.id));
 }
@@ -171,5 +203,6 @@ module.exports = {
   journeyVisualStatusKey,
   normalizePersonalJourneySuite,
   personalJourneyItemsForState,
+  personalVisionOptionsForState,
   validPersonalJourneyIds,
 };

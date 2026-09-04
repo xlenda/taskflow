@@ -1,5 +1,9 @@
 import { todayISO } from './date';
 import { normalizeLivingMirror } from './livingMirror';
+import {
+  alarmContentBelongsToManifestation,
+  resolvePersonalAlarmContent,
+} from './personalAffirmations';
 
 const clean = (value, max) =>
   typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
@@ -44,37 +48,43 @@ export function selectDailyRitual(state, day = todayISO()) {
   if (!state || typeof state !== 'object') return null;
   const manifestations = Array.isArray(state.manifestations) ? state.manifestations : [];
   const dreams = Array.isArray(state.morningRitual?.entries) ? state.morningRitual.entries : [];
-  const wakeId = clean(state.morningRitual?.wakeAffirmationId, 160);
+  const alarmContent = resolvePersonalAlarmContent(state);
 
-  if (wakeId.startsWith('manifestation:')) {
-    const manifestationId = wakeId.slice('manifestation:'.length);
+  if (alarmContent?.source === 'dream') {
+    const dreamId = alarmContent.id.slice('ritual:'.length);
+    const selected = dreamRitual(dreams.find((entry) => entry.id === dreamId), day);
+    if (selected) return { ...selected, affirmation: alarmContent.text, selection: 'alarm' };
+  }
+
+  if (alarmContent?.source === 'custom') {
+    return {
+      id: 'custom',
+      sourceType: 'custom',
+      sourceId: null,
+      title: '',
+      affirmation: alarmContent.text,
+      anchorIdentity: '',
+      anchorStep: '',
+      lang: alarmContent.lang,
+      chapter: null,
+      completedToday: Array.isArray(state.affirmationDates) && state.affirmationDates.includes(day),
+      selection: 'alarm',
+    };
+  }
+
+  if (alarmContent) {
     const selected = manifestationRitual(
-      manifestations.find((item) => item.id === manifestationId),
+      manifestations.find((item) =>
+        alarmContentBelongsToManifestation(alarmContent.id, item?.id)
+      ),
       day
     );
-    if (selected) return { ...selected, selection: 'alarm' };
-  }
-
-  if (wakeId.startsWith('ritual:')) {
-    const dreamId = wakeId.slice('ritual:'.length);
-    const selected = dreamRitual(dreams.find((entry) => entry.id === dreamId), day);
-    if (selected) return { ...selected, selection: 'alarm' };
-  }
-
-  if (wakeId === 'custom') {
-    const affirmation = clean(state.morningRitual?.wakeAffirmationText, 800);
-    if (affirmation) {
+    if (selected) {
       return {
-        id: 'custom',
-        sourceType: 'custom',
-        sourceId: null,
-        title: '',
-        affirmation,
-        anchorIdentity: '',
-        anchorStep: '',
-        lang: state.morningRitual?.wakeAffirmationLang === 'en' ? 'en' : 'pt',
-        chapter: null,
-        completedToday: Array.isArray(state.affirmationDates) && state.affirmationDates.includes(day),
+        ...selected,
+        id: alarmContent.id,
+        affirmation: alarmContent.text,
+        lang: alarmContent.lang,
         selection: 'alarm',
       };
     }

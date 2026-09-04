@@ -29,6 +29,10 @@ const visualStorage = read('services/personalVisualStorage.js');
 const legal = read('constants/legal.js');
 const chat = read('screens/onboarding/ChatOnboardingScreen.js');
 const reveal = read('screens/onboarding/RevealScreen.js');
+const deleteManifestationBlock = manifestation.slice(
+  manifestation.indexOf('const confirmDelete'),
+  manifestation.indexOf('const playPct')
+);
 
 for (const file of [
   'App.js',
@@ -118,11 +122,34 @@ assert.ok(
   'player de visao pessoal precisa usar a voz neural escolhida no contexto'
 );
 assert.ok(
-  manifestation.includes('await getAffirmationAlarmCapability()') &&
-    manifestation.includes('await cancelAffirmationAlarm()') &&
-    manifestation.indexOf('await cancelAffirmationAlarm()') <
-      manifestation.indexOf('removeManifestation(saved.id)'),
-  'apagar manifestacao usada no despertador deve cancelar o AlarmKit primeiro'
+  deleteManifestationBlock.includes('await getAffirmationAlarmCapability()') &&
+    deleteManifestationBlock.includes('await cancelAffirmationAlarm()') &&
+    deleteManifestationBlock.includes('alarmContentBelongsToManifestation(') &&
+    deleteManifestationBlock.indexOf('await cancelAffirmationAlarm()') <
+      deleteManifestationBlock.indexOf('removeManifestation(saved.id)'),
+  'apagar manifestação usada por afirmação, visão ou Cena-Âncora deve cancelar o AlarmKit primeiro'
+);
+assert.ok(
+  deleteManifestationBlock.includes('await cancelPracticePlanReminders()') &&
+    deleteManifestationBlock.includes('slot?.enabled === true') &&
+    deleteManifestationBlock.indexOf('await cancelPracticePlanReminders()') <
+      deleteManifestationBlock.indexOf('removeManifestation(saved.id)'),
+  'apagar manifestação usada no Plano Celeste deve cancelar seus lembretes primeiro'
+);
+const alarmCancel = deleteManifestationBlock.indexOf('await cancelAffirmationAlarm()');
+const alarmPersist = deleteManifestationBlock.indexOf('reminderEnabled: false', alarmCancel);
+const planCancel = deleteManifestationBlock.indexOf('await cancelPracticePlanReminders()');
+const planPersist = deleteManifestationBlock.indexOf('enabled: false', planCancel);
+const finalRemoval = deleteManifestationBlock.indexOf('removeManifestation(saved.id)');
+assert.ok(
+  alarmCancel >= 0 &&
+    alarmCancel < alarmPersist &&
+    alarmPersist < planCancel &&
+    planCancel < planPersist &&
+    planPersist < finalRemoval &&
+    deleteManifestationBlock.includes('saveMorningRitualPreferences({ alarmSyncError: true })') &&
+    deleteManifestationBlock.includes('syncError: true'),
+  'cancelamentos devem ser ordenados, persistidos e deixar falhas observáveis sem apagar a manifestação'
 );
 assert.ok(
   manifestation.includes('void ensurePersonalVisual(saved.id)') &&
@@ -147,9 +174,10 @@ assert.ok(
 );
 assert.ok(
   context.includes("const affirmationPrefix = `${id}:affirmation:`") &&
-    context.includes('startsWith(affirmationPrefix)') &&
+    context.includes('alarmContentBelongsToManifestation(') &&
+    context.includes("play?.visionId !== `anchor:${id}`") &&
     context.includes("wakeAffirmationText: ''"),
-  'provider deve remover a copia privada da afirmacao apagada'
+  'provider deve remover a cópia privada de qualquer conteúdo apagado'
 );
 assert.ok(
   home.includes('isUnder18Age(currentProfile.age)') &&
@@ -353,7 +381,8 @@ assert.ok(
 assert.ok(
   legal.includes('reconhecimento de voz') &&
     legal.includes('iPhone compatível') &&
-    legal.includes('Android não oferece esse despertador exato'),
+    legal.includes('Android não oferece esse despertador exato') &&
+    legal.includes('afirmação, visão, Cena-Âncora, frase de sonho ou frase própria'),
   'texto legal precisa distinguir o despertador do iPhone dos lembretes comuns do Android'
 );
 

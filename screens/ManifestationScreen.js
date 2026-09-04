@@ -24,10 +24,12 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO, lastNDays } from '../utils/date';
 import { bridgeDoneOn, normalizeLivingMirror } from '../utils/livingMirror';
+import { alarmContentBelongsToManifestation } from '../utils/personalAffirmations';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
 } from '../services/affirmationAlarm';
+import { cancelPracticePlanReminders } from '../services/practicePlanReminders';
 
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
@@ -94,8 +96,8 @@ const S = {
   releaseConfirm: { en: 'Release', pt: 'Deixar ir' },
   releaseAction: { en: 'Release this manifestation', pt: 'Deixar esta manifestação ir' },
   releaseAlarmFailed: {
-    en: 'The manifestation was kept because its alarm could not be turned off. Try again.',
-    pt: 'A manifestação foi mantida porque o despertador não pôde ser desligado. Tente novamente.',
+    en: 'The manifestation was kept because its alarm or reminders could not be turned off. Try again.',
+    pt: 'A manifestação foi mantida porque o despertador ou os lembretes ligados a ela não puderam ser desligados. Tente novamente.',
   },
   editAlarmFailed: {
     en: 'The change was not saved because the alarm could not be updated. Try again.',
@@ -223,6 +225,7 @@ export default function ManifestationScreen() {
     addEvidence,
     removeManifestation,
     saveMorningRitualPreferences,
+    savePracticePlan,
     personalVisualStatus,
     ensurePersonalVisual,
   } = useApp();
@@ -691,21 +694,54 @@ export default function ManifestationScreen() {
     if (!ok) return;
     setReleaseBusy(true);
     try {
-      const usedAsAlarm =
-        state.morningRitual?.wakeAffirmationId === `manifestation:${saved.id}`;
+      const usedAsAlarm = alarmContentBelongsToManifestation(
+        state.morningRitual?.wakeAffirmationId,
+        saved.id
+      );
+      const usedByActivePracticePlan =
+        state.practicePlan?.enabled === true &&
+        (state.practicePlan?.slots || []).some(
+          (slot) =>
+            slot?.enabled === true &&
+            (alarmContentBelongsToManifestation(slot?.affirmationId, saved.id) ||
+              alarmContentBelongsToManifestation(slot?.visionId, saved.id))
+        );
       if (usedAsAlarm && (Platform.OS === 'ios' || Platform.OS === 'android')) {
         const capability = await getAffirmationAlarmCapability().catch(() => null);
         if (!capability) {
+          saveMorningRitualPreferences({ alarmSyncError: true });
           setReleaseError(true);
           return;
         }
         if (capability.supported === true || capability.nativeModuleAvailable === true) {
-          const cancelled = await cancelAffirmationAlarm();
-          if (!cancelled.ok) {
+          const cancelled = await cancelAffirmationAlarm().catch(() => null);
+          if (!cancelled?.ok) {
+            saveMorningRitualPreferences({ alarmSyncError: true });
             setReleaseError(true);
             return;
           }
+          saveMorningRitualPreferences({
+            reminderEnabled: false,
+            alarmSyncError: false,
+          });
         }
+      }
+      if (usedByActivePracticePlan && (Platform.OS === 'ios' || Platform.OS === 'android')) {
+        const cancelled = await cancelPracticePlanReminders().catch(() => null);
+        if (!cancelled?.ok) {
+          savePracticePlan({
+            ...state.practicePlan,
+            syncError: true,
+          });
+          setReleaseError(true);
+          return;
+        }
+        savePracticePlan({
+          ...state.practicePlan,
+          enabled: false,
+          notificationIdsBySlot: {},
+          syncError: false,
+        });
       }
       requestEpochRef.current += 1;
       if (activePlaybackIdRef.current === playbackId) {

@@ -15,7 +15,7 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { useT } from '../utils/useT';
 import { personalAffirmationsForState } from '../utils/personalAffirmations';
-import { personalJourneyItemsForState } from '../utils/personalJourney';
+import { personalVisionOptionsForState } from '../utils/personalJourney';
 import {
   MAX_PRACTICE_SLOTS,
   adjustPracticeSlotTime,
@@ -46,21 +46,21 @@ const S = {
   eyebrow: { pt: 'Compromisso gentil', en: 'Gentle commitment' },
   title: { pt: 'Plano Celeste', en: 'Celeste Plan' },
   subtitle: {
-    pt: 'Escolha sua visão, sua afirmação e até quatro momentos do dia.',
-    en: 'Choose your vision, affirmation, and up to four moments in your day.',
+    pt: 'Escolha sua visão ou Cena-Âncora, sua afirmação e até quatro momentos do dia.',
+    en: 'Choose your vision or Anchor Scene, affirmation, and up to four moments in your day.',
   },
   privacy: {
-    pt: 'Sua visão e sua afirmação ficam visíveis na prática. Você lê a afirmação duas vezes; áudio e transcrição não são salvos. A tela bloqueada mostra só um lembrete discreto.',
-    en: 'Your vision and affirmation remain visible during practice. You read the affirmation twice; audio and transcript are not stored. The lock screen only shows a discreet reminder.',
+    pt: 'Sua visão ou Cena-Âncora e sua afirmação ficam visíveis na prática. Você lê a afirmação duas vezes; áudio e transcrição não são salvos. A tela bloqueada mostra só um lembrete discreto.',
+    en: 'Your vision or Anchor Scene and affirmation remain visible during practice. You read the affirmation twice; audio and transcript are not stored. The lock screen only shows a discreet reminder.',
   },
-  noContentTitle: { pt: 'Crie sua primeira visão', en: 'Create your first vision' },
+  noContentTitle: { pt: 'Crie seu primeiro conteúdo pessoal', en: 'Create your first personal content' },
   noContentBody: {
-    pt: 'O plano usa somente visões e afirmações criadas a partir das suas respostas.',
-    en: 'The plan only uses visions and affirmations created from your answers.',
+    pt: 'O plano usa somente sua Cena-Âncora, visões e afirmações criadas a partir das suas respostas.',
+    en: 'The plan only uses your Anchor Scene, visions, and affirmations created from your answers.',
   },
   backHome: { pt: 'Voltar para o início', en: 'Go to Home' },
   affirmation: { pt: 'Afirmação do plano', en: 'Plan affirmation' },
-  vision: { pt: 'Visão do plano', en: 'Plan vision' },
+  vision: { pt: 'Visão ou Cena-Âncora do plano', en: 'Plan vision or Anchor Scene' },
   wake: { pt: 'Eu acordo por volta de', en: 'I wake around' },
   sleep: { pt: 'Eu durmo por volta de', en: 'I sleep around' },
   suggest: { pt: 'Sugerir os melhores horários', en: 'Suggest the best times' },
@@ -174,7 +174,7 @@ export default function PracticePlanScreen() {
   const { state, savePracticePlan } = useApp();
   const affirmations = useMemo(() => personalAffirmationsForState(state), [state]);
   const visions = useMemo(
-    () => personalJourneyItemsForState(state, 'vision', lang),
+    () => personalVisionOptionsForState(state, lang),
     [lang, state]
   );
   const options = useMemo(() => ({ affirmations, visions }), [affirmations, visions]);

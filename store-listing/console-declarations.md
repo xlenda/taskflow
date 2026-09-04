@@ -107,7 +107,7 @@ release que habilite provedores em nuvem; não representam a v1 Android.
 - manifestações, afirmações e histórico de prática;
 - relato completo dos Rastros de Mudança;
 - favoritos e visões salvas;
-- configuração dos lembretes locais e, somente no iPhone compatível, do despertador com afirmação;
+- configuração dos lembretes locais e, somente no iPhone compatível, do despertador com conteúdo pessoal escolhido;
 - horários, dias, seleção e recibos mínimos do Plano Celeste, sem áudio ou
   transcrição reconhecida;
 - nomes de filhos, pessoas importantes e pessoa específica nos campos próprios;
@@ -149,17 +149,19 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 ## Acesso para revisão
 
 1. Escolher português ou inglês e concluir o questionário.
-2. Usar a opção local para testar sem processadores de conteúdo em nuvem.
+2. Confirmar que a primeira Cena-Âncora é criada localmente por padrão, sem
+   pergunta de consentimento de nuvem no onboarding.
 3. Abrir Cena-Âncora, Ponte de Hoje e Ritual de Um Minuto.
 4. Registrar um sonho curto e gerar a afirmação local.
 5. Ativar o controle único com confirmação adulta para testar cena, sonho,
    imagem, tradução e narração em nuvem.
 6. Testar notificações no app instalado.
-7. Abrir o Plano Celeste, tocar para iniciar o microfone e ler a afirmação
-   visível duas vezes; conferir `1/2`, `2/2`, cancelamento, `Agora não`,
-   `Adiar 10 min` e conclusão manual.
-8. Testar o despertador somente em iPhone compatível com o módulo nativo; ele é
-   separado dos lembretes comuns do Plano Celeste.
+7. Abrir o Plano Celeste, escolher uma visão ou Cena-Âncora, tocar para iniciar
+   o microfone e ler a afirmação visível duas vezes; conferir `1/2`, `2/2`,
+   cancelamento, `Agora não`, `Adiar 10 min` e conclusão manual.
+8. Testar o despertador somente em iPhone compatível com o módulo nativo,
+   incluindo afirmação, visão, Cena-Âncora, frase de sonho e frase própria; ele
+   é separado dos lembretes comuns do Plano Celeste.
 9. Enviar uma denúncia e usar `Perfil > Excluir denúncias de conteúdo de IA
    enviadas`; verificar também a mensagem de ausência quando não existe sessão.
 10. Em Jornada, exportar o JSON legível; no app conferir a folha de

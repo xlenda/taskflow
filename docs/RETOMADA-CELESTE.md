@@ -15,10 +15,11 @@ Deployment: `dpl_DmQVkysrRN9hMgCU9WRXKXtf5bGV`
 - Não existe mais catálogo de afirmações, visões ou práticas prontas. A fonte
   canônica das telas é a manifestação criada com as respostas da própria pessoa
   e os relatos pessoais salvos no diário de sonhos.
-- Ao terminar o questionário ou criar um novo desejo, o Celeste gera e salva a
-  cena, a afirmação, a história e a ponte prática. Com consentimento adulto, o
-  Gemini pode enriquecer essa criação; sem consentimento ou sem rede, a criação
-  local continua pessoal e utilizável.
+- Ao terminar o questionário, o Celeste gera e salva localmente a cena, a
+  afirmação, a história e a ponte prática, com o processamento em nuvem
+  desligado. Depois do onboarding, uma pessoa adulta pode ativar o controle
+  opcional de nuvem; sem essa escolha ou sem rede, a criação local continua
+  pessoal e utilizável.
 - `Aurora`, `Rio`, `Atlas`, `Serena`, `Luma` e `Nilo` são seis vozes Gemini
   curadas. A escolha fica persistida no aparelho e é a mesma nos cards, cenas,
   visões, sonhos e prévia do despertador.
@@ -75,7 +76,7 @@ os seguintes bugs confirmados:
 - respostas Gemini que chegam depois de reset/importação são descartadas;
 - o reset limpa as chaves auxiliares, aplica o mesmo estado em memória antes de
   um ACK tardio e mostra erro quando o armazenamento não confirma a operação;
-- troca de frase, horário ou sonho do despertador reconcilia o estado real do
+- troca de conteúdo, horário ou fonte do despertador reconcilia o estado real do
   AlarmKit após falha, sem exibir alarme fantasma;
 - cancelamento/agendamento concluído depois de sair da tela continua atualizando
   o estado real, e o reconhecimento de voz é abortado no unmount;
@@ -94,7 +95,7 @@ Portões aprovados no deployment:
 - paridade PT/EN: `46` arquivos e auditoria visual sem vazamentos;
 - QA Zeus da Comunidade: `99` verificações, zero falhas e zero erros de console,
   página ou rede;
-- E2E completo: abertura, 28 etapas, paywall, persistência, sonho, Perfil,
+- E2E completo: abertura, 27 etapas, paywall, persistência, sonho, Perfil,
   Comunidade e app principal;
 - responsividade aprovada em `320×480`, `390×844` e desktop.
 
@@ -149,8 +150,8 @@ alcance em telas pequenas. A correção foi concluída e publicada em
 - As gravações são seriais e coalescidas; uma escrita antiga nunca pode terminar
   depois e sobrescrever a versão mais recente.
 - Produção passou no teste de leitura que nunca resolve, autoplay bloqueado,
-  armazenamento rejeitado, onboarding completo com Gemini e três famílias de
-  viewport.
+  armazenamento rejeitado, onboarding completo no caminho local e três famílias
+  de viewport.
 
 ## Estado confirmado
 
@@ -181,10 +182,10 @@ Correção aplicada:
 
 ### 2. “Transformando suas respostas”
 
-`goNext` liga `creating=true` e aguarda `addManifestation`, mas não possui
-`catch/finally`. Uma exceção inesperada pode deixar a tela carregando para
-sempre. O Gemini também pode levar de alguns segundos até o timeout atual de 22
-segundos, embora exista fallback local dentro de `addManifestation`.
+`goNext` liga `creating=true` e aguarda `addManifestation`. O onboarding atual
+força a primeira criação local e não aguarda processador de nuvem. Ainda assim,
+uma exceção inesperada pode deixar a tela carregando para sempre sem a proteção
+de `catch/finally`.
 
 Arquivos: `screens/onboarding/ChatOnboardingScreen.js`,
 `context/AppContext.js` e `services/generatePersonalizedScene.js`.

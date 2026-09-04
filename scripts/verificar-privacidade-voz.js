@@ -204,8 +204,12 @@ assert.match(morningRitualSource, /cloudDreamConsent === true/, 'Dream upload ne
 assert.match(dreamServiceSource, /cloudDreamConsent !== true/, 'Dream service must fail closed without dream consent');
 
 // Every consent and legal surface must name the processor used for each purpose.
+assert.doesNotMatch(
+  onboardingFlowSource,
+  /cloudPersonalization/,
+  'Onboarding must not request bundled cloud consent'
+);
 for (const [label, source] of [
-  ['onboarding', onboardingFlowSource],
   ['Profile confirmation', profileSource],
   ['privacy and terms', legalSource],
 ]) {

@@ -344,7 +344,7 @@ test('Gemini scene API contract', async (t) => {
     assert.strictEqual(calls, 0);
   });
 
-  await t.test('onboarding and Profile persist the same explicit adult-consent field', () => {
+  await t.test('onboarding stays local and Profile owns explicit adult cloud consent', () => {
     const flowSource = fs.readFileSync(
       path.join(__dirname, '..', 'screens', 'onboarding', 'flow.js'),
       'utf8'
@@ -357,8 +357,12 @@ test('Gemini scene API contract', async (t) => {
       path.join(__dirname, '..', 'screens', 'ProfileScreen.js'),
       'utf8'
     );
-    assert.match(flowSource, /when:\s*\(answers\)\s*=>\s*ageConfirmsAdult\(answers\.age\)/);
-    assert.match(chatSource, /cloudAdultConfirmed:\s*allowed/);
+    assert.doesNotMatch(flowSource, /id:\s*['"]cloudPersonalization['"]/);
+    assert.match(
+      chatSource,
+      /cloudConsentVersion:\s*null,[\s\S]*cloudPersonalization:\s*false,[\s\S]*cloudAdultConfirmed:\s*false,[\s\S]*cloudDreamConsent:\s*false/
+    );
+    assert.doesNotMatch(chatSource, /CLOUD_CONSENT_VERSION/);
     assert.match(profileSource, /cloudPersonalization:\s*true[\s\S]*cloudAdultConfirmed:\s*true[\s\S]*cloudDreamConsent:\s*true/);
     assert.match(profileSource, /cloudPersonalization:\s*false[\s\S]*cloudAdultConfirmed:\s*false[\s\S]*cloudDreamConsent:\s*false/);
     assert.match(profileSource, /isUnder18Age\(state\.profile/);

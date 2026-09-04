@@ -95,17 +95,17 @@ const S = {
     pt: 'Transforme o que ficou dele numa afirmação só sua',
   },
   morningSaved: { en: '{n} dream affirmations saved', pt: '{n} afirmações de sonhos salvas' },
-  alarmTitle: { en: 'Affirmation alarm', pt: 'Despertador com afirmação' },
+  alarmTitle: { en: 'My alarm', pt: 'Meu despertador' },
   alarmEmpty: {
     en: 'Choose your phrase, time, and days of the week',
     pt: 'Escolha sua frase, horário e dias da semana',
   },
-  morningPrepared: { en: 'Affirmation chosen for {time}', pt: 'Afirmação escolhida para {time}' },
+  morningPrepared: { en: 'Content selected for {time}', pt: 'Conteúdo escolhido para {time}' },
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
   practicePlanTitle: { en: 'Celeste Plan', pt: 'Plano Celeste' },
   practicePlanEmpty: {
-    en: 'Choose your vision, affirmation, and moments of the day',
-    pt: 'Escolha sua visão, afirmação e momentos do dia',
+    en: 'Choose your vision or Anchor Scene, affirmation, and moments of the day',
+    pt: 'Escolha sua visão ou Cena-Âncora, afirmação e momentos do dia',
   },
   practicePlanActive: {
     en: 'Reminders at {times}',

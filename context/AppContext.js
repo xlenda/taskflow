@@ -16,13 +16,19 @@ import {
   normalizePracticePlan,
   practiceContentFingerprint,
 } from '../utils/practicePlan';
-import { personalAffirmationsForState } from '../utils/personalAffirmations';
+import {
+  alarmContentBelongsToManifestation,
+  personalAffirmationsForState,
+  personalAlarmContentForState,
+  resolvePersonalAlarmContent,
+} from '../utils/personalAffirmations';
 import {
   JOURNEY_CATEGORIES,
   buildPersonalJourneySuites,
   journeyVisualStatusKey,
   normalizePersonalJourneySuite,
   personalJourneyItemsForState,
+  personalVisionOptionsForState,
 } from '../utils/personalJourney';
 import {
   applyTranslatedManifestationVariant,
@@ -142,7 +148,7 @@ const shortText = (value, max) =>
 function practiceOptionsForState(state) {
   const lang = state?.lang === 'en' ? 'en' : 'pt';
   const affirmations = personalAffirmationsForState(state);
-  const visions = personalJourneyItemsForState(state, 'vision', lang);
+  const visions = personalVisionOptionsForState(state, lang);
   return {
     affirmations,
     affirmationIds: affirmations.map((item) => shortText(item?.id, 160)).filter(Boolean),
@@ -732,6 +738,9 @@ function mergeDefensivo(parsed) {
   const personalVisionItems = personalJourneyItemsForState(st, 'vision', st.lang);
   const personalAffirmationIds = new Set(personalAffirmationItems.map((item) => item.id));
   const personalVisionIds = new Set(personalVisionItems.map((item) => item.id));
+  const practiceVisionIds = new Set(
+    personalVisionOptionsForState(st, st.lang).map((item) => item.id)
+  );
   const ritualIds = new Set(
     (st.morningRitual.entries || []).map((entry) => `ritual:${entry.id}`)
   );
@@ -739,37 +748,24 @@ function mergeDefensivo(parsed) {
     (id) => personalAffirmationIds.has(id) || ritualIds.has(id)
   );
   st.savedVisions = st.savedVisions.filter((id) => personalVisionIds.has(id));
-  st.visionPlays = st.visionPlays.filter((play) => personalVisionIds.has(play.visionId));
+  st.visionPlays = st.visionPlays.filter((play) => practiceVisionIds.has(play.visionId));
   st.practicePlan = normalizePracticePlan(st.practicePlan, practiceOptionsForState(st));
 
   const wakeId = st.morningRitual.wakeAffirmationId;
-  const validWakeId =
-    !wakeId ||
-    wakeId === 'custom' ||
-    personalAffirmationIds.has(wakeId) ||
-    ritualIds.has(wakeId);
-  if (!validWakeId) {
-    const fallbackAffirmation = personalAffirmationItems.find(
-      (item) => typeof item.text === 'string' && item.text.trim()
-    );
-    const fallbackDream = (st.morningRitual.entries || []).find(
-      (entry) => typeof entry.affirmation === 'string' && entry.affirmation.trim()
-    );
-    const fallbackWake = fallbackAffirmation
-      ? {
-          id: fallbackAffirmation.id,
-          text: fallbackAffirmation.text.trim(),
-          lang: fallbackAffirmation.lang === 'en' ? 'en' : 'pt',
-        }
-      : fallbackDream
-        ? {
-            id: `ritual:${fallbackDream.id}`,
-            text: fallbackDream.affirmation.trim(),
-            lang: fallbackDream.lang === 'en' ? 'en' : 'pt',
-          }
-        : null;
+  const resolvedWake = resolvePersonalAlarmContent(st);
+  if (!wakeId) {
+    st.morningRitual.reminderEnabled = false;
+    st.morningRitual.alarmSyncError = false;
+    st.morningRitual.wakeAffirmationText = '';
+    st.morningRitual.wakeNarratorId = null;
+    st.morningRitual.wakeSoundSource = null;
+  } else if (!resolvedWake) {
+    const fallbackWake = personalAlarmContentForState(st).find(
+      (item) => item.id !== 'custom' && item.text
+    ) || null;
     st.morningRitual.wakeAffirmationId = fallbackWake ? fallbackWake.id : null;
-    st.morningRitual.wakeAffirmationText = fallbackWake ? fallbackWake.text : '';
+    st.morningRitual.wakeAffirmationText =
+      fallbackWake && !st.morningRitual.reminderEnabled ? fallbackWake.text : '';
     st.morningRitual.wakeAffirmationLang = fallbackWake ? fallbackWake.lang : st.lang;
     st.morningRitual.wakeNarratorId = null;
     st.morningRitual.wakeSoundSource = null;
@@ -781,6 +777,19 @@ function mergeDefensivo(parsed) {
     } else {
       st.morningRitual.reminderEnabled = false;
       st.morningRitual.alarmSyncError = false;
+    }
+  } else {
+    const contentChanged =
+      st.morningRitual.wakeAffirmationText !== resolvedWake.text ||
+      st.morningRitual.wakeAffirmationLang !== resolvedWake.lang;
+    if (contentChanged && st.morningRitual.reminderEnabled) {
+      // Keep the last native-confirmed text as the cache. NativeAlarmContentSync
+      // must see the difference and replace the actual audio before this cache
+      // is advanced to the freshly resolved content.
+      st.morningRitual.alarmSyncError = true;
+    } else {
+      st.morningRitual.wakeAffirmationText = resolvedWake.text;
+      st.morningRitual.wakeAffirmationLang = resolvedWake.lang;
     }
   }
   return st;
@@ -2590,8 +2599,20 @@ export function AppProvider({ children }) {
     setState((s) => {
       const affirmationPrefix = `${id}:affirmation:`;
       const visionPrefix = `${id}:vision:`;
-      const usedAsAlarm = String(s.morningRitual?.wakeAffirmationId || '').startsWith(
-        affirmationPrefix
+      const usedAsAlarm = alarmContentBelongsToManifestation(
+        s.morningRitual?.wakeAffirmationId,
+        id
+      );
+      const usedByPracticePlan = (s.practicePlan?.slots || []).some(
+        (slot) =>
+          alarmContentBelongsToManifestation(slot?.affirmationId, id) ||
+          alarmContentBelongsToManifestation(slot?.visionId, id)
+      );
+      const usedByEnabledPracticeSlot = (s.practicePlan?.slots || []).some(
+        (slot) =>
+          slot?.enabled === true &&
+          (alarmContentBelongsToManifestation(slot?.affirmationId, id) ||
+            alarmContentBelongsToManifestation(slot?.visionId, id))
       );
       const remainingManifestations = s.manifestations.filter((m) => m.id !== id);
       const nextAnchor = s.anchorSceneId === id
@@ -2599,7 +2620,7 @@ export function AppProvider({ children }) {
           remainingManifestations[remainingManifestations.length - 1] ||
           null
         : null;
-      return {
+      const nextState = {
         ...s,
         anchorSceneId: s.anchorSceneId === id ? nextAnchor?.id || null : s.anchorSceneId,
         manifestations: remainingManifestations.map((item) =>
@@ -2614,13 +2635,16 @@ export function AppProvider({ children }) {
           (visionId) => !String(visionId).startsWith(visionPrefix)
         ),
         visionPlays: s.visionPlays.filter(
-          (play) => !String(play?.visionId || '').startsWith(visionPrefix)
+          (play) =>
+            !String(play?.visionId || '').startsWith(visionPrefix) &&
+            play?.visionId !== `anchor:${id}`
         ),
         ...(usedAsAlarm
           ? {
               morningRitual: {
                 ...s.morningRitual,
                 reminderEnabled: false,
+                alarmSyncError: false,
                 wakeAffirmationId: null,
                 wakeAffirmationText: '',
                 wakeAffirmationLang: s.lang === 'en' ? 'en' : 'pt',
@@ -2630,6 +2654,22 @@ export function AppProvider({ children }) {
             }
           : {}),
       };
+      if (usedByPracticePlan) {
+        nextState.practicePlan = normalizePracticePlan(
+          {
+            ...s.practicePlan,
+            ...(s.practicePlan?.enabled && usedByEnabledPracticeSlot
+              ? {
+                  enabled: false,
+                  notificationIdsBySlot: {},
+                  syncError: false,
+                }
+              : {}),
+          },
+          practiceOptionsForState(nextState)
+        );
+      }
+      return nextState;
     });
   }, [setPersonalVisualPhase]);
 

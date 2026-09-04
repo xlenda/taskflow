@@ -47,7 +47,13 @@ assert.strictEqual(schedule.normalizeAlarmWeekdays([1, '2']), null);
 assert.deepStrictEqual(schedule.alarmWeekdaysOrDefault(undefined), [1, 2, 3, 4, 5, 6, 7]);
 assert.deepStrictEqual(schedule.alarmWeekdaysOrDefault([]), [1, 2, 3, 4, 5, 6, 7]);
 
-const { alarmAffirmationText, personalAffirmationsForState } = loadPureModule('utils/personalAffirmations.js');
+const {
+  alarmAffirmationText,
+  alarmContentBelongsToManifestation,
+  personalAffirmationsForState,
+  personalAlarmContentForState,
+  resolvePersonalAlarmContent,
+} = loadPureModule('utils/personalAffirmations.js');
 const longAlarmText = alarmAffirmationText(`Eu escolho ${'presença e coragem '.repeat(30)}`);
 assert.ok(longAlarmText.length > 0 && longAlarmText.length <= 280, 'frase longa do alarme deve ser cortada com segurança');
 const affirmations = personalAffirmationsForState({
@@ -63,7 +69,7 @@ const affirmations = personalAffirmationsForState({
   },
 });
 assert.deepStrictEqual(
-  affirmations.map(({ id, text, lang, source }) => ({ id, text, lang, source })),
+  affirmations,
   [
     { id: 'manifestation:m1', text: 'Eu avanço com calma.', lang: 'pt', source: 'manifestation' },
     { id: 'ritual:d1', text: 'I trust my next step.', lang: 'en', source: 'dream' },
@@ -72,13 +78,68 @@ assert.deepStrictEqual(
   'o despertador deve listar apenas conteúdo pessoal válido'
 );
 
+const richState = {
+  lang: 'pt',
+  anchorSceneId: 'm-rich',
+  manifestations: [{
+    id: 'm-rich',
+    title: 'Meu caminho',
+    story: 'Eu vejo meu caminho com detalhes, presença e escolhas possíveis.',
+    affirmation: 'Eu sigo com presença.',
+    lang: 'pt',
+    journeySuiteByLang: {
+      pt: {
+        affirmations: [{ category: 'Peace', text: 'Eu cultivo paz no próximo passo.' }],
+        visions: [{ category: 'Peace', title: 'Um dia sereno', story: 'Eu vivo um dia sereno e possível.' }],
+      },
+    },
+  }],
+  morningRitual: {
+    wakeAffirmationId: 'anchor:m-rich',
+    wakeAffirmationText: 'texto antigo',
+    wakeAffirmationLang: 'pt',
+    entries: [{ id: 'd-rich', affirmation: 'Eu recebo a manhã.', lang: 'pt' }],
+  },
+};
+const alarmContent = personalAlarmContentForState(richState);
+assert.ok(alarmContent.some((item) => item.source === 'affirmation'), 'afirmação pessoal ausente');
+assert.ok(alarmContent.some((item) => item.source === 'vision'), 'visão pessoal ausente');
+assert.ok(alarmContent.some((item) => item.id === 'anchor:m-rich' && item.source === 'anchor'), 'Cena-Âncora ausente');
+assert.ok(alarmContent.some((item) => item.id === 'ritual:d-rich' && item.source === 'dream'), 'sonho deixou de ser opção');
+assert.ok(alarmContent.some((item) => item.id === 'manifestation:m-rich'), 'ID legado deixou de ser resolvível');
+assert.strictEqual(resolvePersonalAlarmContent(richState)?.id, 'anchor:m-rich');
+for (const contentId of [
+  'manifestation:m-rich',
+  'anchor:m-rich',
+  'm-rich:affirmation:Peace',
+  'm-rich:vision:Peace',
+]) {
+  assert.strictEqual(
+    alarmContentBelongsToManifestation(contentId, 'm-rich'),
+    true,
+    `${contentId} precisa ser limpo junto com sua manifestação`
+  );
+}
+assert.strictEqual(alarmContentBelongsToManifestation('ritual:d-rich', 'm-rich'), false);
+
 const screen = read('screens/AffirmationAlarmScreen.js');
 const activation = screen.slice(screen.indexOf('const activate = useCallback'), screen.indexOf('const deactivate = useCallback'));
 const webSave = screen.slice(screen.indexOf('const saveWebChoice = useCallback'), screen.indexOf('const deactivate = useCallback'));
 const cancellation = screen.slice(screen.indexOf('const deactivate = useCallback'), screen.indexOf('const goBack = useCallback'));
 const selection = screen.slice(screen.indexOf('const choose = useCallback'), screen.indexOf('const chooseCustom = useCallback'));
 
-assert.ok(screen.includes('personalAffirmationsForState(state)'), 'lista pessoal compartilhada ausente');
+for (const label of ['Afirmação', 'Visão', 'Cena-Âncora', 'Sonho', 'Sua frase']) {
+  assert.ok(screen.includes(label), `seletor do despertador perdeu o rótulo ${label}`);
+}
+
+assert.ok(
+  screen.includes('personalAlarmContentForState(state)') &&
+    screen.includes('resolvePersonalAlarmContent(state)'),
+  'lista e resolução compartilhadas de conteúdo pessoal estão ausentes'
+);
+for (const source of ['affirmation', 'vision', 'anchor', 'dream', 'custom']) {
+  assert.ok(screen.includes(`source === '${source}'`), `rótulo do conteúdo ${source} ausente`);
+}
 assert.ok(screen.includes('testID="alarm-time-input"'), 'horário editável ausente');
 assert.ok(screen.includes('accessibilityRole="checkbox"'), 'dias devem ser checkboxes acessíveis');
 for (let day = 1; day <= 7; day += 1) {
@@ -199,6 +260,23 @@ const home = read('screens/HomeScreen.js');
 assert.ok(home.includes('testID="open-dream-journal"'), 'atalho de sonhos ausente da Home');
 assert.ok(home.includes('testID="open-affirmation-alarm"'), 'atalho separado do despertador ausente da Home');
 assert.ok(home.includes("navigation.navigate('AffirmationAlarm')"), 'Home não abre a nova tela');
+assert.ok(
+  home.includes("alarmTitle: { en: 'My alarm', pt: 'Meu despertador' }") &&
+    home.includes("morningPrepared: { en: 'Content selected for {time}', pt: 'Conteúdo escolhido para {time}' }"),
+  'Home não pode reduzir o conteúdo escolhido do despertador a uma afirmação'
+);
+
+assert.ok(
+  morning.includes('usar o conteúdo escolhido como despertador real') &&
+    morning.includes('The alarm content could not be confirmed'),
+  'mensagens legadas do despertador ainda tratam todo conteúdo como afirmação'
+);
+
+const appConfig = JSON.parse(read('app.json'));
+const alarmUsage = appConfig.expo?.ios?.infoPlist?.NSAlarmKitUsageDescription || '';
+for (const label of ['afirmação', 'visão', 'Cena-Âncora', 'frase de sonho', 'frase própria']) {
+  assert.ok(alarmUsage.includes(label), `NSAlarmKitUsageDescription omite ${label}`);
+}
 
 assert.ok(home.includes('testID="open-community-home"'), 'comunidade continua escondida fora da Home');
 
@@ -211,9 +289,9 @@ assert.ok(context.includes('normalizeAlarmWeekdays(patch.weekdays)'), 'patch de 
 assert.ok(content.includes('wakeNarratorId: null'), 'estado inicial não acompanha a voz do despertador');
 assert.ok(context.includes('isNarratorId(savedRitual.wakeNarratorId)'), 'voz salva do alarme não é validada');
 assert.ok(
-  app.includes("import { alarmAffirmationText } from './utils/personalAffirmations'") &&
-    app.includes('alarmAffirmationText(manifestation && manifestation.affirmation)'),
-  'sincronização nativa deve usar exatamente o mesmo corte mostrado na tela'
+  app.includes("import { resolvePersonalAlarmContent } from './utils/personalAffirmations'") &&
+    app.includes('return resolvePersonalAlarmContent(state)'),
+  'sincronização nativa deve usar o mesmo resolvedor validado mostrado na tela'
 );
 
 process.stdout.write('Tela de despertador separada, transacional e recorrente aprovada\n');

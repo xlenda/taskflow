@@ -4,8 +4,8 @@
 export const SUPPORT_EMAIL = 'suporte@celestegroup.biz';
 
 export const LEGAL_UPDATED = {
-  en: 'Updated September 3, 2026',
-  pt: 'Atualizado em 3 de setembro de 2026',
+  en: 'Updated September 4, 2026',
+  pt: 'Atualizado em 4 de setembro de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -17,8 +17,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Solicitações opcionais em nuvem e denúncias de conteúdo de IA usam uma sessão técnica pseudônima para autorizar pedidos, aplicar limites e prevenir abuso; ela não é uma conta pessoal.',
       },
       {
-        en: 'Your onboarding answers personalize the experience. A single adult cloud control covers optional requests through Celeste\'s backend. Anthropic normally generates personalized scene text and OpenAI is its failover; if neither text provider is configured and approved Gemini processing is available, Google Gemini may generate the scene. Gemini also handles translations, images and dream interpretations, while ElevenLabs handles text-to-speech. Profiles marked Under 18 always use the on-device options.',
-        pt: 'Suas respostas do questionário personalizam a experiência. Um único controle adulto de nuvem abrange solicitações opcionais pelo backend do Celeste. A Anthropic normalmente gera textos de cenas personalizadas e a OpenAI é sua alternativa; se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Google Gemini poderá gerar a cena. O Gemini também faz traduções, imagens e interpretações de sonhos, enquanto a ElevenLabs faz texto para fala. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
+        en: 'Your onboarding answers personalize the experience. Onboarding creates the first practice on the device and leaves cloud processing off. After onboarding, a single adult cloud control covers optional requests through Celeste\'s backend. Anthropic normally generates personalized scene text and OpenAI is its failover; if neither text provider is configured and approved Gemini processing is available, Google Gemini may generate the scene. Gemini also handles translations, images and dream interpretations, while ElevenLabs handles text-to-speech. Profiles marked Under 18 always use the on-device options.',
+        pt: 'Suas respostas do questionário personalizam a experiência. O questionário cria a primeira prática no aparelho e deixa o processamento em nuvem desligado. Depois do questionário, um único controle adulto de nuvem abrange solicitações opcionais pelo backend do Celeste. A Anthropic normalmente gera textos de cenas personalizadas e a OpenAI é sua alternativa; se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Google Gemini poderá gerar a cena. O Gemini também faz traduções, imagens e interpretações de sonhos, enquanto a ElevenLabs faz texto para fala. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
       },
     ],
   },
@@ -38,8 +38,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'Favoritos e histórico de práticas usados para calcular sua jornada e sequência.',
       },
       {
-        en: 'On a compatible iPhone, your chosen affirmation-alarm time and sound. On Android, only ordinary reminder times and days are available in this release. Dream notes and locally generated affirmations you choose to save also stay on the device.',
-        pt: 'Em iPhone compatível, o horário e o som escolhidos para o despertador com afirmação. No Android, somente horários e dias de lembretes comuns estão disponíveis nesta versão. Sonhos e afirmações geradas localmente que você decidir guardar também ficam no aparelho.',
+        en: 'On a compatible iPhone, the time and sound for your selected alarm content: an affirmation, vision, Anchor Scene, dream phrase or your own phrase. On Android, only ordinary reminder times and days are available in this release. Dream notes and locally generated affirmations you choose to save also stay on the device.',
+        pt: 'Em iPhone compatível, o horário e o som do conteúdo escolhido para o despertador: uma afirmação, visão, Cena-Âncora, frase de sonho ou frase própria. No Android, somente horários e dias de lembretes comuns estão disponíveis nesta versão. Sonhos e afirmações geradas localmente que você decidir guardar também ficam no aparelho.',
       },
     ],
   },
@@ -85,12 +85,12 @@ export const PRIVACY_SECTIONS = [
         pt: 'Se você ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe apenas a transcrição, nunca envia a gravação por conta própria e só envia o texto ao Gemini quando você pedir a reflexão em nuvem com consentimento; caso contrário, usa a alternativa local.',
       },
       {
-        en: 'Only the installed app on a compatible iPhone offers the affirmation system alarm in this release. It may request Alarm access and create a private on-device audio file for the selected affirmation. Android does not offer this exact affirmation alarm; it offers ordinary notifications only. The website cannot schedule either system alarm or reminder.',
-        pt: 'Somente o app instalado em um iPhone compatível oferece o despertador do sistema com afirmação nesta versão. Ele pode pedir acesso aos Alarmes e criar um áudio privado no aparelho para a afirmação escolhida. O Android não oferece esse despertador exato com afirmação; oferece apenas notificações comuns. O site não agenda alarmes nem lembretes do sistema.',
+        en: 'Only the installed app on a compatible iPhone offers the personal-content system alarm in this release. It may request Alarm access and create a private on-device audio file for the selected affirmation, vision, Anchor Scene, dream phrase or personal phrase. Android does not offer this exact alarm; it offers ordinary notifications only. The website cannot schedule either system alarm or reminder.',
+        pt: 'Somente o app instalado em um iPhone compatível oferece o despertador do sistema com conteúdo pessoal nesta versão. Ele pode pedir acesso aos Alarmes e criar um áudio privado no aparelho para a afirmação, visão, Cena-Âncora, frase de sonho ou frase própria escolhida. O Android não oferece esse despertador exato; oferece apenas notificações comuns. O site não agenda alarmes nem lembretes do sistema.',
       },
       {
-        en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream or affirmation. The website cannot schedule this system reminder.',
-        pt: 'Se você ativar o lembrete do ritual diário no app instalado, o Celeste pede permissão para notificações e o agenda naquele aparelho. O texto na tela bloqueada é propositalmente genérico e nunca inclui seu desejo, sonho ou afirmação. O site não consegue agendar esse lembrete do sistema.',
+        en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream, vision, Anchor Scene or affirmation. The website cannot schedule this system reminder.',
+        pt: 'Se você ativar o lembrete do ritual diário no app instalado, o Celeste pede permissão para notificações e o agenda naquele aparelho. O texto na tela bloqueada é propositalmente genérico e nunca inclui seu desejo, sonho, visão, Cena-Âncora ou afirmação. O site não consegue agendar esse lembrete do sistema.',
       },
     ],
   },

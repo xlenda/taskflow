@@ -23,9 +23,11 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - Informar Apple Team ID, Apple ID da conta de submissao, ASC App ID numerico,
   SKU e dados de contato da revisao.
 - Publicar e confirmar as URLs HTTPS de privacidade e suporte.
-- Validar o AlarmKit em iPhone compativel e anexar instrucoes de revisao.
-- Validar o Plano Celeste em iPhone fisico: permissao pedida somente depois do
-  toque, indicador de escuta, frase sempre visivel, progresso `1/2` e `2/2`,
+- Validar o AlarmKit em iPhone compativel com afirmacao, visao, Cena-Ancora,
+  frase de sonho e frase propria, e anexar instrucoes de revisao.
+- Validar o Plano Celeste em iPhone fisico: visao ou Cena-Ancora e afirmacao
+  sempre visiveis, permissao pedida somente depois do toque, indicador de escuta,
+  progresso `1/2` e `2/2` para a afirmacao,
   cancelamento, adiamento e conclusao manual acessivel. O reconhecimento deve
   permanecer no aparelho quando o modelo/idioma oferecer suporte e nunca usar
   a nuvem como fallback silencioso.
@@ -131,11 +133,11 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   Legacy Architecture e projetos CNG precisam regenerar `ios/` e `android/`.
 - Conferir o comportamento e o som do video de abertura em um dispositivo do
   build final; o componente ja usa o contrato `fullscreenOptions` do SDK 57.
-- Em Android e iOS reais, testar os lembretes com app aberto, em segundo plano e
+- Em Android e iOS reais, testar visao e Cena-Ancora no Plano e os lembretes com app aberto, em segundo plano e
   encerrado; permissao concedida/negada; reconhecedor local disponivel/ausente;
   dois acertos consecutivos; duas falhas; `Agora nao`; `Adiar 10 min`; tela
   bloqueada; reinicio; economia de bateria; mudanca de idioma, horario e fuso.
-- Confirmar que a frase fica legivel durante toda a escuta, que o app nunca
+- Confirmar que a visao ou Cena-Ancora e a afirmacao ficam legiveis durante toda a escuta, que o app nunca
   exige memorizacao, que o restante do aparelho nao e bloqueado e que nenhum
   audio ou texto reconhecido aparece em backup, log ou trafego de rede.
 

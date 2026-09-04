@@ -10,6 +10,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 ## Conteudo personalizado
 
 - A Celeste funciona sem personalizacao em nuvem por meio do gerador local.
+- O onboarding cria a primeira Cena-Âncora no aparelho e deixa o processamento
+  em nuvem desligado; não existe pergunta de consentimento no fim do questionário.
 - Os textos de cenas usam Anthropic, com OpenAI como failover; se nenhum deles
   estiver configurado e o processamento aprovado do Gemini estiver disponível,
   o Gemini também poderá gerar a cena. Traducoes, imagens e interpretacoes de
@@ -35,12 +37,13 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 
 ## Recursos por plataforma
 
-- O despertador com afirmacao usa AlarmKit e so deve ser revisado em iPhone
-  compativel. A web e o Android nao anunciam nem simulam esse alarme do sistema.
+- O despertador com conteúdo pessoal usa AlarmKit e so deve ser revisado em
+  iPhone compativel. Ele aceita afirmação, visão, Cena-Âncora, frase de sonho ou
+  frase própria. A web e o Android nao anunciam nem simulam esse alarme do sistema.
 - O lembrete do Ritual de Um Minuto usa notificacao local quando permitido.
 - O Plano Celeste usa de um a quatro lembretes locais comuns; nao e alarme exato
   e pode sofrer atraso do sistema. Ele nao bloqueia o aparelho.
-- Visao e afirmacao ficam visiveis durante a pratica. O microfone comeca
+- A visão ou Cena-Âncora e a afirmacao ficam visiveis durante a pratica. O microfone comeca
   somente apos toque e a afirmacao e lida duas vezes, com progresso `1/2` e
   `2/2`. O app aceita apenas reconhecimento no dispositivo quando suportado;
   caso contrario, oferece conclusao manual acessivel.
@@ -54,11 +57,12 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 ## Passos sugeridos ao revisor
 
 1. Abrir o app e escolher portugues ou ingles.
-2. Concluir o questionario usando `Criar no aparelho` para testar sem nuvem.
+2. Concluir o questionario; a primeira Cena-Âncora é criada no aparelho, com a
+   nuvem desligada e sem pergunta de consentimento no onboarding.
 3. Abrir a Cena-Âncora, a Ponte de Hoje e o Ritual de Um Minuto.
 4. Em Sonhos, registrar um relato curto e gerar a afirmacao local.
 5. Em Perfil, conferir os controles de voz, privacidade e reset.
-6. Abrir o Plano Celeste pela Inicio, escolher uma visao e uma afirmacao e
+6. Abrir o Plano Celeste pela Inicio, escolher uma visao ou Cena-Âncora e uma afirmacao e
    testar um lembrete comum.
 7. Tocar para iniciar o microfone, ler a frase visivel duas vezes e conferir o
    progresso `1/2` e `2/2`; testar tambem cancelamento, adiamento e conclusao
@@ -72,10 +76,11 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   tocar `Transformar em afirmacao`.
 - Ritual: `Inicio > Seu minuto Celeste`; o lembrete local aparece nas opcoes do
   ritual quando o build suporta notificacoes.
-- Plano Celeste: `Inicio > Plano Celeste`; a visao e a afirmacao permanecem na
+- Plano Celeste: `Inicio > Plano Celeste`; a visao ou Cena-Âncora e a afirmacao permanecem na
   tela. Audio e transcricao nao sao retidos nem enviados.
-- Despertador: `Inicio > Despertador com afirmacao`; requer app instalado em
-  iPhone compativel e permissao de Alarmes. Nao testar como recurso Android.
+- Despertador: `Inicio > Meu despertador`; permite escolher afirmação, visão,
+  Cena-Âncora, frase de sonho ou frase própria e requer app instalado em iPhone
+  compativel com permissao de Alarmes. Nao testar como recurso Android.
 - Privacidade: `Perfil > Privacidade e dados`.
 - Denúncias: `Perfil > Excluir denúncias de conteúdo de IA enviadas`.
 - Backup: `Jornada > Cópia de segurança`; no app, conferir a share sheet.

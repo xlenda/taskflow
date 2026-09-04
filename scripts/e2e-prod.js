@@ -379,32 +379,28 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'nome da pessoa que você está manifestando', 30000);
   await typeAnswer(page, 'Alex');
 
-  await page.setViewport({ width: 320, height: 480 });
-  await waitForText(page, 'processamento opcional em nuvem', 30000);
-  await sleep(1000);
-  await assertChips(page, ['Permitir', 'Criar no aparelho'], 'consentimento Gemini');
-  const compactConsent = await page.evaluate(() => {
-    const visibleLeaf = (text) =>
-      [...document.querySelectorAll('div, span')].find(
-        (el) => el.children.length === 0 && el.textContent.trim() === text && el.offsetParent !== null
-      );
-    const buttons = ['Permitir', 'Criar no aparelho'].map(visibleLeaf).filter(Boolean);
-    const bottom = buttons.length ? Math.max(...buttons.map((el) => el.getBoundingClientRect().bottom)) : Infinity;
-    return {
-      buttons: buttons.length,
-      fits: bottom <= window.innerHeight,
-      horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
-    };
-  });
-  if (compactConsent.buttons !== 2 || !compactConsent.fits || compactConsent.horizontalOverflow) {
-    throw new Error(`Consentimento Gemini não cabe em 320x480: ${JSON.stringify(compactConsent)}`);
-  }
-  await page.setViewport({ width: 420, height: 900 });
-  await waitAndClick(page, 'Criar no aparelho');
-
   // O Traço Celeste é o gatilho proprietário: a história pessoal não aparece
   // antes das três estrelas e se revela depois do gesto completo.
   await waitForText(page, 'SUA PRIMEIRA CENA-ÂNCORA', 40000);
+  const onboardingCloudState = await page.evaluate(() => {
+    const profile = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').profile || {};
+    return {
+      version: profile.cloudConsentVersion ?? null,
+      personalization: profile.cloudPersonalization === true,
+      adult: profile.cloudAdultConfirmed === true,
+      narration: profile.cloudNarrationConsent === true,
+      dream: profile.cloudDreamConsent === true,
+    };
+  });
+  if (
+    onboardingCloudState.version !== null ||
+    onboardingCloudState.personalization ||
+    onboardingCloudState.adult ||
+    onboardingCloudState.narration ||
+    onboardingCloudState.dream
+  ) {
+    throw new Error(`Onboarding ativou nuvem sem consentimento posterior: ${JSON.stringify(onboardingCloudState)}`);
+  }
   const generationSourceHandle = await page.waitForFunction(
     (allowGemini) => {
       const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');

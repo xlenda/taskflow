@@ -21,14 +21,16 @@
 - [ ] gravar preview nativo, localizar legendas e criar thumbnail;
 - [ ] validar lembrete comum, denúncia de IA, armazenamento, tráfego e fallback
   local no AAB instalado em Android físico;
-- [ ] validar Plano Celeste em Android e iPhone físicos: texto sempre visível,
-  toque para microfone, duas leituras (`1/2` e `2/2`), reconhecedor local
+- [ ] validar Plano Celeste em Android e iPhone físicos: visão e Cena-Âncora como
+  alternativas, afirmação sempre visível, toque para microfone, duas leituras
+  da afirmação (`1/2` e `2/2`), reconhecedor local
   disponível/ausente, permissão negada, conclusão manual, cancelamento,
   `Agora não` e `Adiar 10 min`;
 - [ ] confirmar por inspeção de tráfego, logs e backup que áudio e transcrição
   do Plano Celeste não são armazenados nem enviados e que o app nunca bloqueia
   o aparelho;
-- [ ] testar AlarmKit em iPhone compatível antes de anunciá-lo;
+- [ ] testar AlarmKit em iPhone compatível com afirmação, visão, Cena-Âncora,
+  frase de sonho e frase própria antes de anunciá-lo;
 - [x] incluir mecanismo de denúncia para conteúdo gerado inadequado nas quatro
   superfícies e validar o envio real no Supabase de produção;
 - [ ] validar no build final a exclusão confirmada de todas as denúncias pelo

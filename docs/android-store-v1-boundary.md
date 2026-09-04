@@ -12,14 +12,14 @@ um runtime Android, a mesma fronteira continua ativa.
 - diário de sonhos e Ritual de Um Minuto;
 - lembretes comuns do Ritual de Um Minuto via `expo-notifications`;
 - Plano Celeste opcional, com um a quatro lembretes comuns por dia. Ao abrir a
-  prática, a visão e a afirmação escolhidas ficam visíveis em texto grande; a
-  afirmação precisa ser lida e repetida duas vezes para registrar a conclusão
-  por voz (`1/2` e `2/2`).
+  prática, a visão ou Cena-Âncora e a afirmação escolhidas ficam visíveis em
+  texto grande; a afirmação precisa ser lida e repetida duas vezes para registrar
+  a conclusão por voz (`1/2` e `2/2`).
 
 ## O que não aparece no Android
 
 - aba, atalho e deep link da Comunidade pública;
-- card, CTA de sonho, tela e deep link do despertador com afirmação;
+- card, CTA de sonho, tela e deep link do despertador com conteúdo pessoal;
 - sincronização em segundo plano do despertador nativo;
 - pergunta, controle e chamadas de processamento pago em nuvem. A criação usa
   o caminho local nesta primeira versão.
@@ -63,9 +63,10 @@ enviados ao backend nem escritos em logs. Fica no aparelho somente um recibo
 mínimo da prática, como dia, horário, método e pontuação de correspondência, sem
 o texto reconhecido. A pessoa pode cancelar a escuta a qualquer momento.
 
-A interface nativa acompanha a mesma fronteira do backend: onboarding, Home e
-Perfil não oferecem consentimento de nuvem quando a sessão nativa não pode ser
-atestada. O site preserva a experiência de nuvem existente.
+A interface nativa acompanha a mesma fronteira do backend: o onboarding cria a
+primeira prática localmente e não pede consentimento de nuvem. Home e Perfil não
+oferecem esse controle quando a sessão nativa não pode ser atestada. O site
+preserva o opt-in posterior para a experiência opcional em nuvem.
 
 Antes de testar uma build v1 em aparelho que recebeu protótipos Android antigos
 do despertador, desinstale a versão anterior para que nenhum alarme do protótipo

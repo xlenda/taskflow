@@ -10,6 +10,8 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const relevantJavaScript = [
   'constants/releaseFeatures.js',
   'utils/practicePlan.js',
+  'utils/personalAffirmations.js',
+  'utils/personalJourney.js',
   'utils/speechMatch.js',
   'services/practicePlanReminders.js',
   'services/practiceSpeech.js',
@@ -65,6 +67,18 @@ assert.ok(
     planScreen.includes("navigation.navigate('PracticeRitual', { slotId: firstEnabledSlot.id })") &&
     planScreen.includes('audio and transcript are not stored'),
   'tela do plano perdeu configuracao, teste imediato ou aviso de privacidade'
+);
+assert.ok(
+  planScreen.includes('personalVisionOptionsForState(state, lang)') &&
+    ritualScreen.includes('personalVisionOptionsForState(state, lang)') &&
+    context.includes('const visions = personalVisionOptionsForState(state, lang)') &&
+    planScreen.includes('Visão ou Cena-Âncora do plano') &&
+    planScreen.includes('Plan vision or Anchor Scene') &&
+    planScreen.includes('Sua visão ou Cena-Âncora e sua afirmação ficam visíveis') &&
+    home.includes('Escolha sua visão ou Cena-Âncora, afirmação e momentos do dia') &&
+    ritualScreen.includes('Leia sua visão ou Cena-Âncora') &&
+    ritualScreen.includes('Read your vision or Anchor Scene'),
+  'Cena-Âncora precisa ser uma visão estável no Plano, na prática e na hidratação'
 );
 assert.ok(
   ritualScreen.includes('const REQUIRED_REPETITIONS = 2') &&

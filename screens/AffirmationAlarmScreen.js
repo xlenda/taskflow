@@ -31,7 +31,10 @@ import { alarmWeekdaysOrDefault } from '../utils/alarmSchedule';
 import { wavBytesToBase64 } from '../utils/audioBase64';
 import { alpha, accentAt } from '../utils/colors';
 import { confirmAsync } from '../utils/confirm';
-import { personalAffirmationsForState } from '../utils/personalAffirmations';
+import {
+  personalAlarmContentForState,
+  resolvePersonalAlarmContent,
+} from '../utils/personalAffirmations';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useT } from '../utils/useT';
 
@@ -49,19 +52,19 @@ const COPY = {
   },
   title: { pt: 'Meu despertador', en: 'My alarm' },
   subtitle: {
-    pt: 'Acorde com uma afirmação criada para você.',
-    en: 'Wake up with an affirmation made for you.',
+    pt: 'Acorde com um conteúdo pessoal escolhido por você.',
+    en: 'Wake up with personal content you choose.',
   },
-  phraseTitle: { pt: 'Afirmação do despertar', en: 'Wake-up affirmation' },
+  phraseTitle: { pt: 'Conteúdo do despertar', en: 'Wake-up content' },
   phraseBody: {
-    pt: 'Escolha uma frase das suas manifestações, dos seus sonhos ou escreva a sua.',
-    en: 'Choose a phrase from your manifestations or dreams, or write your own.',
+    pt: 'Escolha uma afirmação, uma visão, sua Cena-Âncora, uma frase de sonho ou escreva a sua.',
+    en: 'Choose an affirmation, a vision, your Anchor Scene, a dream phrase, or write your own.',
   },
-  choose: { pt: 'Escolher afirmação', en: 'Choose affirmation' },
+  choose: { pt: 'Escolher conteúdo', en: 'Choose content' },
   change: { pt: 'Trocar', en: 'Change' },
   preview: { pt: 'Ouvir prévia', en: 'Hear preview' },
   stop: { pt: 'Parar', en: 'Stop' },
-  noPhrase: { pt: 'Escolha uma afirmação para continuar.', en: 'Choose an affirmation to continue.' },
+  noPhrase: { pt: 'Escolha um conteúdo para continuar.', en: 'Choose content to continue.' },
   time: { pt: 'Horário', en: 'Time' },
   timeHint: { pt: 'Use o formato 07:30.', en: 'Use the 07:30 format.' },
   days: { pt: 'Dias da semana', en: 'Days of the week' },
@@ -71,8 +74,8 @@ const COPY = {
   deactivate: { pt: 'Desativar despertador', en: 'Turn alarm off' },
   deactivateTitle: { pt: 'Desativar o despertador?', en: 'Turn the alarm off?' },
   deactivateBody: {
-    pt: 'A afirmação não tocará mais no horário programado.',
-    en: 'The affirmation will no longer play at the scheduled time.',
+    pt: 'O conteúdo não tocará mais no horário programado.',
+    en: 'The content will no longer play at the scheduled time.',
   },
   deactivateConfirm: { pt: 'Desativar', en: 'Turn off' },
   cancel: { pt: 'Cancelar', en: 'Cancel' },
@@ -122,14 +125,14 @@ const COPY = {
     en: 'This app does not yet include the native module required for a real alarm.',
   },
   unsupported: {
-    pt: 'O despertador com afirmação não está disponível neste aparelho.',
-    en: 'The affirmation alarm is unavailable on this device.',
+    pt: 'O despertador com conteúdo pessoal não está disponível neste aparelho.',
+    en: 'The personal-content alarm is unavailable on this device.',
   },
   audioUnavailable: {
     pt: 'A prévia privada não está disponível neste aparelho.',
     en: 'A private preview is unavailable on this device.',
   },
-  pickerTitle: { pt: 'Escolha sua afirmação', en: 'Choose your affirmation' },
+  pickerTitle: { pt: 'Escolha o que ouvir', en: 'Choose what to hear' },
   pickerBody: {
     pt: 'As frases abaixo vieram apenas do que você criou no Celeste.',
     en: 'The phrases below come only from what you created in Celeste.',
@@ -141,9 +144,12 @@ const COPY = {
   },
   useCustom: { pt: 'Usar esta frase', en: 'Use this affirmation' },
   noOptions: {
-    pt: 'Crie uma manifestação ou transforme um sonho para receber sua primeira afirmação.',
-    en: 'Create a manifestation or transform a dream to receive your first affirmation.',
+    pt: 'Crie uma manifestação ou transforme um sonho para receber seu primeiro conteúdo pessoal.',
+    en: 'Create a manifestation or transform a dream to receive your first personal content.',
   },
+  affirmation: { pt: 'Afirmação', en: 'Affirmation' },
+  vision: { pt: 'Visão', en: 'Vision' },
+  anchor: { pt: 'Cena-Âncora', en: 'Anchor Scene' },
   manifestation: { pt: 'Manifestação', en: 'Manifestation' },
   dream: { pt: 'Sonho', en: 'Dream' },
   yours: { pt: 'Sua frase', en: 'Your phrase' },
@@ -176,16 +182,6 @@ const editTime = (value) => {
 
 const sameDays = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-function selectedFromState(options, ritual) {
-  const matched = options.find((item) => item.id === ritual.wakeAffirmationId);
-  if (matched) return matched;
-  const text = clean(ritual.wakeAffirmationText);
-  if (ritual.wakeAffirmationId === 'custom' && text) {
-    return { id: 'custom', text, lang: ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt', source: 'custom' };
-  }
-  return null;
-}
-
 export default function AffirmationAlarmScreen({ route }) {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -194,11 +190,8 @@ export default function AffirmationAlarmScreen({ route }) {
   const { state, saveMorningRitualPreferences } = useApp();
   const narration = usePersonalNarration();
   const ritual = state.morningRitual || {};
-  const options = useMemo(() => personalAffirmationsForState(state), [state]);
-  const persistedSelection = useMemo(
-    () => selectedFromState(options, ritual),
-    [options, ritual.wakeAffirmationId, ritual.wakeAffirmationText, ritual.wakeAffirmationLang]
-  );
+  const options = useMemo(() => personalAlarmContentForState(state), [state]);
+  const persistedSelection = useMemo(() => resolvePersonalAlarmContent(state), [state]);
 
   const [selected, setSelected] = useState(() => persistedSelection || options[0] || null);
   const [time, setTime] = useState(() => isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00');
@@ -530,7 +523,19 @@ export default function AffirmationAlarmScreen({ route }) {
     : t(COPY.ready);
 
   const sourceLabel = (source) =>
-    source === 'dream' ? t(COPY.dream) : source === 'custom' ? t(COPY.yours) : t(COPY.manifestation);
+    source === 'dream'
+      ? t(COPY.dream)
+      : source === 'custom'
+      ? t(COPY.yours)
+      : source === 'vision'
+      ? t(COPY.vision)
+      : source === 'anchor'
+      ? t(COPY.anchor)
+      : source === 'affirmation'
+      ? t(COPY.affirmation)
+      : t(COPY.manifestation);
+  const sourceAccent = (source) =>
+    source === 'dream' ? 1 : source === 'vision' ? 2 : source === 'anchor' ? 0 : 3;
 
   const renderOption = useCallback(({ item }) => {
     const checked = selected?.id === item.id;
@@ -549,8 +554,8 @@ export default function AffirmationAlarmScreen({ route }) {
           pressed && styles.pressed,
         ]}
       >
-        <View style={[styles.sourceTag, { backgroundColor: alpha(accentAt(theme, item.source === 'dream' ? 1 : 3), 0.13) }]}>
-          <Text style={[styles.sourceText, { color: accentAt(theme, item.source === 'dream' ? 1 : 3) }]}>
+        <View style={[styles.sourceTag, { backgroundColor: alpha(accentAt(theme, sourceAccent(item.source)), 0.13) }]}>
+          <Text style={[styles.sourceText, { color: accentAt(theme, sourceAccent(item.source)) }]}>
             {sourceLabel(item.source)}
           </Text>
         </View>

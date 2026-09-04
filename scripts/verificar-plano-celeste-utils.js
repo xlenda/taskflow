@@ -22,6 +22,29 @@ function load(relative) {
 
 const plan = load('utils/practicePlan.js');
 const speech = load('utils/speechMatch.js');
+const journey = load('utils/personalJourney.js');
+
+const anchorStory = `Eu entro na minha Cena-Âncora. ${'Cada detalhe continua visível e pessoal. '.repeat(12)}`;
+const visionOptions = journey.personalVisionOptionsForState({
+  lang: 'pt',
+  anchorSceneId: 'm-anchor',
+  manifestations: [{
+    id: 'm-anchor',
+    title: 'Meu próximo capítulo',
+    story: anchorStory,
+    lang: 'pt',
+    journeySuiteByLang: {
+      pt: {
+        visions: [{ category: 'Peace', title: 'Visão pessoal', story: 'Uma visão criada para mim.' }],
+      },
+    },
+  }],
+}, 'pt');
+const anchorOption = visionOptions.find((item) => item.id === 'anchor:m-anchor');
+assert.ok(anchorOption, 'Cena-Âncora precisa entrar no catálogo de visões do Plano');
+assert.strictEqual(anchorOption.source, 'anchor');
+assert.ok(anchorOption.story.length > 280, 'Plano precisa manter mais que o resumo falado pelo despertador');
+assert.strictEqual(anchorOption.story, anchorStory.trim().slice(0, 1200));
 
 assert.deepStrictEqual(
   plan.suggestPracticeSlots('07:00', '22:30', 3),

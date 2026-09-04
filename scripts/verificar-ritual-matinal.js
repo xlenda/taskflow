@@ -335,11 +335,11 @@ assert.ok(
   'favorite dream affirmations must survive reload and import'
 );
 assert.ok(
-  context.includes('const fallbackAffirmation') &&
-    context.includes('const fallbackDream') &&
+  context.includes('const resolvedWake = resolvePersonalAlarmContent(st)') &&
+    context.includes('const fallbackWake = personalAlarmContentForState(st).find(') &&
     context.includes('st.morningRitual.alarmSyncError = st.morningRitual.reminderEnabled') &&
     context.includes('st.morningRitual.reminderEnabled = false'),
-  'legacy catalog alarms must force native personal-content replacement or be disabled'
+  'conteúdo órfão deve forçar substituição pessoal validada ou desativar o alarme'
 );
 
 const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));

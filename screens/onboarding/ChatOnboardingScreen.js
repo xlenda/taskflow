@@ -18,10 +18,8 @@ import * as Haptics from 'expo-haptics';
 import Typewriter from '../../components/Typewriter';
 import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
-import { CLOUD_CONSENT_VERSION } from '../../constants/cloudConsent';
-import { RELEASE_FEATURES } from '../../constants/releaseFeatures';
 import { UI, txt, tr } from '../../constants/i18n';
-import { FLOW, ageConfirmsAdult, fill, stepLines, inferCategory } from './flow';
+import { FLOW, fill, stepLines, inferCategory } from './flow';
 import { useApp } from '../../context/AppContext';
 import {
   CUSTOM_CHOICE_KEY,
@@ -32,15 +30,13 @@ import {
 } from '../../utils/onboardingMultiChoice';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
-// v: 6 = consentimento unificado v2, incluindo o fallback de cena pelo Gemini. Rascunhos
-// anteriores são descartados para nunca converter um aceite antigo em novo.
+// v: 7 = o onboarding deixou de solicitar consentimento de nuvem. Rascunhos
+// anteriores são descartados para nunca reaproveitar um aceite nessa conversa.
 const DRAFT_KEY = '@celeste_onb_draft';
-const DRAFT_V = 6;
+const DRAFT_V = 7;
 const DRAFT_READ_TIMEOUT_MS = 1500;
 const CUSTOM_OPTION = CUSTOM_CHOICE_KEY;
-const RELEASE_FLOW = RELEASE_FEATURES.paidCloudProcessing
-  ? FLOW
-  : FLOW.filter((entry) => entry.key !== 'cloudPersonalization');
+const RELEASE_FLOW = FLOW;
 const initialReduceMotion = () =>
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&
@@ -64,24 +60,15 @@ const S = {
   customMultiPlaceholder: { en: 'Write another answer', pt: 'Escreva outra resposta' },
 };
 
-function normalizeCloudConsent(profile) {
+function withCloudProcessingDisabled(profile) {
   const source = profile && typeof profile === 'object' ? profile : {};
-  const adult = ageConfirmsAdult(source.age);
-  const currentVersion = adult && source.cloudConsentVersion === CLOUD_CONSENT_VERSION;
-  const allowed =
-    RELEASE_FEATURES.paidCloudProcessing &&
-    currentVersion &&
-    source.cloudPersonalization === true;
   return {
     ...source,
-    cloudConsentVersion:
-      RELEASE_FEATURES.paidCloudProcessing && currentVersion
-        ? CLOUD_CONSENT_VERSION
-        : null,
-    cloudPersonalization: allowed,
-    cloudAdultConfirmed: allowed,
-    cloudNarrationConsent: allowed,
-    cloudDreamConsent: allowed,
+    cloudConsentVersion: null,
+    cloudPersonalization: false,
+    cloudAdultConfirmed: false,
+    cloudNarrationConsent: false,
+    cloudDreamConsent: false,
   };
 }
 
@@ -236,7 +223,7 @@ export default function ChatOnboardingScreen({ navigation }) {
           draft.answers &&
           typeof draft.answers === 'object'
         ) {
-          setAnswers(normalizeCloudConsent(draft.answers));
+          setAnswers(withCloudProcessingDisabled(draft.answers));
           setIdx(draft.idx);
         }
       } catch (e) {
@@ -269,7 +256,7 @@ export default function ChatOnboardingScreen({ navigation }) {
       finishingRef.current = true;
       setCreationError(false);
       setCreating(true);
-      const finalAnswers = normalizeCloudConsent(ans);
+      const finalAnswers = withCloudProcessingDisabled(ans);
       finalAnswersRef.current = finalAnswers;
       // Keep the final answer recoverable until the scene exists. Reloading
       // during a provider or device failure must not erase the questionnaire.
@@ -318,15 +305,8 @@ export default function ChatOnboardingScreen({ navigation }) {
   // Pular pergunta não essencial: some a resposta anterior (se houver) e avança.
   const skipStep = () => {
     clearTimeout(autoTimer.current);
-    const next = { ...answers };
+    const next = withCloudProcessingDisabled(answers);
     if (step.key) delete next[step.key];
-    if (step.key === 'age' || step.key === 'cloudPersonalization') {
-      next.cloudConsentVersion = null;
-      next.cloudPersonalization = false;
-      next.cloudAdultConfirmed = false;
-      next.cloudNarrationConsent = false;
-      next.cloudDreamConsent = false;
-    }
     for (const s of RELEASE_FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];
     }
@@ -350,23 +330,7 @@ export default function ChatOnboardingScreen({ navigation }) {
   };
 
   const commit = (val) => {
-    const next = { ...answers, [step.key]: val };
-    if (step.key === 'age' && !ageConfirmsAdult(val)) {
-      next.cloudConsentVersion = null;
-      next.cloudPersonalization = false;
-      next.cloudAdultConfirmed = false;
-      next.cloudNarrationConsent = false;
-      next.cloudDreamConsent = false;
-    }
-    if (step.key === 'cloudPersonalization') {
-      const adult = ageConfirmsAdult(next.age);
-      const allowed = val === true && adult;
-      next.cloudConsentVersion = adult ? CLOUD_CONSENT_VERSION : null;
-      next.cloudPersonalization = allowed;
-      next.cloudAdultConfirmed = allowed;
-      next.cloudNarrationConsent = allowed;
-      next.cloudDreamConsent = allowed;
-    }
+    const next = withCloudProcessingDisabled({ ...answers, [step.key]: val });
     // Drop answers from gated steps that became unreachable (e.g. kids after hasKids -> No).
     for (const s of RELEASE_FLOW) {
       if (s.key && s.when && !s.when(next)) delete next[s.key];

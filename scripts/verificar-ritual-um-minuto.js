@@ -26,14 +26,20 @@ function load(file, mocks = {}) {
 }
 
 const livingMirror = load(path.join(root, 'utils', 'livingMirror.js'));
+const personalJourney = load(path.join(root, 'utils', 'personalJourney.js'));
+const personalAffirmations = load(path.join(root, 'utils', 'personalAffirmations.js'), {
+  './personalJourney': personalJourney,
+});
 const daily = load(path.join(root, 'utils', 'dailyRitual.js'), {
   './date': { todayISO: () => '2026-08-26' },
   './livingMirror': livingMirror,
+  './personalAffirmations': personalAffirmations,
 });
 
 const manifestation = {
   id: 'm-1',
   title: 'Meu estudio',
+  story: 'Eu abro meu estúdio e reconheço cada detalhe da vida que estou construindo.',
   affirmation: 'Eu construo meu estudio com constancia.',
   anchorIdentity: 'Eu sou consistente.',
   anchorStep: 'Abrir o caderno por dez minutos.',
@@ -41,6 +47,12 @@ const manifestation = {
   goalDays: 21,
   sessions: [],
   livingMirror: livingMirror.emptyLivingMirror(),
+  journeySuiteByLang: {
+    pt: {
+      affirmations: [{ category: 'Peace', text: 'Eu cultivo serenidade agora.' }],
+      visions: [{ category: 'Peace', title: 'Meu dia sereno', story: 'Eu vejo um dia sereno diante de mim.' }],
+    },
+  },
 };
 const dream = {
   id: 'd-1',
@@ -51,6 +63,8 @@ const dream = {
   lastPracticedAt: null,
 };
 const base = {
+  lang: 'pt',
+  anchorSceneId: 'm-1',
   manifestations: [manifestation],
   morningRitual: { entries: [dream], wakeAffirmationId: null, wakeAffirmationText: '' },
   affirmationDates: [],
@@ -65,6 +79,21 @@ const chosenDream = daily.selectDailyRitual({
   morningRitual: { ...base.morningRitual, wakeAffirmationId: 'ritual:d-1' },
 }, '2026-08-26');
 assert.strictEqual(chosenDream.sourceType, 'dream', 'frase escolhida no despertador tem prioridade');
+
+for (const [wakeAffirmationId, expected] of [
+  ['m-1:affirmation:Peace', 'Eu cultivo serenidade agora.'],
+  ['m-1:vision:Peace', 'Eu vejo um dia sereno diante de mim.'],
+  ['anchor:m-1', manifestation.story],
+]) {
+  const chosen = daily.selectDailyRitual({
+    ...base,
+    morningRitual: { ...base.morningRitual, wakeAffirmationId },
+  }, '2026-08-26');
+  assert.strictEqual(chosen.selection, 'alarm', `${wakeAffirmationId} deve manter prioridade`);
+  assert.strictEqual(chosen.sourceType, 'manifestation');
+  assert.strictEqual(chosen.sourceId, 'm-1');
+  assert.strictEqual(chosen.affirmation, expected);
+}
 
 const stale = daily.selectDailyRitual({
   ...base,

@@ -49,7 +49,7 @@ const {
 const { minimizeProfile } = requireProjectModule(sceneServiceFile);
 
 assert.ok(Array.isArray(FLOW), 'FLOW precisa ser uma lista');
-assert.strictEqual(FLOW.length, 28, 'o roteiro completo deve manter 28 etapas');
+assert.strictEqual(FLOW.length, 27, 'o roteiro completo deve manter 27 etapas');
 assert.strictEqual(new Set(FLOW.map((step) => step.id)).size, FLOW.length, 'cada etapa precisa de id unico');
 
 // The 21 questions documented in the historical Stella clone. Narrative/value
@@ -80,32 +80,14 @@ const historicalQuestionIds = [
 const questionIds = FLOW.filter((step) => step.question).map((step) => step.id);
 assert.deepStrictEqual(
   questionIds,
-  [...historicalQuestionIds, 'cloudPersonalization'],
-  'FLOW deve conter as 21 perguntas historicas, na ordem, mais o consentimento de nuvem'
+  historicalQuestionIds,
+  'FLOW deve conter somente as 21 perguntas historicas, na ordem'
 );
-
-const cloud = FLOW.find((step) => step.id === 'cloudPersonalization');
-assert.ok(cloud, 'pergunta de personalizacao em nuvem ausente');
-assert.strictEqual(cloud.key, 'cloudPersonalization', 'consentimento deve gravar a chave correta');
-assert.strictEqual(cloud.type, 'boolean', 'consentimento deve aceitar Sim ou Nao explicitamente');
-assert.ok(cloud.question.en && cloud.question.pt, 'consentimento deve existir em ingles e portugues');
-for (const [lang, copy] of Object.entries(cloud.question)) {
-  for (const provider of ['Anthropic', 'OpenAI', 'Gemini', 'ElevenLabs']) {
-    assert.match(copy, new RegExp(provider), `${lang}: consentimento nao declara ${provider}`);
-  }
-}
-assert.match(cloud.question.en, /Anthropic[\s\S]*OpenAI (?:is its|(?:only )?as) failover/);
-assert.match(
-  cloud.question.pt,
-  /Anthropic[\s\S]*OpenAI (?:é sua|(?:apenas )?como) alternativa(?: em caso de falha)?/
+assert.ok(
+  !FLOW.some((step) => step.id === 'cloudPersonalization' || step.key === 'cloudPersonalization'),
+  'onboarding nao deve pedir consentimento dos processadores em nuvem'
 );
-assert.match(cloud.question.en, /Gemini[\s\S]*translates[\s\S]*images[\s\S]*dreams/);
-assert.match(cloud.question.pt, /Gemini[\s\S]*traduz[\s\S]*imagens[\s\S]*sonhos/);
-assert.match(cloud.question.en, /ElevenLabs[\s\S]*narrates/);
-assert.match(cloud.question.pt, /ElevenLabs[\s\S]*narra/);
-assert.strictEqual(cloud.yesLabel.pt, 'Permitir', 'consentimento deve usar uma acao clara');
-assert.strictEqual(cloud.noLabel.pt, 'Criar no aparelho', 'recusa deve explicar a alternativa local');
-assert.strictEqual(questionIds.length, 22, 'devem existir 21 perguntas historicas e 1 consentimento');
+assert.strictEqual(questionIds.length, 21, 'devem existir somente as 21 perguntas historicas');
 
 const quickChoiceIds = ['hope', 'obstacle', 'age', 'sexuality', 'work', 'dreamPlace', 'partner'];
 quickChoiceIds.forEach((id) => {
@@ -457,7 +439,7 @@ assert.ok(referralSource.includes('T.referralTitle'), 'pergunta de codigo de ind
 
 const draftVersion = chatSource.match(/const\s+DRAFT_V\s*=\s*(\d+)\s*;/);
 assert.ok(draftVersion, 'DRAFT_V nao encontrado');
-assert.strictEqual(Number(draftVersion[1]), 6, 'DRAFT_V deve ser 6 para invalidar consentimentos e controles antigos');
+assert.strictEqual(Number(draftVersion[1]), 7, 'DRAFT_V deve ser 7 para descartar rascunhos com consentimento no onboarding');
 assert.ok(chatSource.includes('draft.v === DRAFT_V'), 'restauracao deve validar DRAFT_V');
 assert.ok(chatSource.includes('DRAFT_READ_TIMEOUT_MS'), 'restauracao do rascunho precisa de limite de espera');
 assert.ok(chatSource.includes('if (!draftLoaded)'), 'quiz nao pode aceitar resposta antes de restaurar o rascunho');
@@ -473,5 +455,5 @@ assert.ok(
 );
 
 process.stdout.write(
-  'Perguntas Stella: indicacao + 28 etapas, 21 historicas + consentimento, privacidade e draft aprovados\n'
+  'Perguntas Stella: indicacao + 27 etapas, 21 historicas, nuvem local por padrao e draft aprovados\n'
 );
