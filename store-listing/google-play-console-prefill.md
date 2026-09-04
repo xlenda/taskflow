@@ -6,10 +6,12 @@ comprovado no repositório do que ainda depende da titular ou da inspeção do A
 assinado. O projeto Supabase de produção já foi validado; nenhuma credencial ou
 segredo é registrado neste documento.
 
-A verificação da organização foi concluída em 03/09/2026 segundo relato do
-titular. Conferir visualmente no Play Console quando houver login disponível,
-sem solicitar nem registrar novamente o D-U-N-S. Nome legal público, nome do
-desenvolvedor e demais escolhas sem evidência continuam pendentes.
+Conferido diretamente no Play Console em 04/09/2026: a nova conta de
+organização ainda está em criação e parou na etapa do perfil para pagamentos,
+que exige o D-U-N-S de nove dígitos. O titular deve informar o número somente
+no Google e conferir os dados legais retornados pela Dun & Bradstreet; não
+registrar esse identificador no repositório. Nome legal público e demais
+escolhas sem evidência continuam pendentes.
 
 Não reutilize estas respostas para o site ou para o iOS. A v1 Android tem uma
 fronteira mais restrita: não oferece Comunidade pública, conta visível,

@@ -24,11 +24,12 @@ Responda aos seis blocos abaixo em uma única mensagem.
 ### 1. Conta Google Play
 
 - Tipo da conta: **`ORGANIZAÇÃO` — confirmado pelo titular em 02/09/2026**
-- Situação: **`VERIFICAÇÃO DA ORGANIZAÇÃO CONCLUÍDA` — relato do titular em 03/09/2026; conferir visualmente quando houver login disponível**
+- Situação: **`CRIAÇÃO EM ANDAMENTO` — conferida diretamente no Play Console em 04/09/2026; parada no perfil para pagamentos, aguardando o D-U-N-S**
 - Nome legal exato da organização: `______________________________`
 - País de registro da organização: **`BRASIL` — confirmado pelo titular em 02/09/2026**
 - CNPJ da organização: **`DISPONÍVEL` — confirmado pelo titular em 02/09/2026; informar somente no Google**
-- Conferência visual do status de organização, identidade, e-mail e telefone no painel: `PENDENTE QUANDO HOUVER LOGIN` (não solicitar nem registrar novamente o D-U-N-S neste arquivo)
+- D-U-N-S: `PENDENTE — digitar os 9 dígitos somente no Play Console; não copiar para este arquivo nem para o chat`
+- Conferência visual de identidade, e-mail e telefone no painel: `PENDENTE APÓS A CRIAÇÃO DA CONTA`
 
 Não copie documentos ou códigos de verificação para este arquivo. Faça essas etapas diretamente no Google.
 
@@ -65,9 +66,9 @@ O Google exige conta de organização para prestadores de aplicativos de saúde.
 
 Escolha: **`A` — confirmada pelo titular em 02/09/2026**
 
-A verificação da organização foi concluída em 03/09/2026 segundo relato do
-titular. Resta somente conferir visualmente o status quando houver login
-disponível; não solicitar nem copiar novamente o D-U-N-S.
+A tela real conferida em 04/09/2026 mostra que a verificação da organização
+ainda não foi concluída. A criação da conta só prossegue depois que o titular
+informar o D-U-N-S diretamente no Play Console.
 
 ### 4. Privacidade e Data Safety
 
@@ -119,7 +120,8 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 
 ## Ações exclusivas do titular
 
-- Conferir visualmente no Google Play Console o status de verificação da organização relatado como concluído em 03/09/2026.
+- Informar o D-U-N-S diretamente no Play Console e conferir os dados legais
+  retornados pela Dun & Bradstreet antes de criar o perfil para pagamentos.
 - Informar no Google o nome legal e os dados da organização exatamente como constam nos registros oficiais, sem copiá-los para este arquivo.
 - Enviar ao Google, e nunca ao repositório ou ao chat, documentos e comprovantes pedidos para verificação de identidade.
 - Digitar códigos de autenticação e aceitar termos diretamente no Play Console.

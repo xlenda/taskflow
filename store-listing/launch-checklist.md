@@ -78,9 +78,9 @@
 
 ## Google Play Console
 
-- [x] verificação da organização concluída em 03/09/2026 segundo relato do
-  titular; conferir visualmente no Play Console quando houver login disponível,
-  sem solicitar ou registrar novamente o D-U-N-S;
+- [ ] concluir a criação e a verificação da conta de organização; em 04/09/2026
+  o Play Console foi conferido e está aguardando o D-U-N-S na etapa do perfil
+  para pagamentos. Informar o número somente no Google, sem registrá-lo aqui;
 - [ ] criar app com package `com.celesteapp.affirmations`;
 - [ ] escolher `Health & Fitness` e até cinco tags disponíveis;
 - [ ] informar website, email de suporte e política de privacidade;

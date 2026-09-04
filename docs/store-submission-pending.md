@@ -46,10 +46,11 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## Google Play Console
 
-- A verificação da organização foi concluída em 03/09/2026 segundo relato do
-  titular. Conferir visualmente no Play Console quando houver login disponível;
-  não solicitar nem registrar novamente o D-U-N-S. Nome legal público,
-  desenvolvedor e demais escolhas sem evidência continuam pendentes.
+- Conferido diretamente no Play Console em 04/09/2026: a nova conta de
+  organização ainda está em criação, na etapa de vincular o perfil para
+  pagamentos. O Google exige o D-U-N-S de nove dígitos nessa tela. O titular
+  deve informá-lo somente no Google; não registrar o número neste repositório.
+  A verificação da organização ainda não está concluída.
 - Criar ou confirmar o app `com.celesteapp.affirmations`, a Play App Signing e a conta de
   servico usada pelo EAS Submit.
 - Informar no console o email de suporte ja confirmado (`suporte@celestegroup.biz`),

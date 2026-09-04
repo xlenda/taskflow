@@ -24,10 +24,10 @@
   "googlePlay": {
     "packageName": "com.celesteapp.affirmations",
     "developerAccountType": "organization_confirmed_by_owner_2026-09-02",
-    "developerAccountStatus": "organization_verification_completed_owner_report_2026-09-03_visual_confirmation_pending_when_login_available",
+    "developerAccountStatus": "organization_signup_in_progress_payments_profile_duns_required_2026-09-04",
     "organizationCountry": "BR",
     "organizationTaxIdStatus": "cnpj_available_owner_confirmed_2026-09-02_enter_only_in_google_play_console",
-    "organizationDunsStatus": "not_recorded_do_not_request_again_verification_reported_complete_2026-09-03",
+    "organizationDunsStatus": "required_enter_only_in_google_play_console_not_recorded_2026-09-04",
     "appOrGame": "app",
     "category": "Health & Fitness",
     "tagCandidates": [
