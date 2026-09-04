@@ -55,10 +55,10 @@ const S = {
   },
   sendDesire: { en: 'Send your desire', pt: 'Enviar seu desejo' },
   creating: { en: 'Creating your scene…', pt: 'Criando sua cena…' },
-  consentTitle: { en: 'Create in the cloud?', pt: 'Criar na nuvem?' },
+  consentTitle: { en: 'Allow optional cloud processing?', pt: 'Permitir processamento opcional em nuvem?' },
   consentBody: {
-    en: 'If you are 18 or older, Celeste can send only the answers needed for this scene to Anthropic for its text, with OpenAI as failover, and to Google Gemini for its image and later translations. Choose local to keep generation on this device.',
-    pt: 'Se você tem 18 anos ou mais, o Celeste pode enviar somente as respostas necessárias desta cena à Anthropic para gerar o texto, com a OpenAI como alternativa em caso de falha, e ao Google Gemini para criar a imagem e traduções posteriores. Escolha local para manter a geração neste aparelho.',
+    en: 'If you are 18 or older, this single control allows optional cloud processing. Celeste sends only what is needed: Anthropic normally creates scene text and OpenAI is its failover; if neither is configured, approved Google Gemini processing may create the scene. Gemini also creates images, translates text and interprets dreams, and ElevenLabs narrates selected text. Choose local to keep all new processing on this device.',
+    pt: 'Se você tem 18 anos ou mais, este controle único permite o processamento opcional em nuvem. O Celeste envia somente o necessário: a Anthropic normalmente cria o texto da cena e a OpenAI é sua alternativa; se nenhuma estiver configurada, o processamento aprovado do Google Gemini poderá criar a cena. O Gemini também cria imagens, traduz textos e interpreta sonhos, e a ElevenLabs narra o texto selecionado. Escolha local para manter todo novo processamento neste aparelho.',
   },
   consentAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
   consentLocal: { en: 'Use local', pt: 'Usar local' },
@@ -224,9 +224,9 @@ export default function HomeScreen() {
     let cloudPersonalization =
       currentConsentDecision && currentProfile.cloudPersonalization === true;
     let cloudAdultConfirmed = cloudPersonalization && currentProfile.cloudAdultConfirmed === true;
-    const cloudNarrationConsent =
+    let cloudNarrationConsent =
       currentConsentDecision && currentProfile.cloudNarrationConsent === true;
-    const cloudDreamConsent =
+    let cloudDreamConsent =
       currentConsentDecision && currentProfile.cloudDreamConsent === true;
     if (!RELEASE_FEATURES.paidCloudProcessing) {
       cloudConsentVersion = null;
@@ -257,6 +257,8 @@ export default function HomeScreen() {
         lang,
       });
       cloudAdultConfirmed = cloudPersonalization;
+      cloudNarrationConsent = cloudPersonalization;
+      cloudDreamConsent = cloudPersonalization;
       cloudConsentVersion = CLOUD_CONSENT_VERSION;
       saveProfile({
         cloudConsentVersion,

@@ -1,4 +1,4 @@
-const CLOUD_CONSENT_VERSION = 'celeste-cloud-processors-v1';
+const CLOUD_CONSENT_VERSION = 'celeste-cloud-processors-v2';
 
 const CLOUD_CONSENT_BOOLEAN_FIELDS = Object.freeze([
   'cloudPersonalization',
@@ -32,14 +32,18 @@ function normalizeCloudConsentProfile(profile, options = {}) {
     !knownMinor &&
     source.cloudConsentVersion === CLOUD_CONSENT_VERSION;
   const adultConfirmed = currentVersion && source.cloudAdultConfirmed === true;
+  // v2 exposes one control for every optional cloud processor. The legacy
+  // per-feature fields remain as fail-closed aliases for the service guards,
+  // but hydration must never recreate a partially enabled profile.
+  const allowed = adultConfirmed && source.cloudPersonalization === true;
 
   return {
     ...source,
     cloudConsentVersion: currentVersion ? CLOUD_CONSENT_VERSION : null,
-    cloudPersonalization: adultConfirmed && source.cloudPersonalization === true,
-    cloudAdultConfirmed: adultConfirmed,
-    cloudNarrationConsent: adultConfirmed && source.cloudNarrationConsent === true,
-    cloudDreamConsent: adultConfirmed && source.cloudDreamConsent === true,
+    cloudPersonalization: allowed,
+    cloudAdultConfirmed: allowed,
+    cloudNarrationConsent: allowed,
+    cloudDreamConsent: allowed,
   };
 }
 

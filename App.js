@@ -12,7 +12,10 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  getStateFromPath as getNavigationStateFromPath,
+} from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,6 +73,10 @@ import RevealScreen from './screens/onboarding/RevealScreen';
 import PaywallScreen from './screens/onboarding/PaywallScreen';
 
 import { APP_NAME, APP_URL } from './constants/brand';
+import {
+  isSafeNavigationPath,
+  safeNavigationStateFromPath,
+} from './utils/navigationPathSafety';
 import {
   DEFAULT_AFFIRMATION_ALARM_ID,
   cancelAffirmationAlarm,
@@ -894,6 +901,14 @@ function RootNav() {
 // qualquer path pro index.html. Paths são chaves técnicas, não passam por i18n.
 const linking = {
   prefixes: [APP_URL, 'celeste://'],
+  // Native React Navigation evaluates filter before extracting a path. Web v6
+  // does not, so getStateFromPath below repeats the mandatory guard.
+  filter(url) {
+    return isSafeNavigationPath(url);
+  },
+  getStateFromPath(path, options) {
+    return safeNavigationStateFromPath(path, options, getNavigationStateFromPath);
+  },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
     if (url) return url;

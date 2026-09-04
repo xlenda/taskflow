@@ -354,12 +354,25 @@ test('manifestation translation API contract', async (t) => {
   await t.test('fails closed without configuration and never returns malformed translation', async () => {
     configure();
     let calls = 0;
+    let authorizationCalls = 0;
+    endpoint._internals.setPaidAccessAuthorizerForTests(async () => {
+      authorizationCalls += 1;
+      return { ok: true, userId: '00000000-0000-4000-8000-000000000001' };
+    });
     global.fetch = async () => { calls += 1; return { ok: true, json: async () => geminiPayload() }; };
     delete process.env.GEMINI_API_KEY;
     let res = await invoke(request(validBody()));
     assert.strictEqual(res.statusCode, 503);
     assert.strictEqual(res.body.error, 'translation_not_configured');
     assert.strictEqual(calls, 0);
+    assert.strictEqual(authorizationCalls, 0, 'configuracao ausente nao pode consumir cota');
+
+    process.env.GEMINI_API_KEY = 'configured-but-terms-missing';
+    delete process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED;
+    res = await invoke(request(validBody()));
+    assert.strictEqual(res.statusCode, 503);
+    assert.strictEqual(res.body.error, 'translation_not_configured');
+    assert.strictEqual(authorizationCalls, 0, 'termos ausentes nao podem consumir cota');
 
     configure();
     global.fetch = async () => ({

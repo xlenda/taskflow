@@ -122,6 +122,16 @@ function deriveActorHash(req, secret) {
     .digest('hex');
 }
 
+function deriveReportActorHash(req, secret) {
+  if (!validActorHashSecret(secret)) return '';
+  const origin = trustedActorOrigin(req);
+  if (!origin) return '';
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`celeste-ai-report-actor-v1\0${origin}`, 'utf8')
+    .digest('hex');
+}
+
 function bearerToken(req) {
   const authorization = cleanHeader(req && req.headers && req.headers.authorization, 4096);
   const match = authorization.match(/^Bearer\s+([^\s]+)$/i);
@@ -183,13 +193,17 @@ async function authenticatedUser(config, token) {
   } catch (_error) {
     return { error: 'identity_verification_unavailable', status: 503 };
   }
-  if (!response || !response.ok) return { error: 'identity_required', status: 401 };
+  if (!response || !response.ok) {
+    return response && (response.status === 401 || response.status === 403)
+      ? { error: 'identity_required', status: 401 }
+      : { error: 'identity_verification_unavailable', status: 503 };
+  }
   try {
     const user = await response.json();
     if (!user || !USER_ID_PATTERN.test(user.id || '')) {
       return { error: 'identity_required', status: 401 };
     }
-    return { userId: user.id };
+    return { userId: user.id, isAnonymous: user.is_anonymous === true };
   } catch (_error) {
     return { error: 'identity_verification_unavailable', status: 503 };
   }
@@ -416,17 +430,26 @@ function resetAuthorizerForTests() {
 
 module.exports = {
   _internals: {
+    ACTOR_HASH_PATTERN,
     ACTOR_HASH_SECRET_MIN_BYTES,
     TRUSTED_VERCEL_IP_HEADER,
     deriveActorHash,
+    deriveReportActorHash,
     normalizeActorOrigin,
     trustedActorOrigin,
   },
+  authenticatedUser,
   authorizePaidRequest,
+  bearerToken,
   commitPaidRequest,
+  deriveReportActorHash,
+  fetchWithTimeout,
   isNativeRequest,
   releasePaidRequest,
   resetAuthorizerForTests,
+  serverConfig,
+  serviceRoleHeaders,
   setAuthorizerForTests,
   setFinalizerForTests,
+  validActorHashSecret,
 };

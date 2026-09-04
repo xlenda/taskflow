@@ -15,14 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '../ui/theme';
 import { alpha } from '../utils/colors';
-import { submitAiContentReport } from '../services/aiContentReports';
+import {
+  normalizeAiReportEvidenceText,
+  submitAiContentReport,
+} from '../services/aiContentReports';
 
 const COPY = {
   pt: {
     action: 'Denunciar este conteúdo de IA',
     title: 'Denunciar conteúdo de IA',
     intro:
-      'Escolha o problema. Enviaremos somente este conteúdo gerado, o motivo e a nota abaixo. Suas respostas originais e o relato do sonho não serão enviados.',
+      'Escolha o problema. Enviaremos somente esta saída gerada, o motivo, a nota e dados técnicos mínimos, usando um identificador pseudônimo para autorização e prevenção de abuso. Suas respostas originais e o relato bruto do sonho não serão enviados. O registro fica por no máximo 180 dias e pode ser excluído no Perfil.',
     preview: 'Conteúdo que será analisado',
     note: 'Detalhes adicionais (opcional)',
     notePlaceholder: 'Explique brevemente o problema, sem incluir dados pessoais.',
@@ -49,7 +52,7 @@ const COPY = {
     action: 'Report this AI content',
     title: 'Report AI content',
     intro:
-      'Choose the problem. We will send only this generated content, the reason, and your note below. Your original answers and dream report will not be sent.',
+      'Choose the problem. We will send only this generated output, the reason, your note and minimum technical details, using a pseudonymous identifier for authorization and abuse prevention. Your original answers and raw dream report will not be sent. The record is kept for no more than 180 days and can be deleted in Profile.',
     preview: 'Content that will be reviewed',
     note: 'Additional details (optional)',
     notePlaceholder: 'Briefly explain the problem without adding personal information.',
@@ -84,11 +87,6 @@ const REASONS = [
   'other',
 ];
 
-function previewText(value) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  return text.length > 360 ? `${text.slice(0, 357)}…` : text;
-}
-
 export default function AiContentReportAction({
   contentType,
   contentRef,
@@ -106,7 +104,10 @@ export default function AiContentReportAction({
   const [status, setStatus] = useState('idle');
   const [errorCode, setErrorCode] = useState('');
   const submittingRef = useRef(false);
-  const preview = previewText(content);
+  // Show the exact normalized evidence sent by the service. The dialog is
+  // already scrollable, so a hidden suffix would create an invalid consent
+  // boundary for reported content.
+  const preview = normalizeAiReportEvidenceText(content);
 
   const open = () => {
     setReason('');

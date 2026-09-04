@@ -253,7 +253,13 @@ if ($SubmitInternal -and $easConfig.submit.production.android.track -ne 'interna
 
 $ignoreLines = Get-Content -LiteralPath (Join-Path $root '.easignore') |
   ForEach-Object { $_.Trim() }
-foreach ($rule in @('.env.*', 'google-service-account*.json', '*.jks', '*.keystore')) {
+foreach ($rule in @(
+  '.env.*',
+  'google-service-account*.json',
+  '*.jks',
+  '*.keystore',
+  'scripts/e2e-shots/'
+)) {
   if ($ignoreLines -notcontains $rule) { throw ".easignore precisa bloquear $rule" }
 }
 
@@ -274,7 +280,21 @@ try {
 
   $dirty = @(& $git.Source status --porcelain=v1 --untracked-files=all)
   if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel verificar o Git.' }
-  if ($dirty.Count) { throw "O worktree tem $($dirty.Count) alteracao(oes); faca commit primeiro." }
+  # Capturas de QA pertencem ao titular e sao explicitamente excluidas do
+  # upload pelo .easignore. Elas podem permanecer no worktree sem contaminar o
+  # AAB; qualquer outra alteracao ainda bloqueia a release.
+  $ignoredQaShots = @(
+    $dirty | Where-Object { $_ -match '^.. scripts/e2e-shots/.+$' }
+  )
+  $blockingDirty = @(
+    $dirty | Where-Object { $_ -notmatch '^.. scripts/e2e-shots/.+$' }
+  )
+  if ($blockingDirty.Count) {
+    throw "O worktree tem $($blockingDirty.Count) alteracao(oes) fora de scripts/e2e-shots; faca commit primeiro."
+  }
+  if ($ignoredQaShots.Count) {
+    Write-Warning "$($ignoredQaShots.Count) captura(s) local(is) de QA serao ignoradas pelo EAS."
+  }
   & $git.Source fetch --quiet
   if ($LASTEXITCODE -ne 0) { throw 'git fetch falhou.' }
   $localHead = & $git.Source rev-parse HEAD

@@ -201,12 +201,24 @@ async function main() {
   assert.ok(screen.includes('getDailyRitualReminderStatus'), 'estado visual precisa acompanhar a permissao nativa');
   assert.ok(screen.includes("Platform.OS === 'web'"), 'site precisa falhar de forma honesta');
   assert.ok(screen.includes('navigation.canGoBack?.()'), 'deep link frio precisa de saida para a Home');
-  assert.ok(journey.includes('cancelDailyRitualReminder'), 'reset nao pode deixar lembrete orfao');
+  assert.ok(journey.includes('cancelDailyRitualReminder'), 'reset precisa cancelar o identificador legado conhecido');
   assert.ok(
     context.includes('reminderEnabled: false') &&
       context.includes("permission: 'unknown'") &&
-      context.includes('await cancelDailyRitualReminder('),
+      context.includes('await cancelDailyRitualReminder(') &&
+      (context.match(/await cancelOrphanedDailyRitualReminders\(\)/g) || []).length >= 2,
     'backup nao pode reativar nem deixar a permissao nativa orfa'
+  );
+  const resetBlock = context.slice(
+    context.indexOf('const resetAll = useCallback'),
+    context.indexOf('// Clima escolhido na Jornada')
+  );
+  assert.ok(
+    resetBlock.includes('await cancelPracticePlanReminders()') &&
+      resetBlock.includes('await cancelOrphanedDailyRitualReminders()') &&
+      resetBlock.indexOf('await cancelOrphanedDailyRitualReminders()') <
+        resetBlock.indexOf('writerRef.current.enqueue(JSON.stringify(next))'),
+    'recomeçar precisa varrer o lembrete diario orfao antes de apagar o estado'
   );
   assert.ok(appConfig.expo.plugins.includes('expo-notifications'), 'config plugin nativo ausente');
 

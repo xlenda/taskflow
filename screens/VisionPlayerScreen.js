@@ -899,7 +899,7 @@ function PersonalVisionPlayer({
         <AiContentReportAction
           contentType="vision"
           contentRef={`vision:${vision.id}:${vision.lang}`}
-          content={`${vision.title}\n${vision.story}`}
+          content={vision.generatedStory}
           visualRef={activeVisualKey}
           generation={{ source: 'journey-suite' }}
           lang={vision.lang}

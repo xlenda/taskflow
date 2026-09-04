@@ -559,8 +559,8 @@ export const FLOW = [
     textSize: 23,
     compact: true,
     question: {
-      en: 'Are you 18 or older, and do you allow cloud processors for features you choose? Anthropic creates scenes, with OpenAI only as failover; Gemini translates, creates images and interprets dreams; ElevenLabs narrates text. Only what is needed is sent. Saved names stay on this device.',
-      pt: 'Você tem 18 anos ou mais e permite processadores em nuvem nos recursos que escolher? A Anthropic cria cenas, com a OpenAI apenas como alternativa; o Gemini traduz, cria imagens e interpreta sonhos; a ElevenLabs narra textos. Só o necessário é enviado. Nomes salvos ficam neste aparelho.',
+      en: 'Are you 18 or older, and do you allow optional cloud processing with this single control? Anthropic normally creates scene text and OpenAI is its failover; if neither is configured, approved Gemini processing may create the scene. Gemini also translates, creates images and interprets dreams; ElevenLabs narrates text. Only what is needed is sent. Saved names stay on this device.',
+      pt: 'Você tem 18 anos ou mais e permite o processamento opcional em nuvem com este controle único? A Anthropic normalmente cria o texto da cena e a OpenAI é sua alternativa; se nenhuma estiver configurada, o processamento aprovado do Gemini poderá criar a cena. O Gemini também traduz, cria imagens e interpreta sonhos; a ElevenLabs narra textos. Só o necessário é enviado. Nomes salvos ficam neste aparelho.',
     },
     yesLabel: { en: 'Allow', pt: 'Permitir' },
     noLabel: { en: 'Create on device', pt: 'Criar no aparelho' },

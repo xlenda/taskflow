@@ -1,0 +1,420 @@
+[
+  {
+    "verdict": "confirmed",
+    "title": "PRIV-01 [CWE-201] AI report evidence included editable text and hid the transmitted suffix (fixed)",
+    "description": "In the pre-fix baseline, scene reporting concatenated the editable title and affirmation with the generated story, and vision reporting used the displayed story rather than an immutable generated copy. AiContentReportAction then showed only the first 357 characters plus an ellipsis even though normalizeAiContentReport and the database accepted up to 4,000 characters. A person could therefore submit personal edits or an unseen suffix under UI copy that described generated-output reporting. The current worktree passes generated-only evidence and renders the exact normalized payload preview. Status: fixed in worktree; regression gate scripts/verificar-denuncia-ia.js passes.",
+    "root_cause": "AiContentReportAction in components/AiContentReportAction.js does not bind evidence and preview to the immutable normalized generated output, allowing user-edited or undisplayed text to be transmitted.",
+    "intended_behavior": "The in-app safety action should submit only the selected AI-generated output and should display exactly the evidence that will leave the device.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "screens/ManifestationScreen.js",
+        "line": 1110,
+        "scope": "ManifestationScene",
+        "description": "The pre-fix report action received a concatenation of editable title, affirmation, and generated story."
+      },
+      {
+        "kind": "propagation",
+        "file": "components/AiContentReportAction.js",
+        "line": 109,
+        "scope": "AiContentReportAction",
+        "description": "The pre-fix modal reduced the visible confirmation to a 357-character prefix but forwarded the original content value."
+      },
+      {
+        "kind": "sink",
+        "file": "services/aiContentReports.js",
+        "line": 127,
+        "scope": "submitAiContentReport",
+        "description": "The pre-fix client sent normalized content, including any editable or undisplayed suffix, to the persistence RPC."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "user_interaction",
+        "description": "The person edits reportable scene/vision text or the evidence exceeds the old preview cutoff, then voluntarily submits a report."
+      },
+      {
+        "kind": "data_state",
+        "description": "A reportable item contains personal edits or relevant content after character 357."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A local tester controlling the reportable content on their own device.",
+      "payloads": [
+        "Set an editable title or affirmation to SENTINEL_PRIVATE_EDIT before reporting the scene.",
+        "Use generated-looking evidence with SENTINEL_HIDDEN_SUFFIX after character 357."
+      ],
+      "instructions": [
+        "Open a saved scene or vision and change an editable field.",
+        "Open the AI-content report modal and inspect the old truncated preview.",
+        "Submit the report and inspect the RPC payload or stored content_text with an authorized test harness."
+      ],
+      "expected_result": "The pre-fix payload contains the private edit or hidden suffix even though it was not generated evidence or was not fully shown in the confirmation."
+    },
+    "remediation": {
+      "strategy": "Retain immutable generated evidence, pass only that value into reporting, and use one normalization function for both preview and transmission.",
+      "code_changes": [
+        {
+          "file_name": "components/AiContentReportAction.js",
+          "fixed_code": "const preview = normalizeAiReportEvidenceText(content);"
+        },
+        {
+          "file_name": "screens/ManifestationScreen.js",
+          "fixed_code": "content={item.story}"
+        },
+        {
+          "file_name": "screens/VisionPlayerScreen.js",
+          "fixed_code": "content={vision.generatedStory}"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Submission is voluntary, but editing and long generated text are normal product states and the mismatch was deterministic."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Personal free-form text could leave the device and be retained as moderation evidence contrary to the confirmation boundary."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "The pre-fix prop flow, preview cutoff, request normalization, and persistence sink were directly traced and reproduced with sentinel content."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "title": "ABUSE-01 [CWE-799] Disposable anonymous UUIDs bypassed AI-report quotas (fixed; rollout pending)",
+    "description": "The pre-fix client called celeste_submit_ai_content_report directly as an authenticated anonymous Supabase user. Migration 011 serialized and limited submissions only by auth.uid(), while anonymous identities can be discarded and recreated. Repeating that cycle reset the ten-report allowance and could grow the moderation queue and retained evidence without a stable actor or global ceiling. The current worktree adds a Vercel gateway, a pseudonymous HMAC actor, serialized user/actor/global quotas, service-only RPCs, and migration 014 revocation of the legacy RPC. Status: fixed in code; staged production migrations 013/014 remain pending.",
+    "root_cause": "celeste_submit_ai_content_report in supabase/migrations/011_ai_content_reports.sql does not enforce a stable actor or global quota, allowing disposable anonymous identities to reset the submission allowance.",
+    "intended_behavior": "Anonymous users should be able to report unsafe output without allowing one source to create unbounded moderation work or retained records.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "services/aiContentReports.js",
+        "line": 113,
+        "scope": "submitAiContentReport",
+        "description": "The pre-fix reporting client accepted a report after creating or resuming an anonymous Supabase session."
+      },
+      {
+        "kind": "propagation",
+        "file": "services/aiContentReports.js",
+        "line": 127,
+        "scope": "submitAiContentReport",
+        "description": "The client invoked the legacy authenticated RPC directly, with no server-derived stable actor."
+      },
+      {
+        "kind": "sink",
+        "file": "supabase/migrations/011_ai_content_reports.sql",
+        "line": 120,
+        "scope": "celeste_submit_ai_content_report",
+        "description": "The only abuse count was scoped to the current reporter UUID over 24 hours before insertion."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "The attacker can create anonymous Supabase sessions, an intended capability of the client."
+      },
+      {
+        "kind": "network_routing",
+        "description": "The legacy RPC is reachable with the public Supabase key and an anonymous bearer token."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A remote client with the public Supabase configuration and no paid entitlement.",
+      "payloads": [
+        "Ten valid celeste_submit_ai_content_report calls per anonymous UUID, followed by a new anonymous sign-up and repetition."
+      ],
+      "instructions": [
+        "Create an anonymous Supabase session.",
+        "Submit reports until that UUID reaches its limit.",
+        "Discard local auth state and create a new anonymous session.",
+        "Repeat the same valid RPC submissions."
+      ],
+      "expected_result": "Each fresh UUID receives a fresh per-user allowance, so total accepted reports from one source are not bounded by the original quota."
+    },
+    "remediation": {
+      "strategy": "Gate reports server-side, derive a non-reversible HMAC actor from trusted request context, serialize user/actor/global counters, and revoke the legacy client RPC after an expansion deploy.",
+      "code_changes": [
+        {
+          "file_name": "api/denunciar-conteudo-ia.js",
+          "fixed_code": "const actorHash = paidAccess.deriveReportActorHash(req, config.actorHashSecret);"
+        },
+        {
+          "file_name": "supabase/migrations/013_ai_content_report_gateway.sql",
+          "fixed_code": "create table if not exists public.celeste_ai_report_actor_usage (...); create table if not exists public.celeste_ai_report_global_usage (...);"
+        },
+        {
+          "file_name": "supabase/migrations/014_disable_legacy_ai_report_rpc.sql",
+          "fixed_code": "raise exception 'ai_report_gateway_required' using errcode = '42501';"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Anonymous sign-up and the legacy RPC were public application flows, and identity rotation required no privileged access."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Abuse can create moderation workload and retained records, but does not expose other users' reports or directly compromise privileged data."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "The direct RPC grant, per-UUID predicate, anonymous session creation, and absence of actor/global report counters were all verified in source and SQL."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "title": "DEEPLINK-01 [CWE-400] Malformed deep links could block or crash navigation parsing (fixed with residual advisory)",
+    "description": "The pre-fix linking configuration forwarded unbounded celeste:// and HTTPS inputs directly to React Navigation. Its query-string path reaches decode-uri-component@0.2.2, affected by GHSA-vcc3-ghjq-m6fr, and route segment decoding can throw URIError. Local reproduction measured about 10.2 seconds for a 1,930-character %C0 path and observed URIError for celeste://m/%E0%A4%A. The current worktree caps length and query parts, performs a linear native decode, rejects controls/malformed input, and catches the downstream parser. Status: fixed at the application boundary; seven Moderate transitive npm audit paths remain because no dependency fix is available.",
+    "root_cause": "linking in App.js does not validate or bound external URL text before parsing, allowing malformed percent-encoded input to consume excessive CPU or throw.",
+    "intended_behavior": "Supported app and HTTPS links should restore known screens quickly, while malformed or oversized input should be ignored without blocking or crashing the UI thread.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "App.js",
+        "line": 895,
+        "scope": "linking",
+        "description": "The pre-fix configuration registered celeste:// and HTTPS prefixes without a filter or custom guarded parser."
+      },
+      {
+        "kind": "propagation",
+        "file": "node_modules/@react-navigation/core/lib/commonjs/getStateFromPath.js",
+        "line": 431,
+        "scope": "getStateFromPath",
+        "description": "React Navigation passed the attacker-controlled query string into query-string parsing."
+      },
+      {
+        "kind": "sink",
+        "file": "node_modules/decode-uri-component/index.js",
+        "line": 89,
+        "scope": "decodeUriComponent",
+        "description": "The vulnerable malformed-input fallback repeatedly attempted decoding and could exhibit superlinear CPU cost."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "user_interaction",
+        "description": "The target opens or receives a crafted Celeste app link or supported HTTPS link."
+      },
+      {
+        "kind": "third_party_dependency",
+        "description": "The installed React Navigation dependency graph includes decode-uri-component 0.2.2."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A party able to present a link to a Celeste user.",
+      "payloads": [
+        "celeste://ritual?x= followed by %C0 repeated 640 times",
+        "celeste://m/%E0%A4%A"
+      ],
+      "instructions": [
+        "Construct a supported-scheme link with repeated malformed percent-encoded bytes or an incomplete UTF-8 route segment.",
+        "Open it in the pre-fix application.",
+        "Measure UI-thread delay or observe the uncaught URIError."
+      ],
+      "expected_result": "The malformed query causes seconds of synchronous parsing delay, while the malformed route segment can throw URIError."
+    },
+    "remediation": {
+      "strategy": "Reject oversized, high-cardinality, malformed, or control-bearing paths before React Navigation and wrap the parser while tracking the transitive advisory.",
+      "code_changes": [
+        {
+          "file_name": "utils/navigationPathSafety.js",
+          "fixed_code": "if (typeof path !== 'string' || path.length > 2048) return false; if (queryPartCount(path) > 32) return false; const decoded = decodeURIComponent(path);"
+        },
+        {
+          "file_name": "App.js",
+          "fixed_code": "filter(url) { return isSafeNavigationPath(url); } getStateFromPath(path, options) { return safeNavigationStateFromPath(path, options, getNavigationStateFromPath); }"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Exploitation requires a user/device to open a crafted link and affects that client instance rather than a shared service."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "Impact is temporary availability loss or a navigation crash, with no demonstrated confidentiality or integrity compromise."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Both schemes were traced to the parser, malformed inputs were executed locally with timing and exception observations, and the installed advisory version was confirmed."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "title": "REMINDER-01 [CWE-459] Reset/import could leave an orphan recurring ritual notification (fixed)",
+    "description": "The native scheduler created the recurring notification before its identifier was persisted. If the ritual screen unmounted in that interval, the app state retained a null identifier. Reset and import relied on identifier-based cancellation, whose pre-fix null branch returned success without querying native scheduled notifications. The recurring reminder could survive local-data deletion and continue exposing prior Celeste use on the lock screen. The current worktree sweeps notifications by current tag or legacy URL before reset/import and fails closed on cleanup errors. Status: fixed in worktree.",
+    "root_cause": "cancelDailyRitualReminder in services/dailyRitualReminder.js does not inspect native scheduled notifications when the stored identifier is missing, allowing an orphan recurring reminder to survive data deletion.",
+    "intended_behavior": "Resetting or replacing local app data should remove every Celeste ritual reminder before the old state becomes inaccessible.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "screens/DailyRitualScreen.js",
+        "line": 321,
+        "scope": "updateReminder",
+        "description": "Native scheduling completed before the returned identifier was written into application state."
+      },
+      {
+        "kind": "propagation",
+        "file": "context/AppContext.js",
+        "line": 3250,
+        "scope": "importBackup",
+        "description": "The pre-fix import cleanup passed the possibly null stored notificationId to identifier-only cancellation."
+      },
+      {
+        "kind": "sink",
+        "file": "services/dailyRitualReminder.js",
+        "line": 122,
+        "scope": "cancelDailyRitualReminder",
+        "description": "The missing-ID branch returned success without enumerating or cancelling the native recurring notification."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "timing_dependency",
+        "description": "The screen unmounts or persistence is interrupted after native scheduling but before the identifier is saved."
+      },
+      {
+        "kind": "user_interaction",
+        "description": "The person later resets data, or native import replaces the current state."
+      },
+      {
+        "kind": "environmental_dependency",
+        "description": "The application is running on a native platform with scheduled local notifications."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A local QA tester reproducing the lifecycle race; no remote attacker is required.",
+      "payloads": [
+        "A scheduled notification with data.kind=daily_ritual and no persisted notificationId.",
+        "A legacy scheduled notification whose data.url is celeste://ritual."
+      ],
+      "instructions": [
+        "Schedule the daily ritual reminder and interrupt/unmount before its identifier is persisted.",
+        "Confirm app state has a null notificationId while the OS still lists the notification.",
+        "Run reset or native import in the pre-fix build.",
+        "Inspect OS scheduled notifications."
+      ],
+      "expected_result": "The ritual notification remains scheduled after the app reports successful cleanup and removes the related local state."
+    },
+    "remediation": {
+      "strategy": "Enumerate native notifications and cancel every current-tag or legacy-URL ritual reminder before durable reset/import mutation; abort on sweep failure.",
+      "code_changes": [
+        {
+          "file_name": "services/dailyRitualReminder.js",
+          "fixed_code": "const scheduled = await client.getAllScheduledNotificationsAsync(); const identifiers = scheduled.filter(isDailyRitualNotification).map(...);"
+        },
+        {
+          "file_name": "context/AppContext.js",
+          "fixed_code": "const dailyRitualSweep = await cancelOrphanedDailyRitualReminders(); if (!dailyRitualSweep.ok) throw new Error('daily_ritual_cancel_failed');"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "The orphan requires a narrow lifecycle/persistence timing window, though the subsequent reset path is ordinary."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "A recurring lock-screen notification can persist after a privacy deletion action and reveal continued association with the app."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "medium",
+      "reason": "The schedule-before-persist and null-ID cancellation paths are direct; the exact lifecycle race is platform-dependent, and native import is currently a latent rather than web-reachable path."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "title": "QUOTA-01 [CWE-770] Missing Gemini configuration consumed quota before returning 503 (fixed)",
+    "description": "In the pre-fix translation and dream handlers, authorizePaidRequest reserved three units before the handlers checked GEMINI_API_KEY and GEMINI_PAID_DATA_TERMS_ACCEPTED. A valid authenticated request therefore consumed distributed quota and then deterministically returned a not-configured 503 without calling the provider. Repetition could deny legitimate use for that user/actor and spend global quota capacity during a configuration outage. The current worktree performs the configuration precheck before authorization. Status: fixed in worktree.",
+    "root_cause": "handler in api/traduzir-cena.js does not verify provider configuration before authorizePaidRequest, allowing failed not-configured requests to reserve quota.",
+    "intended_behavior": "Quota should be reserved only when the configured provider path is capable of attempting the requested generation operation.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "api/traduzir-cena.js",
+        "line": 331,
+        "scope": "handler",
+        "description": "The pre-fix endpoint accepted and validated a request while Gemini configuration could be absent."
+      },
+      {
+        "kind": "propagation",
+        "file": "api/traduzir-cena.js",
+        "line": 336,
+        "scope": "handler",
+        "description": "The handler called paid authorization for three translation units before checking the provider key and terms flag."
+      },
+      {
+        "kind": "sink",
+        "file": "api/_paid-access.js",
+        "line": 317,
+        "scope": "authorizePaidRequest",
+        "description": "Paid authorization reserved credit in the distributed quota backend, after which the caller returned 503."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "system_configuration",
+        "description": "GEMINI_API_KEY is absent or GEMINI_PAID_DATA_TERMS_ACCEPTED is not 1."
+      },
+      {
+        "kind": "authentication_level",
+        "description": "The request otherwise has a valid anonymous identity and request ID and passes applicable client controls."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An authenticated client during a Gemini configuration outage or incomplete deployment.",
+      "payloads": [
+        "A valid POST /api/traduzir-cena request with the current cloud-consent fields.",
+        "A valid POST /api/transformar-sonho request with the current cloud-consent fields."
+      ],
+      "instructions": [
+        "Run the pre-fix handler with Gemini configuration absent but quota backend configured.",
+        "Send a valid authenticated translation or dream request.",
+        "Observe the 503 response and inspect the quota reservation counter."
+      ],
+      "expected_result": "The request returns not-configured while the user, actor, and global quota counters reflect the reserved units."
+    },
+    "remediation": {
+      "strategy": "Fail on missing provider key/terms before identity authorization or quota reservation, and retain regression tests that assert the authorizer is never called.",
+      "code_changes": [
+        {
+          "file_name": "api/traduzir-cena.js",
+          "fixed_code": "const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512); if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') return sendJson(res, 503, 'translation_not_configured'); const access = await paidAccess.authorizePaidRequest(...);"
+        },
+        {
+          "file_name": "api/transformar-sonho.js",
+          "fixed_code": "const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512); if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') return sendError(res, 503, 'generation_not_configured'); const access = await paidAccess.authorizePaidRequest(...);"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "The behavior occurred deterministically whenever a deploy or outage left Gemini configuration incomplete."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "Impact is bounded quota availability and no upstream provider charge occurs because no provider call is made."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Call ordering was explicit in both handlers and regression tests now prove authorization is skipped when configuration is absent."
+    }
+  }
+]

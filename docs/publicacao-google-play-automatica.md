@@ -19,8 +19,10 @@ solicitado, a trilha `internal` do Google Play.
    `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
 4. Para auto-submit, crie antes o app no Google Play Console e cadastre no EAS
    a conta de servico do Google Play. Nenhuma chave JSON deve entrar no Git.
-5. Revise e faca commit de todas as mudancas. A branch precisa estar limpa e
-   igual ao upstream do GitHub.
+5. Revise e faca commit de todas as mudancas do aplicativo. A branch precisa
+   estar igual ao upstream do GitHub. Capturas locais em `scripts/e2e-shots/`
+   podem permanecer alteradas porque esse caminho e bloqueado pelo
+   `.easignore`; qualquer outra mudanca sem commit interrompe a release.
 
 ## Comandos
 

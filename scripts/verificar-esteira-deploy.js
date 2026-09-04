@@ -5,11 +5,16 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const {
+  AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION,
+  AI_REPORT_GATEWAY_SCHEMA_VERSION,
+  AI_REPORT_RETENTION_DAYS,
   COMPLETE_JOURNEY_DAILY_UNITS,
   GENERATION_QUOTA_SCHEMA_VERSION,
   anonymousSignupHeaders,
+  aiReportRolloutMode,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  validateAiReportGatewayBackend,
   validateActorQuotaBackend,
   validateLocalBuildEnvironment,
   validateProductionEnvironmentOutput,
@@ -85,6 +90,20 @@ function operationQuotaPayload(overrides = {}) {
       dream: { userDailyUnits: 24, actorDailyUnits: 48, allowedUnits: [3], enabled: true },
       translation: { userDailyUnits: 24, actorDailyUnits: 48, allowedUnits: [3], enabled: true },
     },
+    ...overrides,
+  };
+}
+
+function aiReportGatewayPayload(overrides = {}) {
+  return {
+    schemaVersion: 2,
+    serverGateway: true,
+    userQuota: true,
+    actorQuota: true,
+    globalQuota: true,
+    retentionDays: 180,
+    legacyClientSubmitDisabled: true,
+    deleteAll: true,
     ...overrides,
   };
 }
@@ -304,10 +323,100 @@ test('deploy probes migration 010 and the full 6+6 capacity without spending quo
   assert.strictEqual(opaqueCalls[0].options.headers.Authorization, undefined);
 });
 
+test('deploy probes the final AI report gateway contract without creating a report', async () => {
+  const env = {
+    CELESTE_SUPABASE_URL: 'https://celeste-test.supabase.co',
+    CELESTE_SUPABASE_SERVICE_ROLE_KEY: 'server-service-role-key',
+  };
+  const calls = [];
+  const result = await validateAiReportGatewayBackend(env, async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => aiReportGatewayPayload() };
+  });
+
+  assert.deepStrictEqual(result, {
+    schemaVersion: 2,
+    rolloutMode: 'final',
+    retentionDays: 180,
+    serverGateway: true,
+    actorQuota: true,
+    globalQuota: true,
+    legacyClientSubmitDisabled: true,
+    deleteAll: true,
+  });
+  assert.strictEqual(AI_REPORT_GATEWAY_SCHEMA_VERSION, 2);
+  assert.strictEqual(AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION, 1);
+  assert.strictEqual(AI_REPORT_RETENTION_DAYS, 180);
+  assert.strictEqual(calls.length, 1);
+  assert.match(calls[0].url, /\/rpc\/celeste_ai_content_report_gateway_version$/);
+  assert.strictEqual(calls[0].options.method, 'POST');
+  assert.strictEqual(calls[0].options.body, '{}');
+  assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer server-service-role-key');
+  assert.ok(!JSON.stringify(calls[0]).includes('p_content_text'), 'probe nao pode criar denuncia');
+
+  await assert.rejects(
+    () => validateAiReportGatewayBackend({}, async () => ({ ok: true })),
+    /Credenciais locais.*migrations 013\/014.*deploy bloqueado/
+  );
+  await assert.rejects(
+    () => validateAiReportGatewayBackend(env, async () => ({ ok: false, status: 404 })),
+    /Migrations 013\/014 ausentes.*deploy bloqueado/
+  );
+  for (const invalid of [
+    { schemaVersion: 1 },
+    { actorQuota: false },
+    { globalQuota: false },
+    { userQuota: false },
+    { retentionDays: 181 },
+    { legacyClientSubmitDisabled: false },
+    { deleteAll: false },
+  ]) {
+    await assert.rejects(
+      () => validateAiReportGatewayBackend(env, async () => ({
+        ok: true,
+        json: async () => aiReportGatewayPayload(invalid),
+      })),
+      /Migration 014.*contrato de gateway invalido.*deploy bloqueado/
+    );
+  }
+
+  const expansionResult = await validateAiReportGatewayBackend(
+    { ...env, CELESTE_AI_REPORT_ROLLOUT: 'expansion' },
+    async () => ({
+      ok: true,
+      json: async () => aiReportGatewayPayload({
+        schemaVersion: 1,
+        legacyClientSubmitDisabled: false,
+      }),
+    })
+  );
+  assert.strictEqual(expansionResult.schemaVersion, 1);
+  assert.strictEqual(expansionResult.rolloutMode, 'expansion');
+  assert.strictEqual(aiReportRolloutMode({}), 'final');
+  assert.strictEqual(aiReportRolloutMode({ CELESTE_AI_REPORT_ROLLOUT: 'final' }), 'final');
+  assert.throws(
+    () => aiReportRolloutMode({ CELESTE_AI_REPORT_ROLLOUT: 'permissive' }),
+    /CELESTE_AI_REPORT_ROLLOUT invalido.*deploy bloqueado/
+  );
+  await assert.rejects(
+    () => validateAiReportGatewayBackend(env, async () => ({
+      ok: true,
+      json: async () => aiReportGatewayPayload({
+        schemaVersion: 1,
+        legacyClientSubmitDisabled: false,
+      }),
+    })),
+    /contrato de gateway invalido.*deploy bloqueado/,
+    'o modo padrao nunca pode aceitar a RPC legada habilitada'
+  );
+});
+
 test('authoritative deploy pipeline gates, authenticates, validates and promotes', () => {
   for (const script of [
     'verificar-controles-reproducao-audio.js',
     'verificar-proveniencia-cronologia.js',
+    'verificar-denuncia-ia.js',
+    'verificar-deep-links-seguros.js',
     'verificar-esteira-deploy.js',
   ]) {
     assert.ok(deploySource.includes(script), `gate obrigatorio ausente: ${script}`);
@@ -320,6 +429,12 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'variaveis devem falhar antes dos gates e do export'
   );
   assert.match(deploySource, /await validateActorQuotaBackend\(/);
+  assert.match(deploySource, /await validateAiReportGatewayBackend\(/);
+  assert.match(
+    deploySource,
+    /fs\.existsSync\(path\.join\(apiTarget, 'denunciar-conteudo-ia\.js'\)\)/,
+    'gateway de denuncia precisa entrar no pacote da Vercel'
+  );
   assert.ok(
     main.indexOf('for (const [script, failure] of STATIC_GATES)') <
       main.indexOf("'export', '--platform', 'web'"),
@@ -423,6 +538,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     '/api/transformar-sonho',
     '/api/gerar-audio',
     '/api/gerar-visual',
+    '/api/denunciar-conteudo-ia',
   ]) {
     assert.ok(candidateSource.includes(`'${pathname}'`), `API ausente do candidato: ${pathname}`);
   }

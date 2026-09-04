@@ -57,7 +57,7 @@ não apenas pelo texto desta lista.
 | App governamental | Não | binário final |
 | Recursos financeiros | Não | binário final |
 | Criação de conta | Não; a sessão anônima de denúncia não é uma conta visível | manter login e Supabase social fora do Android |
-| Exclusão de conta | Não se aplica nesta v1 | a pergunta separada de exclusão de dados deve ser respondida |
+| Exclusão de conta | Não se aplica nesta v1 | a ação no Perfil exclui denúncias, não uma conta ou sessão técnica |
 | Health Apps Declaration | `Stress management, relaxation, mental acuity`; não médico | conferir no AAB e salvar no console |
 | Foreground service | Não na v1 Android | confirmar no AAB que `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` estão ausentes |
 | Acesso do revisor | Fluxo inteiro sem login | testar build de produção |
@@ -73,9 +73,11 @@ que apareçam e descrevam o app real.
 
 No Android, as APIs pagas de Anthropic, OpenAI, Gemini e ElevenLabs falham antes
 de criar sessão ou fazer a chamada. O único fluxo intencional para fora do
-aparelho é a denúncia opcional de conteúdo, que envia ao Supabase um UUID
-pseudônimo, o conteúdo escolhido, motivo, nota opcional e metadados mínimos da
-geração. O preenchimento exato está em `google-play-console-prefill.md`.
+aparelho é a denúncia opcional de conteúdo, que envia pelo gateway Celeste ao
+Supabase um UUID pseudônimo, somente a saída gerada escolhida (ou referência
+visual), motivo, nota opcional e metadados mínimos da geração. As linhas ficam
+por no máximo 180 dias e podem ser excluídas no Perfil enquanto a sessão desta
+instalação existir. O preenchimento exato está em `google-play-console-prefill.md`.
 
 O Plano Celeste pede microfone somente após um toque e usa reconhecimento no
 dispositivo quando suportado. A pessoa lê a afirmação que continua visível e a
@@ -90,21 +92,22 @@ release que habilite provedores em nuvem; não representam a v1 Android.
 
 | Tipo provável | Quando | Finalidade | Obrigatório | Tracking | Estado |
 |---|---|---|---|---|---|
-| Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI somente como failover; confirmar retenção |
-| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI somente como failover |
+| Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; confirmar retenção |
+| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini |
 | Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
 | Texto da narração, idioma e narrador | toque em Play com consentimento | gerar áudio | opcional | não identificado | ElevenLabs TTS |
 | Relato de sonho | reflexão em nuvem autorizada | gerar reflexão e afirmação | opcional | não identificado | Google Gemini; fallback local disponível |
 | Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |
 | Cena anterior e contagens de progresso | novo capítulo do Espelho Vivo | personalização | opcional | não identificado | texto de Rastro não é enviado |
 | IP, sinais de abuso e logs técnicos | chamadas ao backend | segurança e operação | técnico | não identificado | confirmar Vercel/BotID |
+| UUID pseudônimo, saída gerada/visual, motivo, nota e metadados mínimos | denúncia opcional | segurança e moderação | opcional | não identificado | gateway Celeste/Supabase; linhas por até 180 dias; exclusão no Perfil |
 
 ### Dados que permanecem locais no desenho atual
 
 - manifestações, afirmações e histórico de prática;
 - relato completo dos Rastros de Mudança;
 - favoritos e visões salvas;
-- configuração local do lembrete e do alarme;
+- configuração dos lembretes locais e, somente no iPhone compatível, do despertador com afirmação;
 - horários, dias, seleção e recibos mínimos do Plano Celeste, sem áudio ou
   transcrição reconhecida;
 - nomes de filhos, pessoas importantes e pessoa específica nos campos próprios;
@@ -149,11 +152,15 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 2. Usar a opção local para testar sem processadores de conteúdo em nuvem.
 3. Abrir Cena-Âncora, Ponte de Hoje e Ritual de Um Minuto.
 4. Registrar um sonho curto e gerar a afirmação local.
-5. Ativar consentimento adulto separado para testar cena, sonho e narração em
-   nuvem.
+5. Ativar o controle único com confirmação adulta para testar cena, sonho,
+   imagem, tradução e narração em nuvem.
 6. Testar notificações no app instalado.
 7. Abrir o Plano Celeste, tocar para iniciar o microfone e ler a afirmação
    visível duas vezes; conferir `1/2`, `2/2`, cancelamento, `Agora não`,
    `Adiar 10 min` e conclusão manual.
 8. Testar o despertador somente em iPhone compatível com o módulo nativo; ele é
    separado dos lembretes comuns do Plano Celeste.
+9. Enviar uma denúncia e usar `Perfil > Excluir denúncias de conteúdo de IA
+   enviadas`; verificar também a mensagem de ausência quando não existe sessão.
+10. Em Jornada, exportar o JSON legível; no app conferir a folha de
+    compartilhamento do sistema e, na web, o download e a restauração.

@@ -68,7 +68,8 @@ for (const [label, html] of [
   assert(/30 (?:dias|days)/i.test(html), `${label}: retenção do cache de áudio ausente`);
   assert(/(?:Denunciar este conteúdo de IA|Report this AI content)/.test(html), `${label}: fluxo de denúncia de IA ausente`);
   assert(/(?:relato bruto do sonho|raw dream report)/i.test(html), `${label}: minimização da denúncia de IA ausente`);
-  assert(/data-owner-required="legal-contact"/.test(html), `${label}: contato legal pendente não sinalizado`);
+  assert(/data-owner-required="legal-contact"/.test(html), `${label}: nome legal pendente não sinalizado`);
+  assert(html.includes('mailto:suporte@celestegroup.biz'), `${label}: e-mail público confirmado ausente`);
   assert(/data-owner-required="provider-retention"/.test(html), `${label}: retenção contratual pendente não sinalizada`);
 }
 
@@ -82,7 +83,8 @@ for (const [label, html, privacyRoute] of [
   ['support EN', supportEn, '/privacy'],
 ]) {
   assert(html.includes(`href="${privacyRoute}"`), `${label}: link de privacidade ausente`);
-  assert(/data-owner-required="support-email"/.test(html), `${label}: e-mail pendente não sinalizado`);
+  assert(!/data-owner-required="support-email"/.test(html), `${label}: e-mail confirmado ainda marcado como pendente`);
+  assert(html.includes('mailto:suporte@celestegroup.biz'), `${label}: e-mail público confirmado ausente`);
   assert(/(?:emergência|emergency)/i.test(html), `${label}: orientação de emergência ausente`);
 }
 
@@ -98,6 +100,7 @@ const consoleFields = JSON.parse(read(path.join('store-listing', 'console-fields
 assert(consoleFields.apple.privacyUrl === urls.privacy, 'Apple privacyUrl diverge');
 assert(consoleFields.apple.supportUrl === urls.support, 'Apple supportUrl diverge');
 assert(consoleFields.googlePlay.privacyUrl === urls.privacy, 'Google Play privacyUrl diverge');
+assert(consoleFields.googlePlay.supportEmail === 'suporte@celestegroup.biz', 'Google Play supportEmail diverge');
 
 const vercel = JSON.parse(read('vercel.json'));
 const rewriteMap = new Map((vercel.rewrites || []).map((item) => [item.source, item.destination]));
@@ -110,4 +113,4 @@ assert(profile.includes('testID="profile-privacy-link"'), 'Link de privacidade d
 assert(profile.includes("setDocument('privacy')"), 'Link interno não abre o documento de privacidade');
 
 console.log('Páginas públicas PT/EN, URLs da loja e link interno de privacidade validados.');
-console.warn('PENDENTE DO TITULAR: nome legal, e-mail público e retenção contratual dos provedores.');
+console.warn('PENDENTE DO TITULAR: nome legal e retenção contratual dos provedores.');

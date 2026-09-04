@@ -41,7 +41,7 @@ Atualizado em 29/08/2026 (America/Sao_Paulo).
 
 ## Consentimento, seguranca e custo
 
-- O consentimento de nuvem e explicito, exclusivo para maiores de 18 anos e versionado como `celeste-cloud-processors-v1`.
+- O consentimento de nuvem e explicito, unificado, exclusivo para maiores de 18 anos e versionado como `celeste-cloud-processors-v2`.
 - Consentimentos antigos nao sao promovidos automaticamente. Exportar/importar dados remove a autorizacao de nuvem e exige nova escolha.
 - As cinco rotas pagas exigem Origin permitido, Vercel BotID valido, identidade anonima/autenticada, consentimento atual, payload minimo e cota atomica no Supabase.
 - WAF da Vercel: 12 requisicoes por minuto, combinando IP e JA4, nas cinco rotas pagas.

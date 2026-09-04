@@ -129,8 +129,10 @@ function personalJourneyItemsForState(state, kind, requestedLang) {
 
   return (Array.isArray(source) ? source : []).map((entry) => {
     const key = itemKey(kind, entry.category);
+    const generatedStory = kind === 'vision' ? clean(entry.story, 1200) : '';
     return {
       ...entry,
+      ...(kind === 'vision' ? { generatedStory } : {}),
       ...(kind === 'vision' && clean(storyEdits[key], 1200)
         ? { story: clean(storyEdits[key], 1200), userEdited: true }
         : {}),

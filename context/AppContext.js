@@ -63,7 +63,10 @@ import {
   restoreLocalCommunityStoriesFromBackup,
   validateLocalCommunityStoriesBackup,
 } from '../services/communityStories';
-import { cancelDailyRitualReminder } from '../services/dailyRitualReminder';
+import {
+  cancelDailyRitualReminder,
+  cancelOrphanedDailyRitualReminders,
+} from '../services/dailyRitualReminder';
 import { cancelPracticePlanReminders } from '../services/practicePlanReminders';
 import {
   cancelAffirmationAlarm,
@@ -2693,6 +2696,11 @@ export function AppProvider({ children }) {
         // Inclui lembretes recorrentes e eventuais adiamentos de 10 minutos.
         const planCancellation = await cancelPracticePlanReminders();
         if (!planCancellation.ok) throw new Error('practice_plan_cancel_failed');
+        // The persisted daily identifier can be lost if the process stops
+        // after native scheduling. Sweep only Celeste-tagged ritual notices
+        // before making the reset durable.
+        const dailyRitualSweep = await cancelOrphanedDailyRitualReminders();
+        if (!dailyRitualSweep.ok) throw new Error('daily_ritual_cancel_failed');
         communityToken = await beginCommunityDataReset();
         // Privacy-sensitive auxiliary records must be gone before the empty
         // onboarding can ever become visible again.
@@ -3124,6 +3132,8 @@ export function AppProvider({ children }) {
       includes: ['app-state', 'local-community-stories'],
       excludes: [
         'cloud-community-posts',
+        'submitted-ai-content-reports',
+        'pseudonymous-reporting-session',
         'device-consents',
         'scheduled-notifications',
         'generated-image-files',
@@ -3156,7 +3166,8 @@ export function AppProvider({ children }) {
         communityStories,
       },
     };
-    const serialized = JSON.stringify(envelope);
+    // Keep the user-controlled export inspectable without proprietary tooling.
+    const serialized = JSON.stringify(envelope, null, 2);
     if (utf8ByteLength(serialized) > CELESTE_BACKUP_MAX_BYTES) {
       const error = new Error('backup_too_large');
       error.code = 'backup_too_large';
@@ -3251,6 +3262,13 @@ export function AppProvider({ children }) {
         stateRef.current?.dailyRitual?.notificationId
       );
       if (!reminderCancelled.ok) {
+        cancelCommunityDataReset(communityToken);
+        storageMutationRef.current = null;
+        setStorageMutation(null);
+        return { ok: false, erro: 'reminder_cancel_failed' };
+      }
+      const orphanedRemindersCancelled = await cancelOrphanedDailyRitualReminders();
+      if (!orphanedRemindersCancelled.ok) {
         cancelCommunityDataReset(communityToken);
         storageMutationRef.current = null;
         setStorageMutation(null);

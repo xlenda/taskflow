@@ -1110,7 +1110,7 @@ export default function ManifestationScreen() {
         <AiContentReportAction
           contentType="scene"
           contentRef={`manifestation:${item.id}:${lang}`}
-          content={`${item.title}\n${item.affirmation}\n${item.story}`}
+          content={item.story}
           visualRef={item.visual?.contentFingerprint || item.visual?.cacheKey}
           generation={item.generation}
           lang={lang}

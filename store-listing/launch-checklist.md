@@ -31,6 +31,10 @@
 - [ ] testar AlarmKit em iPhone compatível antes de anunciá-lo;
 - [x] incluir mecanismo de denúncia para conteúdo gerado inadequado nas quatro
   superfícies e validar o envio real no Supabase de produção;
+- [ ] validar no build final a exclusão confirmada de todas as denúncias pelo
+  Perfil, o estado sem sessão e a expiração automática em até 180 dias;
+- [ ] validar o backup JSON legível: share sheet no app, download/restauração na
+  web e ausência de denúncias, consentimentos, notificações e arquivos de imagem;
 - [x] sincronizar as migrations Supabase `001` a `011`; o smoke live da denúncia
   passou e removeu a denúncia e o usuário criados para o teste;
 - [x] ocultar aba, atalho e deep link da Comunidade na v1 Android e manter as
@@ -46,7 +50,7 @@
 
 ## Titular e páginas públicas
 
-- [ ] informar nome legal, copyright e email público de suporte;
+- [ ] informar nome legal e copyright; e-mail público confirmado: `suporte@celestegroup.biz`;
 - [ ] publicar política de privacidade em HTTPS;
 - [ ] publicar página de suporte em HTTPS com contato real;
 - [x] preencher `store-listing/urls.json` com os caminhos públicos preparados;
@@ -72,6 +76,9 @@
 
 ## Google Play Console
 
+- [x] verificação da organização concluída em 03/09/2026 segundo relato do
+  titular; conferir visualmente no Play Console quando houver login disponível,
+  sem solicitar ou registrar novamente o D-U-N-S;
 - [ ] criar app com package `com.celesteapp.affirmations`;
 - [ ] escolher `Health & Fitness` e até cinco tags disponíveis;
 - [ ] informar website, email de suporte e política de privacidade;

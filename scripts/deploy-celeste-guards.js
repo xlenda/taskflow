@@ -31,6 +31,9 @@ const PRODUCTION_SECURITY_REQUIRED = Object.freeze([
   'CELESTE_ACTOR_HASH_SECRET',
 ]);
 const GENERATION_QUOTA_SCHEMA_VERSION = 10;
+const AI_REPORT_GATEWAY_SCHEMA_VERSION = 2;
+const AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION = 1;
+const AI_REPORT_RETENTION_DAYS = 180;
 // 1 anchor + 6 primary visions + 6 secondary visions + 6 affirmations.
 const JOURNEY_VISUAL_COUNT = 19;
 const JOURNEY_VISION_AUDIO_UNITS = 6 * 32;
@@ -307,6 +310,112 @@ async function validateActorQuotaBackend(env = {}, fetchImpl = global.fetch) {
   };
 }
 
+function aiReportRolloutMode(env = {}) {
+  const configured = String(env.CELESTE_AI_REPORT_ROLLOUT || '').trim().toLowerCase();
+  if (!configured || configured === 'final') return 'final';
+  if (configured === 'expansion') return 'expansion';
+  throw new Error('CELESTE_AI_REPORT_ROLLOUT invalido; deploy bloqueado');
+}
+
+function validateAiReportGatewayPayload(payload, rolloutMode = 'final') {
+  const commonContract = Boolean(
+    payload &&
+      payload.serverGateway === true &&
+      payload.userQuota === true &&
+      payload.actorQuota === true &&
+      payload.globalQuota === true &&
+      payload.retentionDays === AI_REPORT_RETENTION_DAYS &&
+      payload.deleteAll === true
+  );
+  if (!commonContract) return false;
+  const finalContract =
+    payload.schemaVersion === AI_REPORT_GATEWAY_SCHEMA_VERSION &&
+    payload.legacyClientSubmitDisabled === true;
+  if (rolloutMode === 'final') return finalContract;
+  if (rolloutMode !== 'expansion') return false;
+  const expansionContract =
+    payload.schemaVersion === AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION &&
+    payload.legacyClientSubmitDisabled === false;
+  return finalContract || expansionContract;
+}
+
+async function validateAiReportGatewayBackend(env = {}, fetchImpl = global.fetch) {
+  const rolloutMode = aiReportRolloutMode(env);
+  const urlValue = PRODUCTION_BACKEND_ALIASES.url
+    .map((name) => String(env[name] || '').trim())
+    .find(Boolean);
+  const serviceKey = PRODUCTION_BACKEND_ALIASES.secretKey
+    .map((name) => String(env[name] || '').trim())
+    .find(Boolean);
+  if (!urlValue || !serviceKey) {
+    throw new Error(
+      'Credenciais locais do backend ausentes para verificar migrations 013/014; deploy bloqueado'
+    );
+  }
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('Verificacao das migrations 013/014 indisponivel; deploy bloqueado');
+  }
+
+  let url;
+  try {
+    url = new URL(urlValue);
+  } catch (_error) {
+    throw new Error('URL local do backend invalida para verificar migrations 013/014');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('URL local do backend insegura para verificar migrations 013/014');
+  }
+
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (!/^sb_secret_/i.test(serviceKey)) {
+    headers.Authorization = `Bearer ${serviceKey}`;
+  }
+
+  let response;
+  try {
+    response = await fetchImpl(
+      `${url.toString().replace(/\/$/, '')}/rest/v1/rpc/celeste_ai_content_report_gateway_version`,
+      { method: 'POST', headers, body: '{}' }
+    );
+  } catch (_error) {
+    throw new Error('Supabase indisponivel ao verificar migrations 013/014; deploy bloqueado');
+  }
+  if (!response || !response.ok) {
+    throw new Error('Migrations 013/014 ausentes ou inacessiveis no Supabase; deploy bloqueado');
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    throw new Error('Migration 014 devolveu contrato invalido; deploy bloqueado');
+  }
+  if (!validateAiReportGatewayPayload(payload, rolloutMode)) {
+    throw new Error('Migration 014 devolveu contrato de gateway invalido; deploy bloqueado');
+  }
+  return {
+    schemaVersion: payload.schemaVersion,
+    rolloutMode,
+    retentionDays: payload.retentionDays,
+    serverGateway: true,
+    actorQuota: true,
+    globalQuota: true,
+    legacyClientSubmitDisabled: true,
+    deleteAll: true,
+  };
+}
+
 function parseDeploymentOutput(output, label = 'Vercel') {
   const payload = parseJsonObject(output, label);
   const rawUrl = typeof payload.url === 'string'
@@ -351,6 +460,9 @@ function extractAnonymousAccessToken(payload) {
 }
 
 module.exports = {
+  AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION,
+  AI_REPORT_GATEWAY_SCHEMA_VERSION,
+  AI_REPORT_RETENTION_DAYS,
   COMPLETE_JOURNEY_DAILY_UNITS,
   GENERATION_QUOTA_SCHEMA_VERSION,
   LOCAL_PUBLIC_KEY_ALIASES,
@@ -359,8 +471,11 @@ module.exports = {
   PRODUCTION_SECURITY_REQUIRED,
   PRODUCTION_TEXT_REQUIRED,
   anonymousSignupHeaders,
+  aiReportRolloutMode,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  validateAiReportGatewayBackend,
+  validateAiReportGatewayPayload,
   validateLocalBuildEnvironment,
   validateActorQuotaBackend,
   validateOperationQuotaPayload,

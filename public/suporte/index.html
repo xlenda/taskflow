@@ -23,20 +23,19 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Central pública · versão 1.0.0</p>
+          <p class="eyebrow">Central pública · versão 1.2.0</p>
           <h1>Suporte</h1>
           <p class="lead">
             Orientações para usar a Celeste, controlar seus dados e resolver problemas comuns.
           </p>
-          <p class="updated">Atualizada em 31 de agosto de 2026.</p>
+          <p class="updated">Atualizada em 3 de setembro de 2026.</p>
         </header>
 
         <div class="content">
-          <aside class="notice" data-owner-required="support-email" aria-label="Contato pendente do titular">
-            <strong>O e-mail público de suporte ainda não foi informado.</strong>
-            O titular da conta Google Play precisa fornecer um endereço real antes da distribuição.
-            Esta página já oferece autoatendimento, mas ainda não recebe solicitações individuais.
-            Nenhum contato fictício foi publicado.
+          <aside class="notice" aria-label="Contato de suporte da Celeste">
+            <strong>Contato de suporte e privacidade:</strong>
+            <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>.
+            O endereço deve permanecer ativo e ser acompanhado pela equipe responsável pela Celeste.
           </aside>
 
           <section class="section" aria-labelledby="dados">
@@ -49,14 +48,25 @@
               </li>
               <li>Apague manifestações, sonhos ou rastros diretamente nas áreas correspondentes.</li>
               <li>
+                Use <strong>Excluir denúncias de conteúdo de IA enviadas</strong> no Perfil para
+                remover as linhas remotas ligadas à sessão pseudônima desta instalação.
+              </li>
+              <li>
                 Use <strong>Recomeçar minha jornada</strong> para remover a prática local e refazer
                 o questionário inicial.
+              </li>
+              <li>
+                Em Jornada, salve um backup JSON legível e sem criptografia. No app instalado, a
+                Celeste abre a folha de compartilhamento do sistema; na web, baixa o arquivo.
+                Escolha um destino confiável e proteja a cópia.
               </li>
             </ol>
             <p>
               Esta versão não cria uma conta pessoal. Por isso, não existe uma conta remota para
-              excluir. Limpar os dados do aplicativo/site ou desinstalar o aplicativo também remove
-              a cópia local conforme o comportamento do sistema operacional.
+               excluir. Limpar os dados do aplicativo/site ou desinstalar o aplicativo também remove
+               a cópia local conforme o comportamento do sistema operacional. Isso pode perder o
+               vínculo com a sessão pseudônima: exclua as denúncias pelo Perfil antes. Registros de
+               denúncia restantes expiram em até 180 dias.
             </p>
             <p><a href="/privacidade">Leia a Política de privacidade completa.</a></p>
           </section>
@@ -65,10 +75,11 @@
             <h2 id="nuvem">Personalização em nuvem não funciona</h2>
             <ul>
               <li>Confirme que o aparelho está conectado à internet.</li>
-              <li>Abra o Perfil e confira se a autorização daquela função está ativada.</li>
+              <li>Abra o Perfil e confira se o controle único de processamento em nuvem está ativado.</li>
+              <li>Esse controle abrange novas cenas, sonhos, imagens, traduções e narrações opcionais.</li>
               <li>
-                As permissões de cena, sonho e narração são separadas; ativar uma não autoriza as
-                outras.
+                A Anthropic normalmente gera o texto da cena e a OpenAI é a alternativa; se ambas
+                não estiverem configuradas, o processamento aprovado do Gemini poderá gerar a cena.
               </li>
               <li>
                 Perfis marcados como menores de 18 anos usam somente as alternativas locais.
@@ -87,8 +98,8 @@
               <li>Toque novamente em Reproduzir; navegadores podem bloquear áudio automático.</li>
               <li>Teste uma prévia de narrador, que já vem no aplicativo e não usa a nuvem.</li>
               <li>
-                Para narração pessoal, confirme a autorização separada de voz no Perfil e a conexão
-                com a internet.
+                Para narração pessoal, confirme o controle único de processamento em nuvem no
+                Perfil e a conexão com a internet.
               </li>
             </ul>
           </section>
@@ -96,15 +107,16 @@
           <section class="section" aria-labelledby="notificacoes">
             <h2 id="notificacoes">Notificação ou alarme não aparece</h2>
             <ul>
-              <li>Esses recursos dependem do aplicativo instalado; o site não agenda o alarme do sistema.</li>
+              <li>O site não agenda lembrete nem despertador do sistema.</li>
               <li>Abra as configurações do aparelho e confirme a permissão de notificações.</li>
               <li>
                 Os avisos do Plano Celeste são lembretes comuns, não alarmes exatos. O sistema pode
                 atrasá-los por economia de bateria, Foco ou restrições do fabricante.
               </li>
               <li>
-                Alarmes dependem de aparelho e versão compatíveis e podem exigir autorização própria
-                do sistema.
+                Somente o app instalado em um iPhone compatível oferece o despertador do sistema com
+                afirmação e pode pedir acesso aos Alarmes. O Android oferece apenas lembretes comuns
+                nesta versão, não esse despertador exato.
               </li>
             </ul>
           </section>
@@ -152,15 +164,18 @@
           <section class="section" aria-labelledby="solicitacao">
             <h2 id="solicitacao">Solicitação de privacidade ou relato de conteúdo</h2>
             <p>
-              O canal público para solicitações individuais será o e-mail de suporte que ainda
-              precisa ser fornecido pelo titular. Até sua publicação, use os controles locais acima
-              para impedir novos envios e apagar conteúdo no aparelho.
+               Para suporte, dúvidas de privacidade ou ajuda com os controles disponíveis,
+              escreva para <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>.
+              Inclua apenas as informações necessárias para localizar e atender a solicitação.
             </p>
             <p>
               No conteúdo gerado, toque em <strong>Denunciar este conteúdo de IA</strong>, escolha
               o motivo e envie pelo formulário dentro do aplicativo. A Celeste envia a saída gerada,
-              o motivo e a nota opcional; não inclui o prompt, suas respostas originais nem o relato
-              bruto do sonho.
+               o motivo, a nota opcional e dados técnicos mínimos; não inclui o prompt, suas respostas
+               originais nem o relato bruto do sonho. Um identificador pseudônimo autoriza o envio e
+               ajuda a prevenir abuso. As linhas ficam por no máximo 180 dias e podem ser excluídas
+               no Perfil enquanto esta instalação mantiver a sessão. O suporte não pode garantir que
+               localizará uma sessão pseudônima perdida após limpeza de dados ou desinstalação.
             </p>
           </section>
 

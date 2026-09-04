@@ -38,6 +38,16 @@ for (const field of CLOUD_CONSENT_BOOLEAN_FIELDS) {
   assert.strictEqual(acceptedProfile[field], true, `${field} atual deve permanecer autorizado`);
 }
 
+const partialProfile = normalizeCloudConsentProfile({
+  ...legacyProfile,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
+  cloudNarrationConsent: false,
+  cloudDreamConsent: false,
+});
+for (const field of CLOUD_CONSENT_BOOLEAN_FIELDS) {
+  assert.strictEqual(partialProfile[field], true, `${field} deve seguir o controle unificado`);
+}
+
 const staleProfile = normalizeCloudConsentProfile({
   ...legacyProfile,
   cloudConsentVersion: 'celeste-cloud-processors-legacy',
@@ -83,7 +93,8 @@ for (const source of [profile, narration]) {
 }
 assert.match(home, /cloudConsentVersion\s*=\s*CLOUD_CONSENT_VERSION/);
 assert.match(home, /saveProfile\(\{[\s\S]*cloudConsentVersion,/);
-assert.match(chat, /const\s+DRAFT_V\s*=\s*5\s*;/);
+assert.strictEqual(CLOUD_CONSENT_VERSION, 'celeste-cloud-processors-v2');
+assert.match(chat, /const\s+DRAFT_V\s*=\s*6\s*;/);
 
 process.stdout.write(
   `Consentimento de nuvem ${CLOUD_CONSENT_VERSION} OK: legado bloqueado, aceite atual e backup sem bypass.\n`

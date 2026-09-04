@@ -12,6 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 import { Screen, Header, Card, pct } from '../ui/kit';
 import { useTheme } from '../ui/theme';
@@ -120,11 +122,17 @@ const S = {
   cancel: { en: 'Cancel', pt: 'Cancelar' },
 
   backupTitle: { en: 'Backup', pt: 'Cópia de segurança' },
-  backupNote: {
-    en: 'Your practice and local Community stories stay in this browser. Download a copy to keep your own backup.',
-    pt: 'Sua prática e seus relatos locais da Comunidade ficam neste navegador. Baixe uma cópia para guardar seu backup.',
+  backupNoteWeb: {
+    en: 'Download a readable, unencrypted JSON file with your local practice and Community drafts. It excludes submitted AI-content reports, the pseudonymous reporting session, device consents, scheduled notifications and generated image files. Protect this copy.',
+    pt: 'Baixe um arquivo JSON legível e sem criptografia com sua prática e os rascunhos locais da Comunidade. Ele não inclui denúncias de conteúdo de IA enviadas, a sessão pseudônima de denúncia, consentimentos do aparelho, notificações agendadas nem arquivos de imagens geradas. Proteja esta cópia.',
   },
-  saveCopy: { en: 'Save a copy', pt: 'Salvar uma cópia' },
+  backupNoteNative: {
+    en: 'Celeste will open the system share sheet with a readable, unencrypted JSON file containing your local practice and Community drafts. It excludes submitted AI-content reports, the pseudonymous reporting session, device consents, scheduled notifications and generated image files. Share it only with a destination you trust.',
+    pt: 'O Celeste abrirá a folha de compartilhamento do sistema com um arquivo JSON legível e sem criptografia contendo sua prática e os rascunhos locais da Comunidade. Ele não inclui denúncias de conteúdo de IA enviadas, a sessão pseudônima de denúncia, consentimentos do aparelho, notificações agendadas nem arquivos de imagens geradas. Compartilhe somente com um destino de confiança.',
+  },
+  saveCopyWeb: { en: 'Save JSON file', pt: 'Salvar arquivo JSON' },
+  saveCopyNative: { en: 'Share JSON backup', pt: 'Compartilhar backup JSON' },
+  shareCopyTitle: { en: 'Share Celeste backup', pt: 'Compartilhar backup do Celeste' },
   restoreCopy: { en: 'Restore from a file', pt: 'Restaurar de um arquivo' },
   restoreTitle: { en: 'Restore this copy?', pt: 'Restaurar esta cópia?' },
   restoreMessage: {
@@ -149,8 +157,8 @@ const S = {
     pt: 'Não foi possível preparar a cópia. Mantenha o Celeste aberto e tente novamente.',
   },
   backupTooLarge: {
-    en: 'This practice is too large for a safe browser backup.',
-    pt: 'Esta prática ficou grande demais para uma cópia segura no navegador.',
+    en: 'This practice is too large for a safe backup.',
+    pt: 'Esta prática ficou grande demais para uma cópia segura.',
   },
 
   footer: {
@@ -339,11 +347,11 @@ export default function JourneyScreen() {
     }
   };
 
-  // Web-only de propósito: no export estático a prática vive no navegador.
-  // Blob + clique DENTRO do gesto é o que o navegador aceita para baixar.
+  // A web baixa o JSON dentro do gesto. Apps instalados gravam apenas um arquivo
+  // temporário no cache e entregam o destino à folha de compartilhamento do sistema.
   const saveBackup = async () => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     setBackupErro(false);
+    let temporaryFile = null;
     try {
       const serialized = await exportStateJson();
       const blob = new Blob([serialized], { type: 'application/json' });
@@ -352,16 +360,38 @@ export default function JourneyScreen() {
         error.code = 'backup_too_large';
         throw error;
       }
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${APP_NAME.toLowerCase()}-${todayISO()}.json`;
-      // Firefox antigo só dispara o download com o anchor no documento.
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      const filename = `${APP_NAME.toLowerCase()}-${todayISO()}.json`;
+      if (Platform.OS === 'web') {
+        if (typeof document === 'undefined') throw new Error('backup_unavailable');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        // Firefox antigo só dispara o download com o anchor no documento.
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        return;
+      }
+      if (!(await Sharing.isAvailableAsync())) throw new Error('sharing_unavailable');
+      temporaryFile = new File(Paths.cache, filename);
+      temporaryFile.create({ overwrite: true, intermediates: true });
+      temporaryFile.write(serialized);
+      await Sharing.shareAsync(temporaryFile.uri, {
+        dialogTitle: t(S.shareCopyTitle),
+        mimeType: 'application/json',
+        UTI: 'public.json',
+      });
     } catch (error) {
       setBackupErro(error && error.code === 'backup_too_large' ? 'too_large' : 'save');
+    } finally {
+      if (temporaryFile && temporaryFile.exists) {
+        try {
+          temporaryFile.delete();
+        } catch (_error) {
+          // O cache temporário é privado e o sistema também pode limpá-lo.
+        }
+      }
     }
   };
 
@@ -678,19 +708,19 @@ export default function JourneyScreen() {
         </Card>
 
         {/* Só o "Recomeçar" (e a cópia de segurança) mora no fim da página. */}
-        {Platform.OS === 'web' ? (
-          <>
-            <SectionHeading title={t(S.backupTitle)} />
-            <Text style={[styles.backupNote, { color: theme.textMuted }]}>
-              {t(S.backupNote)}
-            </Text>
-            <PrimaryButton
-              label={t(S.saveCopy)}
-              icon="download-outline"
-              accent={0}
-              variant="soft"
-              onPress={saveBackup}
-            />
+        <>
+          <SectionHeading title={t(S.backupTitle)} />
+          <Text style={[styles.backupNote, { color: theme.textMuted }]}>
+            {t(Platform.OS === 'web' ? S.backupNoteWeb : S.backupNoteNative)}
+          </Text>
+          <PrimaryButton
+            label={t(Platform.OS === 'web' ? S.saveCopyWeb : S.saveCopyNative)}
+            icon={Platform.OS === 'web' ? 'download-outline' : 'share-outline'}
+            accent={0}
+            variant="soft"
+            onPress={saveBackup}
+          />
+          {Platform.OS === 'web' ? (
             <PrimaryButton
               label={t(S.restoreCopy)}
               icon="folder-open-outline"
@@ -699,24 +729,24 @@ export default function JourneyScreen() {
               onPress={restoreBackup}
               style={{ marginTop: 10 }}
             />
-            {backupErro ? (
-              <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
-                {t(
-                  backupErro === 'storage'
-                    ? S.restoreStorageFail
-                    : backupErro === 'reminder'
-                      ? S.restoreReminderFail
-                      : backupErro === 'save'
-                        ? S.backupSaveFail
-                        : backupErro === 'too_large'
-                          ? S.backupTooLarge
-                          : S.restoreFail,
-                  { app: APP_NAME }
-                )}
-              </Text>
-            ) : null}
-          </>
-        ) : null}
+          ) : null}
+          {backupErro ? (
+            <Text style={[styles.backupErro, { color: accentAt(theme, 1) }]}>
+              {t(
+                backupErro === 'storage'
+                  ? S.restoreStorageFail
+                  : backupErro === 'reminder'
+                    ? S.restoreReminderFail
+                    : backupErro === 'save'
+                      ? S.backupSaveFail
+                      : backupErro === 'too_large'
+                        ? S.backupTooLarge
+                        : S.restoreFail,
+                { app: APP_NAME }
+              )}
+            </Text>
+          ) : null}
+        </>
 
         <PrimaryButton
           label={t(resetBusy ? S.resetStoppingAlarm : S.resetCta)}

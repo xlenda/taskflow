@@ -24,6 +24,7 @@ async function main() {
   for (const [table, columns] of [
     ['celeste_generation_actor_usage', 'usage_day'],
     ['celeste_generation_operation_policy', 'operation'],
+    ['ai_content_reports', 'id'],
   ]) {
     assert.strictEqual(await tableExists(table, columns), true, `${table} is missing`);
   }
@@ -35,6 +36,19 @@ async function main() {
   if (error) throw new Error(`celeste_generation_policy: ${error.message}`);
   assert.ok(Array.isArray(data) && data.length === 1, 'generation policy row is missing');
   assert.strictEqual(data[0].actor_schema_version, 10, 'generation schema is not version 10');
+
+  const { data: visualPolicies, error: visualPolicyError } = await client
+    .from('celeste_generation_operation_policy')
+    .select('user_daily_units,actor_daily_units,allowed_units,enabled')
+    .eq('operation', 'visual')
+    .limit(1);
+  if (visualPolicyError) throw new Error(`visual operation policy: ${visualPolicyError.message}`);
+  assert.ok(Array.isArray(visualPolicies) && visualPolicies.length === 1, 'visual policy is missing');
+  const visualPolicy = visualPolicies[0];
+  assert.ok(visualPolicy.user_daily_units >= 176, 'migration 012 user visual capacity is missing');
+  assert.ok(visualPolicy.actor_daily_units >= 352, 'migration 012 actor visual capacity is missing');
+  assert.deepStrictEqual(visualPolicy.allowed_units, [8], 'visual operation units are unsafe');
+  assert.strictEqual(visualPolicy.enabled, true, 'visual operation is disabled');
 
   const communityTables = [
     ['community_profiles', 'id'],
@@ -57,6 +71,7 @@ async function main() {
 
   const mode = presentCount === 0 ? 'generation_only' : 'complete';
   console.log('Supabase remoto validado sem ler dados pessoais.');
+  console.log('BASELINE_VERSION=012');
   console.log(`BASELINE_MODE=${mode}`);
 }
 

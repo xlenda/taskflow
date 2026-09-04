@@ -573,13 +573,16 @@ async function handler(req, res) {
   const validated = validateInput(parsed.body);
   if (validated.error) return sendError(res, validated.status, validated.error);
 
-  const access = await paidAccess.authorizePaidRequest(req, { operation: 'dream', units: 3 });
-  if (!access.ok) return sendError(res, access.status, access.error);
-
+  // A missing provider configuration must not consume a committed daily
+  // operation quota when no provider dispatch can possibly occur.
   const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
   if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
     return sendError(res, 503, 'generation_not_configured');
   }
+
+  const access = await paidAccess.authorizePaidRequest(req, { operation: 'dream', units: 3 });
+  if (!access.ok) return sendError(res, access.status, access.error);
+
   const configuredModel = cleanText(process.env.GEMINI_MODEL || DEFAULT_MODEL, 80);
   const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
   const seed = deterministicSeed(validated.value);

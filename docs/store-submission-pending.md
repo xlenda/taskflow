@@ -40,10 +40,14 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## Google Play Console
 
+- A verificação da organização foi concluída em 03/09/2026 segundo relato do
+  titular. Conferir visualmente no Play Console quando houver login disponível;
+  não solicitar nem registrar novamente o D-U-N-S. Nome legal público,
+  desenvolvedor e demais escolhas sem evidência continuam pendentes.
 - Criar ou confirmar o app `com.celesteapp.affirmations`, a Play App Signing e a conta de
   servico usada pelo EAS Submit.
-- Informar email de suporte, URLs HTTPS de privacidade e suporte, territorios e
-  trilha inicial.
+- Informar no console o email de suporte ja confirmado (`suporte@celestegroup.biz`),
+  as URLs HTTPS de privacidade e suporte, territorios e trilha inicial.
 - Preencher Data Safety, declaracoes de conteudo, classificacao etaria e acesso
   ao app a partir do AAB final.
 - Recapturar os screenshots no build Android final. O recurso de AlarmKit nao
@@ -59,8 +63,12 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 
 ## Publicacao das URLs finais
 
-- Preencher nas paginas publicas o nome legal, o email publico de suporte e o
-  prazo de retencao confirmado nos contratos dos provedores.
+- O email publico `suporte@celestegroup.biz` ja foi inserido nas paginas. Ainda
+  falta preencher o nome legal e confirmar o prazo de retencao dos provedores.
+- As linhas de denúncia têm retenção máxima de 180 dias e exclusão confirmada no
+  Perfil enquanto a sessão pseudônima da instalação existir. A retenção da
+  sessão técnica e os contratos dos provedores continuam pendentes; suporte por
+  e-mail não garante localizar uma sessão perdida.
 - Manter saldo operacional nos provedores pagos. O canario da publicacao de
   31/08/2026 aprovou Anthropic, Gemini, geracao visual e ElevenLabs no navegador
   real; uma publicacao futura deve continuar respeitando esse mesmo portao.
@@ -99,6 +107,9 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   atalho e deep link nao entram na v1 Android.
 - A v1 Android exclui o despertador exato, seu modulo e suas permissoes, e
   bloqueia as APIs pagas de cena, traducao, imagem, sonho e voz.
+- A exportação manual cria JSON legível e sem criptografia: o app abre a folha
+  de compartilhamento do sistema e a web baixa o arquivo. O backup exclui
+  denúncias, consentimentos, notificações agendadas e arquivos de imagem.
 - A configuração e as dependências instaladas fixam SDK 57 com
   `compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
   O novo prebuild da árvore final ainda precisa confirmar autolinking,

@@ -24,12 +24,11 @@ Responda aos seis blocos abaixo em uma única mensagem.
 ### 1. Conta Google Play
 
 - Tipo da conta: **`ORGANIZAÇÃO` — confirmado pelo titular em 02/09/2026**
-- Situação: **`CONTA NOVA, A SER CRIADA DO ZERO` — confirmado pelo titular em 02/09/2026**
+- Situação: **`VERIFICAÇÃO DA ORGANIZAÇÃO CONCLUÍDA` — relato do titular em 03/09/2026; conferir visualmente quando houver login disponível**
 - Nome legal exato da organização: `______________________________`
 - País de registro da organização: **`BRASIL` — confirmado pelo titular em 02/09/2026**
 - CNPJ da organização: **`DISPONÍVEL` — confirmado pelo titular em 02/09/2026; informar somente no Google**
-- D-U-N-S da organização (obrigatório para a conta nova de Organização, salvo exceção formal do Google): `JÁ TENHO` / `PRECISO SOLICITAR` / `NÃO SEI`
-- Após a criação, o painel mostra organização, identidade, e-mail e telefone verificados: `SIM` / `NÃO` / `AINDA NÃO CRIADA`
+- Conferência visual do status de organização, identidade, e-mail e telefone no painel: `PENDENTE QUANDO HOUVER LOGIN` (não solicitar nem registrar novamente o D-U-N-S neste arquivo)
 
 Não copie documentos ou códigos de verificação para este arquivo. Faça essas etapas diretamente no Google.
 
@@ -37,7 +36,7 @@ Não copie documentos ou códigos de verificação para este arquivo. Faça essa
 
 - Nome legal do responsável/controlador da Celeste: `______________________________`
 - Nome público do desenvolvedor na Play Store: `______________________________`
-- E-mail público real para suporte e privacidade: `______________________________`
+- E-mail público real para suporte e privacidade: **`suporte@celestegroup.biz` — informado pelo titular em 02/09/2026**
 
 O endereço precisa funcionar e ser acompanhado depois da publicação.
 
@@ -61,20 +60,23 @@ Importante: depois que um aplicativo é oferecido gratuitamente, esse mesmo paco
 
 O Google exige conta de organização para prestadores de aplicativos de saúde. Escolha uma opção que corresponda verdadeiramente ao produto:
 
-- `A` — Manter **Saúde e fitness**, com a declaração de bem-estar, gerenciamento de estresse, relaxamento e acuidade mental, sem função médica. Confirmo que a conta será **Organização** e que a verificação correspondente, inclusive o D-U-N-S obrigatório, será concluída diretamente no Google Play Console.
+- `A` — Manter **Saúde e fitness**, com a declaração de bem-estar, gerenciamento de estresse, relaxamento e acuidade mental, sem função médica. Confirmo que a conta será **Organização** e que o status da verificação será conferido diretamente no Google Play Console.
 - `B` — Solicitar um reposicionamento verdadeiro como **Lifestyle/Estilo de vida** e desenvolvimento pessoal, sem alegações de saúde. Essa escolha exige revisar textos, funcionalidades, ficha da loja e declarações antes de qualquer envio; ela não pode ser usada apenas para trocar o rótulo de um produto que continue oferecendo recursos de saúde.
 
 Escolha: **`A` — confirmada pelo titular em 02/09/2026**
 
-Permanece pendente concluir diretamente no Google a verificação da organização
-e informar o D-U-N-S. Se a organização ainda não tiver esse número, a solicitação
-gratuita à Dun & Bradstreet pode levar até 30 dias.
+A verificação da organização foi concluída em 03/09/2026 segundo relato do
+titular. Resta somente conferir visualmente o status quando houver login
+disponível; não solicitar nem copiar novamente o D-U-N-S.
 
 ### 4. Privacidade e Data Safety
 
 - O Supabase está contratado para processar dados somente em nome da Celeste, como prestador de serviço: `SIM` / `NÃO` / `NÃO SEI`
-- Prazo máximo de retenção da sessão técnica e das denúncias de conteúdo: `________ dias`
-- Solicitações de exclusão poderão ser recebidas e atendidas pelo e-mail público acima: `SIM` / `NÃO`
+- Prazo máximo das linhas de denúncia: **180 dias**. A retenção da sessão técnica
+  anônima e dos registros próprios do Supabase continua sujeita ao contrato ativo.
+- Exclusão disponível: **Perfil → Excluir denúncias de conteúdo de IA enviadas**,
+  enquanto a sessão pseudônima desta instalação existir. O e-mail público presta
+  ajuda, mas não garante localizar uma sessão perdida após limpeza/desinstalação.
 - Aprova declarar conservadoramente que o texto escolhido para denúncia pode conter nome, outras informações pessoais, cidade aproximada, informações de saúde ou financeiras: `SIM` / `NÃO`
 
 Se a relação contratual do Supabase não puder ser confirmada, a transferência deverá ser declarada conservadoramente como compartilhamento. A declaração final será comparada com o AAB assinado e com o comportamento real do aplicativo.
@@ -117,11 +119,11 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 
 ## Ações exclusivas do titular
 
-- Criar uma conta Google Play de **Organização nova**, pagar a taxa de cadastro e concluir a verificação diretamente no Google.
-- Informar no Google o nome legal e os dados da organização exatamente como constam nos registros oficiais, além do D-U-N-S obrigatório.
+- Conferir visualmente no Google Play Console o status de verificação da organização relatado como concluído em 03/09/2026.
+- Informar no Google o nome legal e os dados da organização exatamente como constam nos registros oficiais, sem copiá-los para este arquivo.
 - Enviar ao Google, e nunca ao repositório ou ao chat, documentos e comprovantes pedidos para verificação de identidade.
 - Digitar códigos de autenticação e aceitar termos diretamente no Play Console.
-- Confirmar nome legal, contato público, público-alvo, territórios, política de retenção, direitos dos materiais e declarações de privacidade.
+- Confirmar nome legal, público-alvo, territórios, retenção contratual dos provedores, direitos dos materiais e declarações de privacidade.
 - Manter uma rotina real de análise das denúncias recebidas.
 - Instalar e aprovar o build final em um Android físico antes do lançamento público.
 

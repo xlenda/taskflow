@@ -6,6 +6,11 @@ comprovado no repositório do que ainda depende da titular ou da inspeção do A
 assinado. O projeto Supabase de produção já foi validado; nenhuma credencial ou
 segredo é registrado neste documento.
 
+A verificação da organização foi concluída em 03/09/2026 segundo relato do
+titular. Conferir visualmente no Play Console quando houver login disponível,
+sem solicitar nem registrar novamente o D-U-N-S. Nome legal público, nome do
+desenvolvedor e demais escolhas sem evidência continuam pendentes.
+
 Não reutilize estas respostas para o site ou para o iOS. A v1 Android tem uma
 fronteira mais restrita: não oferece Comunidade pública, conta visível,
 compras, anúncios, despertador nem geração/narração paga em nuvem.
@@ -18,7 +23,7 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 |---|---|---|
 | Comunidade pública | Não aparece | `constants/releaseFeatures.js`, `App.js` e `screens/HomeScreen.js` |
 | Conta, cadastro ou login visível | Não existe | não há fluxo de autenticação para a pessoa; o app funciona localmente |
-| Sessão técnica | Sim, somente ao enviar uma denúncia | `services/aiContentReports.js` cria uma sessão anônima Supabase sem nome, e-mail ou senha; o fluxo foi aprovado em teste live |
+| Sessão técnica | Sim, somente ao enviar uma denúncia | `services/aiContentReports.js` cria uma sessão anônima Supabase sem nome, e-mail ou senha; a exclusão apenas consulta a sessão existente e não cria outra |
 | Anúncios | Não | nenhum SDK de anúncios identificado em `package.json` |
 | Compras ou assinaturas | Não | nenhum SDK de billing nem produto ativo identificado |
 | Despertador Android | Não aparece e não entra no binário | módulo autoligado apenas para Apple; permissões de alarme exato bloqueadas em `app.json` |
@@ -28,9 +33,9 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de cena, tradução, imagem, sonho e voz | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
-| Denúncia de conteúdo gerado | Sim, dentro do app | `components/AiContentReportAction.js`, quatro telas integradas, RPC endurecida em `supabase/migrations/011_ai_content_reports.sql` e smoke live aprovado |
+| Denúncia de conteúdo gerado | Sim, dentro do app | quatro telas enviam somente a saída gerada escolhida (ou referência visual) pelo gateway; o Perfil oferece exclusão confirmada; migrations `013`/`014` limitam retenção a 180 dias e fecham a RPC legada |
 | Conteúdo público criado por usuários | Não | Comunidade e seus deep links ficam fora da v1 Android |
-| Dados principais da prática | Locais | AsyncStorage; backup Android desativado em `app.json` |
+| Dados principais da prática | Locais | AsyncStorage; backup automático Android desativado em `app.json`; exportação manual produz JSON legível pela folha de compartilhamento |
 
 A sessão Supabase da denúncia é uma identidade técnica pseudônima persistida no
 aparelho. Ela não oferece nome de usuário, senha, login, sincronização entre
@@ -77,7 +82,7 @@ iniciais do app:
 | Categoria | **Health & Fitness / Saúde e fitness** | coerente com o produto |
 | Aplicativo gratuito ou pago | **Gratuito** | titular precisa confirmar antes da publicação |
 | Contém anúncios | **Não** | comprovado no código-fonte; reconfirmar no AAB |
-| E-mail de suporte | **não preencher até a titular fornecer um endereço real** | pendente da titular |
+| E-mail de suporte | **suporte@celestegroup.biz** | confirmado pelo titular |
 | Site | `https://celeste-jet-two.vercel.app` | preparado |
 | Política de privacidade | `https://celeste-jet-two.vercel.app/privacidade` | página preparada; falta identidade e contato reais |
 
@@ -152,7 +157,11 @@ Responder pelo build Android, não por recursos existentes no site ou no iOS:
   Âncora, visão, afirmação ou resultado de sonho, tocar em **Denunciar este
   conteúdo de IA**, escolher o motivo e enviar.
 - A denúncia acontece sem sair do app e informa o conteúdo exato que será
-  enviado.
+  enviado: somente a saída gerada (ou referência visual), motivo, nota opcional
+  e metadados mínimos, com identificador pseudônimo antiabuso.
+- As linhas de denúncia expiram em até 180 dias. A pessoa pode usar
+  **Perfil → Excluir denúncias de conteúdo de IA enviadas** enquanto esta
+  instalação ainda tiver a sessão pseudônima.
 - A titular precisa manter uma rotina real de análise da fila
   `ai_content_reports`; implementar o botão sem analisar denúncias não encerra
   a obrigação de moderação.
@@ -182,11 +191,14 @@ de tráfego e do AAB final antes de copiar essa conclusão para o console.
 |---|---|---|
 | Does your app collect or share required user data types? | **Sim** | comprovado pelo fluxo de denúncia |
 | Is all collected user data encrypted in transit? | **Sim** | o endpoint Supabase usado no smoke de produção é HTTPS; reconfirmar no tráfego do AAB que ele aponta para o mesmo projeto |
-| Do you provide a way for users to request deletion of their data? | **Não, por enquanto** | não existe e-mail ou formulário público real para excluir denúncias remotas |
+| Do you provide a way for users to request deletion of their data? | **Sim** | ação confirmada no Perfil exclui todas as linhas de denúncia vinculadas ao `reporter_id` atual; não é exclusão de conta |
 | Is data shared? | **Não** | somente se o contrato da titular confirmar que Supabase atua como prestador que processa dados em seu nome; caso contrário, marcar **Sim** |
 
 O reset no app apaga os registros locais, mas não apaga uma denúncia já enviada.
-Ele não deve ser apresentado como mecanismo de exclusão dos dados remotos.
+Ele não deve ser apresentado como mecanismo de exclusão dos dados remotos. A
+exclusão deve ser feita pelo Perfil antes de limpar dados ou desinstalar; se o
+vínculo local for perdido, os registros restantes expiram em até 180 dias. A
+sessão técnica anônima pode permanecer para prevenção de abuso.
 
 ### Tipos que devem ser selecionados
 
@@ -212,6 +224,7 @@ Para os três tipos:
 - `Collected`: **Yes**;
 - `Shared`: **No**, sob a condição contratual acima;
 - `Processed ephemerally`: **No**, pois a tabela de moderação retém o registro;
+- `Retention`: no máximo **180 dias** para as linhas de denúncia;
 - `Required or optional`: **Users can choose whether this data is collected**;
 - não selecionar Analytics, Advertising or marketing, Personalization,
   Developer communications ou Account management como finalidade.
@@ -320,17 +333,17 @@ Texto preparado para o campo de notas, se aparecer:
 4. preço **gratuito**, países de distribuição e forma de rollout;
 5. seleção final de público **18 anos ou mais**;
 6. contrato/DPA e papel do Supabase como service provider, subprocessadores e
-   prazo de retenção das sessões e denúncias;
+   prazo de retenção da sessão técnica e registros próprios do provedor (as
+   linhas de denúncia já têm limite máximo de 180 dias);
 7. classificação Data Safety do conteúdo derivado que pode aparecer numa
    denúncia;
-8. se será oferecido um canal para pedir exclusão de denúncias remotas;
-9. comprovantes de uso comercial da Celi, vídeo, ícone e demais assets;
-10. declaração individual de IA para cada asset enviado ao Play Console;
-11. rotina e responsável por analisar as denúncias recebidas;
-12. tipo/data da conta Play para saber se o teste fechado de 12 pessoas por 14
+8. comprovantes de uso comercial da Celi, vídeo, ícone e demais assets;
+9. declaração individual de IA para cada asset enviado ao Play Console;
+10. rotina e responsável por analisar as denúncias recebidas;
+11. tipo/data da conta Play para saber se o teste fechado de 12 pessoas por 14
     dias é obrigatório;
-13. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout;
-14. confirmação em Android físico de que o Plano Celeste nunca bloqueia o
+12. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout;
+13. confirmação em Android físico de que o Plano Celeste nunca bloqueia o
     aparelho, mantém o texto visível, descarta áudio/transcrição e usa somente
     lembretes comuns e reconhecimento local quando suportado.
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -26,7 +27,13 @@ import {
   hasCurrentAdultCloudConsent,
 } from '../constants/cloudConsent';
 import { RELEASE_FEATURES } from '../constants/releaseFeatures';
-import { LEGAL_UPDATED, PRIVACY_SECTIONS, TERMS_SECTIONS } from '../constants/legal';
+import {
+  LEGAL_UPDATED,
+  PRIVACY_SECTIONS,
+  SUPPORT_EMAIL,
+  TERMS_SECTIONS,
+} from '../constants/legal';
+import { deleteAllAiContentReports } from '../services/aiContentReports';
 import NarratorSelector from '../components/NarratorSelector';
 import { isUnder18Age } from './onboarding/flow';
 
@@ -56,23 +63,23 @@ const S = {
   themePaper: { en: 'Paper', pt: 'Papel' },
   themeCloud: { en: 'Cloud', pt: 'Nuvem' },
   themeViolet: { en: 'Midnight rose', pt: 'Rosa de meia-noite' },
-  geminiTitle: { en: 'Cloud processing', pt: 'Processamento em nuvem' },
+  geminiTitle: { en: 'Optional cloud processing', pt: 'Processamento opcional em nuvem' },
   geminiOn: {
-    en: 'Scene text uses Anthropic, with OpenAI as failover. Translations, images and dream interpretations use Google Gemini. On-demand narration uses ElevenLabs. Only data needed for the requested feature is sent.',
-    pt: 'Textos de cenas usam Anthropic, com OpenAI como alternativa em caso de falha. Traduções, imagens e interpretações de sonhos usam Google Gemini. A narração sob demanda usa ElevenLabs. Só os dados necessários ao recurso solicitado são enviados.',
+    en: 'One control covers all optional cloud features. Scene text uses Anthropic, with OpenAI as failover; if neither text provider is configured and approved Gemini processing is available, Gemini may generate the scene. Gemini also handles translations, images and dream interpretations. ElevenLabs handles on-demand narration. Only data needed for the requested feature is sent.',
+    pt: 'Um único controle abrange todos os recursos opcionais em nuvem. Textos de cenas usam Anthropic, com OpenAI como alternativa; se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Gemini poderá gerar a cena. O Gemini também faz traduções, imagens e interpretações de sonhos. A ElevenLabs faz a narração sob demanda. Só os dados necessários ao recurso solicitado são enviados.',
   },
   geminiOff: {
     en: 'New content uses Celeste\'s on-device options. No new cloud request is sent.',
     pt: 'Novos conteúdos usam as opções no aparelho do Celeste. Nenhuma nova solicitação é enviada à nuvem.',
   },
   geminiPartial: {
-    en: 'One or more earlier cloud permissions remain active. Depending on that permission, scenes use Anthropic/OpenAI, translations, images or dreams use Gemini, and narration uses ElevenLabs.',
-    pt: 'Uma ou mais permissões de nuvem anteriores continuam ativas. Conforme a permissão, cenas usam Anthropic/OpenAI, traduções, imagens ou sonhos usam Gemini, e a narração usa ElevenLabs.',
+    en: 'Earlier cloud settings are incomplete. Use this single control to allow every optional cloud feature, or leave it off to prevent new cloud requests.',
+    pt: 'As configurações anteriores de nuvem estão incompletas. Use este controle único para permitir todos os recursos opcionais em nuvem ou deixe-o desligado para impedir novas solicitações.',
   },
   geminiConfirmTitle: { en: 'Allow cloud processing?', pt: 'Permitir processamento em nuvem?' },
   geminiConfirmBody: {
-    en: 'Confirm that you are 18 or older and allow Celeste to send only the data needed for features you request. Anthropic generates personalized scene text, with OpenAI used only when failover is needed. Google Gemini translates text, creates images and interprets dreams you choose to send. ElevenLabs narrates selected text on demand. Requests pass through Celeste\'s backend. Saved names of children, important people or a specific person stay on this device. Avoid names and confidential data in free text. You can turn this off at any time.',
-    pt: 'Confirme que você tem 18 anos ou mais e permite que o Celeste envie somente os dados necessários aos recursos que você solicitar. A Anthropic gera o texto das cenas personalizadas, com a OpenAI usada apenas quando a alternativa em caso de falha for necessária. O Google Gemini traduz textos, cria imagens e interpreta sonhos que você escolher enviar. A ElevenLabs narra o texto selecionado sob demanda. As solicitações passam pelo backend do Celeste. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar quando quiser.',
+    en: 'Confirm that you are 18 or older and use this single control to allow Celeste to send only the data needed for optional features you request. Anthropic generates personalized scene text, with OpenAI used as failover. If neither text provider is configured and approved Gemini processing is available, Gemini may generate the scene; Gemini also translates text, creates images and interprets dreams you choose to send. ElevenLabs narrates selected text on demand. Requests pass through Celeste\'s backend. Saved names of children, important people or a specific person stay on this device. Avoid names and confidential data in free text. You can turn all new cloud processing off at any time.',
+    pt: 'Confirme que você tem 18 anos ou mais e use este controle único para permitir que o Celeste envie somente os dados necessários aos recursos opcionais que você solicitar. A Anthropic gera textos de cenas personalizadas, com a OpenAI como alternativa. Se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Gemini poderá gerar a cena; o Gemini também traduz textos, cria imagens e interpreta sonhos que você escolher enviar. A ElevenLabs narra o texto selecionado sob demanda. As solicitações passam pelo backend do Celeste. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar todo novo processamento em nuvem quando quiser.',
   },
   geminiConfirmAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
   geminiUnder18: {
@@ -86,6 +93,39 @@ const S = {
     en: 'No account or active subscription in this version',
     pt: 'Sem conta ou assinatura ativa nesta versão',
   },
+  reportDataTitle: { en: 'Submitted AI-content reports', pt: 'Denúncias de conteúdo de IA enviadas' },
+  reportDataHint: {
+    en: 'A report contains only the generated output you choose, your reason and optional note, minimum technical details, and a pseudonymous identifier used for authorization and abuse prevention. Report records are kept for no more than 180 days.',
+    pt: 'Uma denúncia contém somente a saída gerada que você escolher, o motivo e a nota opcional, dados técnicos mínimos e um identificador pseudônimo usado para autorização e prevenção de abuso. Os registros de denúncia ficam guardados por no máximo 180 dias.',
+  },
+  deleteReports: {
+    en: 'Delete submitted AI-content reports',
+    pt: 'Excluir denúncias de conteúdo de IA enviadas',
+  },
+  deleteReportsConfirmTitle: {
+    en: 'Delete submitted reports?',
+    pt: 'Excluir as denúncias enviadas?',
+  },
+  deleteReportsConfirmBody: {
+    en: 'This permanently deletes all AI-content report records linked to this installation\'s pseudonymous reporting identifier. Your local practice stays on this device. The anonymous technical session may remain for abuse prevention. This cannot be undone.',
+    pt: 'Isso exclui permanentemente todos os registros de denúncia de conteúdo de IA vinculados ao identificador pseudônimo desta instalação. Sua prática local continua neste aparelho. A sessão técnica anônima pode permanecer para prevenção de abuso. Não é possível desfazer.',
+  },
+  deleteReportsConfirm: { en: 'Delete reports', pt: 'Excluir denúncias' },
+  deletingReports: { en: 'Deleting reports…', pt: 'Excluindo denúncias…' },
+  deletedReports: {
+    en: 'Submitted reports were deleted.',
+    pt: 'As denúncias enviadas foram excluídas.',
+  },
+  noReportsToDelete: {
+    en: 'There were no submitted reports linked to this installation.',
+    pt: 'Não havia denúncias enviadas vinculadas a esta instalação.',
+  },
+  deleteReportsFailed: {
+    en: `Reports could not be deleted. Try again or contact ${SUPPORT_EMAIL} for help while this installation still has its reporting session.`,
+    pt: `Não foi possível excluir as denúncias. Tente novamente ou peça ajuda em ${SUPPORT_EMAIL} enquanto esta instalação ainda tiver a sessão de denúncia.`,
+  },
+  support: { en: 'Support and privacy contact', pt: 'Contato de suporte e privacidade' },
+  supportHint: { en: SUPPORT_EMAIL, pt: SUPPORT_EMAIL },
   privacy: { en: 'Privacy policy', pt: 'Política de privacidade' },
   privacyHint: { en: 'What is stored and when data leaves the device', pt: 'O que é guardado e quando dados saem do aparelho' },
   terms: { en: 'Terms of use', pt: 'Termos de uso' },
@@ -268,6 +308,7 @@ export default function ProfileScreen({ navigation }) {
   const [nameDraft, setNameDraft] = useState('');
   const [savedName, setSavedName] = useState(false);
   const [document, setDocument] = useState(null);
+  const [reportDeleteStatus, setReportDeleteStatus] = useState('idle');
 
   useEffect(() => {
     if (state) setNameDraft(state.name || '');
@@ -416,6 +457,28 @@ export default function ProfileScreen({ navigation }) {
       cloudDreamConsent: true,
     });
     success();
+  };
+
+  const deleteSubmittedAiReports = async () => {
+    if (reportDeleteStatus === 'busy') return;
+    const allowed = await confirmAsync({
+      title: t(S.deleteReportsConfirmTitle),
+      message: t(S.deleteReportsConfirmBody),
+      confirmLabel: t(S.deleteReportsConfirm),
+      cancelLabel: t(S.notNow),
+      destructive: true,
+      lang,
+    });
+    if (!allowed) return;
+    setReportDeleteStatus('busy');
+    try {
+      const result = await deleteAllAiContentReports();
+      if (!result || result.ok !== true) throw new Error('ai_report_delete_failed');
+      setReportDeleteStatus(result.nothingToDelete === true ? 'empty' : 'success');
+      success();
+    } catch (_error) {
+      setReportDeleteStatus('error');
+    }
   };
 
   return (
@@ -665,6 +728,52 @@ export default function ProfileScreen({ navigation }) {
               >
                 <Ionicons name="checkmark-circle" size={20} color={theme.success} />
               </SettingRow>
+              <Pressable
+                testID="profile-delete-ai-content-reports"
+                accessibilityRole="button"
+                accessibilityLabel={t(S.deleteReports)}
+                accessibilityHint={t(S.reportDataHint)}
+                accessibilityState={{ disabled: reportDeleteStatus === 'busy', busy: reportDeleteStatus === 'busy' }}
+                disabled={reportDeleteStatus === 'busy'}
+                onPress={deleteSubmittedAiReports}
+                style={({ pressed }) => [
+                  styles.reportAction,
+                  { borderTopColor: theme.border },
+                  pressed && styles.linkPressed,
+                ]}
+              >
+                <SettingRow
+                  icon="flag-outline"
+                  iconColor={theme.danger}
+                  title={t(reportDeleteStatus === 'busy' ? S.deletingReports : S.deleteReports)}
+                  note={t(S.reportDataHint)}
+                  theme={theme}
+                >
+                  {reportDeleteStatus === 'busy' ? (
+                    <ActivityIndicator size="small" color={theme.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={19} color={theme.danger} />
+                  )}
+                </SettingRow>
+              </Pressable>
+              {reportDeleteStatus === 'success' || reportDeleteStatus === 'empty' || reportDeleteStatus === 'error' ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole={reportDeleteStatus === 'error' ? 'alert' : undefined}
+                  style={[
+                    styles.reportStatus,
+                    { color: reportDeleteStatus === 'error' ? theme.danger : theme.success },
+                  ]}
+                >
+                  {t(
+                    reportDeleteStatus === 'success'
+                      ? S.deletedReports
+                      : reportDeleteStatus === 'empty'
+                        ? S.noReportsToDelete
+                        : S.deleteReportsFailed
+                  )}
+                </Text>
+              ) : null}
               <LegalLink
                 testID="profile-privacy-link"
                 divider
@@ -687,6 +796,19 @@ export default function ProfileScreen({ navigation }) {
                 note={t(S.termsHint)}
                 onPress={() => {
                   setDocument('terms');
+                  tap();
+                }}
+                theme={theme}
+              />
+              <LegalLink
+                testID="profile-support-link"
+                divider
+                icon="mail-outline"
+                iconColor={accentAt(theme, 0)}
+                title={t(S.support)}
+                note={t(S.supportHint)}
+                onPress={() => {
+                  Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() => {});
                   tap();
                 }}
                 theme={theme}
@@ -783,6 +905,8 @@ const styles = StyleSheet.create({
   settingCopy: { flex: 1, minWidth: 0, paddingHorizontal: 12 },
   settingTitle: { fontSize: 14.5, lineHeight: 20, fontWeight: '700' },
   settingNote: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  reportAction: { borderTopWidth: StyleSheet.hairlineWidth },
+  reportStatus: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', paddingBottom: 12, paddingHorizontal: 50 },
   segmented: { flexDirection: 'row', marginBottom: 14 },
   segment: {
     flex: 1,

@@ -10,11 +10,12 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 ## Conteudo personalizado
 
 - A Celeste funciona sem personalizacao em nuvem por meio do gerador local.
-- Os textos de cenas usam Anthropic, com OpenAI somente como failover; traducoes,
-  imagens e interpretacoes de sonhos usam Google Gemini; narracoes usam ElevenLabs.
-- Esses processadores so sao usados depois de confirmacao adulta e consentimento
-  explicito para a finalidade correspondente.
-- Cena, sonho e narracao possuem permissoes separadas.
+- Os textos de cenas usam Anthropic, com OpenAI como failover; se nenhum deles
+  estiver configurado e o processamento aprovado do Gemini estiver disponível,
+  o Gemini também poderá gerar a cena. Traducoes, imagens e interpretacoes de
+  sonhos usam Google Gemini; narracoes usam ElevenLabs.
+- Esses processadores so sao usados depois de confirmacao adulta e ativação do
+  controle único de processamento em nuvem.
 - O app nao apresenta afirmacoes ou sonhos como previsao, diagnostico ou garantia.
 
 ## Dados locais
@@ -24,6 +25,13 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   remover a pratica local.
 - No Plano Celeste, audio e transcricao da leitura sao descartados. Somente um
   recibo minimo da pratica fica localmente, sem o texto reconhecido.
+- O backup é um JSON legível e sem criptografia. O app abre a folha de
+  compartilhamento do sistema e a web baixa o arquivo; ele não inclui denúncias
+  enviadas, consentimentos do aparelho, notificações agendadas nem arquivos de imagem.
+- A denúncia contém somente a saída gerada escolhida (ou referência visual),
+  motivo, nota opcional e metadados mínimos. Usa identificador pseudônimo
+  antiabuso, fica por no máximo 180 dias e pode ser excluída no Perfil enquanto
+  a sessão da instalação existir.
 
 ## Recursos por plataforma
 
@@ -69,4 +77,6 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 - Despertador: `Inicio > Despertador com afirmacao`; requer app instalado em
   iPhone compativel e permissao de Alarmes. Nao testar como recurso Android.
 - Privacidade: `Perfil > Privacidade e dados`.
+- Denúncias: `Perfil > Excluir denúncias de conteúdo de IA enviadas`.
+- Backup: `Jornada > Cópia de segurança`; no app, conferir a share sheet.
 - Reset: `Jornada > Recomeçar minha jornada`.

@@ -12,6 +12,7 @@ const {
   anonymousSignupHeaders,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  validateAiReportGatewayBackend,
   validateActorQuotaBackend,
   validateLocalBuildEnvironment,
   validateProductionEnvironmentOutput,
@@ -67,6 +68,8 @@ const STATIC_GATES = [
   ['scripts/verificar-traducao-manifestacao.js', 'Traducao das manifestacoes pessoais falhou'],
   ['scripts/verificar-api-traducao.js', 'API privada de traducao das manifestacoes falhou'],
   ['scripts/verificar-rota-sugestao.js', 'Rota/reload das sugestoes falhou'],
+  ['scripts/verificar-denuncia-ia.js', 'Gateway e minimizacao da denuncia de IA falharam'],
+  ['scripts/verificar-deep-links-seguros.js', 'Protecao dos deep links falhou'],
 ];
 
 function assert(condition, message) {
@@ -182,8 +185,12 @@ async function validateDeploymentEnvironment(vercelCli) {
     process.env,
     (url, options) => fetchWithTimeout(url, options, 10000)
   );
+  const reportGateway = await validateAiReportGatewayBackend(
+    process.env,
+    (url, options) => fetchWithTimeout(url, options, 10000)
+  );
   console.log(
-    `Ambiente de deploy validado: backend separado e cota de ator schema ${actorQuota.schemaVersion}.`
+    `Ambiente de deploy validado: cota de ator schema ${actorQuota.schemaVersion} e gateway de denuncia schema ${reportGateway.schemaVersion}.`
   );
 }
 
@@ -221,6 +228,10 @@ function copyDeployInputs() {
   assert(fs.existsSync(path.join(apiTarget, 'transformar-sonho.js')), 'Funcao de sonho ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'gerar-audio.js')), 'Funcao de voz Gemini ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'gerar-visual.js')), 'Funcao de visual Gemini ausente do pacote');
+  assert(
+    fs.existsSync(path.join(apiTarget, 'denunciar-conteudo-ia.js')),
+    'Gateway de denuncia de IA ausente do pacote'
+  );
 
   const projectPackage = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), UTF8));
   const botidVersion = projectPackage.dependencies && projectPackage.dependencies.botid;
@@ -605,6 +616,21 @@ async function liveGeminiChecks(
     `Claim nativo sem atestacao passou: HTTP ${forgedNative.status} ${JSON.stringify(forgedNativePayload)}`
   );
 
+  const anonymousReport = await fetchWithTimeout(`${baseUrl}/api/denunciar-conteudo-ia`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Celeste-Client': 'web',
+      Origin: requestOrigin,
+    },
+    body: '{}',
+  }, 25000);
+  const anonymousReportPayload = await anonymousReport.json().catch(() => ({}));
+  assert(
+    anonymousReport.status === 401 && anonymousReportPayload.error === 'ai_report_identity_required',
+    `Gateway de denuncia aceitou cliente sem identidade: HTTP ${anonymousReport.status} ${JSON.stringify(anonymousReportPayload)}`
+  );
+
   if (!positive) {
     console.log(`Protecoes BotID e nativa validadas no candidato ${baseUrl}`);
     return;
@@ -916,12 +942,14 @@ async function candidateChecks(vercelCli, candidate, env) {
     '/api/transformar-sonho': { status: 403, error: 'cloud_consent_required' },
     '/api/gerar-audio': { status: 400, error: 'mode_invalid' },
     '/api/gerar-visual': { status: 403, error: 'cloud_consent_required' },
+    '/api/denunciar-conteudo-ia': { status: 401, error: 'ai_report_identity_required' },
   };
   for (const [pathname, expected] of Object.entries(candidateApiProbes)) {
     const blocked = await vercelCurl(vercelCli, candidate, pathname, env, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Celeste-Client': 'web',
         Origin: PROD,
       },
       body: '{}',
@@ -944,7 +972,7 @@ async function candidateChecks(vercelCli, candidate, env) {
     );
   }
 
-  console.log(`Candidato validado via Vercel CLI: bundle=${localBundle}, SPA e cinco APIs sem gasto`);
+  console.log(`Candidato validado via Vercel CLI: bundle=${localBundle}, SPA e seis APIs sem gasto`);
 }
 
 async function productionChecks(

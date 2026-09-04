@@ -23,20 +23,19 @@
 
       <main id="content">
         <header class="hero">
-          <p class="eyebrow">Public help center · version 1.0.0</p>
+          <p class="eyebrow">Public help center · version 1.2.0</p>
           <h1>Support</h1>
           <p class="lead">
             Guidance for using Celeste, controlling your data and resolving common issues.
           </p>
-          <p class="updated">Updated August 31, 2026.</p>
+          <p class="updated">Updated September 3, 2026.</p>
         </header>
 
         <div class="content">
-          <aside class="notice" data-owner-required="support-email" aria-label="Contact awaiting owner confirmation">
-            <strong>A public support email has not been provided yet.</strong>
-            The Google Play account owner must provide a real address before distribution. This
-            page already offers self-service help but cannot yet receive individual requests. No
-            fictitious contact has been published.
+          <aside class="notice" aria-label="Celeste support contact">
+            <strong>Support and privacy contact:</strong>
+            <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>.
+            This address must remain active and be monitored by the team responsible for Celeste.
           </aside>
 
           <section class="section" aria-labelledby="data">
@@ -49,14 +48,25 @@
               </li>
               <li>Delete manifestations, dreams or traces in their respective areas.</li>
               <li>
+                Use <strong>Delete submitted AI-content reports</strong> in Profile to remove remote
+                rows linked to this installation's pseudonymous session.
+              </li>
+              <li>
                 Use <strong>Reset my journey</strong> to remove local practice data and restart
                 onboarding.
+              </li>
+              <li>
+                In Journey, save a readable, unencrypted JSON backup. The installed app opens the
+                system share sheet; the web downloads the file. Choose a trusted destination and
+                protect the copy.
               </li>
             </ol>
             <p>
               This release does not create a personal account, so there is no remote account to
-              delete. Clearing app/site data or uninstalling the app also removes the local copy
-              according to the operating system's behavior.
+               delete. Clearing app/site data or uninstalling the app also removes the local copy
+               according to the operating system's behavior. This may lose the link to the
+               pseudonymous session, so delete reports from Profile first. Any remaining report rows
+               expire within 180 days.
             </p>
             <p><a href="/privacy">Read the full Privacy policy.</a></p>
           </section>
@@ -65,10 +75,11 @@
             <h2 id="cloud">Cloud personalization is not working</h2>
             <ul>
               <li>Confirm the device is connected to the internet.</li>
-              <li>Open Profile and check whether permission for that feature is enabled.</li>
+              <li>Open Profile and check whether the single cloud-processing control is enabled.</li>
+              <li>That control covers new optional scenes, dreams, images, translations and narrations.</li>
               <li>
-                Scene, dream and narration permissions are separate; enabling one does not
-                authorize the others.
+                Anthropic normally generates scene text and OpenAI is the failover; if neither is
+                configured, approved Gemini processing may generate the scene.
               </li>
               <li>Profiles marked Under 18 use only on-device alternatives.</li>
               <li>
@@ -85,8 +96,8 @@
               <li>Press Play again; browsers may block automatic audio.</li>
               <li>Try a narrator preview, which is bundled with the app and does not use the cloud.</li>
               <li>
-                For personal narration, confirm the separate voice permission in Profile and an
-                internet connection.
+                For personal narration, confirm the single cloud-processing control in Profile and
+                an internet connection.
               </li>
             </ul>
           </section>
@@ -94,15 +105,16 @@
           <section class="section" aria-labelledby="notifications">
             <h2 id="notifications">A notification or alarm does not appear</h2>
             <ul>
-              <li>These features depend on the installed app; the website cannot schedule a system alarm.</li>
+              <li>The website cannot schedule a system reminder or alarm.</li>
               <li>Open device settings and confirm notification permission.</li>
               <li>
                 Celeste Plan notices are ordinary reminders, not exact alarms. Battery saving,
                 Focus modes or manufacturer restrictions may delay them.
               </li>
               <li>
-                Alarms depend on a compatible device and OS version and may require separate system
-                authorization.
+                Only the installed app on a compatible iPhone offers the affirmation system alarm
+                and may request Alarm access. Android offers ordinary reminders only in this release,
+                not that exact alarm.
               </li>
             </ul>
           </section>
@@ -150,14 +162,18 @@
           <section class="section" aria-labelledby="request">
             <h2 id="request">Privacy request or content report</h2>
             <p>
-              The public channel for individual requests will be the support email that the owner
-              still needs to provide. Until it is published, use the local controls above to stop
-              new uploads and delete on-device content.
+               For support, privacy questions or help with the available controls, email
+              <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>. Include only
+              the information necessary to locate and fulfill the request.
             </p>
             <p>
               On generated content, tap <strong>Report this AI content</strong>, choose a reason
               and submit the in-app form. Celeste sends the generated output, reason and optional
-              note; it does not include the prompt, your original answers or the raw dream report.
+               note and minimum technical data; it does not include the prompt, your original answers
+               or the raw dream report. A pseudonymous identifier authorizes submission and helps
+               prevent abuse. Report rows are kept for no more than 180 days and can be deleted in
+               Profile while this installation retains its session. Support cannot promise to locate
+               a pseudonymous session lost after app-data clearing or uninstalling.
             </p>
           </section>
 

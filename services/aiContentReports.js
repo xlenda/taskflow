@@ -24,6 +24,9 @@ const REASON_SET = new Set(AI_REPORT_REASONS);
 const REFERENCE_PATTERN = /^[A-Za-z0-9._:-]{1,180}$/;
 const VISUAL_REFERENCE_PATTERN = /^[A-Za-z0-9._:-]{1,180}$/;
 const APP_VERSION = '1.0.0';
+const API_TIMEOUT_MS = 15000;
+const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
+const REPORT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function cleanText(value, maxLength) {
   return typeof value === 'string'
@@ -33,6 +36,10 @@ function cleanText(value, maxLength) {
         .trim()
         .slice(0, maxLength)
     : '';
+}
+
+export function normalizeAiReportEvidenceText(value) {
+  return cleanText(value, 4000);
 }
 
 function cleanReference(value, pattern) {
@@ -55,7 +62,7 @@ export function normalizeAiContentReport(input) {
   const reason = REASON_SET.has(source.reason) ? source.reason : '';
   const contentRef = cleanReference(source.contentRef, REFERENCE_PATTERN);
   const visualRef = cleanReference(source.visualRef, VISUAL_REFERENCE_PATTERN);
-  const content = cleanText(source.content, 4000);
+  const content = normalizeAiReportEvidenceText(source.content);
   const note = cleanText(source.note, 500);
   const lang = source.lang === 'en' ? 'en' : 'pt';
   const generation = cleanGeneration(source.generation);
@@ -88,11 +95,26 @@ function reportError(code, original) {
 }
 
 function normalizedRemoteError(error) {
-  const message = cleanText(error && error.message, 300).toLowerCase();
+  const message = cleanText(
+    typeof error === 'string' ? error : error && (error.error || error.message),
+    300
+  ).toLowerCase();
   if (message.includes('ai_report_rate_limited')) return 'ai_report_rate_limited';
-  if (message.includes('ai_report_identity_required')) return 'ai_report_identity_required';
+  if (message.includes('identity')) return 'ai_report_identity_required';
   if (message.includes('ai_report_invalid')) return 'ai_report_invalid';
+  if (message.includes('ai_report_not_configured')) return 'ai_report_not_configured';
   return 'ai_report_unavailable';
+}
+
+function apiEndpoint() {
+  const configured = cleanText(process.env.EXPO_PUBLIC_CELESTE_API_URL, 500).replace(/\/$/, '');
+  if (configured) return `${configured}/api/denunciar-conteudo-ia`;
+  if (typeof window !== 'undefined' && window.location) return '/api/denunciar-conteudo-ia';
+  return `${PROD_API_URL}/api/denunciar-conteudo-ia`;
+}
+
+function reportingPlatform() {
+  return ['android', 'ios', 'web'].includes(Platform.OS) ? Platform.OS : 'native';
 }
 
 async function ensureReportingSession(supabase) {
@@ -110,51 +132,103 @@ async function ensureReportingSession(supabase) {
   return data.session;
 }
 
-export async function submitAiContentReport(input, dependencies = {}) {
-  const report = normalizeAiContentReport(input);
+async function reportingSession(dependencies, allowAnonymousSignIn) {
+  if (cleanText(dependencies.accessToken, 4096)) {
+    return { access_token: cleanText(dependencies.accessToken, 4096) };
+  }
+  if (allowAnonymousSignIn && dependencies.ensureSession) return dependencies.ensureSession();
   const supabase = dependencies.supabase || getCelesteSupabaseClient();
   if (!supabase) throw reportError('ai_report_not_configured');
+  if (allowAnonymousSignIn) return ensureReportingSession(supabase);
+  const getSession = dependencies.getSession || (() => supabase.auth.getSession());
+  const { data, error } = await getSession();
+  if (error) throw error;
+  return data && data.session && data.session.access_token ? data.session : null;
+}
 
+async function responsePayload(response) {
   try {
-    if (dependencies.ensureSession) await dependencies.ensureSession();
-    else await ensureReportingSession(supabase);
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function requestReportApi(method, report, dependencies) {
+  let session;
+  try {
+    session = await reportingSession(dependencies, method === 'POST');
   } catch (error) {
+    if (error && error.code === 'ai_report_not_configured') throw error;
     throw reportError('ai_report_identity_unavailable', error);
   }
+  if (!session && method === 'DELETE') return null;
+  const accessToken = cleanText(session && session.access_token, 4096);
+  if (!accessToken) throw reportError('ai_report_identity_unavailable');
 
+  const request =
+    dependencies.fetchImpl ||
+    dependencies.fetch ||
+    (typeof fetch === 'function' ? fetch : null);
+  if (!request) throw reportError('ai_report_unavailable');
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   let response;
   try {
-    response = await supabase.rpc('celeste_submit_ai_content_report', {
-      p_content_type: report.contentType,
-      p_content_ref: report.contentRef,
-      p_reason: report.reason,
-      p_content_text: report.content,
-      p_visual_ref: report.visualRef,
-      p_user_note: report.note,
-      p_locale: report.lang,
-      p_generation_source: report.generation.source,
-      p_generation_model: report.generation.model,
-      p_prompt_version: report.generation.promptVersion,
-      p_platform: report.platform,
-      p_app_version: report.appVersion,
+    response = await request(apiEndpoint(), {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'X-Celeste-Client': report && report.platform
+          ? report.platform
+          : reportingPlatform(),
+        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      },
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined,
+      ...(method === 'POST' ? { body: JSON.stringify(report) } : {}),
     });
   } catch (error) {
     throw reportError('ai_report_unavailable', error);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
-  if (response && response.error) {
-    throw reportError(normalizedRemoteError(response.error), response.error);
+  if (!response || !response.ok) {
+    const payload = response ? await responsePayload(response) : null;
+    throw reportError(normalizedRemoteError(payload));
   }
+  return response;
+}
 
-  const reportId = cleanText(response && response.data, 80).toLowerCase();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(reportId)) {
+export async function submitAiContentReport(input, dependencies = {}) {
+  const report = normalizeAiContentReport(input);
+  const response = await requestReportApi('POST', report, dependencies);
+  const payload = await responsePayload(response);
+  const reportId = cleanText(payload && payload.reportId, 80).toLowerCase();
+  if (
+    !payload ||
+    payload.ok !== true ||
+    typeof payload.duplicate !== 'boolean' ||
+    !REPORT_ID_PATTERN.test(reportId)
+  ) {
     throw reportError('ai_report_unavailable');
   }
-  return { ok: true, reportId };
+  return { ok: true, reportId, duplicate: payload.duplicate };
+}
+
+export async function deleteAllAiContentReports(dependencies = {}) {
+  const response = await requestReportApi('DELETE', null, dependencies);
+  if (!response) return { ok: true, nothingToDelete: true };
+  if (response.status !== 204) throw reportError('ai_report_unavailable');
+  return { ok: true };
 }
 
 export const _aiContentReportInternals = {
+  apiEndpoint,
   cleanText,
   ensureReportingSession,
   normalizedRemoteError,
+  requestReportApi,
 };

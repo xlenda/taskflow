@@ -333,16 +333,19 @@ async function handler(req, res) {
   const validated = validateInput(parsedBody.body);
   if (validated.error) return sendJson(res, validated.status, validated.error);
 
+  // Configuration is a server invariant, not a billable attempt. Reject it
+  // before reserving/committing the person's daily generation allowance.
+  const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
+  if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
+    return sendJson(res, 503, 'translation_not_configured');
+  }
+
   const access = await paidAccess.authorizePaidRequest(req, {
     operation: 'translation',
     units: 3,
   });
   if (!access.ok) return sendJson(res, access.status, access.error);
 
-  const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
-  if (!apiKey || process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED !== '1') {
-    return sendJson(res, 503, 'translation_not_configured');
-  }
   const configuredModel = cleanText(process.env.GEMINI_MODEL || DEFAULT_MODEL, 80);
   const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) ? configuredModel : DEFAULT_MODEL;
   const seed = deterministicSeed(validated.value);

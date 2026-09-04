@@ -61,12 +61,6 @@
       "expo-image",
       "expo-font",
       "expo-sharing"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "cf0cf418-4ce2-4e5f-8155-8662d5965a03"
-      }
-    },
-    "owner": "naturallens"
+    ]
   }
 }

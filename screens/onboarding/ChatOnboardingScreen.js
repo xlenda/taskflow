@@ -32,10 +32,10 @@ import {
 } from '../../utils/onboardingMultiChoice';
 
 // Draft of in-progress answers so a reload mid-chat never loses them.
-// v: 5 = consentimento versionado para os processadores atuais. Rascunhos
+// v: 6 = consentimento unificado v2, incluindo o fallback de cena pelo Gemini. Rascunhos
 // anteriores são descartados para nunca converter um aceite antigo em novo.
 const DRAFT_KEY = '@celeste_onb_draft';
-const DRAFT_V = 5;
+const DRAFT_V = 6;
 const DRAFT_READ_TIMEOUT_MS = 1500;
 const CUSTOM_OPTION = CUSTOM_CHOICE_KEY;
 const RELEASE_FLOW = RELEASE_FEATURES.paidCloudProcessing

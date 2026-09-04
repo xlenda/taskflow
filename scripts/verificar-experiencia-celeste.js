@@ -190,6 +190,20 @@ assert.ok(
   'backup gigante deve ser recusado antes do FileReader'
 );
 assert.ok(
+  journey.includes("from 'expo-file-system'") &&
+    journey.includes("from 'expo-sharing'") &&
+    journey.includes('Sharing.isAvailableAsync()') &&
+    journey.includes('Sharing.shareAsync(temporaryFile.uri') &&
+    journey.includes('JSON legível e sem criptografia'),
+  'app instalado precisa exportar backup JSON claro pela folha de compartilhamento'
+);
+assert.ok(
+  context.includes('JSON.stringify(envelope, null, 2)') &&
+    context.includes("'submitted-ai-content-reports'") &&
+    context.includes("'pseudonymous-reporting-session'"),
+  'backup precisa ser legível e declarar que não exporta denúncias nem a sessão pseudônima'
+);
+assert.ok(
   journey.includes('stopNarration();') && journey.includes('clearAudioCache();'),
   'recomecar deve interromper e apagar o audio pessoal em memoria'
 );
@@ -336,6 +350,11 @@ assert.ok(
     reveal.includes('visualKey={m.visual.cacheKey}'),
   'visual pessoal precisa aparecer, explicar carregamento/falha e permitir reparo em afirmacoes, visoes e Reveal'
 );
-assert.ok(legal.includes('reconhecimento de voz') && legal.includes('afirmação escolhida como som do despertador'));
+assert.ok(
+  legal.includes('reconhecimento de voz') &&
+    legal.includes('iPhone compatível') &&
+    legal.includes('Android não oferece esse despertador exato'),
+  'texto legal precisa distinguir o despertador do iPhone dos lembretes comuns do Android'
+);
 
 console.log('OK: despertador, bônus de sonho, Perfil, Comunidade, privacidade e navegação integrados');

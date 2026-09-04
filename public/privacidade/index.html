@@ -23,22 +23,21 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Documento público · versão 1.1.0</p>
+          <p class="eyebrow">Documento público · versão 1.2.0</p>
           <h1>Política de privacidade</h1>
           <p class="lead">
             Esta política descreve como a Celeste trata dados no site e no aplicativo
             identificado pelo pacote <code>com.celesteapp.affirmations</code>.
           </p>
-          <p class="updated">Atualizada em 1º de setembro de 2026.</p>
+          <p class="updated">Atualizada em 3 de setembro de 2026.</p>
         </header>
 
         <div class="content">
-          <aside class="notice" data-owner-required="legal-contact" aria-label="Informação pendente do titular">
-            <strong>Contato legal pendente de confirmação.</strong>
-            O nome legal do responsável e o e-mail público de privacidade precisam ser
-            informados pelo titular da conta da loja antes da distribuição pública. A
-            <a href="/suporte">página de suporte</a> será atualizada com esse canal sem
-            alterar a forma de tratamento descrita aqui.
+          <aside class="notice" data-owner-required="legal-contact" aria-label="Identidade legal pendente do titular">
+            <strong>Nome legal do controlador pendente de confirmação.</strong>
+            O titular da conta da loja ainda precisa informar o nome jurídico exato antes da
+            distribuição pública. O contato público de suporte e privacidade já confirmado é
+            <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>.
           </aside>
 
           <section class="section" aria-labelledby="resumo">
@@ -64,8 +63,9 @@
               <li>manifestações, cenas pessoais, afirmações, sonhos, rastros privados e capítulos anteriores;</li>
               <li>favoritos, histórico de práticas, sequência e pontes diárias concluídas;</li>
               <li>
-                horários e dias dos lembretes ou alarmes, visão e afirmação escolhidas e
-                recibos mínimos de prática, sem áudio ou transcrição reconhecida;
+                no iPhone compatível, horário e áudio do despertador com afirmação; no Android,
+                horários e dias de lembretes comuns; visão e afirmação escolhidas e recibos
+                mínimos de prática, sem áudio ou transcrição reconhecida;
               </li>
               <li>imagens pessoais e áudio de narração em cache privado no aparelho.</li>
             </ul>
@@ -80,8 +80,9 @@
             <h2 id="nuvem">3. Processamento opcional em nuvem</h2>
             <p>
               A Celeste usa seu próprio backend como intermediário e reduz cada pedido ao
-              conteúdo necessário para a função escolhida. As autorizações para cena pessoal,
-              reflexão de sonho e narração neural são separadas.
+              conteúdo necessário para a função escolhida. Um único controle adulto no Perfil
+              autoriza ou impede novas solicitações opcionais de cena, sonho, imagem, tradução e
+              narração neural.
             </p>
             <div class="processor-list" aria-label="Serviços e finalidades">
               <div class="processor">
@@ -103,7 +104,9 @@
               <div class="processor">
                 <strong>Google Gemini</strong>
                 Recebe o conteúdo necessário quando a pessoa pede tradução, imagem pessoal ou
-                reflexão de sonho em nuvem.
+                reflexão de sonho em nuvem. Se Anthropic e OpenAI não estiverem configuradas e o
+                processamento aprovado do Gemini estiver disponível, ele também poderá gerar o
+                texto reduzido da cena.
               </div>
               <div class="processor">
                 <strong>ElevenLabs</strong>
@@ -136,9 +139,16 @@
               somente a saída gerada selecionada de até 4.000 caracteres (ou referência visual),
               o motivo, uma nota opcional de até 500 caracteres, idioma, origem técnica da
               geração, plataforma, versão do app e o
-              identificador da sessão anônima. O prompt, as respostas originais do questionário e
+              identificador pseudônimo da sessão técnica. O prompt, as respostas originais do questionário e
               o relato bruto do sonho não entram na denúncia. O registro fica numa fila privada
-              para análise de segurança e moderação.
+              para análise de segurança e moderação. Esse identificador autoriza o envio e ajuda
+              a limitar frequência, evitar duplicidade e prevenir abuso. As linhas de denúncia,
+              incluindo o identificador nelas, ficam guardadas por no máximo 180 dias.
+            </p>
+            <p>
+              Para apagá-las antes, use <strong>Excluir denúncias de conteúdo de IA enviadas</strong>
+              no Perfil. Isso remove as linhas vinculadas ao identificador pseudônimo atual, mas a
+              sessão técnica anônima pode permanecer para prevenção de abuso; ela não é uma conta pessoal.
             </p>
           </section>
 
@@ -175,8 +185,10 @@
                 sem o texto reconhecido.
               </li>
               <li>
-                No aplicativo instalado, a Celeste pode pedir acesso a notificações e, em aparelho
-                compatível, a alarmes. O horário e o áudio do alarme ficam no aparelho. O texto da
+                No aplicativo instalado, a Celeste pode pedir acesso a notificações. Somente em um
+                iPhone compatível ela oferece o despertador do sistema com afirmação e pode pedir
+                acesso aos Alarmes; horário e áudio ficam no aparelho. O Android oferece apenas
+                lembretes comuns nesta versão, não esse despertador exato. O texto da
                 notificação diária é genérico e não mostra desejo, sonho ou afirmação na tela
                 bloqueada. Os avisos do Plano Celeste são lembretes comuns, não alarmes exatos, e
                 podem atrasar conforme o sistema. <strong>Agora não</strong> e
@@ -192,7 +204,7 @@
             <ul>
               <li>entregar a prática e lembrar preferências no aparelho;</li>
               <li>produzir o conteúdo em nuvem solicitado pela pessoa;</li>
-              <li>reproduzir mídia e agendar lembretes ou alarmes compatíveis;</li>
+              <li>reproduzir mídia, agendar lembretes comuns e, no iPhone compatível, o despertador com afirmação;</li>
               <li>autorizar chamadas, limitar abuso, diagnosticar falhas e proteger o serviço.</li>
             </ul>
             <p>
@@ -221,6 +233,20 @@
               </li>
               <li>Edite ou apague manifestações, sonhos e rastros nas áreas correspondentes.</li>
               <li>
+                Use <strong>Excluir denúncias de conteúdo de IA enviadas</strong> no Perfil para
+                remover as linhas remotas ligadas ao identificador pseudônimo atual antes do limite
+                de 180 dias. Faça isso antes de limpar os dados ou desinstalar, pois essas ações
+                locais podem remover o acesso ao identificador usado para localizar as denúncias.
+              </li>
+              <li>
+                Em Jornada, a cópia de segurança exporta um JSON legível e sem criptografia com a
+                prática e os rascunhos locais da Comunidade. Ela exclui denúncias enviadas, a
+                sessão pseudônima de denúncia, consentimentos do aparelho, notificações agendadas
+                e arquivos de imagens geradas.
+                O app instalado abre a folha de compartilhamento do sistema; a web baixa o arquivo.
+                Proteja a cópia e escolha somente um destino confiável.
+              </li>
+              <li>
                 Use <strong>Perfil → Recomeçar minha jornada</strong> para apagar a prática local,
                 os registros auxiliares e o cache privado mantido pela Celeste.
               </li>
@@ -240,7 +266,7 @@
             <h2 id="seguranca">7. Segurança</h2>
             <p>
               O site e o backend público usam HTTPS. A Celeste aplica autorização de sessão,
-              consentimento separado, limites de uso, redução dos pedidos, bloqueio de permissões
+              consentimento unificado, limites de uso, redução dos pedidos, bloqueio de permissões
               desnecessárias no Android e armazenamento privado no aparelho. Nenhum sistema é
               totalmente livre de risco; evite inserir senhas, credenciais financeiras, números
               de documentos ou dados de outra pessoa.
@@ -274,9 +300,9 @@
           <section class="section" aria-labelledby="contato">
             <h2 id="contato">10. Contato</h2>
             <p>
-              Consulte a <a href="/suporte">página pública de suporte</a>. O titular ainda precisa
-              fornecer o nome legal do responsável e um e-mail público válido antes da publicação
-              nas lojas. Nenhum endereço foi inventado neste documento.
+              Escreva para <a href="mailto:suporte@celestegroup.biz">suporte@celestegroup.biz</a>
+              ou consulte a <a href="/suporte">página pública de suporte</a>. O nome legal do
+              controlador ainda precisa ser confirmado pelo titular antes da publicação nas lojas.
             </p>
           </section>
         </div>

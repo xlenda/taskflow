@@ -1,9 +1,11 @@
 // Textos locais da versao atual. Eles descrevem apenas o que o produto faz
 // hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
 // serem ativados.
+export const SUPPORT_EMAIL = 'suporte@celestegroup.biz';
+
 export const LEGAL_UPDATED = {
-  en: 'Updated August 28, 2026',
-  pt: 'Atualizado em 28 de agosto de 2026',
+  en: 'Updated September 3, 2026',
+  pt: 'Atualizado em 3 de setembro de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -11,12 +13,12 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'In short', pt: 'Em resumo' },
     paragraphs: [
       {
-        en: 'Celeste stores your practice on this device. There is no personal sign-in or active subscription in this version. When cloud personalization is enabled, Celeste creates an anonymous technical session used only to authorize requests and enforce generation limits.',
-        pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Quando a personalização em nuvem é ativada, o Celeste cria uma sessão técnica anônima usada somente para autorizar pedidos e aplicar limites de geração.',
+        en: 'Celeste stores your practice on this device. There is no personal sign-in or active subscription in this version. Optional cloud requests and AI-content reports use a pseudonymous technical session to authorize requests, enforce limits and prevent abuse; this is not a personal account.',
+        pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Solicitações opcionais em nuvem e denúncias de conteúdo de IA usam uma sessão técnica pseudônima para autorizar pedidos, aplicar limites e prevenir abuso; ela não é uma conta pessoal.',
       },
       {
-        en: 'Your onboarding answers personalize the experience. Only after explicit adult permission, selected data may go through Celeste\'s backend to Anthropic for personalized scene text, OpenAI only as scene-text failover, Google Gemini for translations, images and dream interpretations, and ElevenLabs for text-to-speech. Profiles marked Under 18 always use the on-device options.',
-        pt: 'Suas respostas do questionário personalizam a experiência. Somente após permissão adulta expressa, dados selecionados podem passar pelo backend do Celeste para a Anthropic gerar textos de cenas personalizadas, para a OpenAI apenas como alternativa do texto da cena em caso de falha, para o Google Gemini fazer traduções, imagens e interpretações de sonhos, e para a ElevenLabs fazer texto para fala. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
+        en: 'Your onboarding answers personalize the experience. A single adult cloud control covers optional requests through Celeste\'s backend. Anthropic normally generates personalized scene text and OpenAI is its failover; if neither text provider is configured and approved Gemini processing is available, Google Gemini may generate the scene. Gemini also handles translations, images and dream interpretations, while ElevenLabs handles text-to-speech. Profiles marked Under 18 always use the on-device options.',
+        pt: 'Suas respostas do questionário personalizam a experiência. Um único controle adulto de nuvem abrange solicitações opcionais pelo backend do Celeste. A Anthropic normalmente gera textos de cenas personalizadas e a OpenAI é sua alternativa; se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Google Gemini poderá gerar a cena. O Gemini também faz traduções, imagens e interpretações de sonhos, enquanto a ElevenLabs faz texto para fala. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
       },
     ],
   },
@@ -36,8 +38,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'Favoritos e histórico de práticas usados para calcular sua jornada e sequência.',
       },
       {
-        en: 'Your chosen alarm time and affirmation, plus any dream notes and locally generated affirmations you decide to save.',
-        pt: 'O horário e a afirmação escolhidos para o despertador, além dos sonhos e afirmações geradas localmente que você decidir guardar.',
+        en: 'On a compatible iPhone, your chosen affirmation-alarm time and sound. On Android, only ordinary reminder times and days are available in this release. Dream notes and locally generated affirmations you choose to save also stay on the device.',
+        pt: 'Em iPhone compatível, o horário e o som escolhidos para o despertador com afirmação. No Android, somente horários e dias de lembretes comuns estão disponíveis nesta versão. Sonhos e afirmações geradas localmente que você decidir guardar também ficam no aparelho.',
       },
     ],
   },
@@ -45,16 +47,29 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'Cloud personalization and processors', pt: 'Personalização e processadores em nuvem' },
     paragraphs: [
       {
-        en: 'Celeste stores separate permissions for personal scenes, dream reflection and neural narration. Enabling voice alone never authorizes a dream upload. With the corresponding adult permission, personalized scene text is sent to Anthropic; OpenAI may receive the same minimized scene request only when failover is needed. Google Gemini receives only the content needed for a translation, personal image or dream interpretation. ElevenLabs receives only the selected text, language and narrator needed for text-to-speech. Saved content does not change when you turn a permission off.',
-        pt: 'O Celeste guarda permissões separadas para cenas pessoais, reflexão de sonhos e narração neural. Ativar apenas a voz nunca autoriza o envio de um sonho. Com a permissão adulta correspondente, o texto da cena personalizada é enviado à Anthropic; a OpenAI pode receber a mesma solicitação reduzida da cena somente quando a alternativa em caso de falha for necessária. O Google Gemini recebe apenas o conteúdo necessário para uma tradução, imagem pessoal ou interpretação de sonho. A ElevenLabs recebe apenas o texto selecionado, o idioma e o narrador necessários para texto para fala. O conteúdo já salvo não muda quando você desativa uma permissão.',
+        en: 'Celeste presents one cloud-processing control for personal scenes, dream reflection, images, translations and neural narration. With adult permission, personalized scene text normally goes to Anthropic; OpenAI may receive the same minimized request as failover. If neither text provider is configured and approved Gemini processing is available, Google Gemini may receive that minimized request to generate the scene. Gemini also receives only the content needed for a translation, personal image or dream interpretation. ElevenLabs receives only the selected text, language and narrator needed for text-to-speech. Turning the control off prevents new cloud requests and does not change content already saved.',
+        pt: 'O Celeste apresenta um único controle de processamento em nuvem para cenas pessoais, reflexão de sonhos, imagens, traduções e narração neural. Com permissão adulta, o texto da cena personalizada normalmente vai para a Anthropic; a OpenAI pode receber a mesma solicitação reduzida como alternativa. Se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Google Gemini poderá receber essa solicitação reduzida para gerar a cena. O Gemini também recebe somente o conteúdo necessário para tradução, imagem pessoal ou interpretação de sonho. A ElevenLabs recebe apenas o texto selecionado, o idioma e o narrador necessários para texto para fala. Desligar o controle impede novas solicitações em nuvem e não altera o conteúdo já salvo.',
       },
       {
-        en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. If the required processor is unavailable or consent is incomplete, Celeste keeps or creates the local version instead of sending the request elsewhere.',
-        pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Se o processador necessário estiver indisponível ou o consentimento estiver incompleto, o Celeste mantém ou cria a versão local em vez de enviar a solicitação a outro lugar.',
+        en: 'Age range, gender and sexuality are not sent for scene generation. Names entered in the dedicated fields for children, important people or a specific person also stay on this device. Celeste removes those known names if they reappear in a selected free-text answer; still, avoid entering another person\'s name in free text. Without current consent, Celeste keeps or creates the on-device version.',
+        pt: 'Faixa etária, gênero e sexualidade não são enviados para gerar cenas. Nomes cadastrados nos campos de filhos, pessoas importantes ou de uma pessoa específica também ficam neste aparelho. O Celeste remove esses nomes conhecidos caso reapareçam numa resposta livre selecionada; ainda assim, evite escrever o nome de outra pessoa em textos livres. Sem consentimento atual, o Celeste mantém ou cria a versão no aparelho.',
       },
       {
-        en: 'When you request a new Living Mirror chapter, Celeste sends the prior generated scene and structured progress counts to Anthropic for the chapter text; OpenAI may receive that same minimized request only as failover. Private trace text and full dream reports are never included. A dream contributes only its selected theme and waking feeling after you turn on that choice for the individual dream.',
-        pt: 'Quando você pede um novo capítulo do Espelho Vivo, o Celeste envia à Anthropic a cena anterior já gerada e contagens estruturadas do progresso para criar o texto do capítulo; a OpenAI pode receber essa mesma solicitação reduzida somente como alternativa em caso de falha. O texto dos Rastros privados e o relato completo dos sonhos nunca são incluídos. Um sonho contribui somente com o tema escolhido e como você acordou depois que você ativa essa opção naquele sonho.',
+        en: 'When you request a new Living Mirror chapter, Celeste sends the prior generated scene and structured progress counts through the same disclosed scene-provider path. Private trace text and full dream reports are never included. A dream contributes only its selected theme and waking feeling after you turn on that choice for the individual dream.',
+        pt: 'Quando você pede um novo capítulo do Espelho Vivo, o Celeste envia a cena anterior já gerada e contagens estruturadas do progresso pelo mesmo caminho de provedores de cena informado acima. O texto dos Rastros privados e o relato completo dos sonhos nunca são incluídos. Um sonho contribui somente com o tema escolhido e como você acordou depois que você ativa essa opção naquele sonho.',
+      },
+    ],
+  },
+  {
+    title: { en: 'AI-content reports', pt: 'Denúncias de conteúdo de IA' },
+    paragraphs: [
+      {
+        en: 'Reporting is optional. Celeste sends only the generated output you select, or its visual reference, together with the reason, an optional note, language, minimum generation provenance, platform and app version. The prompt, original onboarding answers and raw dream report are not included. Because generated output can repeat personal details, review the exact preview before sending and do not add personal data to the note.',
+        pt: 'A denúncia é opcional. O Celeste envia somente a saída gerada que você selecionar, ou sua referência visual, junto com o motivo, uma nota opcional, idioma, procedência técnica mínima da geração, plataforma e versão do app. O prompt, as respostas originais do questionário e o relato bruto do sonho não são incluídos. Como a saída gerada pode repetir detalhes pessoais, confira a prévia exata antes de enviar e não acrescente dados pessoais à nota.',
+      },
+      {
+        en: `A pseudonymous technical identifier authorizes the report and helps rate-limit, deduplicate and prevent abuse. Submitted report records, including that identifier in the report row, are kept for no more than 180 days. While this installation still has its session, use “Delete submitted AI-content reports” in Profile to remove all report rows linked to the current identifier sooner. If app data is cleared or the app is uninstalled first, that local link may be lost and any remaining rows expire within 180 days. The anonymous technical session itself may remain for abuse prevention and is not a personal account. ${SUPPORT_EMAIL} can help with questions, but cannot promise to locate a lost pseudonymous session.`,
+        pt: `Um identificador técnico pseudônimo autoriza a denúncia e ajuda a limitar frequência, evitar duplicidade e prevenir abuso. Os registros enviados, incluindo esse identificador na linha da denúncia, ficam guardados por no máximo 180 dias. Enquanto esta instalação ainda tiver sua sessão, use “Excluir denúncias de conteúdo de IA enviadas” no Perfil para remover antes todas as linhas vinculadas ao identificador atual. Se os dados do app forem limpos ou ele for desinstalado antes, esse vínculo local poderá ser perdido e os registros restantes expirarão em até 180 dias. A sessão técnica anônima em si pode permanecer para prevenção de abuso e não é uma conta pessoal. ${SUPPORT_EMAIL} pode ajudar com dúvidas, mas não garante localizar uma sessão pseudônima perdida.`,
       },
     ],
   },
@@ -70,8 +85,8 @@ export const PRIVACY_SECTIONS = [
         pt: 'Se você ditar um sonho, o reconhecimento de voz é fornecido pelo navegador ou sistema operacional e pode ser processado conforme as regras desse fornecedor. O Celeste recebe apenas a transcrição, nunca envia a gravação por conta própria e só envia o texto ao Gemini quando você pedir a reflexão em nuvem com consentimento; caso contrário, usa a alternativa local.',
       },
       {
-        en: 'In a compatible installed iPhone or Android app, Celeste may request Alarm and Notification access and create a private on-device audio file so the selected affirmation can be the alarm sound. The website cannot schedule this system alarm.',
-        pt: 'No app instalado em um iPhone ou Android compatível, o Celeste pode pedir acesso aos Alarmes e às Notificações e criar um áudio privado no aparelho para usar a afirmação escolhida como som do despertador. O site não consegue agendar esse alarme do sistema.',
+        en: 'Only the installed app on a compatible iPhone offers the affirmation system alarm in this release. It may request Alarm access and create a private on-device audio file for the selected affirmation. Android does not offer this exact affirmation alarm; it offers ordinary notifications only. The website cannot schedule either system alarm or reminder.',
+        pt: 'Somente o app instalado em um iPhone compatível oferece o despertador do sistema com afirmação nesta versão. Ele pode pedir acesso aos Alarmes e criar um áudio privado no aparelho para a afirmação escolhida. O Android não oferece esse despertador exato com afirmação; oferece apenas notificações comuns. O site não agenda alarmes nem lembretes do sistema.',
       },
       {
         en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream or affirmation. The website cannot schedule this system reminder.',
@@ -97,6 +112,14 @@ export const PRIVACY_SECTIONS = [
       {
         en: 'Use Reset my journey to remove the saved practice and redo onboarding. Clearing this site or app data from the device also removes the local copy.',
         pt: 'Use Recomeçar minha jornada para apagar a prática salva e refazer o questionário. Limpar os dados deste site ou app no aparelho também remove a cópia local.',
+      },
+      {
+        en: 'Use Delete submitted AI-content reports in Profile to remove the remote report rows linked to your current pseudonymous reporting identifier before the 180-day limit.',
+        pt: 'Use Excluir denúncias de conteúdo de IA enviadas no Perfil para remover os registros remotos vinculados ao seu identificador pseudônimo atual antes do limite de 180 dias.',
+      },
+      {
+        en: 'A backup is a readable, unencrypted JSON file containing the local practice and local Community drafts. It excludes submitted AI-content reports, the pseudonymous reporting session, device consents, scheduled notifications and generated image files. On an installed app, Celeste opens the system share sheet; on the web, it downloads the file. Protect the file and share it only with a destination you trust.',
+        pt: 'A cópia de segurança é um arquivo JSON legível e sem criptografia com a prática e os rascunhos locais da Comunidade. Ela não inclui denúncias de conteúdo de IA enviadas, a sessão pseudônima de denúncia, consentimentos do aparelho, notificações agendadas nem arquivos de imagens geradas. No app instalado, o Celeste abre a folha de compartilhamento do sistema; na web, baixa o arquivo. Proteja a cópia e compartilhe somente com um destino de confiança.',
       },
     ],
   },
@@ -160,8 +183,8 @@ export const TERMS_SECTIONS = [
     title: { en: 'Third-party services', pt: 'Serviços de terceiros' },
     paragraphs: [
       {
-        en: 'Optional cloud features depend on Anthropic and OpenAI for personalized scene text, Google Gemini for translations, images and dream interpretations, and ElevenLabs for text-to-speech, as well as each provider\'s applicable terms and availability. OpenAI is the scene-text failover, not an additional routine call. Celeste may use the local version when a service fails or a response cannot be used safely.',
-        pt: 'Os recursos opcionais em nuvem dependem da Anthropic e da OpenAI para textos de cenas personalizadas, do Google Gemini para traduções, imagens e interpretações de sonhos, e da ElevenLabs para texto para fala, além dos termos aplicáveis e da disponibilidade de cada fornecedor. A OpenAI é a alternativa do texto da cena em caso de falha, não uma chamada adicional de rotina. O Celeste pode usar a versão local quando um serviço falhar ou uma resposta não puder ser usada com segurança.',
+        en: 'Optional cloud features depend on Anthropic for personalized scene text, OpenAI as scene-text failover, Google Gemini for translations, images and dream interpretations, and ElevenLabs for text-to-speech, as well as each provider\'s applicable terms and availability. If neither Anthropic nor OpenAI text processing is configured and approved Gemini processing is available, Gemini may generate scene text instead. Celeste may use the on-device version when a service fails or a response cannot be used safely.',
+        pt: 'Os recursos opcionais em nuvem dependem da Anthropic para textos de cenas personalizadas, da OpenAI como alternativa do texto da cena, do Google Gemini para traduções, imagens e interpretações de sonhos, e da ElevenLabs para texto para fala, além dos termos aplicáveis e da disponibilidade de cada fornecedor. Se nem o processamento de texto da Anthropic nem o da OpenAI estiver configurado e o processamento aprovado do Gemini estiver disponível, o Gemini poderá gerar o texto da cena. O Celeste pode usar a versão no aparelho quando um serviço falhar ou uma resposta não puder ser usada com segurança.',
       },
     ],
   },

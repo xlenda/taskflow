@@ -377,6 +377,32 @@ for (const response of graphicNightmareEchoes) {
     };
   };
   try {
+    delete process.env.GEMINI_API_KEY;
+    const authorizationCallsBeforeMissingConfig = paidAccessCalls;
+    res = responseMock();
+    await api(request(validBody), res);
+    assert.strictEqual(res.statusCode, 503);
+    assert.strictEqual(res.payload.error, 'generation_not_configured');
+    assert.strictEqual(
+      paidAccessCalls,
+      authorizationCallsBeforeMissingConfig,
+      'configuracao ausente nao pode consumir cota de sonho'
+    );
+
+    process.env.GEMINI_API_KEY = 'configured-but-terms-missing';
+    delete process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED;
+    res = responseMock();
+    await api(request(validBody), res);
+    assert.strictEqual(res.statusCode, 503);
+    assert.strictEqual(res.payload.error, 'generation_not_configured');
+    assert.strictEqual(
+      paidAccessCalls,
+      authorizationCallsBeforeMissingConfig,
+      'termos ausentes nao podem consumir cota de sonho'
+    );
+
+    process.env.GEMINI_API_KEY = 'test-key';
+    process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
     res = responseMock();
     await api(request({ ...validBody, cloudConsentVersion: undefined }), res);
     assert.strictEqual(res.statusCode, 403);
