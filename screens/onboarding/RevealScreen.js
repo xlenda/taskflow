@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Animated,
   Platform,
   Pressable,
@@ -18,6 +19,7 @@ import { ONB, SERIF } from '../../constants/brand';
 import { useT } from '../../utils/useT';
 import { useApp } from '../../context/AppContext';
 import { usePersonalNarration } from '../../utils/usePersonalNarration';
+import { useCloudMediaConsent } from '../../utils/useCloudMediaConsent';
 import CelestialTrace from '../../components/CelestialTrace';
 import GradientCover from '../../components/GradientCover';
 import NarratorSelector from '../../components/NarratorSelector';
@@ -50,6 +52,9 @@ const S = {
     en: 'Audio is unavailable here. Read the scene slowly and keep one detail with you.',
     pt: 'O áudio não está disponível aqui. Leia a cena devagar e guarde um detalhe com você.',
   },
+  visualPreparing: { en: 'Preparing your personal image', pt: 'Preparando sua imagem pessoal' },
+  visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
+  visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   identity: { en: 'The identity you practise', pt: 'A identidade que você pratica' },
   bridge: { en: 'Your bridge to today', pt: 'Sua ponte para hoje' },
   bridgeNote: {
@@ -81,8 +86,15 @@ const RECIBO = {
 };
 
 export default function RevealScreen({ navigation, route }) {
-  const { state, ensurePersonalVisual, setNarrator, updateManifestation } = useApp();
+  const {
+    state,
+    personalVisualStatus,
+    ensurePersonalVisual,
+    setNarrator,
+    updateManifestation,
+  } = useApp();
   const narration = usePersonalNarration();
+  const { withCloudMediaConsent } = useCloudMediaConsent();
   const { t } = useT();
   const [audioFailed, setAudioFailed] = useState(false);
   const [bridgeDraft, setBridgeDraft] = useState('');
@@ -100,11 +112,18 @@ export default function RevealScreen({ navigation, route }) {
   // Nunca usar list[0] como fallback: um link inválido não pode revelar a
   // história íntima de outra manifestação.
   const m = id ? list.find((x) => x.id === id) : null;
+  const visualPhase = m?.id ? personalVisualStatus[m.id]?.phase : null;
 
   useEffect(() => {
     if (!m?.id) return;
     void ensurePersonalVisual(m.id);
-  }, [ensurePersonalVisual, m?.id]);
+  }, [
+    ensurePersonalVisual,
+    m?.id,
+    state?.profile?.cloudConsentVersion,
+    state?.profile?.cloudPersonalization,
+    state?.profile?.cloudAdultConfirmed,
+  ]);
 
   const returnToWelcome = () => {
     navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
@@ -340,6 +359,39 @@ export default function RevealScreen({ navigation, route }) {
                     <Text style={styles.personalVisualAffirmation}>“{m.affirmation}”</Text>
                   </View>
                 </GradientCover>
+              ) : visualPhase === 'pending' ? (
+                <View
+                  testID="reveal-personal-visual-pending"
+                  accessibilityLiveRegion="polite"
+                  style={styles.visualStatus}
+                >
+                  <ActivityIndicator size="small" color={ONB.heart} />
+                  <Text style={styles.visualStatusText}>{t(S.visualPreparing)}</Text>
+                </View>
+              ) : visualPhase === 'consent_required' || visualPhase === 'error' ? (
+                <Pressable
+                  testID="reveal-personal-visual-action"
+                  accessibilityRole="button"
+                  accessibilityLabel={t(
+                    visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
+                  )}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    void withCloudMediaConsent((profile) =>
+                      ensurePersonalVisual(m.id, { force: true, profile })
+                    );
+                  }}
+                  style={({ pressed }) => [styles.visualAction, pressed && styles.pressed]}
+                >
+                  <Ionicons
+                    name={visualPhase === 'consent_required' ? 'image-outline' : 'refresh'}
+                    size={19}
+                    color={ONB.badgeText}
+                  />
+                  <Text style={styles.visualActionText}>
+                    {t(visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
+                  </Text>
+                </Pressable>
               ) : null}
 
               <View style={styles.scene}>
@@ -460,6 +512,30 @@ const styles = StyleSheet.create({
   audioLabel: { color: ONB.surfaceInk, fontSize: 15, fontWeight: '700' },
   audioState: { color: ONB.surfaceSoft, fontSize: 12, marginTop: 3 },
   audioFail: { color: ONB.surfaceSoft, fontSize: 13, lineHeight: 19, marginTop: 9 },
+  visualStatus: {
+    minHeight: 54,
+    marginTop: 18,
+    borderRadius: 18,
+    backgroundColor: ONB.pillStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  visualStatusText: { color: ONB.surfaceSoft, fontSize: 13, lineHeight: 19, marginLeft: 9 },
+  visualAction: {
+    minHeight: 52,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(36,64,110,0.16)',
+    borderRadius: 18,
+    backgroundColor: ONB.badgeBg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  visualActionText: { color: ONB.badgeText, fontSize: 14, fontWeight: '700', marginLeft: 8 },
   personalVisual: {
     width: '100%',
     aspectRatio: 4 / 5,

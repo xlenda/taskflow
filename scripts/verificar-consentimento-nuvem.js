@@ -79,6 +79,18 @@ const chat = fs.readFileSync(
 const profile = fs.readFileSync(path.join(ROOT, 'screens', 'ProfileScreen.js'), 'utf8');
 const home = fs.readFileSync(path.join(ROOT, 'screens', 'HomeScreen.js'), 'utf8');
 const narration = fs.readFileSync(path.join(ROOT, 'utils', 'usePersonalNarration.js'), 'utf8');
+const cloudMediaConsent = fs.readFileSync(
+  path.join(ROOT, 'utils', 'useCloudMediaConsent.js'),
+  'utf8'
+);
+const reveal = fs.readFileSync(path.join(ROOT, 'screens', 'onboarding', 'RevealScreen.js'), 'utf8');
+const manifestations = fs.readFileSync(
+  path.join(ROOT, 'screens', 'ManifestationScreen.js'),
+  'utf8'
+);
+const visions = fs.readFileSync(path.join(ROOT, 'screens', 'VisionsScreen.js'), 'utf8');
+const affirmations = fs.readFileSync(path.join(ROOT, 'screens', 'AffirmationsScreen.js'), 'utf8');
+const visionPlayer = fs.readFileSync(path.join(ROOT, 'screens', 'VisionPlayerScreen.js'), 'utf8');
 
 assert.match(appContext, /st\.profile\s*=\s*normalizeCloudConsentProfile\(savedProfile/);
 assert.match(appContext, /profile:\s*stripCloudConsentProfile\(/);
@@ -93,8 +105,29 @@ assert.match(
   /cloudConsentVersion:\s*null,[\s\S]*cloudPersonalization:\s*false,[\s\S]*cloudAdultConfirmed:\s*false,[\s\S]*cloudNarrationConsent:\s*false,[\s\S]*cloudDreamConsent:\s*false/
 );
 assert.doesNotMatch(chat, /CLOUD_CONSENT_VERSION|key\s*!==\s*['"]cloudPersonalization['"]/);
-for (const source of [profile, narration]) {
+for (const source of [profile, cloudMediaConsent]) {
   assert.match(source, /cloudConsentVersion:\s*CLOUD_CONSENT_VERSION/);
+}
+assert.match(narration, /useCloudMediaConsent[\s\S]*ensureCloudMediaConsent/);
+assert.match(
+  cloudMediaConsent,
+  /cloudPersonalization:\s*true,[\s\S]*cloudAdultConfirmed:\s*true,[\s\S]*cloudNarrationConsent:\s*true,[\s\S]*cloudDreamConsent:\s*true/
+);
+assert.match(cloudMediaConsent, /isUnder18Age\(profile\.age\)/);
+assert.doesNotMatch(cloudMediaConsent, /ageConfirmsAdult/);
+assert.match(cloudMediaConsent, /ElevenLabs[\s\S]*Google Gemini/);
+assert.ok(
+  (appContext.match(/phase:\s*['"]consent_required['"]/g) || []).length >= 3,
+  'Imagens pessoais sem consentimento devem oferecer uma acao explicita'
+);
+for (const [label, source] of [
+  ['revelacao', reveal],
+  ['manifestacao', manifestations],
+  ['visoes', visions],
+  ['afirmacoes', affirmations],
+  ['player de visao', visionPlayer],
+]) {
+  assert.match(source, /withCloudMediaConsent/, `${label} nao ativa midia por acao explicita`);
 }
 assert.match(home, /cloudConsentVersion\s*=\s*CLOUD_CONSENT_VERSION/);
 assert.match(home, /saveProfile\(\{[\s\S]*cloudConsentVersion,/);

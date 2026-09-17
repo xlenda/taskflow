@@ -1549,7 +1549,12 @@ export function AppProvider({ children }) {
         !hasCurrentAdultCloudConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(id);
-        setPersonalVisualPhase(id, null);
+        setPersonalVisualPhase(id, {
+          phase: 'consent_required',
+          error: 'visual_consent_required',
+          stage: 'consent',
+          fingerprint,
+        });
         return { ok: false, error: 'visual_consent_required' };
       }
 
@@ -1683,8 +1688,8 @@ export function AppProvider({ children }) {
 
     const generationEpoch = generationEpochRef.current;
     const profile = {
-      ...(snapshot.profile || {}),
       ...(manifestation.anchorAnswers || {}),
+      ...(snapshot.profile || {}),
       ...(options.profile && typeof options.profile === 'object' ? options.profile : {}),
     };
     const mood = shortText(options.mood, 40) || snapshot.mood;
@@ -1779,7 +1784,12 @@ export function AppProvider({ children }) {
         !hasCurrentAdultCloudConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(statusId);
-        setPersonalVisualPhase(statusId, null);
+        setPersonalVisualPhase(statusId, {
+          phase: 'consent_required',
+          error: 'visual_consent_required',
+          stage: 'consent',
+          fingerprint,
+        });
         return { ok: false, error: 'visual_consent_required' };
       }
 
@@ -1912,7 +1922,10 @@ export function AppProvider({ children }) {
     }
 
     const generationEpoch = generationEpochRef.current;
-    const profile = snapshot.profile || {};
+    const profile = {
+      ...(snapshot.profile || {}),
+      ...(options.profile && typeof options.profile === 'object' ? options.profile : {}),
+    };
     const fail = (error) => {
       if (!mountedRef.current || generationEpoch !== generationEpochRef.current) {
         return { ok: false, error: 'visual_cancelled' };
@@ -1998,7 +2011,12 @@ export function AppProvider({ children }) {
         !hasCurrentAdultCloudConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(statusId);
-        setPersonalVisualPhase(statusId, null);
+        setPersonalVisualPhase(statusId, {
+          phase: 'consent_required',
+          error: 'visual_consent_required',
+          stage: 'consent',
+          fingerprint,
+        });
         return { ok: false, error: 'visual_consent_required' };
       }
 

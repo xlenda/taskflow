@@ -19,6 +19,7 @@ import { CATEGORIES, categoryMeta } from '../constants/content';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import GradientCover from '../components/GradientCover';
@@ -63,6 +64,7 @@ const S = {
   },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
   all: { en: 'All', pt: 'Todas' },
 };
 
@@ -109,6 +111,7 @@ export default function VisionsScreen() {
     resume: resumeNarration,
     stop: stopNarration,
   } = usePersonalNarration();
+  const { withCloudMediaConsent } = useCloudMediaConsent();
   const [index, setIndex] = useState(0);
   const [filter, setFilter] = useState('All');
   const [audioFailedId, setAudioFailedId] = useState(null);
@@ -496,19 +499,24 @@ export default function VisionsScreen() {
                   {t(S.visualPreparing)}
                 </Text>
               </View>
-            ) : visibleVisualPhase === 'error' ? (
+            ) : visibleVisualPhase === 'error' || visibleVisualPhase === 'consent_required' ? (
               <TouchableOpacity
                 testID="visions-personal-visual-retry"
                 activeOpacity={0.76}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  void ensureJourneyVisual(visibleVision.manifestationId, visibleVision.key, {
-                    force: true,
-                    lang: visibleVision.lang,
-                  });
+                  void withCloudMediaConsent((profile) =>
+                    ensureJourneyVisual(visibleVision.manifestationId, visibleVision.key, {
+                      force: true,
+                      lang: visibleVision.lang,
+                      profile,
+                    })
+                  );
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={t(S.visualRetry)}
+                accessibilityLabel={t(
+                  visibleVisualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
+                )}
                 style={[
                   styles.visualRetry,
                   {
@@ -524,7 +532,7 @@ export default function VisionsScreen() {
                     { color: accentAt(th, visibleVision.accent) },
                   ]}
                 >
-                  {t(S.visualRetry)}
+                  {t(visibleVisualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
                 </Text>
               </TouchableOpacity>
             ) : null}

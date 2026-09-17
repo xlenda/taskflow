@@ -24,6 +24,7 @@ import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import AffirmationCard from '../components/AffirmationCard';
@@ -134,6 +135,7 @@ export default function AffirmationsScreen() {
     resume: resumeNarration,
     stop: stopNarration,
   } = usePersonalNarration();
+  const { withCloudMediaConsent } = useCloudMediaConsent();
   // `null` significa "a pessoa ainda não escolheu um filtro". Todo deck desta
   // tela nasce das manifestações e dos sonhos salvos pela própria pessoa.
   const [filter, setFilter] = useState(null);
@@ -607,15 +609,20 @@ export default function AffirmationsScreen() {
                 current.source === 'dream' && current.ritualEntryId
                   ? () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      void ensureDreamVisual(current.ritualEntryId, { force: true });
+                      void withCloudMediaConsent((profile) =>
+                        ensureDreamVisual(current.ritualEntryId, { force: true, profile })
+                      );
                     }
                   : current.manifestationId && current.key
                   ? () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      void ensureJourneyVisual(current.manifestationId, current.key, {
-                        force: true,
-                        lang: current.lang,
-                      });
+                      void withCloudMediaConsent((profile) =>
+                        ensureJourneyVisual(current.manifestationId, current.key, {
+                          force: true,
+                          lang: current.lang,
+                          profile,
+                        })
+                      );
                     }
                   : undefined
               }

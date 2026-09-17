@@ -21,6 +21,7 @@ import { categoryMeta } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO, lastNDays } from '../utils/date';
 import { bridgeDoneOn, normalizeLivingMirror } from '../utils/livingMirror';
@@ -107,6 +108,7 @@ const S = {
   storyTitle: { en: 'Your story', pt: 'Sua história' },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
 
   // Recibo do dia feito — números vêm do estado, nunca inventados.
   receipt: {
@@ -244,6 +246,7 @@ export default function ManifestationScreen() {
     resume,
     stop,
   } = usePersonalNarration();
+  const { withCloudMediaConsent } = useCloudMediaConsent();
 
   // Esta tela aceita somente manifestações pessoais que já existem no estado.
   // Se o navigator reaproveitar a instância, routeId muda e o item acompanha no
@@ -257,7 +260,13 @@ export default function ManifestationScreen() {
   useEffect(() => {
     if (!saved?.id) return;
     void ensurePersonalVisual(saved.id);
-  }, [ensurePersonalVisual, saved?.id]);
+  }, [
+    ensurePersonalVisual,
+    saved?.id,
+    state?.profile?.cloudConsentVersion,
+    state?.profile?.cloudPersonalization,
+    state?.profile?.cloudAdultConfirmed,
+  ]);
 
   // Cenas pessoais já chegam geradas no idioma ativo. txt() mantém compatibilidade
   // com manifestações antigas que tenham algum campo salvo como objeto bilíngue.
@@ -914,20 +923,26 @@ export default function ManifestationScreen() {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                   <Text style={styles.visualStatusText}>{t(S.visualPreparing)}</Text>
                 </View>
-              ) : visualPhase === 'error' ? (
+              ) : visualPhase === 'error' || visualPhase === 'consent_required' ? (
                 <TouchableOpacity
                   testID="manifestation-personal-visual-retry"
                   activeOpacity={0.76}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    void ensurePersonalVisual(saved.id, { force: true });
+                    void withCloudMediaConsent((profile) =>
+                      ensurePersonalVisual(saved.id, { force: true, profile })
+                    );
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={t(S.visualRetry)}
+                  accessibilityLabel={t(
+                    visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
+                  )}
                   style={styles.visualRetry}
                 >
                   <Ionicons name="refresh" size={16} color="#FFFFFF" />
-                  <Text style={styles.visualRetryText}>{t(S.visualRetry)}</Text>
+                  <Text style={styles.visualRetryText}>
+                    {t(visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
+                  </Text>
                 </TouchableOpacity>
               ) : null}
             </View>

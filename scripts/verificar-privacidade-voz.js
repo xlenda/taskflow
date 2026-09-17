@@ -165,6 +165,7 @@ const visionsSource = read('screens/VisionsScreen.js');
 const visionPlayerSource = read('screens/VisionPlayerScreen.js');
 const manifestationSource = read('screens/ManifestationScreen.js');
 const personalNarrationSource = read('utils/usePersonalNarration.js');
+const cloudMediaConsentSource = read('utils/useCloudMediaConsent.js');
 const morningRitualSource = read('screens/MorningRitualScreen.js');
 const dreamServiceSource = read('services/transformDream.js');
 const onboardingFlowSource = read('screens/onboarding/flow.js');
@@ -190,15 +191,21 @@ assert.match(
   'Vision route must resolve a personal journey item'
 );
 assert.match(manifestationSource, /state\.manifestations\.find/, 'Manifestation screen must resolve saved personal content');
-assert.doesNotMatch(
-  personalNarrationSource,
-  /cloudPersonalization|cloudDreamConsent/,
-  'Voice consent must not silently enable scene or dream uploads'
-);
 assert.match(
   personalNarrationSource,
-  /cloudAdultConfirmed:\s*true,[\s\S]*cloudNarrationConsent:\s*true/,
-  'Voice consent must enable only adult-confirmed narration'
+  /useCloudMediaConsent[\s\S]*ensureCloudMediaConsent/,
+  'Personal narration must use the shared explicit cloud-media consent'
+);
+assert.match(
+  cloudMediaConsentSource,
+  /cloudPersonalization:\s*true,[\s\S]*cloudAdultConfirmed:\s*true,[\s\S]*cloudNarrationConsent:\s*true,[\s\S]*cloudDreamConsent:\s*true/,
+  'The single product control must persist every cloud consent alias together'
+);
+assert.match(cloudMediaConsentSource, /isUnder18Age\(profile\.age\)/, 'Known minors must stay blocked');
+assert.doesNotMatch(
+  cloudMediaConsentSource,
+  /ageConfirmsAdult/,
+  'Skipped age must be confirmable by the explicit 18+ cloud consent action'
 );
 assert.match(morningRitualSource, /cloudDreamConsent === true/, 'Dream upload needs its own consent');
 assert.match(dreamServiceSource, /cloudDreamConsent !== true/, 'Dream service must fail closed without dream consent');
@@ -219,8 +226,13 @@ for (const [label, source] of [
 }
 assert.match(homeSource, /Anthropic[\s\S]*OpenAI[\s\S]*Google Gemini/, 'Scene consent must disclose text failover and image processor');
 assert.doesNotMatch(homeSource, /Create with Gemini|Criar com o Gemini/, 'Scene consent still attributes all processing to Gemini');
-assert.match(personalNarrationSource, /ElevenLabs/, 'Voice consent must disclose ElevenLabs TTS');
-assert.doesNotMatch(personalNarrationSource, /Google Gemini/, 'Voice consent still attributes TTS to Gemini');
+assert.match(cloudMediaConsentSource, /ElevenLabs/, 'Unified media consent must disclose ElevenLabs TTS');
+assert.match(cloudMediaConsentSource, /Google Gemini/, 'Unified media consent must disclose Gemini images');
+assert.match(
+  cloudMediaConsentSource,
+  /18 anos ou mais[\s\S]*18 or older/,
+  'Unified media consent must explicitly confirm adulthood in both languages'
+);
 assert.match(morningRitualSource, /Google Gemini[\s\S]*interpret/, 'Dream notice must disclose Gemini interpretation');
 assert.match(
   legalSource,

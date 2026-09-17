@@ -158,7 +158,8 @@ assert.ok(
     manifestation.includes('personalVisualStatus[saved.id]') &&
     manifestation.includes('testID="manifestation-personal-visual-pending"') &&
     manifestation.includes('testID="manifestation-personal-visual-retry"') &&
-    manifestation.includes('ensurePersonalVisual(saved.id, { force: true })'),
+    manifestation.includes('withCloudMediaConsent((profile) =>') &&
+    manifestation.includes('ensurePersonalVisual(saved.id, { force: true, profile })'),
   'detalhe da Cena-Ancora precisa exibir, reparar e explicar o estado da imagem pessoal no hero'
 );
 assert.ok(

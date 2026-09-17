@@ -14,6 +14,7 @@ const S = {
   share: { en: 'Share this affirmation', pt: 'Compartilhar esta afirmação' },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
 };
 
 export default function AffirmationCard({
@@ -101,13 +102,15 @@ export default function AffirmationCard({
             {t(S.visualPreparing)}
           </Text>
         </View>
-      ) : visualPhase === 'error' && onRetryVisual ? (
+      ) : (visualPhase === 'error' || visualPhase === 'consent_required') && onRetryVisual ? (
         <TouchableOpacity
           testID="personal-visual-retry"
           activeOpacity={0.76}
           onPress={onRetryVisual}
           accessibilityRole="button"
-          accessibilityLabel={t(S.visualRetry)}
+          accessibilityLabel={t(
+            visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
+          )}
           style={[
             styles.visualRetry,
             {
@@ -118,7 +121,7 @@ export default function AffirmationCard({
         >
           <Ionicons name="refresh" size={16} color={visual ? '#FFFFFF' : color} />
           <Text style={[styles.visualRetryText, { color: visual ? '#FFFFFF' : color }]}>
-            {t(S.visualRetry)}
+            {t(visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
           </Text>
         </TouchableOpacity>
       ) : null}

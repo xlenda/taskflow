@@ -3,39 +3,19 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNarration } from '../context/NarrationContext';
 import { DEFAULT_NARRATOR_ID } from '../constants/narrators';
-import {
-  CLOUD_CONSENT_VERSION,
-  hasCurrentAdultCloudConsent,
-} from '../constants/cloudConsent';
+import { CLOUD_CONSENT_VERSION } from '../constants/cloudConsent';
 import { RELEASE_FEATURES } from '../constants/releaseFeatures';
-import { ageConfirmsAdult } from '../screens/onboarding/flow';
 import { redactThirdPartyNames, thirdPartyNames } from '../services/generatePersonalizedScene';
-import { confirmAsync } from './confirm';
-
-const COPY = {
-  pt: {
-    title: 'Ativar voz pessoal?',
-    message:
-      'Para narrar com a voz escolhida, o Celeste envia à ElevenLabs somente o texto que você decidiu ouvir, o idioma e a voz selecionada. A solicitação passa pelo backend do Celeste. Nomes de outras pessoas salvos no aparelho não são enviados. O áudio não é público e pode ficar salvo apenas neste aparelho para tocar novamente sem uma nova geração.',
-    confirm: 'Ativar voz',
-    cancel: 'Agora não',
-  },
-  en: {
-    title: 'Enable your personal voice?',
-    message:
-      'To narrate with your chosen voice, Celeste sends ElevenLabs only the text you chose to hear, its language and the selected voice. The request passes through Celeste\'s backend. Names of other people saved on this device are not sent. The audio is not public and may be stored only on this device so it can play again without a new generation.',
-    confirm: 'Enable voice',
-    cancel: 'Not now',
-  },
-};
+import { useCloudMediaConsent } from './useCloudMediaConsent';
 
 function textWithoutSavedNames(text, profile, lang) {
   return redactThirdPartyNames(text, thirdPartyNames(profile), lang);
 }
 
 export function usePersonalNarration() {
-  const { state, saveProfile } = useApp();
+  const { state } = useApp();
   const narration = useNarration();
+  const { ensureCloudMediaConsent } = useCloudMediaConsent();
   const lang = state?.lang === 'en' ? 'en' : 'pt';
   const narratorId = state?.narration?.narratorId || DEFAULT_NARRATOR_ID;
 
@@ -43,35 +23,8 @@ export function usePersonalNarration() {
     if (!RELEASE_FEATURES.paidCloudProcessing) {
       return { ok: false, error: 'personal_narration_unavailable' };
     }
-    const profile = state?.profile || {};
-    if (!ageConfirmsAdult(profile.age)) {
-      return { ok: false, error: 'adult_confirmation_required' };
-    }
-    if (
-      hasCurrentAdultCloudConsent(profile) &&
-      profile.cloudNarrationConsent === true
-    ) {
-      return { ok: true };
-    }
-
-    const copy = COPY[lang];
-    const accepted = await confirmAsync({
-      title: copy.title,
-      message: copy.message,
-      confirmLabel: copy.confirm,
-      cancelLabel: copy.cancel,
-      destructive: false,
-      lang,
-    });
-    if (!accepted) return { ok: false, error: 'cloud_consent_required' };
-
-    saveProfile({
-      cloudConsentVersion: CLOUD_CONSENT_VERSION,
-      cloudAdultConfirmed: true,
-      cloudNarrationConsent: true,
-    });
-    return { ok: true };
-  }, [lang, saveProfile, state?.profile]);
+    return ensureCloudMediaConsent();
+  }, [ensureCloudMediaConsent]);
 
   const playPersonal = useCallback(
     async ({ text, lang: contentLang, narratorId: requestedNarrator, playbackId }) => {
@@ -82,8 +35,9 @@ export function usePersonalNarration() {
         return consent;
       }
       const resolvedLang = contentLang === 'en' ? 'en' : contentLang === 'pt' ? 'pt' : lang;
+      const consentProfile = consent.profile || state?.profile || {};
       return narration.playPersonal({
-        text: textWithoutSavedNames(text, state?.profile || {}, resolvedLang),
+        text: textWithoutSavedNames(text, consentProfile, resolvedLang),
         narratorId: requestedNarrator || narratorId,
         lang: resolvedLang,
         cloudConsent: true,
@@ -100,8 +54,9 @@ export function usePersonalNarration() {
       const consent = await ensureConsent();
       if (!consent.ok) return consent;
       const resolvedLang = contentLang === 'en' ? 'en' : contentLang === 'pt' ? 'pt' : lang;
+      const consentProfile = consent.profile || state?.profile || {};
       return narration.preparePersonal({
-        text: textWithoutSavedNames(text, state?.profile || {}, resolvedLang),
+        text: textWithoutSavedNames(text, consentProfile, resolvedLang),
         narratorId: requestedNarrator || narratorId,
         lang: resolvedLang,
         cloudConsent: true,

@@ -503,6 +503,17 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(context, /phase: 'pending'/);
     assert.match(context, /phase: 'error'/);
     assert.match(context, /personalVisualErrorStage/);
+    const journeyStart = context.indexOf('const ensureJourneyVisual = useCallback');
+    const dreamVisualStart = context.indexOf('const ensureDreamVisual = useCallback', journeyStart);
+    const journeyBlock = context.slice(journeyStart, dreamVisualStart);
+    assert.ok(
+      journeyBlock.indexOf('...(manifestation.anchorAnswers || {})') >= 0 &&
+        journeyBlock.indexOf('...(manifestation.anchorAnswers || {})') <
+          journeyBlock.indexOf('...(snapshot.profile || {})') &&
+        journeyBlock.indexOf('...(snapshot.profile || {})') <
+          journeyBlock.indexOf("...(options.profile && typeof options.profile === 'object'"),
+      'consentimento atual nao pode ser sobrescrito pelos flags antigos salvos na ancora'
+    );
     assert.match(
       context,
       /personalVisualSubjectFingerprint\(currentManifestation\)\s*!==\s*fingerprint[\s\S]{0,220}deletePersonalVisual\(cacheKey\)[\s\S]{0,100}setPersonalVisualPhase\(id,\s*null\)[\s\S]{0,100}error:\s*['"]visual_cancelled['"]/,
@@ -536,7 +547,16 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(manifestation, /personalVisualStatus\[saved\.id\]/);
     assert.match(manifestation, /testID="manifestation-personal-visual-pending"/);
     assert.match(manifestation, /testID="manifestation-personal-visual-retry"/);
-    assert.match(manifestation, /ensurePersonalVisual\(saved\.id, \{ force: true \}\)/);
+    assert.match(
+      manifestation,
+      /void ensurePersonalVisual\(saved\.id\);[\s\S]{0,300}state\?\.profile\?\.cloudConsentVersion[\s\S]{0,180}state\?\.profile\?\.cloudPersonalization/,
+      'detalhe deve tentar a imagem novamente quando o consentimento mudar'
+    );
+    assert.match(
+      manifestation,
+      /withCloudMediaConsent\(\(profile\)\s*=>[\s\S]{0,180}ensurePersonalVisual\(saved\.id,\s*\{\s*force:\s*true,\s*profile\s*\}\)/,
+      'retry da imagem deve permitir aceite explicito e usar o perfil aceito imediatamente'
+    );
     assert.match(visions, /personalVisualStatus\[visibleVision\.visualStatusKey\]/);
     assert.match(
       visions,
@@ -558,6 +578,17 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
     assert.match(reveal, /testID="reveal-personal-visual"/);
     assert.match(reveal, /visualKey=\{m\.visual\.cacheKey\}/);
+    assert.match(
+      reveal,
+      /void ensurePersonalVisual\(m\.id\);[\s\S]{0,300}state\?\.profile\?\.cloudConsentVersion[\s\S]{0,180}state\?\.profile\?\.cloudPersonalization/,
+      'revelacao deve tentar a imagem novamente quando o consentimento mudar'
+    );
+    assert.match(reveal, /testID="reveal-personal-visual-action"/);
+    assert.match(reveal, /withCloudMediaConsent/);
+    assert.ok(
+      (context.match(/phase:\s*['"]consent_required['"]/g) || []).length >= 3,
+      'geracao sem consentimento deve apresentar uma acao em vez de falhar silenciosamente'
+    );
 
     const dreamStart = affirmations.indexOf('const dreamAffirmations');
     const dreamEnd = affirmations.indexOf('const allAffirmations', dreamStart);

@@ -20,6 +20,7 @@ import { useApp } from '../context/AppContext';
 import { categoryMeta } from '../constants/content';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
+import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { accentAt, alpha } from '../utils/colors';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
@@ -60,6 +61,7 @@ const S = {
   },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
   editStory: { en: 'Edit story', pt: 'Editar história' },
   editStoryHint: {
     en: 'Adjust the story so it sounds like you. Your personal image will stay the same.',
@@ -127,6 +129,7 @@ export default function VisionPlayerScreen() {
     ensureJourneyVisual,
     updateJourneyVisionStory,
   } = useApp();
+  const { withCloudMediaConsent } = useCloudMediaConsent();
 
   const routeId =
     typeof route.params?.visionId === 'string' && route.params.visionId.trim()
@@ -213,17 +216,23 @@ export default function VisionPlayerScreen() {
       secondaryVisualStatus={personalVisualStatus[vision.secondaryVisualStatusKey]}
       onRetryVisual={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        void ensureJourneyVisual(vision.manifestationId, vision.key, {
-          force: true,
-          lang: vision.lang,
-        });
+        void withCloudMediaConsent((profile) =>
+          ensureJourneyVisual(vision.manifestationId, vision.key, {
+            force: true,
+            lang: vision.lang,
+            profile,
+          })
+        );
       }}
       onRetrySecondaryVisual={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        void ensureJourneyVisual(vision.manifestationId, `${vision.key}:secondary`, {
-          force: true,
-          lang: vision.lang,
-        });
+        void withCloudMediaConsent((profile) =>
+          ensureJourneyVisual(vision.manifestationId, `${vision.key}:secondary`, {
+            force: true,
+            lang: vision.lang,
+            profile,
+          })
+        );
       }}
     />
   );
@@ -822,20 +831,29 @@ function PersonalVisionPlayer({
               {t(S.visualPreparing)}
             </Text>
           </View>
-        ) : activeVisualStatus?.phase === 'error' ? (
+        ) : activeVisualStatus?.phase === 'error' ||
+          activeVisualStatus?.phase === 'consent_required' ? (
           <TouchableOpacity
             testID="vision-player-personal-visual-retry"
             activeOpacity={0.76}
             onPress={secondaryStatusRelevant ? onRetrySecondaryVisual : onRetryVisual}
             accessibilityRole="button"
-            accessibilityLabel={t(S.visualRetry)}
+            accessibilityLabel={t(
+              activeVisualStatus?.phase === 'consent_required' ? S.visualActivate : S.visualRetry
+            )}
             style={[
               styles.visualRetry,
               { backgroundColor: alpha(color, 0.1), borderColor: alpha(color, 0.28) },
             ]}
           >
             <Ionicons name="refresh" size={16} color={color} />
-            <Text style={[styles.visualRetryText, { color }]}>{t(S.visualRetry)}</Text>
+            <Text style={[styles.visualRetryText, { color }]}>
+              {t(
+                activeVisualStatus?.phase === 'consent_required'
+                  ? S.visualActivate
+                  : S.visualRetry
+              )}
+            </Text>
           </TouchableOpacity>
         ) : null}
 
