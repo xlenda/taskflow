@@ -72,6 +72,13 @@ trabalho e motivo declarado. Campos de nome, rosto, histórico bruto, notas e
 texto de sonho ficam fora do payload; nomes de terceiros já cadastrados também
 são generalizados. O prompt proíbe pessoas, marcas, letras e fatos inventados.
 
+O prompt visual V3 combina uma direção própria para cada categoria com doze
+composições e doze ganchos visuais determinísticos. Cada quadro exige luz
+cinematográfica plausível, textura tátil, ponto de vista específico e leitura
+forte em miniatura; também bloqueia clichês de banco de imagens, luxo, bem-estar
+e “vision board”. O objetivo é produzir imagens autorais e compartilháveis sem
+inventar uma conquista, um lugar ou um fato sobre a pessoa.
+
 O Gemini devolve somente a imagem. A afirmação continua sendo renderizada pelo
 próprio app sobre um véu central escuro, com texto branco e sombra leve. Assim a
 frase permanece legível mesmo sobre praia, cabana, fazenda ou outra cena clara.
@@ -90,6 +97,7 @@ apagados em remoção, redefinição, reparo ou importação de dados.
 | Base estruturada | `celeste-knowledge-v2` |
 | Cérebro e recuperação | `celeste-brain-v1` |
 | Prompt de cena | `celeste-scene-v7` |
+| Prompt de imagem | `celeste-visual-v3` |
 | Prompt de sonho em nuvem | `celeste-dream-v2` |
 | Fallback local de sonho | `dream-local-v3` |
 

@@ -59,11 +59,11 @@ export default function WelcomeScreen({ navigation }) {
             onPress={finishOpening}
             style={({ pressed }) => ({
               alignSelf: 'flex-end',
-              width: 44,
-              height: 44,
+              width: 48,
+              height: 48,
               marginTop: 10,
               marginRight: 14,
-              borderRadius: 22,
+              borderRadius: 24,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: 'rgba(28,46,79,0.72)',
@@ -88,9 +88,12 @@ export default function WelcomeScreen({ navigation }) {
             style={{
               paddingHorizontal: 14,
               paddingVertical: 7,
+              minHeight: 48,
               borderRadius: 999,
               marginLeft: 8,
               backgroundColor: lang === language ? ONB.ink : ONB.track,
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <Text

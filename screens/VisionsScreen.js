@@ -215,7 +215,8 @@ export default function VisionsScreen() {
     setIndex((current) => Math.max(0, Math.min(current, Math.max(0, visions.length - 1))));
   }, [activeVisionId, visions, stopOwnedNarration]);
 
-  const CARD_W = Math.max(250, width - 72);
+  const CARD_W = Math.min(640, Math.max(248, width - 72));
+  const CARD_H = Math.min(448, Math.max(420, Math.round(CARD_W * 0.7)));
 
   const recent = useMemo(() => {
     if (!state) return [];
@@ -305,7 +306,11 @@ export default function VisionsScreen() {
   return (
     <Screen>
       <Header title={t(S.title)} subtitle={t(S.subtitle)} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        style={styles.pageScroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         {allVisions.length > 0 ? (
           <ScrollView
             horizontal
@@ -362,17 +367,19 @@ export default function VisionsScreen() {
               {visions.map((vision) => {
                 const isSaved = state.savedVisions.includes(vision.id);
                 return (
-                  <TouchableOpacity
+                  <View
                     key={vision.id}
-                    activeOpacity={0.9}
-                    onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
-                    style={{ width: CARD_W, marginRight: GAP }}
+                    style={[
+                      styles.slideShell,
+                      { width: CARD_W, marginRight: GAP },
+                      th.elevation?.e2,
+                    ]}
                   >
                     <GradientCover
                       accent={vision.accent}
                       visualKey={vision.visualKey}
-                      radius={26}
-                      style={styles.slide}
+                      radius={28}
+                      style={[styles.slide, { height: CARD_H }]}
                     >
                       <View style={styles.slideTop}>
                         {vision.category ? (
@@ -393,6 +400,7 @@ export default function VisionsScreen() {
                           accessibilityRole="button"
                           accessibilityLabel={isSaved ? t(S.unsave) : t(S.save)}
                           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          style={styles.saveCircle}
                         >
                           <Ionicons
                             name={isSaved ? 'bookmark' : 'bookmark-outline'}
@@ -402,11 +410,20 @@ export default function VisionsScreen() {
                         </TouchableOpacity>
                       </View>
 
-                      <View style={styles.slideBody}>
-                        <Text numberOfLines={6} style={styles.caption}>
+                      <TouchableOpacity
+                        activeOpacity={0.86}
+                        onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
+                        accessibilityRole="button"
+                        accessibilityLabel={vision.title}
+                        style={styles.slideBody}
+                      >
+                        <Text
+                          numberOfLines={6}
+                          style={[styles.caption, { fontFamily: th.typeFamilies?.serif }]}
+                        >
                           {vision.caption}
                         </Text>
-                      </View>
+                      </TouchableOpacity>
 
                       <View style={styles.slideBottom}>
                         {personalNarrationAvailable ? (
@@ -442,7 +459,12 @@ export default function VisionsScreen() {
                             )}
                           </TouchableOpacity>
                         ) : null}
-                        <View style={styles.slideMeta}>
+                        <TouchableOpacity
+                          activeOpacity={0.82}
+                          onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
+                          accessible={false}
+                          style={styles.slideMeta}
+                        >
                           <Text numberOfLines={1} style={styles.slideTitle}>
                             {vision.title}
                           </Text>
@@ -455,10 +477,10 @@ export default function VisionsScreen() {
                               ? t(S.audioUnavailable)
                               : t(S.personalNarration)}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       </View>
                     </GradientCover>
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </ScrollView>
@@ -536,6 +558,8 @@ export default function VisionsScreen() {
                   key={vision.id}
                   activeOpacity={0.85}
                   onPress={() => navigation.navigate('VisionPlayer', { visionId: vision.id })}
+                  accessibilityRole="button"
+                  accessibilityLabel={vision.title}
                 >
                   <Card style={[styles.row, { backgroundColor: th.surface }]}>
                     <GradientCover
@@ -618,45 +642,67 @@ export default function VisionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  pageScroll: { width: '100%', maxWidth: 720, alignSelf: 'center' },
+  scroll: { paddingHorizontal: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  categoryFilters: { gap: 8, paddingRight: 16, paddingBottom: 14 },
+  categoryFilters: { gap: 8, paddingRight: 16, paddingBottom: 16 },
   categoryFilter: {
-    minHeight: 38,
+    minHeight: 48,
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 13,
+    borderRadius: 24,
+    paddingHorizontal: 16,
   },
-  categoryFilterText: { fontSize: 12.5, lineHeight: 17, fontWeight: '700', letterSpacing: 0 },
-  lead: { fontSize: 15, textAlign: 'center', marginBottom: 16, marginTop: 4 },
+  categoryFilterText: { fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0 },
+  lead: { fontSize: 16, lineHeight: 24, textAlign: 'center', marginBottom: 20, marginTop: 4 },
   leadItalic: { fontStyle: 'italic', fontWeight: '600' },
-  carousel: { paddingRight: 16 },
-  slide: { height: 380, padding: 18, justifyContent: 'space-between' },
+  carousel: { paddingRight: 16, paddingBottom: 4 },
+  slideShell: { borderRadius: 28 },
+  slide: { padding: 20, justifyContent: 'space-between' },
   slideTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  saveCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(5,12,22,0.32)',
+  },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  pillText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '700', marginLeft: 5 },
-  slideBody: { flex: 1, justifyContent: 'center' },
+  pillText: { color: '#FFFFFF', fontSize: 11.5, lineHeight: 16, fontWeight: '800', marginLeft: 6 },
+  slideBody: { flex: 1, justifyContent: 'center', paddingVertical: 18 },
   caption: {
     color: '#FFFFFF',
-    fontSize: 24,
-    lineHeight: 34,
-    fontWeight: '600',
+    fontSize: 26,
+    lineHeight: 36,
+    fontWeight: '500',
     fontStyle: 'italic',
+    letterSpacing: -0.25,
+    textShadowColor: 'rgba(3,9,18,0.58)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
   },
   slideBottom: { flexDirection: 'row', alignItems: 'center' },
-  playCircle: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  slideMeta: { flex: 1, marginLeft: 12 },
-  slideTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  slideDur: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  playCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  slideMeta: { flex: 1, marginLeft: 14 },
+  slideTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+    textShadowColor: 'rgba(3,9,18,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  slideDur: { color: 'rgba(255,255,255,0.9)', fontSize: 12, lineHeight: 17, marginTop: 2 },
   visualStatusRow: {
-    minHeight: 40,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -664,25 +710,25 @@ const styles = StyleSheet.create({
   },
   visualStatusText: { fontSize: 12.5, lineHeight: 18, marginLeft: 8, textAlign: 'center' },
   visualRetry: {
-    minHeight: 40,
+    minHeight: 48,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
+    borderRadius: 24,
+    paddingHorizontal: 16,
     marginTop: 12,
   },
   visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18 },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
   dot: { height: 7, borderRadius: 4, marginHorizontal: 3 },
-  row: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, marginBottom: 10 },
-  thumb: { width: 48, height: 48 },
-  histIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  rowBody: { flex: 1, marginLeft: 12 },
-  rowAction: { paddingHorizontal: 8 },
-  rowTitle: { fontSize: 14.5, fontWeight: '700' },
-  rowSub: { fontSize: 12, marginTop: 3 },
-  bottomSpace: { height: 28 },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 84, padding: 12, borderRadius: 20, marginBottom: 12 },
+  thumb: { width: 58, height: 58 },
+  histIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  rowBody: { flex: 1, marginLeft: 14 },
+  rowAction: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  rowTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  rowSub: { fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  bottomSpace: { height: 32 },
 });

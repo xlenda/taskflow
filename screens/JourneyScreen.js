@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -188,6 +189,7 @@ export default function JourneyScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { t, lang } = useT();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
   const { stop: stopNarration, clearAudioCache } = useNarration();
   // setMood/exportStateJson/importStateJson vêm do contrato novo do AppContext.
   const {
@@ -206,6 +208,8 @@ export default function JourneyScreen() {
   const [resetError, setResetError] = useState(null);
   const [editingTrace, setEditingTrace] = useState(null);
   const [traceDraft, setTraceDraft] = useState('');
+  const largeText = fontScale > 1.3;
+  const stackStats = viewportWidth < 340 || largeText;
 
   // UMA definição de prática para a tela inteira: sessão de manifestação, visão
   // ouvida até o fim ou afirmação recebida. Antes o gráfico contava as visões e
@@ -255,10 +259,12 @@ export default function JourneyScreen() {
 
   if (loading || !state) {
     return (
-      <Screen>
-        <Header title={t(S.title)} />
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.accent} />
+      <Screen scroll={false}>
+        <View style={[styles.contentColumn, styles.loadingColumn]}>
+          <Header title={t(S.title)} />
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={theme.accent} />
+          </View>
         </View>
       </Screen>
     );
@@ -464,7 +470,9 @@ export default function JourneyScreen() {
 
   return (
     <Screen scroll={false} testID="journey-screen">
-      <Header title={t(S.title)} subtitle={t(S.subtitle, { name: state.name })} />
+      <View style={styles.contentColumn}>
+        <Header title={t(S.title)} subtitle={t(S.subtitle, { name: state.name })} />
+      </View>
       <ScrollView
         testID="journey-scroll"
         style={styles.scrollView}
@@ -472,7 +480,8 @@ export default function JourneyScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        <SectionHeading title={t(S.yourSpace)} style={styles.spaceHeading} />
+        <View style={styles.contentColumn}>
+          <SectionHeading title={t(S.yourSpace)} style={styles.spaceHeading} />
         <Card style={[styles.spaceCard, { backgroundColor: theme.surface }]}>
           <TouchableOpacity
             testID="journey-open-profile"
@@ -482,41 +491,94 @@ export default function JourneyScreen() {
             onPress={() => navigation.navigate('Profile')}
             style={styles.spaceRow}
           >
-            <View style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}>
+            <View
+              accessible={false}
+              style={[styles.spaceIcon, { backgroundColor: alpha(accentAt(theme, 1), 0.14) }]}
+            >
               <Ionicons name="person-outline" size={20} color={accentAt(theme, 1)} />
             </View>
             <View style={styles.spaceCopy}>
               <Text style={[styles.spaceTitle, { color: theme.text }]}>{t(S.profileSettings)}</Text>
               <Text style={[styles.spaceBody, { color: theme.textMuted }]}>{t(S.profileSettingsBody)}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+            <Ionicons accessible={false} name="chevron-forward" size={19} color={theme.textMuted} />
           </TouchableOpacity>
         </Card>
 
         <GradientCover accent={4} radius={22} style={styles.hero}>
-          <Text style={styles.heroLabel}>{t(S.heroLabel)}</Text>
-          <Text style={styles.heroValue}>{consistency}%</Text>
-          <Text style={styles.heroSub}>
-            {t(daysLogged === 1 ? S.daysLoggedOne : S.daysLoggedMany, { n: daysLogged })}
-            {' · '}
-            {t(S.longestFocus, { title: longestFocus?.title || '—' })}
-          </Text>
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={t(S.heroLabel)}
+            accessibilityValue={{
+              min: 0,
+              max: 30,
+              now: daysLogged,
+              text: t(daysLogged === 1 ? S.daysLoggedOne : S.daysLoggedMany, { n: daysLogged }),
+            }}
+          >
+            <Text style={styles.heroLabel}>{t(S.heroLabel)}</Text>
+            <View style={styles.heroValueRow}>
+              <Text style={styles.heroValue}>{consistency}%</Text>
+              <Text style={styles.heroCount}>{daysLogged}/30</Text>
+            </View>
+            <View style={styles.heroTrack} accessible={false}>
+              <View style={[styles.heroFill, { width: `${consistency}%` }]} />
+            </View>
+            <Text style={styles.heroSub}>
+              {t(daysLogged === 1 ? S.daysLoggedOne : S.daysLoggedMany, { n: daysLogged })}
+              {' · '}
+              {t(S.longestFocus, { title: longestFocus?.title || '—' })}
+            </Text>
+          </View>
         </GradientCover>
 
-        <View style={styles.statGrid}>
-          {stats.map((s) => (
-            <Card
-              key={s.key}
-              style={[styles.statTile, { backgroundColor: theme.surface }]}
-            >
-              <View style={[styles.statIcon, { backgroundColor: alpha(accentAt(theme, s.accent), 0.15) }]}>
-                <Ionicons name={s.icon} size={18} color={accentAt(theme, s.accent)} />
+        <Card style={[styles.statsPanel, { backgroundColor: theme.surface }]}>
+          <View style={[styles.statGrid, stackStats && styles.statGridStacked]}>
+            {stats.map((s, index) => (
+              <View
+                key={s.key}
+                accessibilityRole="text"
+                accessibilityLabel={`${t(s.label)}: ${s.value}`}
+                style={[
+                  styles.statTile,
+                  stackStats && styles.statTileStacked,
+                  index > 0 &&
+                    (stackStats
+                      ? [styles.statDividerHorizontal, { borderTopColor: theme.border }]
+                      : [styles.statDividerVertical, { borderLeftColor: theme.border }]),
+                ]}
+              >
+                <View
+                  accessible={false}
+                  style={[styles.statIcon, { backgroundColor: alpha(accentAt(theme, s.accent), 0.15) }]}
+                >
+                  <Ionicons name={s.icon} size={18} color={accentAt(theme, s.accent)} />
+                </View>
+                <View style={[styles.statCopy, stackStats && styles.statCopyStacked]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      stackStats && styles.statValueStacked,
+                      { color: theme.text },
+                    ]}
+                  >
+                    {s.value}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.statLabel,
+                      stackStats && styles.statLabelStacked,
+                      { color: theme.textMuted },
+                    ]}
+                  >
+                    {t(s.label)}
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.statValue, { color: theme.text }]}>{s.value}</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t(s.label)}</Text>
-            </Card>
-          ))}
-        </View>
+            ))}
+          </View>
+        </Card>
 
         <SectionHeading title={t(S.traces)} />
         {traces.length === 0 ? (
@@ -538,7 +600,10 @@ export default function JourneyScreen() {
                       <Ionicons name="reader-outline" size={16} color={c} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text numberOfLines={1} style={[styles.traceTitle, { color: theme.text }]}>
+                      <Text
+                        numberOfLines={largeText ? undefined : 1}
+                        style={[styles.traceTitle, { color: theme.text }]}
+                      >
                         {entry.manifestationTitle}
                       </Text>
                       <Text style={[styles.traceDate, { color: theme.textMuted }]}>
@@ -556,7 +621,12 @@ export default function JourneyScreen() {
                           accessibilityLabel={t(S.editTrace)}
                           style={styles.traceAction}
                         >
-                          <Ionicons name="pencil-outline" size={17} color={theme.textMuted} />
+                          <Ionicons
+                            accessible={false}
+                            name="pencil-outline"
+                            size={18}
+                            color={theme.textMuted}
+                          />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => confirmDeleteTrace(entry)}
@@ -564,7 +634,12 @@ export default function JourneyScreen() {
                           accessibilityLabel={t(S.deleteTrace)}
                           style={styles.traceAction}
                         >
-                          <Ionicons name="trash-outline" size={17} color={theme.textMuted} />
+                          <Ionicons
+                            accessible={false}
+                            name="trash-outline"
+                            size={18}
+                            color={theme.textMuted}
+                          />
                         </TouchableOpacity>
                       </View>
                     ) : null}
@@ -577,12 +652,18 @@ export default function JourneyScreen() {
                         multiline
                         autoFocus
                         maxLength={280}
+                        accessibilityLabel={t(S.editTrace)}
                         style={[
                           styles.traceInput,
                           { color: theme.text, borderColor: theme.border, backgroundColor: alpha(theme.textMuted, 0.06) },
                         ]}
                       />
-                      <View style={styles.traceEditActions}>
+                      <View
+                        style={[
+                          styles.traceEditActions,
+                          largeText && styles.traceEditActionsStacked,
+                        ]}
+                      >
                         <PrimaryButton
                           label={t(S.cancel)}
                           variant="ghost"
@@ -590,14 +671,18 @@ export default function JourneyScreen() {
                             setEditingTrace(null);
                             setTraceDraft('');
                           }}
-                          style={{ flex: 1, marginRight: 8 }}
+                          style={
+                            largeText
+                              ? styles.traceEditButtonStacked
+                              : styles.traceEditButtonLeading
+                          }
                         />
                         <PrimaryButton
                           label={t(S.saveTrace)}
                           icon="checkmark"
                           disabled={!traceDraft.trim()}
                           onPress={saveTraceEdit}
-                          style={{ flex: 1 }}
+                          style={largeText ? styles.traceEditButtonStacked : styles.traceEditButton}
                         />
                       </View>
                     </>
@@ -627,48 +712,75 @@ export default function JourneyScreen() {
             </Text>
           </Card>
         ) : null}
-        {activeManifestations.map((m) => {
-          const c = accentAt(theme, m.accent);
-          const p = pct(m.sessions.length, m.goalDays);
-          return (
-            <Card
-              key={m.id}
-              // A Jornada mora numa aba irmã da Home: para abrir a manifestação
-              // é preciso mirar a aba Manifest e a tela de dentro do stack dela.
-              onPress={() =>
-                navigation.navigate('Manifest', {
-                  screen: 'Manifestation',
-                  params: { id: m.id },
-                })
-              }
-              style={[styles.progressRow, { backgroundColor: theme.surface }]}
-            >
-              <View style={styles.progressTop}>
-                <Text numberOfLines={1} style={[styles.progressTitle, { color: theme.text }]}>
-                  {m.title}
-                </Text>
-                <Text style={[styles.progressPct, { color: c }]}>{p}%</Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={15}
-                  color={theme.textMuted}
-                  style={{ marginLeft: 6 }}
-                />
-              </View>
-              <View style={[styles.track, { backgroundColor: alpha(c, 0.15) }]}>
-                <View style={[styles.fill, { width: `${p}%`, backgroundColor: c }]} />
-              </View>
-              <Text style={[styles.progressSub, { color: theme.textMuted }]}>
-                {t(m.goalDays === 1 ? S.ofDaysOne : S.ofDaysMany, {
-                  n: m.sessions.length,
-                  goal: m.goalDays,
-                })}
-                {' · '}
-                {t(m.sessions.includes(todayISO()) ? S.practisedToday : S.notPractisedToday)}
-              </Text>
-            </Card>
-          );
-        })}
+        {activeManifestations.length > 0 ? (
+          <Card style={[styles.manifestationsPanel, { backgroundColor: theme.surface }]}>
+            {activeManifestations.map((m, index) => {
+              const c = accentAt(theme, m.accent);
+              const p = pct(m.sessions.length, m.goalDays);
+              const dayCopy = t(m.goalDays === 1 ? S.ofDaysOne : S.ofDaysMany, {
+                n: m.sessions.length,
+                goal: m.goalDays,
+              });
+              const todayCopy = t(
+                m.sessions.includes(todayISO()) ? S.practisedToday : S.notPractisedToday
+              );
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  activeOpacity={0.76}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.title}. ${p}%. ${dayCopy}. ${todayCopy}`}
+                  // A Jornada mora numa aba irmã da Home: para abrir a manifestação
+                  // é preciso mirar a aba Manifest e a tela de dentro do stack dela.
+                  onPress={() =>
+                    navigation.navigate('Manifest', {
+                      screen: 'Manifestation',
+                      params: { id: m.id },
+                    })
+                  }
+                  style={[
+                    styles.progressRow,
+                    index > 0 && [styles.progressDivider, { borderTopColor: theme.border }],
+                  ]}
+                >
+                  <View style={styles.progressTop}>
+                    <View
+                      accessible={false}
+                      style={[styles.progressMark, { backgroundColor: alpha(c, 0.14) }]}
+                    >
+                      <Ionicons name="sparkles-outline" size={17} color={c} />
+                    </View>
+                    <Text
+                      numberOfLines={largeText ? undefined : 1}
+                      style={[styles.progressTitle, { color: theme.text }]}
+                    >
+                      {m.title}
+                    </Text>
+                    <Text style={[styles.progressPct, { color: theme.text }]}>{p}%</Text>
+                    <Ionicons
+                      accessible={false}
+                      name="chevron-forward"
+                      size={17}
+                      color={theme.textMuted}
+                      style={styles.progressChevron}
+                    />
+                  </View>
+                  <View
+                    accessible={false}
+                    style={[styles.track, { backgroundColor: alpha(c, 0.15) }]}
+                  >
+                    <View style={[styles.fill, { width: `${p}%`, backgroundColor: c }]} />
+                  </View>
+                  <Text style={[styles.progressSub, { color: theme.textMuted }]}>
+                    {dayCopy}
+                    {' · '}
+                    {todayCopy}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </Card>
+        ) : null}
 
         <SectionHeading title={t(S.milestones)} />
         <Card style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -678,6 +790,9 @@ export default function JourneyScreen() {
             return (
               <View
                 key={ms.key}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={`${t(ms.label)}: ${Math.min(ms.current, ms.target)} / ${ms.target}`}
                 style={[
                   styles.msRow,
                   i < milestones.length - 1 && [styles.divider, { borderBottomColor: theme.border }],
@@ -689,7 +804,12 @@ export default function JourneyScreen() {
                     { backgroundColor: reached ? c : alpha(c, 0.14) },
                   ]}
                 >
-                  <Ionicons name={ms.icon} size={17} color={reached ? '#FFFFFF' : c} />
+                  <Ionicons
+                    accessible={false}
+                    name={ms.icon}
+                    size={17}
+                    color={reached ? '#FFFFFF' : c}
+                  />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={[styles.msLabel, { color: theme.text }]}>{t(ms.label)}</Text>
@@ -698,6 +818,7 @@ export default function JourneyScreen() {
                   </Text>
                 </View>
                 <Ionicons
+                  accessible={false}
                   name={reached ? 'checkmark-circle' : 'ellipse-outline'}
                   size={20}
                   color={reached ? c : theme.textMuted}
@@ -766,6 +887,7 @@ export default function JourneyScreen() {
           {t(S.footer, { app: APP_NAME })}
         </Text>
         <View style={{ height: 28 }} />
+          </View>
       </ScrollView>
     </Screen>
   );
@@ -774,63 +896,133 @@ export default function JourneyScreen() {
 const styles = StyleSheet.create({
   scrollView: { flex: 1, minHeight: 0 },
   scroll: { paddingBottom: 32 },
+  contentColumn: { width: '100%', maxWidth: 720, alignSelf: 'center' },
+  loadingColumn: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   spaceHeading: { marginTop: 4 },
   hero: { padding: 22, marginTop: 4 },
-  heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
-  heroValue: { color: '#FFFFFF', fontSize: 44, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
-  heroSub: { color: 'rgba(255,255,255,0.92)', fontSize: 13, lineHeight: 19, marginTop: 6 },
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 16 },
-  statTile: { width: '48%', borderRadius: 18, padding: 14, marginBottom: 12 },
+  heroLabel: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+  },
+  heroValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  heroValue: {
+    color: '#FFFFFF',
+    fontSize: 44,
+    lineHeight: 50,
+    fontWeight: '800',
+    marginTop: 6,
+    letterSpacing: -1,
+  },
+  heroCount: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  heroTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.26)',
+  },
+  heroFill: { height: 8, borderRadius: 999, backgroundColor: '#FFFFFF' },
+  heroSub: {
+    color: 'rgba(255,255,255,0.94)',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+  },
+  statsPanel: { padding: 0, borderRadius: 18, marginTop: 16, overflow: 'hidden' },
+  statGrid: { flexDirection: 'row' },
+  statGridStacked: { flexDirection: 'column' },
+  statTile: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 118,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 16,
+  },
+  statTileStacked: {
+    minHeight: 72,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  statDividerVertical: { borderLeftWidth: StyleSheet.hairlineWidth },
+  statDividerHorizontal: { borderTopWidth: StyleSheet.hairlineWidth },
   statIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  statValue: { fontSize: 24, fontWeight: '800', marginTop: 10, letterSpacing: -0.5 },
-  statLabel: { fontSize: 12, marginTop: 2, fontWeight: '600' },
+  statCopy: { minWidth: 0, alignItems: 'center' },
+  statCopyStacked: { flex: 1, alignItems: 'flex-start', marginLeft: 12 },
+  statValue: { fontSize: 24, lineHeight: 28, fontWeight: '800', marginTop: 10, letterSpacing: -0.5 },
+  statValueStacked: { marginTop: 0 },
+  statLabel: { fontSize: 12, lineHeight: 17, marginTop: 3, fontWeight: '600', textAlign: 'center' },
+  statLabelStacked: { textAlign: 'left', marginTop: 1 },
   card: { padding: 16, borderRadius: 18 },
-  cardSub: { fontSize: 12.5, marginBottom: 14, fontWeight: '600' },
-  legend: { fontSize: 11.5, lineHeight: 17, marginTop: 12 },
-  emptyText: { fontSize: 13.5, lineHeight: 20 },
-  progressRow: { padding: 14, borderRadius: 16, marginBottom: 10 },
+  cardSub: { fontSize: 13, lineHeight: 18, marginBottom: 14, fontWeight: '600' },
+  legend: { fontSize: 12, lineHeight: 18, marginTop: 12 },
+  emptyText: { fontSize: 14, lineHeight: 21 },
+  manifestationsPanel: { padding: 0, borderRadius: 18, overflow: 'hidden' },
+  progressRow: { minHeight: 96, paddingHorizontal: 14, paddingVertical: 16 },
+  progressDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressTitle: { fontSize: 14.5, fontWeight: '700', flex: 1, marginRight: 10 },
-  progressPct: { fontSize: 14, fontWeight: '800' },
-  track: { height: 7, borderRadius: 4, overflow: 'hidden', marginTop: 10 },
+  progressMark: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  progressTitle: { fontSize: 14.5, lineHeight: 20, fontWeight: '700', flex: 1, marginLeft: 10 },
+  progressPct: { fontSize: 14, lineHeight: 20, fontWeight: '800', marginLeft: 10 },
+  progressChevron: { marginLeft: 6 },
+  track: { height: 7, borderRadius: 4, overflow: 'hidden', marginTop: 10, marginLeft: 46 },
   fill: { height: 7, borderRadius: 4 },
-  progressSub: { fontSize: 12, marginTop: 8 },
-  msRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  progressSub: { fontSize: 12.5, lineHeight: 18, marginTop: 8, marginLeft: 46 },
+  msRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   // Sem cor fixa: a cor vem de theme.border na hora de usar — o preto a 8%
   // sumia por completo nos climas escuros.
   divider: { borderBottomWidth: StyleSheet.hairlineWidth },
   msIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  msLabel: { fontSize: 14, fontWeight: '700' },
-  msSub: { fontSize: 12, marginTop: 2 },
+  msLabel: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  msSub: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   spaceCard: { padding: 0, borderRadius: 8, overflow: 'hidden' },
-  spaceRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11 },
+  spaceRow: { minHeight: 80, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
   spaceIcon: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   spaceCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
   spaceTitle: { fontSize: 14.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0 },
-  spaceBody: { fontSize: 12, lineHeight: 17, marginTop: 2, letterSpacing: 0 },
+  spaceBody: { fontSize: 13, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
   traceItem: { paddingVertical: 4 },
   traceDivider: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, marginTop: 12 },
   traceHead: { flexDirection: 'row', alignItems: 'center' },
   traceMark: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  traceTitle: { fontSize: 13.5, fontWeight: '700' },
-  traceDate: { fontSize: 11.5, marginTop: 2 },
-  traceActions: { flexDirection: 'row', marginLeft: 6 },
-  traceAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  traceText: { fontSize: 14, lineHeight: 21, marginTop: 9 },
+  traceTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  traceDate: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  traceActions: { flexDirection: 'row', marginLeft: 2 },
+  traceAction: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  traceText: { fontSize: 14.5, lineHeight: 22, marginTop: 9 },
   traceInput: {
-    minHeight: 82,
+    minHeight: 96,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-    fontSize: 14,
-    lineHeight: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 10,
     textAlignVertical: 'top',
   },
   traceEditActions: { flexDirection: 'row', marginTop: 8 },
-  backupNote: { fontSize: 12.5, lineHeight: 18, marginBottom: 12 },
-  backupErro: { fontSize: 12.5, fontWeight: '600', marginTop: 10 },
-  footer: { fontSize: 11.5, textAlign: 'center', marginTop: 18 },
+  traceEditActionsStacked: { flexDirection: 'column' },
+  traceEditButtonLeading: { flex: 1, marginRight: 8 },
+  traceEditButton: { flex: 1 },
+  traceEditButtonStacked: { width: '100%', marginBottom: 8 },
+  backupNote: { fontSize: 13, lineHeight: 20, marginBottom: 12 },
+  backupErro: { fontSize: 13, lineHeight: 19, fontWeight: '600', marginTop: 10 },
+  footer: { fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 18 },
 });

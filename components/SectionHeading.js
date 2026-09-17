@@ -43,6 +43,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   title: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
-  action: { flexDirection: 'row', alignItems: 'center' },
+  action: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    marginRight: -8,
+  },
   actionText: { fontSize: 13, fontWeight: '700', marginRight: 2 },
 });

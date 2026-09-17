@@ -152,6 +152,14 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 const success = () =>
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
+const surfaceShadow = (theme) => ({
+  shadowColor: theme.dark ? '#000000' : '#17213A',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: theme.dark ? 0.24 : 0.07,
+  shadowRadius: theme.dark ? 10 : 14,
+  elevation: 2,
+});
+
 function BackButton({ label, onPress, theme }) {
   return (
     <Pressable
@@ -161,7 +169,11 @@ function BackButton({ label, onPress, theme }) {
       onPress={onPress}
       style={({ pressed }) => [
         styles.backButton,
-        { backgroundColor: theme.surfaceAlt },
+        {
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
+          ...surfaceShadow(theme),
+        },
         pressed && styles.pressed,
       ]}
     >
@@ -186,16 +198,28 @@ function ScreenHeading({ title, subtitle, onBack, theme, backLabel }) {
 
 function SectionTitle({ children, theme }) {
   return (
-    <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textMuted }]}>
-      {children}
-    </Text>
+    <View style={styles.sectionHeading}>
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        style={[styles.sectionMarker, { backgroundColor: theme.warning }]}
+      />
+      <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textMuted }]}>
+        {children}
+      </Text>
+    </View>
   );
 }
 
 function SettingRow({ icon, iconColor, title, note, children, theme, divider = false }) {
   return (
     <View style={[styles.settingRow, divider && [styles.rowDivider, { borderTopColor: theme.border }]]}>
-      <View style={[styles.rowIcon, { backgroundColor: alpha(iconColor, 0.13) }]}>
+      <View
+        style={[
+          styles.rowIcon,
+          { backgroundColor: alpha(iconColor, 0.11), borderColor: alpha(iconColor, 0.18) },
+        ]}
+      >
         <Ionicons name={icon} size={19} color={iconColor} />
       </View>
       <View style={styles.settingCopy}>
@@ -511,63 +535,96 @@ export default function ProfileScreen({ navigation }) {
             />
 
             <SectionTitle theme={theme}>{t(S.identity)}</SectionTitle>
-            <View style={[styles.identityCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={[styles.avatar, { backgroundColor: alpha(accentAt(theme, 1), 0.16) }]}>
-                <Text style={[styles.avatarText, { color: accentAt(theme, 1) }]}>{initials}</Text>
-              </View>
-              <View style={styles.nameArea}>
-                <Text style={[styles.inputLabel, { color: theme.text }]}>{t(S.nameLabel)}</Text>
-                <Text style={[styles.inputHint, { color: theme.textMuted }]}>{t(S.nameHint)}</Text>
-                <View style={styles.nameControls}>
-                  <TextInput
-                    testID="profile-name-input"
-                    accessibilityLabel={t(S.nameLabel)}
-                    autoCapitalize="words"
-                    autoComplete="name"
-                    maxLength={60}
-                    onChangeText={(value) => {
-                      setSavedName(false);
-                      setNameDraft(value);
-                    }}
-                    onSubmitEditing={saveDisplayName}
-                    placeholder={t(S.namePlaceholder)}
-                    placeholderTextColor={alpha(theme.textMuted, 0.75)}
-                    returnKeyType="done"
-                    style={[
-                      styles.nameInput,
-                      { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg },
-                    ]}
-                    value={nameDraft}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t(S.saveName)}
-                    accessibilityState={{ disabled: !canSaveName }}
-                    disabled={!canSaveName}
-                    onPress={saveDisplayName}
-                    style={({ pressed }) => [
-                      styles.saveButton,
-                      { backgroundColor: canSaveName ? theme.accent : theme.surfaceAlt },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Ionicons
-                      name={savedName ? 'checkmark' : 'save-outline'}
-                      size={18}
-                      color={canSaveName ? '#FFFFFF' : theme.textMuted}
-                    />
-                  </Pressable>
+            <View
+              style={[
+                styles.identityCard,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: alpha(theme.accent, theme.dark ? 0.26 : 0.16),
+                  ...surfaceShadow(theme),
+                },
+              ]}
+            >
+              <View
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={[
+                  styles.identityGlow,
+                  { backgroundColor: alpha(accentAt(theme, 1), theme.dark ? 0.13 : 0.09) },
+                ]}
+              />
+              <View style={styles.identityHeader}>
+                <View
+                  style={[
+                    styles.avatar,
+                    {
+                      backgroundColor: alpha(accentAt(theme, 1), 0.15),
+                      borderColor: alpha(accentAt(theme, 1), 0.24),
+                    },
+                  ]}
+                >
+                  <Text style={[styles.avatarText, { color: accentAt(theme, 1) }]}>{initials}</Text>
                 </View>
-                {savedName ? (
-                  <Text accessibilityLiveRegion="polite" style={[styles.savedText, { color: theme.success }]}>
-                    {t(S.saved)}
-                  </Text>
-                ) : null}
+                <View style={styles.nameArea}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>{t(S.nameLabel)}</Text>
+                  <Text style={[styles.inputHint, { color: theme.textMuted }]}>{t(S.nameHint)}</Text>
+                </View>
               </View>
+              <View style={styles.nameControls}>
+                <TextInput
+                  testID="profile-name-input"
+                  accessibilityLabel={t(S.nameLabel)}
+                  autoCapitalize="words"
+                  autoComplete="name"
+                  maxLength={60}
+                  onChangeText={(value) => {
+                    setSavedName(false);
+                    setNameDraft(value);
+                  }}
+                  onSubmitEditing={saveDisplayName}
+                  placeholder={t(S.namePlaceholder)}
+                  placeholderTextColor={alpha(theme.textMuted, 0.75)}
+                  returnKeyType="done"
+                  style={[
+                    styles.nameInput,
+                    { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg },
+                  ]}
+                  value={nameDraft}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t(S.saveName)}
+                  accessibilityState={{ disabled: !canSaveName }}
+                  disabled={!canSaveName}
+                  onPress={saveDisplayName}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    { backgroundColor: canSaveName ? theme.accent : theme.surfaceAlt },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={savedName ? 'checkmark' : 'save-outline'}
+                    size={19}
+                    color={canSaveName ? '#FFFFFF' : theme.textMuted}
+                  />
+                </Pressable>
+              </View>
+              {savedName ? (
+                <Text accessibilityLiveRegion="polite" style={[styles.savedText, { color: theme.success }]}>
+                  {t(S.saved)}
+                </Text>
+              ) : null}
             </View>
 
             <SectionTitle theme={theme}>{t(S.preferences)}</SectionTitle>
-            <View style={[styles.group, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View
+              style={[
+                styles.group,
+                { backgroundColor: theme.surface, borderColor: theme.border, ...surfaceShadow(theme) },
+              ]}
+            >
               <SettingRow
                 icon="language-outline"
                 iconColor={accentAt(theme, 0)}
@@ -575,7 +632,10 @@ export default function ProfileScreen({ navigation }) {
                 note={t(S.languageHint)}
                 theme={theme}
               />
-              <View accessibilityRole="radiogroup" style={styles.segmented}>
+              <View
+                accessibilityRole="radiogroup"
+                style={[styles.segmented, { backgroundColor: theme.surfaceAlt }]}
+              >
                 {[
                   { key: 'pt', label: S.portuguese, short: 'PT' },
                   { key: 'en', label: S.english, short: 'EN' },
@@ -656,7 +716,7 @@ export default function ProfileScreen({ navigation }) {
                         <View style={[styles.swatch, { backgroundColor: option.color }]}>
                           {selected ? <Ionicons name="checkmark" color="#FFFFFF" size={13} /> : null}
                         </View>
-                        <Text numberOfLines={2} style={[styles.themeLabel, { color: theme.text }]}>
+                        <Text style={[styles.themeLabel, { color: theme.text }]}>
                           {t(option.label)}
                         </Text>
                       </Pressable>
@@ -718,7 +778,12 @@ export default function ProfileScreen({ navigation }) {
             </View>
 
             <SectionTitle theme={theme}>{t(S.privacyAndData)}</SectionTitle>
-            <View style={[styles.group, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View
+              style={[
+                styles.group,
+                { backgroundColor: theme.surface, borderColor: theme.border, ...surfaceShadow(theme) },
+              ]}
+            >
               <SettingRow
                 icon="phone-portrait-outline"
                 iconColor={accentAt(theme, 2)}
@@ -831,107 +896,144 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minHeight: 0 },
   scrollView: { flex: 1, minHeight: 0 },
   loading: { alignItems: 'center', justifyContent: 'center' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 16, paddingBottom: 48, alignItems: 'center' },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 16, paddingBottom: 64, alignItems: 'center' },
   column: { width: '100%', maxWidth: 720 },
-  headingRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 14, paddingBottom: 22 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 16, paddingBottom: 28 },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  headingCopy: { flex: 1, minWidth: 0, marginLeft: 14 },
-  title: { fontSize: 26, lineHeight: 31, fontWeight: '800' },
-  subtitle: { fontSize: 13.5, lineHeight: 19, marginTop: 2 },
+  headingCopy: { flex: 1, minWidth: 0, marginLeft: 16 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, lineHeight: 20, marginTop: 2 },
+  sectionHeading: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  sectionMarker: { width: 3, height: 18, borderRadius: 2, marginRight: 9 },
   sectionTitle: {
-    fontSize: 12,
-    lineHeight: 16,
+    flex: 1,
+    minWidth: 0,
+    fontSize: 12.5,
+    lineHeight: 18,
     fontWeight: '800',
     textTransform: 'uppercase',
-    marginTop: 8,
-    marginBottom: 8,
+    letterSpacing: 0.8,
   },
   identityCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 18,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 22,
+    overflow: 'hidden',
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 17, fontWeight: '800' },
-  nameArea: { flex: 1, minWidth: 0, marginLeft: 13 },
-  inputLabel: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
-  inputHint: { fontSize: 12.5, lineHeight: 18, marginTop: 2 },
-  nameControls: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  identityGlow: {
+    position: 'absolute',
+    width: 176,
+    height: 176,
+    borderRadius: 88,
+    top: -100,
+    right: -54,
+  },
+  identityHeader: { flexDirection: 'row', alignItems: 'center' },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarText: { fontSize: 19, fontWeight: '800', letterSpacing: 0.4 },
+  nameArea: { flex: 1, minWidth: 0, marginLeft: 14 },
+  inputLabel: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  inputHint: { fontSize: 13, lineHeight: 19, marginTop: 2 },
+  nameControls: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   nameInput: {
     flex: 1,
     minWidth: 0,
-    height: 44,
+    minHeight: 48,
     borderWidth: 1,
-    borderRadius: 7,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     fontSize: 15,
+    lineHeight: 22,
   },
   saveButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 7,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 10,
   },
-  savedText: { fontSize: 12, fontWeight: '700', marginTop: 6 },
+  savedText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginTop: 8 },
   group: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    marginBottom: 18,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    marginBottom: 22,
     overflow: 'hidden',
   },
-  settingRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  settingRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth },
   rowIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  settingCopy: { flex: 1, minWidth: 0, paddingHorizontal: 12 },
-  settingTitle: { fontSize: 14.5, lineHeight: 20, fontWeight: '700' },
-  settingNote: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  settingCopy: { flex: 1, minWidth: 0, paddingHorizontal: 13 },
+  settingTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  settingNote: { fontSize: 13, lineHeight: 19, marginTop: 2 },
   reportAction: { borderTopWidth: StyleSheet.hairlineWidth },
-  reportStatus: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', paddingBottom: 12, paddingHorizontal: 50 },
-  segmented: { flexDirection: 'row', marginBottom: 14 },
+  reportStatus: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', paddingBottom: 14, paddingLeft: 53 },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+  },
   segment: {
     flex: 1,
-    height: 40,
-    borderRadius: 7,
+    minHeight: 48,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 3,
+    marginHorizontal: 2,
   },
-  segmentText: { fontSize: 13, fontWeight: '800' },
-  preferenceBlock: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 14 },
-  preferenceLabel: { fontSize: 14.5, lineHeight: 20, fontWeight: '700' },
-  preferenceNote: { fontSize: 12, lineHeight: 17, marginTop: 2 },
-  narratorSelector: { marginTop: 10 },
-  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 10 },
+  segmentText: { fontSize: 13.5, lineHeight: 19, fontWeight: '800' },
+  preferenceBlock: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 18 },
+  preferenceLabel: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  preferenceNote: { fontSize: 13, lineHeight: 19, marginTop: 2 },
+  narratorSelector: { marginTop: 12 },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 12 },
   themeChoice: {
     flexBasis: '46%',
     flexGrow: 1,
     minWidth: 122,
-    minHeight: 48,
+    minHeight: 56,
     borderWidth: 1,
-    borderRadius: 7,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     margin: 4,
   },
   swatch: {
@@ -942,31 +1044,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  themeLabel: { flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 16, fontWeight: '700', marginLeft: 8 },
+  themeLabel: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '700', marginLeft: 9 },
   geminiRow: {
-    minHeight: 82,
+    minHeight: 88,
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 13,
+    paddingVertical: 16,
   },
   geminiCopy: { flex: 1, minWidth: 0, paddingRight: 14 },
   geminiDisabled: { opacity: 0.62 },
   linkPressed: { opacity: 0.7 },
   pressed: { opacity: 0.76 },
-  footer: { fontSize: 11.5, lineHeight: 17, textAlign: 'center', marginTop: 3 },
+  footer: { fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 },
   legalIntro: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 8,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 12,
   },
-  legalIntroText: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 21, marginLeft: 11 },
-  legalSection: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 19 },
-  legalHeading: { fontSize: 18, lineHeight: 23, fontWeight: '800', marginBottom: 8 },
-  legalBody: { fontSize: 14, lineHeight: 22, marginBottom: 8 },
+  legalIntroText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 22, marginLeft: 12 },
+  legalSection: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 22 },
+  legalHeading: { fontSize: 19, lineHeight: 25, fontWeight: '800', marginBottom: 10 },
+  legalBody: { fontSize: 15, lineHeight: 23, marginBottom: 9 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 },
   bulletDot: { width: 6, height: 6, borderRadius: 3, marginTop: 8, marginRight: 11, flexShrink: 0 },
-  bulletText: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 22 },
+  bulletText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 23 },
 });

@@ -605,12 +605,17 @@ function Tabs() {
           height: 84,
           paddingTop: compactTabs ? 7 : 8,
           paddingBottom: 26,
+          shadowColor: '#10182A',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: theme.dark ? 0.28 : 0.08,
+          shadowRadius: 14,
+          elevation: 12,
         },
-        tabBarItemStyle: { minWidth: 0 },
+        tabBarItemStyle: { minWidth: 0, minHeight: 48 },
         tabBarLabelStyle: {
-          fontSize: compactTabs ? 9.5 : 10.5,
+          fontSize: compactTabs ? 10 : 11,
           lineHeight: compactTabs ? 12 : 14,
-          fontWeight: '600',
+          fontWeight: '700',
           letterSpacing: 0,
         },
         tabBarIcon: ({ color, size, focused }) => {
@@ -622,11 +627,22 @@ function Tabs() {
             Community: focused ? 'people' : 'people-outline',
           };
           return (
-            <Ionicons
-              name={map[route.name]}
-              size={compactTabs ? 19 : size ? size - 2 : 22}
-              color={color}
-            />
+            <View
+              style={{
+                width: 38,
+                height: 30,
+                borderRadius: 15,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: focused ? theme.accentSoft : 'transparent',
+              }}
+            >
+              <Ionicons
+                name={map[route.name]}
+                size={compactTabs ? 19 : focused ? (size ? size - 1 : 23) : size ? size - 2 : 22}
+                color={color}
+              />
+            </View>
           );
         },
       })}

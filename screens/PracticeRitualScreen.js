@@ -364,16 +364,23 @@ export default function PracticeRitualScreen() {
     return (
       <Screen testID="practice-ritual-complete">
         <Header eyebrow={t(S.eyebrow)} title={t(S.done)} subtitle={t(S.doneBody)} />
-        <Card style={styles.completeCard}>
-          <View style={[styles.completeIcon, { backgroundColor: `${theme.success}22` }]}>
-            <Ionicons name="checkmark-circle" size={54} color={theme.success} />
+        <Card
+          style={[
+            styles.completeCard,
+            { backgroundColor: `${theme.success}10`, borderColor: `${theme.success}55` },
+          ]}
+        >
+          <View style={[styles.completeHalo, { borderColor: `${theme.success}30` }]}>
+            <View style={[styles.completeIcon, { backgroundColor: `${theme.success}22` }]}>
+              <Ionicons name="checkmark-circle" size={54} color={theme.success} />
+            </View>
           </View>
           <Text style={[styles.completeProgress, { color: theme.text }]}>
             {t(S.progress).replace('{n}', String(REQUIRED_REPETITIONS))}
           </Text>
           <Text style={[styles.completePrivacy, { color: theme.textMuted }]}>{t(S.privacy)}</Text>
         </Card>
-        <Button icon="home-outline" label={t(S.finish)} onPress={() => navigation.navigate('Main')} />
+        <Button icon="home-outline" label={t(S.finish)} onPress={() => navigation.navigate('Main')} style={styles.actionButton} />
       </Screen>
     );
   }
@@ -394,56 +401,84 @@ export default function PracticeRitualScreen() {
     : message === 'snoozeFailed'
     ? t(S.snoozeFailed)
     : t(S.ready);
+  const feedbackColor = message === 'firstDone'
+    ? theme.success
+    : ['denied', 'unavailable', 'changed', 'tryAgain', 'snoozeFailed'].includes(message)
+    ? theme.warning
+    : theme.textMuted;
 
   return (
     <Screen testID="practice-ritual-screen">
       <Header eyebrow={t(S.eyebrow)} title={t(S.title)} subtitle={t(S.subtitle)} />
 
-      <Card style={[styles.privacyCard, { backgroundColor: theme.surfaceAlt }]}>
-        <Ionicons name="shield-checkmark-outline" size={21} color={theme.accent} />
-        <Text style={[styles.privacyText, { color: theme.textMuted }]}>{t(S.privacy)}</Text>
+      <Card tone="alt" style={styles.privacyCard}>
+        <View style={[styles.privacyIcon, { backgroundColor: theme.accentSoft }]}>
+          <Ionicons name="shield-checkmark-outline" size={21} color={theme.accent} />
+        </View>
+        <Text style={[styles.privacyText, { color: theme.textMutedOnAlt || theme.textMuted }]}>{t(S.privacy)}</Text>
       </Card>
 
       <Text style={[styles.stepLabel, { color: theme.accent }]}>{t(S.visionLabel)}</Text>
-      <Card>
-        {visionTitle ? <Text style={[styles.visionTitle, { color: theme.text }]}>{visionTitle}</Text> : null}
+      <Card style={[styles.visionCard, { borderLeftColor: theme.accent }]}>
+        {visionTitle ? (
+          <View style={styles.visionHeading}>
+            <View style={[styles.visionIcon, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons name="images-outline" size={19} color={theme.accent} />
+            </View>
+            <Text style={[styles.visionTitle, { color: theme.text }]}>{visionTitle}</Text>
+          </View>
+        ) : null}
         <Text selectable style={[styles.visionText, { color: theme.text }]}>{visionText}</Text>
       </Card>
 
       <Text style={[styles.stepLabel, { color: theme.accent }]}>{t(S.affirmationLabel)}</Text>
       <Card style={[styles.affirmationCard, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
+        <Ionicons name="sparkles" size={22} color={theme.accent} style={styles.affirmationSparkle} />
         <Text selectable accessibilityRole="text" style={[styles.affirmationText, { color: theme.text }]}>
           {affirmationText}
         </Text>
       </Card>
 
-      <View style={styles.repetitionRow} accessibilityLabel={t(S.progress).replace('{n}', String(repetitions))}>
-        {[0, 1].map((index) => (
+      <View style={[styles.progressPanel, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+        <View style={styles.repetitionRow} accessibilityLabel={t(S.progress).replace('{n}', String(repetitions))}>
+          {[0, 1].map((index) => (
+            <View
+              key={index}
+              style={[
+                styles.repetitionDot,
+                {
+                  backgroundColor: index < repetitions ? theme.success : theme.surface,
+                  borderColor: index < repetitions ? theme.success : theme.border,
+                },
+              ]}
+            >
+              <Ionicons
+                name={index < repetitions ? 'checkmark' : 'mic-outline'}
+                size={20}
+                color={index < repetitions ? '#FFFFFF' : theme.textMuted}
+              />
+            </View>
+          ))}
+          <Text style={[styles.progressText, { color: theme.text }]}>
+            {t(S.progress).replace('{n}', String(repetitions))}
+          </Text>
+        </View>
+        <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
           <View
-            key={index}
             style={[
-              styles.repetitionDot,
+              styles.progressFill,
               {
-                backgroundColor: index < repetitions ? theme.success : theme.surfaceAlt,
-                borderColor: index < repetitions ? theme.success : theme.border,
+                backgroundColor: repetitions === REQUIRED_REPETITIONS ? theme.success : theme.accent,
+                width: `${(repetitions / REQUIRED_REPETITIONS) * 100}%`,
               },
             ]}
-          >
-            <Ionicons
-              name={index < repetitions ? 'checkmark' : 'mic-outline'}
-              size={18}
-              color={index < repetitions ? '#FFFFFF' : theme.textMuted}
-            />
-          </View>
-        ))}
-        <Text style={[styles.progressText, { color: theme.text }]}>
-          {t(S.progress).replace('{n}', String(repetitions))}
+          />
+        </View>
+
+        <Text accessibilityLiveRegion="polite" style={[styles.feedback, { color: feedbackColor }]}>
+          {phase === 'listening' ? t(S.listening) : phase === 'checking' ? t(S.checking) : messageText}
         </Text>
       </View>
-
-      <Text accessibilityLiveRegion="polite" style={[styles.feedback, { color: message === 'firstDone' ? theme.success : theme.textMuted }]}>
-        {phase === 'listening' ? t(S.listening) : phase === 'checking' ? t(S.checking) : messageText}
-      </Text>
 
       {RELEASE_FEATURES.onDevicePracticeSpeech ? (
         <Button
@@ -452,6 +487,7 @@ export default function PracticeRitualScreen() {
           label={repetitions === 0 ? t(S.listen) : t(S.listenAgain)}
           onPress={startListening}
           loading={busy}
+          style={styles.primaryPracticeButton}
         />
       ) : null}
 
@@ -463,6 +499,7 @@ export default function PracticeRitualScreen() {
           label={t(S.needAlternative)}
           onPress={() => setFallbackAvailable(true)}
           disabled={busy}
+          style={styles.actionButton}
         />
       ) : null}
 
@@ -476,6 +513,7 @@ export default function PracticeRitualScreen() {
             label={repetitions === 0 ? t(S.manualFirst) : t(S.manualSecond)}
             onPress={confirmAccessibleReading}
             disabled={busy}
+            style={styles.actionButton}
           />
         </Card>
       ) : null}
@@ -487,14 +525,14 @@ export default function PracticeRitualScreen() {
           label={t(S.snooze)}
           onPress={snooze}
           loading={snoozeBusy}
-          style={styles.exitButton}
+          style={[styles.exitButton, styles.actionButton]}
         />
         <Button
           variant="ghost"
           icon="close-outline"
           label={t(S.notNow)}
           onPress={leaveNow}
-          style={styles.exitButton}
+          style={[styles.exitButton, styles.actionButton]}
         />
       </View>
     </Screen>
@@ -502,23 +540,34 @@ export default function PracticeRitualScreen() {
 }
 
 const styles = StyleSheet.create({
-  privacyCard: { flexDirection: 'row', alignItems: 'flex-start' },
-  privacyText: { flex: 1, marginLeft: 10, fontSize: 12.5, lineHeight: 18 },
-  stepLabel: { marginTop: 13, marginBottom: 8, fontSize: 13, lineHeight: 18, fontWeight: '850', textTransform: 'uppercase', letterSpacing: 0.7 },
-  visionTitle: { marginBottom: 8, fontSize: 18, lineHeight: 24, fontWeight: '850' },
-  visionText: { fontSize: 17, lineHeight: 27, fontWeight: '500' },
-  affirmationCard: { borderWidth: 2, paddingVertical: 22 },
-  affirmationText: { textAlign: 'center', fontSize: 24, lineHeight: 34, fontWeight: '850', letterSpacing: -0.25 },
-  repetitionRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 12 },
-  repetitionDot: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  progressText: { flex: 1, marginLeft: 3, fontSize: 13.5, lineHeight: 19, fontWeight: '750' },
-  feedback: { minHeight: 44, marginBottom: 5, textAlign: 'center', fontSize: 13.5, lineHeight: 20, fontWeight: '650' },
-  fallbackCard: { marginTop: 8 },
-  fallbackText: { marginBottom: 7, textAlign: 'center', fontSize: 12.5, lineHeight: 18 },
-  exitRow: { flexDirection: 'row', marginHorizontal: -4, marginTop: 8 },
+  privacyCard: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 20, paddingVertical: 18 },
+  privacyIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  privacyText: { flex: 1, marginLeft: 12, fontSize: 13, lineHeight: 20, fontWeight: '550' },
+  stepLabel: { marginTop: 24, marginBottom: 10, fontSize: 12, lineHeight: 17, fontWeight: '850', textTransform: 'uppercase', letterSpacing: 1.05 },
+  visionCard: { borderLeftWidth: 4, borderRadius: 20, paddingVertical: 18 },
+  visionHeading: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  visionIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 11 },
+  visionTitle: { flex: 1, fontSize: 18, lineHeight: 24, fontWeight: '850', letterSpacing: -0.15 },
+  visionText: { fontSize: 17, lineHeight: 28, fontWeight: '500' },
+  affirmationCard: { position: 'relative', overflow: 'hidden', borderWidth: 2, borderRadius: 22, paddingVertical: 28, paddingHorizontal: 22 },
+  affirmationSparkle: { alignSelf: 'center', marginBottom: 10 },
+  affirmationText: { textAlign: 'center', fontSize: 25, lineHeight: 36, fontWeight: '750', fontStyle: 'italic', letterSpacing: -0.25 },
+  progressPanel: { marginTop: 14, marginBottom: 8, borderWidth: 1, borderRadius: 20, padding: 16 },
+  repetitionRow: { flexDirection: 'row', alignItems: 'center' },
+  repetitionDot: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
+  progressText: { flex: 1, marginLeft: 4, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 14 },
+  progressFill: { height: '100%', borderRadius: 3 },
+  feedback: { minHeight: 44, marginTop: 12, textAlign: 'center', fontSize: 13.5, lineHeight: 20, fontWeight: '650' },
+  primaryPracticeButton: { minHeight: 56, borderRadius: 28 },
+  actionButton: { minHeight: 48 },
+  fallbackCard: { marginTop: 10, borderRadius: 20, paddingVertical: 18 },
+  fallbackText: { marginBottom: 10, textAlign: 'center', fontSize: 13, lineHeight: 19 },
+  exitRow: { flexDirection: 'row', marginHorizontal: -4, marginTop: 10, marginBottom: 4 },
   exitButton: { flex: 1, marginHorizontal: 4 },
-  completeCard: { alignItems: 'center', paddingVertical: 28 },
-  completeIcon: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  completeProgress: { textAlign: 'center', fontSize: 19, lineHeight: 26, fontWeight: '850' },
-  completePrivacy: { marginTop: 10, textAlign: 'center', fontSize: 12.5, lineHeight: 18 },
+  completeCard: { alignItems: 'center', borderRadius: 24, paddingVertical: 32, paddingHorizontal: 22 },
+  completeHalo: { width: 110, height: 110, borderRadius: 55, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
+  completeIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
+  completeProgress: { textAlign: 'center', fontSize: 20, lineHeight: 27, fontWeight: '850', letterSpacing: -0.2 },
+  completePrivacy: { marginTop: 12, textAlign: 'center', fontSize: 13, lineHeight: 20 },
 });

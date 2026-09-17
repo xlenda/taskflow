@@ -33,13 +33,13 @@ import {
 const WAKE_OPTIONS = ['06:00', '07:00', '08:00', '09:00'];
 const SLEEP_OPTIONS = ['21:30', '22:30', '23:30', '00:30'];
 const WEEKDAYS = [
-  { id: 1, pt: 'S', en: 'M' },
-  { id: 2, pt: 'T', en: 'T' },
-  { id: 3, pt: 'Q', en: 'W' },
-  { id: 4, pt: 'Q', en: 'T' },
-  { id: 5, pt: 'S', en: 'F' },
-  { id: 6, pt: 'S', en: 'S' },
-  { id: 7, pt: 'D', en: 'S' },
+  { id: 1, pt: 'S', en: 'M', ptLabel: 'Segunda-feira', enLabel: 'Monday' },
+  { id: 2, pt: 'T', en: 'T', ptLabel: 'Terça-feira', enLabel: 'Tuesday' },
+  { id: 3, pt: 'Q', en: 'W', ptLabel: 'Quarta-feira', enLabel: 'Wednesday' },
+  { id: 4, pt: 'Q', en: 'T', ptLabel: 'Quinta-feira', enLabel: 'Thursday' },
+  { id: 5, pt: 'S', en: 'F', ptLabel: 'Sexta-feira', enLabel: 'Friday' },
+  { id: 6, pt: 'S', en: 'S', ptLabel: 'Sábado', enLabel: 'Saturday' },
+  { id: 7, pt: 'D', en: 'S', ptLabel: 'Domingo', enLabel: 'Sunday' },
 ];
 
 const S = {
@@ -118,6 +118,7 @@ function ChoiceList({ items, selectedId, onSelect, theme, emptyLabel }) {
               {
                 borderColor: selected ? theme.accent : theme.border,
                 backgroundColor: selected ? theme.accentSoft : theme.surfaceAlt,
+                borderWidth: selected ? 2 : 1,
                 opacity: pressed ? 0.75 : 1,
               },
             ]}
@@ -128,6 +129,11 @@ function ChoiceList({ items, selectedId, onSelect, theme, emptyLabel }) {
             <Text numberOfLines={2} style={[styles.choiceText, { color: theme.text }]}>
               {choiceTitle(item, `#${index + 1}`)}
             </Text>
+            <Ionicons
+              name={selected ? 'checkmark-circle' : 'chevron-forward'}
+              size={20}
+              color={selected ? theme.accent : theme.textMuted}
+            />
           </Pressable>
         );
       })}
@@ -357,10 +363,12 @@ export default function PracticePlanScreen() {
     <Screen testID="practice-plan-screen">
       <Header eyebrow={t(S.eyebrow)} title={t(S.title)} subtitle={t(S.subtitle)} />
 
-      <Card style={{ backgroundColor: theme.surfaceAlt }}>
+      <Card tone="alt" style={styles.privacyCard}>
         <View style={styles.privacyRow}>
-          <Ionicons name="lock-closed-outline" size={19} color={theme.accent} />
-          <Text style={[styles.privacyText, { color: theme.textMuted }]}>{t(S.privacy)}</Text>
+          <View style={[styles.privacyIcon, { backgroundColor: theme.accentSoft }]}>
+            <Ionicons name="lock-closed-outline" size={20} color={theme.accent} />
+          </View>
+          <Text style={[styles.privacyText, { color: theme.textMutedOnAlt || theme.textMuted }]}>{t(S.privacy)}</Text>
         </View>
       </Card>
 
@@ -382,7 +390,7 @@ export default function PracticePlanScreen() {
         emptyLabel={t(S.noContentBody)}
       />
 
-      <Card>
+      <Card style={styles.scheduleCard}>
         <TimeChoices
           title={t(S.wake)}
           values={WAKE_OPTIONS}
@@ -397,17 +405,25 @@ export default function PracticePlanScreen() {
           onSelect={(sleepTime) => setDraft((current) => ({ ...current, sleepTime }))}
           theme={theme}
         />
-        <Button variant="soft" icon="sparkles-outline" label={t(S.suggest)} onPress={suggest} />
+        <Button variant="soft" icon="sparkles-outline" label={t(S.suggest)} onPress={suggest} style={styles.actionButton} />
       </Card>
 
       <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(S.moments)}</Text>
       {draft.slots.map((slot, index) => (
-        <Card key={slot.id} testID={`practice-slot-${slot.id}`}>
+        <Card
+          key={slot.id}
+          testID={`practice-slot-${slot.id}`}
+          style={[
+            styles.slotCard,
+            slot.enabled ? { backgroundColor: theme.accentSoft, borderColor: theme.accent } : null,
+          ]}
+        >
           <View style={styles.slotRow}>
             <Switch
               value={slot.enabled}
               onValueChange={(enabled) => updateSlot(slot.id, { enabled })}
               accessibilityLabel={`${t(S.moments)} ${index + 1}`}
+              hitSlop={{ top: 10, right: 4, bottom: 10, left: 4 }}
               trackColor={{ false: theme.surfaceAlt, true: theme.accentSoft }}
               thumbColor={slot.enabled ? theme.accent : '#FFFFFF'}
             />
@@ -417,7 +433,10 @@ export default function PracticePlanScreen() {
               onPress={() => updateSlot(slot.id, {
                 time: adjustPracticeSlotTime(slot.time, 'earlier', draft),
               })}
-              style={[styles.timeAdjust, { backgroundColor: theme.surfaceAlt }]}
+              style={({ pressed }) => [
+                styles.timeAdjust,
+                { backgroundColor: theme.surface, opacity: pressed ? 0.72 : 1 },
+              ]}
             >
               <Ionicons name="remove" size={19} color={theme.text} />
             </Pressable>
@@ -428,7 +447,10 @@ export default function PracticePlanScreen() {
               onPress={() => updateSlot(slot.id, {
                 time: adjustPracticeSlotTime(slot.time, 'later', draft),
               })}
-              style={[styles.timeAdjust, { backgroundColor: theme.surfaceAlt }]}
+              style={({ pressed }) => [
+                styles.timeAdjust,
+                { backgroundColor: theme.surface, opacity: pressed ? 0.72 : 1 },
+              ]}
             >
               <Ionicons name="add" size={19} color={theme.text} />
             </Pressable>
@@ -437,7 +459,7 @@ export default function PracticePlanScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Remover horário"
                 onPress={() => removeSlot(slot.id)}
-                style={styles.removeSlot}
+                style={({ pressed }) => [styles.removeSlot, { opacity: pressed ? 0.64 : 1 }]}
               >
                 <Ionicons name="trash-outline" size={19} color={theme.warning} />
               </Pressable>
@@ -446,7 +468,7 @@ export default function PracticePlanScreen() {
         </Card>
       ))}
       {draft.slots.length < MAX_PRACTICE_SLOTS ? (
-        <Button variant="ghost" icon="add" label={t(S.addMoment)} onPress={addSlot} />
+        <Button variant="ghost" icon="add" label={t(S.addMoment)} onPress={addSlot} style={styles.actionButton} />
       ) : null}
 
       <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(S.days)}</Text>
@@ -457,13 +479,15 @@ export default function PracticePlanScreen() {
             <Pressable
               key={day.id}
               accessibilityRole="checkbox"
+              accessibilityLabel={lang === 'en' ? day.enLabel : day.ptLabel}
               accessibilityState={{ checked: active }}
               onPress={() => toggleWeekday(day.id)}
-              style={[
+              style={({ pressed }) => [
                 styles.weekday,
                 {
                   backgroundColor: active ? theme.accent : theme.surfaceAlt,
                   borderColor: active ? theme.accent : theme.border,
+                  opacity: pressed ? 0.72 : 1,
                 },
               ]}
             >
@@ -475,9 +499,15 @@ export default function PracticePlanScreen() {
         })}
       </View>
 
-      <Card style={{ marginTop: 18 }}>
+      <Card style={styles.statusCard}>
         <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: stored.enabled ? theme.success : theme.textMuted }]} />
+          <View style={[styles.statusIcon, { backgroundColor: stored.enabled ? `${theme.success}20` : theme.surfaceAlt }]}>
+            <Ionicons
+              name={stored.enabled ? 'checkmark-circle' : 'notifications-outline'}
+              size={20}
+              color={stored.enabled ? theme.success : theme.textMuted}
+            />
+          </View>
           <Text style={[styles.statusText, { color: theme.text }]}>
             {stored.enabled ? t(S.active) : t(S.inactive)}
           </Text>
@@ -492,6 +522,7 @@ export default function PracticePlanScreen() {
           onPress={activate}
           loading={busy}
           disabled={!draft.slots.some((slot) => slot.enabled)}
+          style={styles.actionButton}
         />
         {stored.enabled ? (
           <Button
@@ -500,6 +531,7 @@ export default function PracticePlanScreen() {
             label={t(S.deactivate)}
             onPress={deactivate}
             disabled={busy}
+            style={styles.actionButton}
           />
         ) : null}
         {firstEnabledSlot ? (
@@ -510,6 +542,7 @@ export default function PracticePlanScreen() {
             label={t(S.tryNow)}
             onPress={() => navigation.navigate('PracticeRitual', { slotId: firstEnabledSlot.id })}
             disabled={busy}
+            style={styles.actionButton}
           />
         ) : null}
         {feedback ? (
@@ -537,29 +570,35 @@ export default function PracticePlanScreen() {
 }
 
 const styles = StyleSheet.create({
-  privacyRow: { flexDirection: 'row', alignItems: 'center' },
-  privacyText: { flex: 1, marginLeft: 10, fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  sectionTitle: { marginTop: 20, marginBottom: 9, fontSize: 18, lineHeight: 24, fontWeight: '800' },
-  helper: { marginTop: 7, fontSize: 12.5, lineHeight: 18 },
-  choiceList: { marginBottom: 4 },
-  choice: { minHeight: 58, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 8 },
-  choiceDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  privacyCard: { borderRadius: 20, paddingVertical: 18 },
+  privacyRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  privacyIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  privacyText: { flex: 1, marginLeft: 12, fontSize: 13, lineHeight: 20, fontWeight: '600' },
+  sectionTitle: { marginTop: 28, marginBottom: 12, fontSize: 19, lineHeight: 25, fontWeight: '850', letterSpacing: -0.2 },
+  helper: { marginTop: 8, fontSize: 13, lineHeight: 19 },
+  choiceList: { marginBottom: 2 },
+  choice: { minHeight: 64, flexDirection: 'row', alignItems: 'center', borderRadius: 18, paddingVertical: 13, paddingHorizontal: 14, marginBottom: 10 },
+  choiceDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   choiceDotFill: { width: 10, height: 10, borderRadius: 5 },
-  choiceText: { flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: '650' },
-  timeChoiceGroup: { marginBottom: 14 },
-  label: { marginBottom: 8, fontSize: 13, lineHeight: 18, fontWeight: '750' },
+  choiceText: { flex: 1, marginRight: 10, fontSize: 14, lineHeight: 20, fontWeight: '650' },
+  scheduleCard: { borderRadius: 22, paddingVertical: 20 },
+  timeChoiceGroup: { marginBottom: 18 },
+  label: { marginBottom: 10, fontSize: 13, lineHeight: 18, fontWeight: '800' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  chip: { minWidth: 66, alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingVertical: 8, paddingHorizontal: 11, margin: 4 },
-  chipText: { fontSize: 12.5, lineHeight: 17, fontWeight: '800' },
-  slotRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  timeAdjust: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  slotTime: { minWidth: 62, textAlign: 'center', fontSize: 19, lineHeight: 25, fontWeight: '850' },
-  removeSlot: { width: 38, height: 40, alignItems: 'center', justifyContent: 'center' },
-  weekdays: { flexDirection: 'row', justifyContent: 'space-between' },
-  weekday: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  chip: { minWidth: 72, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 24, paddingHorizontal: 14, margin: 4 },
+  chipText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
+  slotCard: { borderRadius: 18, paddingVertical: 12 },
+  slotRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  timeAdjust: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  slotTime: { minWidth: 52, textAlign: 'center', fontSize: 19, lineHeight: 25, fontWeight: '850', fontVariant: ['tabular-nums'] },
+  removeSlot: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  weekdays: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginHorizontal: -4 },
+  weekday: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center', margin: 4 },
   weekdayText: { fontSize: 13, lineHeight: 18, fontWeight: '850' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
-  statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
-  statusText: { fontSize: 14, lineHeight: 20, fontWeight: '800' },
-  feedback: { marginTop: 8, textAlign: 'center', fontSize: 12.5, lineHeight: 18, fontWeight: '650' },
+  statusCard: { marginTop: 22, borderRadius: 22, paddingVertical: 18 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  statusIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 11 },
+  statusText: { flex: 1, fontSize: 15, lineHeight: 21, fontWeight: '800' },
+  actionButton: { minHeight: 48 },
+  feedback: { marginTop: 10, textAlign: 'center', fontSize: 13, lineHeight: 19, fontWeight: '650' },
 });

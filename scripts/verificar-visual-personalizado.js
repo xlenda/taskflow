@@ -147,7 +147,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
   configure();
   t.after(restore);
 
-  await t.test('request uses official Interactions image contract and overlay-safe prompt', () => {
+  await t.test('request uses official Interactions image contract and distinctive overlay-safe art direction', () => {
     const input = endpoint._internals.validateInput(validBody()).value;
     const gemini = endpoint._internals.buildGeminiRequest(input);
     assert.strictEqual(gemini.model, 'gemini-3.1-flash-image');
@@ -161,13 +161,42 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.ok(Array.isArray(gemini.input));
     const prompt = gemini.input[0].text;
     assert.match(prompt, /editorial lifestyle photograph/i);
-    assert.match(prompt, /central 55 percent/i);
+    assert.match(prompt, /central text-safe corridor covering roughly 45 percent/i);
     assert.match(prompt, /crisp white affirmation text/i);
+    assert.match(prompt, /one unmistakable visual hook/i);
+    assert.match(prompt, /save-worthy, and share-worthy/i);
+    assert.match(prompt, /phone-thumbnail size/i);
+    assert.match(prompt, /generic stock photography/i);
+    assert.match(prompt, /stacked stones, lotus flowers/i);
+    assert.match(prompt, /tactile detail/i);
     assert.match(prompt, /no people, faces, hands/i);
     assert.match(prompt, /logos, trademarks, watermarks/i);
     assert.match(prompt, /Do not invent a city, landmark, relationship/i);
     assert.match(prompt, /fazenda entre montanhas/i);
     assert.match(prompt, /cabana de madeira/i);
+  });
+
+  await t.test('every category and composition receives a bounded non-cliche visual language', () => {
+    const categories = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
+    assert.strictEqual(Object.keys(endpoint._internals.CATEGORY_ART_DIRECTIONS).length, categories.length);
+    assert.strictEqual(
+      endpoint._internals.VISUAL_HOOK_DIRECTIONS.length,
+      endpoint._internals.COMPOSITION_DIRECTIONS.length
+    );
+    for (const category of categories) {
+      const input = endpoint._internals.validateInput(validBody({ category })).value;
+      const prompt = endpoint._internals.buildPrompt(input);
+      assert.match(prompt, /Category art direction:/i);
+      assert.ok(
+        prompt.includes(endpoint._internals.CATEGORY_ART_DIRECTIONS[category]),
+        `${category} must keep its own art direction`
+      );
+    }
+    endpoint._internals.VISUAL_HOOK_DIRECTIONS.forEach((hook, compositionVariant) => {
+      const input = endpoint._internals.validateInput(validBody({ compositionVariant })).value;
+      const prompt = endpoint._internals.buildPrompt(input);
+      assert.ok(prompt.includes(hook), `composition ${compositionVariant} must keep its visual hook`);
+    });
   });
 
   await t.test('server rejects unknown context and invalid moods before spending', async () => {
@@ -243,6 +272,7 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.strictEqual(result.body.image.aspectRatio, '4:5');
     assert.strictEqual(result.body.image.imageSize, '1K');
     assert.strictEqual(result.body.overlay.textColor, '#FFFFFF');
+    assert.strictEqual(result.body.generation.promptVersion, 'celeste-visual-v3');
     assert.ok(!JSON.stringify(result.body).includes('visual-secret-key'));
   });
 

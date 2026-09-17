@@ -770,7 +770,13 @@ export default function ManifestationScreen() {
     : t(S.hintEyes);
 
   return (
-    <Screen>
+    <Screen scroll={false} padded={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scroll}
+      >
       <View style={styles.navRow}>
         <TouchableOpacity
           activeOpacity={0.7}
@@ -783,6 +789,9 @@ export default function ManifestationScreen() {
             { backgroundColor: alpha(color, 0.14) },
             releaseBusy && { opacity: 0.5 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={t(S.goBack)}
+          accessibilityState={{ disabled: releaseBusy }}
         >
           <Ionicons name="chevron-back" size={20} color={color} />
         </TouchableOpacity>
@@ -807,7 +816,6 @@ export default function ManifestationScreen() {
         )}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {editing ? (
           // Modo de ajuste (lápis do cabeçalho): título e afirmação viram
           // campos, prefill com o valor atual. Salvar NÃO regenera a história —
@@ -881,7 +889,7 @@ export default function ManifestationScreen() {
             testID="manifestation-personal-visual"
             visualKey={item.visual?.cacheKey}
             accent={item.accent}
-            radius={22}
+            radius={28}
             style={styles.hero}
           >
             <View style={styles.heroInner}>
@@ -957,7 +965,13 @@ export default function ManifestationScreen() {
             antes da dobra — não atrás de um boletim de números. A história em
             texto desceu para o fim; a constância, para depois do botão. */}
         <SectionHeading title={t(S.audioTitle)} />
-        <Card style={[styles.card, { backgroundColor: th.surface }]}>
+        <Card
+          style={[
+            styles.card,
+            styles.audioCard,
+            { backgroundColor: th.surface, borderColor: alpha(color, 0.2) },
+          ]}
+        >
           {audioOn ? (
             <View>
               <View style={[styles.playerTrack, { backgroundColor: alpha(color, 0.15) }]}>
@@ -1026,7 +1040,7 @@ export default function ManifestationScreen() {
             accent={item.accent}
             variant={doneToday ? 'soft' : 'solid'}
             onPress={onTogglePractice}
-            style={{ marginTop: 16 }}
+            style={styles.practiceButton}
           />
         )}
 
@@ -1036,7 +1050,7 @@ export default function ManifestationScreen() {
           <Text style={[styles.hint, { color: th.textMuted }]}>{t(S.constancyInvite)}</Text>
         ) : null}
         {saved && done > 0 ? (
-          <Card style={[styles.card, { backgroundColor: th.surface }]}>
+          <Card style={[styles.card, styles.progressCard, { backgroundColor: th.surface }]}>
             <View style={styles.rowBetween}>
               <Text style={[styles.cardTitle, { color: th.text }]}>{t(S.progressTitle)}</Text>
               <Text style={[styles.pctText, { color }]}>{percent}%</Text>
@@ -1174,47 +1188,63 @@ export default function ManifestationScreen() {
             ) : null}
           </>
         ) : null}
-        <View style={{ height: 32 }} />
+        <View style={styles.bottomSpace} />
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingBottom: 24 },
+  scrollView: { flex: 1, width: '100%' },
+  scroll: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 720,
+    paddingHorizontal: 20,
+    paddingBottom: 48,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   navRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    alignItems: 'center',
+    minHeight: 56,
+    paddingTop: 4,
   },
-  navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  hero: { padding: 20, marginTop: 4 },
-  heroInner: { alignItems: 'center' },
+  navBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  hero: { minHeight: 320, padding: 24, marginTop: 8 },
+  heroInner: { flex: 1, minHeight: 272, alignItems: 'flex-start', justifyContent: 'flex-end' },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  badgeText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '700', marginLeft: 5 },
+  badgeText: { color: '#FFFFFF', fontSize: 12, lineHeight: 17, fontWeight: '800', marginLeft: 6 },
   heroQuote: {
     color: '#FFFFFF',
-    fontSize: 18,
-    lineHeight: 27,
+    fontSize: 23,
+    lineHeight: 31,
     fontStyle: 'italic',
-    textAlign: 'center',
-    marginTop: 14,
-    fontWeight: '500',
+    letterSpacing: -0.35,
+    textAlign: 'left',
+    marginTop: 16,
+    fontWeight: '700',
   },
-  heroMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 12, fontWeight: '600' },
+  heroMeta: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 14,
+    fontWeight: '700',
+  },
   visualStatusRow: {
-    minHeight: 32,
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     marginTop: 14,
   },
   visualStatusText: {
@@ -1222,42 +1252,44 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 18,
     marginLeft: 8,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   visualRetry: {
-    minHeight: 40,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: 'rgba(8,16,28,0.30)',
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     marginTop: 14,
   },
   visualRetryText: { color: '#FFFFFF', fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
-  card: { padding: 16, borderRadius: 18, marginTop: 16 },
+  card: { padding: 20, borderRadius: 22, marginTop: 0 },
+  audioCard: { paddingVertical: 22 },
+  progressCard: { marginTop: 18 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: 15.5, fontWeight: '700' },
-  pctText: { fontSize: 16, fontWeight: '800' },
-  track: { height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 12 },
-  fill: { height: 8, borderRadius: 4 },
-  trackLabel: { fontSize: 11.5, fontWeight: '600', marginTop: 8 },
-  weekRow: { flexDirection: 'row', marginTop: 16 },
+  cardTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800', letterSpacing: -0.2 },
+  pctText: { fontSize: 18, lineHeight: 23, fontWeight: '800' },
+  track: { height: 9, borderRadius: 5, overflow: 'hidden', marginTop: 14 },
+  fill: { height: 9, borderRadius: 5 },
+  trackLabel: { fontSize: 12.5, lineHeight: 18, fontWeight: '600', marginTop: 9 },
+  weekRow: { flexDirection: 'row', marginTop: 18 },
   // Tocável de verdade: altura mínima real (hitSlop não aumenta toque na web).
   weekCol: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
   weekDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekLabel: { fontSize: 11, marginTop: 6, fontWeight: '600' },
-  story: { fontSize: 15, lineHeight: 24 },
-  playerTrack: { height: 5, borderRadius: 3, overflow: 'hidden' },
-  playerFill: { height: 5, borderRadius: 3 },
+  weekLabel: { fontSize: 11.5, lineHeight: 16, marginTop: 6, fontWeight: '700' },
+  story: { fontSize: 16, lineHeight: 27 },
+  playerTrack: { height: 7, borderRadius: 4, overflow: 'hidden' },
+  playerFill: { height: 7, borderRadius: 4 },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1265,23 +1297,23 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   // Sem o relógio em cima, os botões respiram o espaço que era do tempo.
-  playerRowNoTime: { marginTop: 22 },
+  playerRowNoTime: { marginTop: 24 },
   smallBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 18,
+    marginHorizontal: 20,
   },
   playBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hint: { fontSize: 12, textAlign: 'center', marginTop: 14, lineHeight: 18 },
+  hint: { fontSize: 13, textAlign: 'center', marginTop: 15, lineHeight: 20 },
   // Celebração do ciclo fechado — mesma silhueta do botão que ela substitui.
   doneBanner: {
     flexDirection: 'row',
@@ -1289,48 +1321,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 52,
     borderRadius: 26,
-    marginTop: 16,
+    marginTop: 10,
   },
   doneBannerText: { fontSize: 15.5, fontWeight: '700', marginLeft: 8 },
-  inputLabel: { fontSize: 12, fontWeight: '700', marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginTop: 6 },
-  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
-  anchorRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  anchorIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  anchorCopy: { flex: 1, marginLeft: 13 },
-  anchorIdentity: { fontSize: 12.5, lineHeight: 18, fontWeight: '700' },
-  anchorStep: { fontSize: 16, lineHeight: 23, fontWeight: '600', marginTop: 5 },
-  anchorNote: { fontSize: 12.5, lineHeight: 18, marginTop: 13 },
-  anchorButton: { marginTop: 12 },
-  evidencePrompt: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
-  evidenceInput: {
-    minHeight: 88,
+  practiceButton: { marginTop: 10 },
+  inputLabel: { fontSize: 12, fontWeight: '800', marginTop: 14, textTransform: 'uppercase', letterSpacing: 0.7 },
+  input: {
+    minHeight: 50,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 15,
-    lineHeight: 21,
-    marginTop: 10,
+    marginTop: 7,
+  },
+  inputMulti: { minHeight: 96, textAlignVertical: 'top' },
+  anchorRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  anchorIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  anchorCopy: { flex: 1, marginLeft: 14 },
+  anchorIdentity: { fontSize: 12.5, lineHeight: 18, fontWeight: '800', letterSpacing: 0.15 },
+  anchorStep: { fontSize: 17, lineHeight: 25, fontWeight: '700', marginTop: 5 },
+  anchorNote: { fontSize: 13, lineHeight: 20, marginTop: 15 },
+  anchorButton: { marginTop: 14 },
+  evidencePrompt: { fontSize: 15.5, lineHeight: 22, fontWeight: '700' },
+  evidenceInput: {
+    minHeight: 104,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 12,
     textAlignVertical: 'top',
   },
-  evidenceSaved: { fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 },
-  evidenceEntry: { flexDirection: 'row', alignItems: 'flex-start', borderTopWidth: 1, paddingTop: 12, marginTop: 12 },
-  evidenceText: { flex: 1, fontSize: 13.5, lineHeight: 20, marginLeft: 9 },
-  editRow: { flexDirection: 'row', marginTop: 18 },
+  evidenceSaved: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', textAlign: 'center', marginTop: 10 },
+  evidenceEntry: { flexDirection: 'row', alignItems: 'flex-start', borderTopWidth: 1, paddingTop: 14, marginTop: 14 },
+  evidenceText: { flex: 1, fontSize: 14, lineHeight: 21, marginLeft: 10 },
+  editRow: { flexDirection: 'row', marginTop: 20 },
   // Lixeira discreta do fim da tela — altura mínima real para o toque.
   releaseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    marginTop: 20,
+    minHeight: 48,
+    marginTop: 22,
   },
-  releaseText: { fontSize: 13, fontWeight: '600', marginLeft: 6 },
+  releaseText: { fontSize: 13, lineHeight: 18, fontWeight: '600', marginLeft: 7 },
   releaseError: { fontSize: 12.5, lineHeight: 18, marginTop: 8, textAlign: 'center' },
-  stepRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  stepRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
   stepDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
-  stepIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  stepLabel: { flex: 1, fontSize: 14, fontWeight: '600', marginLeft: 12 },
-  stepNote: { fontSize: 11.5, fontWeight: '600' },
+  stepIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  stepLabel: { flex: 1, fontSize: 14.5, lineHeight: 20, fontWeight: '700', marginLeft: 13, marginRight: 8 },
+  stepNote: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  bottomSpace: { height: 40 },
 });

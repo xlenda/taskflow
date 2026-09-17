@@ -259,8 +259,11 @@ function PersonalVisionPlayer({
     resume,
     stop,
   } = usePersonalNarration();
-  const { height: winH } = useWindowDimensions();
+  const { height: winH, width: winW } = useWindowDimensions();
   const compact = winH > 0 && winH < 760;
+  const stageHeight = compact
+    ? 280
+    : Math.min(440, Math.max(400, Math.round(Math.min(winW || 390, 720) * 0.64)));
   const isFocused = useIsFocused();
   const color = accentAt(th, vision.accent);
   const isSaved = state.savedVisions.includes(vision.id);
@@ -673,9 +676,17 @@ function PersonalVisionPlayer({
         </View>
       </View>
 
-      <Header title={vision.title} subtitle={t(S.subtitle, { category: catLabel })} />
+      <Header
+        eyebrow={t(S.pageTitle)}
+        title={vision.title}
+        subtitle={t(S.subtitle, { category: catLabel })}
+      />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        style={styles.pageScroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         {editing ? (
           <View
             accessibilityRole="summary"
@@ -725,7 +736,15 @@ function PersonalVisionPlayer({
           </View>
         ) : null}
 
-        <View testID="vision-player-stage" style={[styles.stage, compact && styles.stageCompact]}>
+        <View
+          testID="vision-player-stage"
+          style={[
+            styles.stage,
+            compact && styles.stageCompact,
+            { height: stageHeight, borderColor: alpha('#FFFFFF', 0.18) },
+            th.elevation?.e2,
+          ]}
+        >
           <GradientCover
             accent={vision.accent}
             visualKey={primaryVisualKey}
@@ -760,7 +779,11 @@ function PersonalVisionPlayer({
               style={[
                 styles.caption,
                 compact && styles.captionCompact,
-                { opacity: captionOpacity, transform: [{ translateY: captionTranslateY }] },
+                {
+                  fontFamily: th.typeFamilies?.serif,
+                  opacity: captionOpacity,
+                  transform: [{ translateY: captionTranslateY }],
+                },
               ]}
             >
               {caption}
@@ -876,7 +899,13 @@ function PersonalVisionPlayer({
           </View>
         ) : null}
 
-        <View style={styles.scriptWrap}>
+        <View
+          style={[
+            styles.scriptWrap,
+            { backgroundColor: th.surface, borderColor: th.border },
+            th.elevation?.e1,
+          ]}
+        >
           {lines.map((line, lineIndex) => {
             const active = started && lineIndex === idx && !completed;
             return (
@@ -954,49 +983,70 @@ function PersonalVisionPlayer({
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  missingScroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 36 },
-  scroll: { paddingHorizontal: 16, paddingBottom: 24 },
-  navRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
-  navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  navActions: { flexDirection: 'row', gap: 10 },
-  editCard: { borderWidth: 1, borderRadius: 20, padding: 16, marginBottom: 16 },
-  editTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' },
-  editHint: { fontSize: 12.5, lineHeight: 18, marginTop: 4 },
-  storyInput: {
-    minHeight: 170,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    fontSize: 14.5,
-    lineHeight: 22,
-    marginTop: 12,
+  missingScroll: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 36,
   },
-  editButtons: { flexDirection: 'row', marginTop: 12, gap: 10 },
+  pageScroll: { width: '100%', maxWidth: 720, alignSelf: 'center' },
+  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  navRow: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  navBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  navActions: { flexDirection: 'row', gap: 8 },
+  editCard: { borderWidth: 1, borderRadius: 24, padding: 20, marginBottom: 20 },
+  editTitle: { fontSize: 18, lineHeight: 24, fontWeight: '800' },
+  editHint: { fontSize: 13, lineHeight: 19, marginTop: 6 },
+  storyInput: {
+    minHeight: 184,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 14,
+  },
+  editButtons: { flexDirection: 'row', marginTop: 14, gap: 10 },
   editButton: { flex: 1 },
-  stage: { height: 320, borderRadius: 26, overflow: 'hidden' },
-  stageCompact: { height: 200 },
-  stageContent: { flex: 1, padding: 20, justifyContent: 'space-between' },
-  stageContentCompact: { padding: 16 },
+  stage: { borderWidth: 1, borderRadius: 28, overflow: 'hidden' },
+  stageCompact: { borderRadius: 24 },
+  stageContent: { flex: 1, padding: 22, justifyContent: 'space-between' },
+  stageContentCompact: { padding: 18 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  pillText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '700', marginLeft: 5 },
+  pillText: { color: '#FFFFFF', fontSize: 11.5, lineHeight: 16, fontWeight: '800', marginLeft: 6 },
   caption: {
     color: '#FFFFFF',
-    fontSize: 25,
-    lineHeight: 35,
-    fontWeight: '600',
+    fontSize: 28,
+    lineHeight: 38,
+    fontWeight: '500',
     fontStyle: 'italic',
+    letterSpacing: -0.25,
+    textShadowColor: 'rgba(3,9,18,0.62)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
   },
-  captionCompact: { fontSize: 19, lineHeight: 26 },
+  captionCompact: { fontSize: 21, lineHeight: 29 },
   visualStatusRow: {
-    minHeight: 40,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1004,65 +1054,65 @@ const styles = StyleSheet.create({
   },
   visualStatusText: { fontSize: 12.5, lineHeight: 18, marginLeft: 8, textAlign: 'center' },
   visualRetry: {
-    minHeight: 40,
+    minHeight: 48,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
+    borderRadius: 24,
+    paddingHorizontal: 16,
     marginTop: 12,
   },
   visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
-  tip: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 14 },
-  waveRow: { flexDirection: 'row', alignItems: 'flex-end', height: 36 },
+  tip: { fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 16 },
+  waveRow: { flexDirection: 'row', alignItems: 'flex-end', height: 38 },
   wave: { width: 4, borderRadius: 2, marginRight: 5 },
-  trackWrap: { height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 22 },
-  trackFill: { height: 6, borderRadius: 3 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  time: { fontSize: 11.5, fontWeight: '600' },
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18 },
+  trackWrap: { height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 24 },
+  trackFill: { height: 8, borderRadius: 4 },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  time: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   smallBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 22,
+    marginHorizontal: 20,
   },
-  playBtn: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  playBtn: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
   noteBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    marginTop: 22,
+    padding: 16,
+    borderRadius: 20,
+    marginTop: 24,
   },
-  noteText: { fontSize: 13, marginLeft: 10, flex: 1, lineHeight: 19 },
-  scriptWrap: { marginTop: 26 },
-  scriptLine: { fontSize: 15, lineHeight: 25, marginBottom: 8 },
+  noteText: { fontSize: 13.5, marginLeft: 10, flex: 1, lineHeight: 20 },
+  scriptWrap: { borderWidth: 1, borderRadius: 24, padding: 20, marginTop: 28 },
+  scriptLine: { fontSize: 15.5, lineHeight: 26, marginBottom: 8 },
   doneBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    marginTop: 20,
+    padding: 16,
+    borderRadius: 20,
+    marginTop: 22,
   },
-  doneText: { fontSize: 13.5, fontWeight: '700', marginLeft: 10, flex: 1 },
+  doneText: { fontSize: 14, lineHeight: 20, fontWeight: '700', marginLeft: 10, flex: 1 },
   nextCard: {
-    minHeight: 78,
+    minHeight: 88,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
-    marginTop: 12,
+    borderRadius: 22,
+    padding: 16,
+    marginTop: 14,
   },
-  nextIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  nextCopy: { flex: 1, marginHorizontal: 12 },
+  nextIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  nextCopy: { flex: 1, marginHorizontal: 14 },
   nextEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '800', textTransform: 'uppercase' },
-  nextTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700', marginTop: 2 },
-  finishButton: { marginTop: 20 },
-  bottomSpace: { height: 32 },
+  nextTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700', marginTop: 3 },
+  finishButton: { marginTop: 22 },
+  bottomSpace: { height: 40 },
 });

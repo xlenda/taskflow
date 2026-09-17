@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -137,6 +138,8 @@ const INVITE_KEY = '@celeste_home_invite_dismissed_v1';
 export default function HomeScreen() {
   const th = useTheme();
   const navigation = useNavigation();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const compactHome = viewportWidth <= 340 && viewportHeight <= 520;
   const { state, loading, derived, addManifestation, togglePractice, saveProfile } = useApp();
   const { t, lang } = useT();
   const [desire, setDesire] = useState('');
@@ -363,10 +366,10 @@ export default function HomeScreen() {
   // O hero de escrever desejo. Com a lista vazia fica sempre aberto; com itens
   // recolhe em "Nova manifestação" e só expande quando pedirem.
   const composer = (
-    <GradientCover accent={0} radius={24} style={styles.hero} intensity={0.9}>
+    <GradientCover accent={0} radius={th.radius.sheet} style={styles.hero} intensity={0.9}>
       <View style={styles.heroInner}>
         <View style={[styles.avatar, { borderColor: alpha('#FFFFFF', 0.6) }]}>
-          <Ionicons name="person" size={24} color="#FFFFFF" />
+          <Ionicons name="person" size={26} color="#FFFFFF" />
         </View>
         <Text style={styles.heroTitle}>
           {t(S.heroLead, { name: state.name })}{' '}
@@ -388,7 +391,7 @@ export default function HomeScreen() {
                 disabled={generating}
                 accessibilityRole="button"
                 accessibilityLabel={label}
-                accessibilityState={{ selected: active }}
+                accessibilityState={{ selected: active, disabled: generating }}
                 style={[
                   styles.catChip,
                   {
@@ -398,7 +401,7 @@ export default function HomeScreen() {
               >
                 <Ionicons
                   name={c.icon}
-                  size={12}
+                  size={14}
                   color={active ? accentAt(th, c.accent) : '#FFFFFF'}
                 />
                 <Text
@@ -420,7 +423,13 @@ export default function HomeScreen() {
           onPress={() => {
             if (inputRef.current && inputRef.current.focus) inputRef.current.focus();
           }}
-          style={[styles.inputRow, { backgroundColor: alpha('#FFFFFF', 0.92) }]}
+          style={[
+            styles.inputRow,
+            {
+              backgroundColor: alpha('#FFFFFF', 0.94),
+              borderColor: alpha('#FFFFFF', 0.72),
+            },
+          ]}
         >
           <TextInput
             ref={inputRef}
@@ -456,7 +465,7 @@ export default function HomeScreen() {
             {generating ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+              <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </Pressable>
@@ -498,7 +507,11 @@ export default function HomeScreen() {
                     }}
                     style={({ pressed }) => [
                       styles.communityHeaderButton,
-                      { backgroundColor: th.surface, borderColor: th.border },
+                      {
+                        backgroundColor: th.surface,
+                        borderColor: th.border,
+                        borderRadius: th.radius.md,
+                      },
                       pressed && styles.actionPressed,
                     ]}
                   >
@@ -530,15 +543,29 @@ export default function HomeScreen() {
             accessibilityLabel={`${t(S.anchorScene)}. ${txt(anchorScene.title, lang)}`}
             style={[
               styles.anchorSceneCard,
-              { backgroundColor: th.surface, borderColor: alpha(th.accent, 0.28) },
+              {
+                backgroundColor: th.surface,
+                borderColor: alpha(th.accent, 0.28),
+                borderRadius: th.radius.card,
+              },
             ]}
           >
-            <View style={[styles.anchorSceneIcon, { backgroundColor: alpha(th.accent, 0.13) }]}>
+            <View
+              style={[
+                styles.anchorSceneIcon,
+                { backgroundColor: alpha(th.accent, 0.13), borderRadius: th.radius.md },
+              ]}
+            >
               <Ionicons name="sparkles" size={22} color={th.accent} />
             </View>
             <View style={styles.anchorSceneCopy}>
-              <Text style={[styles.anchorSceneTitle, { color: th.text }]}>{t(S.anchorScene)}</Text>
-              <Text numberOfLines={1} style={[styles.anchorSceneName, { color: th.textMuted }]}>
+              <Text style={[th.typography.subhead, styles.anchorSceneTitle, { color: th.text }]}>
+                {t(S.anchorScene)}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[th.typography.bodySm, styles.anchorSceneName, { color: th.textMuted }]}
+              >
                 {txt(anchorScene.title, lang) || t(S.anchorSceneHint)}
               </Text>
             </View>
@@ -547,22 +574,52 @@ export default function HomeScreen() {
         ) : null}
 
         <View testID="home-your-day">
-          <SectionHeading title={t(S.yourDay)} style={styles.dayHeading} />
+          <SectionHeading
+            title={t(S.yourDay)}
+            style={[styles.dayHeading, compactHome && styles.dayHeadingCompact]}
+          />
 
         {dailyRitual ? (
           <Card
             style={[
               styles.minuteCard,
-              { backgroundColor: th.surface, borderColor: alpha(th.accent, 0.28) },
+              {
+                backgroundColor: th.surface,
+                borderColor: alpha(th.accent, 0.28),
+                borderRadius: th.radius.affirmation,
+              },
+              compactHome && styles.minuteCardCompact,
             ]}
           >
             <View style={styles.minuteHeader}>
-              <View style={[styles.minuteIcon, { backgroundColor: alpha(th.accent, 0.13) }]}>
+              <View
+                style={[
+                  styles.minuteIcon,
+                  { backgroundColor: alpha(th.accent, 0.13), borderRadius: th.radius.md },
+                  compactHome && styles.minuteIconCompact,
+                ]}
+              >
                 <Ionicons name="sparkles" size={22} color={th.accent} />
               </View>
-              <View style={styles.minuteCopy}>
-                <Text style={[styles.minuteTitle, { color: th.text }]}>{t(S.minuteTitle)}</Text>
-                <Text style={[styles.minuteSub, { color: th.textMuted }]}>
+              <View style={[styles.minuteCopy, compactHome && styles.minuteCopyCompact]}>
+                <Text
+                  style={[
+                    th.typography.subhead,
+                    styles.minuteTitle,
+                    compactHome && styles.minuteTitleCompact,
+                    { color: th.text },
+                  ]}
+                >
+                  {t(S.minuteTitle)}
+                </Text>
+                <Text
+                  style={[
+                    th.typography.caption,
+                    styles.minuteSub,
+                    compactHome && styles.minuteSubCompact,
+                    { color: th.textMuted },
+                  ]}
+                >
                   {dailyRitual.completedToday
                     ? t(S.minuteDone, { streak: streakLabel })
                     : t(S.minuteReady)}
@@ -574,7 +631,15 @@ export default function HomeScreen() {
                 </Text>
               ) : null}
             </View>
-            <Text numberOfLines={2} style={[styles.minuteAffirmation, { color: th.text }]}>
+            <Text
+              numberOfLines={compactHome ? 1 : 2}
+              style={[
+                th.typography.affirmation,
+                styles.minuteAffirmation,
+                compactHome && styles.minuteAffirmationCompact,
+                { color: th.text },
+              ]}
+            >
               {dailyRitual.affirmation}
             </Text>
             <Button
@@ -582,7 +647,7 @@ export default function HomeScreen() {
               icon={dailyRitual.completedToday ? 'refresh' : 'play'}
               label={dailyRitual.completedToday ? t(S.minuteRepeat) : t(S.minuteStart)}
               onPress={() => navigation.navigate('DailyRitual')}
-              style={styles.minuteButton}
+              style={[styles.minuteButton, compactHome && styles.minuteButtonCompact]}
             />
           </Card>
         ) : null}
@@ -592,14 +657,30 @@ export default function HomeScreen() {
           onPress={() => navigation.navigate('MorningRitual', { focus: 'dream' })}
           accessibilityRole="button"
           accessibilityLabel={t(S.openMorning)}
-          style={[styles.morningCard, { backgroundColor: th.surface }]}
+          style={[
+            styles.morningCard,
+            { backgroundColor: th.surface, borderRadius: th.radius.card },
+          ]}
         >
-          <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 3), 0.14) }]}>
+          <View
+            style={[
+              styles.morningIcon,
+              {
+                backgroundColor: alpha(accentAt(th, 3), 0.14),
+                borderRadius: th.radius.md,
+              },
+            ]}
+          >
             <Ionicons name="moon-outline" size={22} color={accentAt(th, 3)} />
           </View>
           <View style={styles.morningCopy}>
-            <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.morningTitle)}</Text>
-            <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+            <Text style={[th.typography.subhead, styles.morningTitle, { color: th.text }]}>
+              {t(S.morningTitle)}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={[th.typography.bodySm, styles.morningSub, { color: th.textMuted }]}
+            >
               {dreamCount > 0 ? t(S.morningSaved, { n: dreamCount }) : t(S.morningEmpty)}
             </Text>
           </View>
@@ -612,16 +693,30 @@ export default function HomeScreen() {
             onPress={() => navigation.navigate('PracticePlan')}
             accessibilityRole="button"
             accessibilityLabel={t(S.practicePlanTitle)}
-            style={[styles.morningCard, { backgroundColor: th.surface }]}
+            style={[
+              styles.morningCard,
+              { backgroundColor: th.surface, borderRadius: th.radius.card },
+            ]}
           >
-            <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 1), 0.14) }]}>
+            <View
+              style={[
+                styles.morningIcon,
+                {
+                  backgroundColor: alpha(accentAt(th, 1), 0.14),
+                  borderRadius: th.radius.md,
+                },
+              ]}
+            >
               <Ionicons name="notifications-outline" size={22} color={accentAt(th, 1)} />
             </View>
             <View style={styles.morningCopy}>
-              <Text style={[styles.morningTitle, { color: th.text }]}>
+              <Text style={[th.typography.subhead, styles.morningTitle, { color: th.text }]}>
                 {t(S.practicePlanTitle)}
               </Text>
-              <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+              <Text
+                numberOfLines={1}
+                style={[th.typography.bodySm, styles.morningSub, { color: th.textMuted }]}
+              >
                 {practicePlanActive
                   ? t(S.practicePlanActive, { times: practicePlanTimes.join(' · ') })
                   : t(S.practicePlanEmpty)}
@@ -637,14 +732,30 @@ export default function HomeScreen() {
             onPress={() => navigation.navigate('AffirmationAlarm')}
             accessibilityRole="button"
             accessibilityLabel={t(S.alarmTitle)}
-            style={[styles.morningCard, { backgroundColor: th.surface }]}
+            style={[
+              styles.morningCard,
+              { backgroundColor: th.surface, borderRadius: th.radius.card },
+            ]}
           >
-            <View style={[styles.morningIcon, { backgroundColor: alpha(accentAt(th, 2), 0.14) }]}>
+            <View
+              style={[
+                styles.morningIcon,
+                {
+                  backgroundColor: alpha(accentAt(th, 2), 0.14),
+                  borderRadius: th.radius.md,
+                },
+              ]}
+            >
               <Ionicons name="alarm-outline" size={22} color={accentAt(th, 2)} />
             </View>
             <View style={styles.morningCopy}>
-              <Text style={[styles.morningTitle, { color: th.text }]}>{t(S.alarmTitle)}</Text>
-              <Text numberOfLines={1} style={[styles.morningSub, { color: th.textMuted }]}>
+              <Text style={[th.typography.subhead, styles.morningTitle, { color: th.text }]}>
+                {t(S.alarmTitle)}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[th.typography.bodySm, styles.morningSub, { color: th.textMuted }]}
+              >
                 {morningRitual.reminderEnabled
                   ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
                   : hasWakeAffirmation
@@ -668,7 +779,7 @@ export default function HomeScreen() {
                 variant="soft"
                 label={t(S.newManifest)}
                 onPress={() => setComposerOpen(true)}
-                style={{ marginTop: 12 }}
+                style={styles.newManifestButton}
               />
             )}
 
@@ -692,22 +803,37 @@ export default function HomeScreen() {
                  21 dias e leva de volta ao campo) ---- */}
             {inviteDismissed === false ? (
               <Card
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
-                  focusDesire();
-                }}
-                style={[styles.todayCard, { backgroundColor: th.surface }]}
+                style={[
+                  styles.todayCard,
+                  { backgroundColor: th.surface, borderRadius: th.radius.card },
+                ]}
               >
                 <View style={styles.todayRow}>
-                  <View
-                    style={[styles.todayIcon, { backgroundColor: alpha(accentAt(th, 1), 0.16) }]}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t(S.inviteTitle)}. ${t(S.inviteSub)}`}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      focusDesire();
+                    }}
+                    style={({ pressed }) => [styles.todayOpen, pressed && styles.actionPressed]}
                   >
-                    <Ionicons name="sparkles" size={20} color={accentAt(th, 1)} />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.todayTitle, { color: th.text }]}>{t(S.inviteTitle)}</Text>
-                    <Text style={[styles.todaySub, { color: th.textMuted }]}>{t(S.inviteSub)}</Text>
-                  </View>
+                    <View
+                      style={[
+                        styles.todayIcon,
+                        {
+                          backgroundColor: alpha(accentAt(th, 1), 0.16),
+                          borderRadius: th.radius.md,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="sparkles" size={20} color={accentAt(th, 1)} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.todayTitle, { color: th.text }]}>{t(S.inviteTitle)}</Text>
+                      <Text style={[styles.todaySub, { color: th.textMuted }]}>{t(S.inviteSub)}</Text>
+                    </View>
+                  </Pressable>
                   {/* hitSlop não aumenta área de toque no RN-web: o alvo de 44
                       é real, via minWidth/minHeight. */}
                   <TouchableOpacity
@@ -743,94 +869,98 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   scroller: { flex: 1 },
-  scroll: { paddingHorizontal: 16, paddingBottom: 96 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 104 },
   headerHold: { marginHorizontal: -16 },
-  dayHeading: { marginTop: 4 },
+  dayHeading: { marginTop: 8 },
+  dayHeadingCompact: { marginTop: 0, marginBottom: 8 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   communityHeaderButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 4,
+    marginRight: 6,
   },
   mascotProfile: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
   profileBadge: {
     position: 'absolute',
     right: 0,
     bottom: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionPressed: { opacity: 0.72 },
   anchorSceneCard: {
-    minHeight: 76,
-    borderRadius: 8,
+    minHeight: 84,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    marginTop: 4,
-    marginBottom: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 10,
   },
   anchorSceneIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  anchorSceneCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
-  anchorSceneTitle: { fontSize: 16, lineHeight: 21, fontWeight: '800', letterSpacing: 0 },
-  anchorSceneName: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
+  anchorSceneCopy: { flex: 1, minWidth: 0, marginHorizontal: 14 },
+  anchorSceneTitle: { fontWeight: '800', letterSpacing: -0.2 },
+  anchorSceneName: { marginTop: 3, letterSpacing: 0 },
   morningCard: {
-    minHeight: 72,
-    borderRadius: 8,
+    minHeight: 80,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
-  morningIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  morningCopy: { flex: 1, minWidth: 0, marginHorizontal: 12 },
-  morningTitle: { fontSize: 15.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0 },
-  morningSub: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
-  minuteCard: { borderRadius: 8, padding: 16, marginTop: 4, marginBottom: 12 },
+  morningIcon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  morningCopy: { flex: 1, minWidth: 0, marginHorizontal: 14 },
+  morningTitle: { fontWeight: '800', letterSpacing: -0.15 },
+  morningSub: { marginTop: 3, letterSpacing: 0 },
+  minuteCard: { padding: 18, marginTop: 4, marginBottom: 14 },
+  minuteCardCompact: { padding: 12, marginTop: 0, marginBottom: 8, borderRadius: 18 },
   minuteHeader: { flexDirection: 'row', alignItems: 'center' },
   minuteIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  minuteCopy: { flex: 1, minWidth: 0, marginLeft: 12 },
-  minuteTitle: { fontSize: 17, lineHeight: 22, fontWeight: '800', letterSpacing: 0 },
-  minuteSub: { marginTop: 2, fontSize: 12, lineHeight: 17, fontWeight: '600', letterSpacing: 0 },
-  minuteChapter: { marginLeft: 8, fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0 },
+  minuteIconCompact: { width: 40, height: 40 },
+  minuteCopy: { flex: 1, minWidth: 0, marginLeft: 14 },
+  minuteCopyCompact: { marginLeft: 10 },
+  minuteTitle: { fontWeight: '800', letterSpacing: -0.2 },
+  minuteTitleCompact: { fontSize: 16, lineHeight: 21 },
+  minuteSub: { marginTop: 3, fontWeight: '600', letterSpacing: 0 },
+  minuteSubCompact: { display: 'none' },
+  minuteChapter: { marginLeft: 8, fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0.3 },
   minuteAffirmation: {
-    marginTop: 15,
-    fontFamily: 'Georgia',
-    fontSize: 17,
-    lineHeight: 25,
+    marginTop: 18,
+    fontSize: 18,
+    lineHeight: 27,
     fontStyle: 'italic',
     letterSpacing: 0,
   },
-  minuteButton: { marginTop: 12, marginBottom: 0 },
+  minuteAffirmationCompact: { marginTop: 8, fontSize: 17, lineHeight: 24 },
+  minuteButton: { minHeight: 52, marginTop: 14, marginBottom: 0 },
+  minuteButtonCompact: { minHeight: 48, marginTop: 8 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hero: { paddingVertical: 22, paddingHorizontal: 18, marginTop: 4 },
+  hero: { paddingVertical: 26, paddingHorizontal: 20, marginTop: 8 },
   heroInner: { alignItems: 'center' },
-  generatingText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginTop: 10 },
+  generatingText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '600', marginTop: 12 },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -838,31 +968,33 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 21,
+    fontSize: 24,
+    lineHeight: 31,
     fontWeight: '700',
     textAlign: 'center',
-    marginTop: 14,
-    marginBottom: 16,
-    letterSpacing: -0.3,
+    marginTop: 16,
+    marginBottom: 18,
+    letterSpacing: -0.5,
   },
   heroItalic: { fontStyle: 'italic', fontWeight: '500' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 26,
+    borderRadius: 29,
+    borderWidth: 1,
     paddingLeft: 18,
-    paddingRight: 6,
-    height: 52,
+    paddingRight: 4,
+    height: 58,
     width: '100%',
-    marginTop: 12,
+    marginTop: 14,
   },
   // height 100%: o campo preenche a pílula inteira — antes tinha ~20px no
   // meio de 52 e clique a 6px do topo deixava o foco no body.
-  input: { flex: 1, fontSize: 15, height: '100%' },
+  input: { flex: 1, minWidth: 0, fontSize: 15, height: '100%' },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -870,20 +1002,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
+    marginHorizontal: -4,
+    marginBottom: 2,
   },
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
     margin: 4,
   },
-  catText: { fontSize: 11.5, fontWeight: '700', marginLeft: 5 },
-  todayCard: { marginTop: 16, padding: 16, borderRadius: 18 },
-  todayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  todayTitle: { fontSize: 16, fontWeight: '700' },
-  todaySub: { fontSize: 12.5, marginTop: 2 },
-  inviteClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  catText: { fontSize: 12, lineHeight: 16, fontWeight: '700', marginLeft: 6 },
+  newManifestButton: { minHeight: 52, marginTop: 14 },
+  todayCard: { minHeight: 80, marginTop: 18, padding: 16 },
+  todayRow: { flexDirection: 'row', alignItems: 'center' },
+  todayOpen: { minHeight: 48, flex: 1, flexDirection: 'row', alignItems: 'center' },
+  todayIcon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  todayTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  todaySub: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  inviteClose: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
 });

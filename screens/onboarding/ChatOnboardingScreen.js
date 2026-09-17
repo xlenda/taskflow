@@ -476,6 +476,7 @@ export default function ChatOnboardingScreen({ navigation }) {
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel={txt({ en: 'Go back', pt: 'Voltar' }, lang)}
+            style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}
           >
             <Ionicons name="arrow-back" size={24} color={ONB.inkSoft} />
           </Pressable>
@@ -504,7 +505,7 @@ export default function ChatOnboardingScreen({ navigation }) {
               onPress={skipStep}
               accessibilityRole="button"
               // hitSlop não aumenta área de toque no RN-web — dimensão real
-              style={{ marginLeft: 12, minWidth: 48, minHeight: 36, alignItems: 'center', justifyContent: 'center' }}
+              style={{ marginLeft: 12, minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
             >
               <Text style={{ fontSize: 15, fontWeight: '600', color: ONB.inkSoft }}>{T.skip}</Text>
             </Pressable>
@@ -633,6 +634,7 @@ export default function ChatOnboardingScreen({ navigation }) {
                       hitSlop={10}
                       accessibilityRole="button"
                       accessibilityLabel={`${txt({ en: 'Remove', pt: 'Remover' }, lang)} ${it.name}`}
+                      style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}
                     >
                       <Ionicons name="close" size={18} color={ONB.surfaceSoft} />
                     </Pressable>
@@ -698,7 +700,7 @@ export default function ChatOnboardingScreen({ navigation }) {
                 disabled={!canSend}
                 accessibilityRole="button"
                 accessibilityLabel={txt({ en: 'Send', pt: 'Enviar' }, lang)}
-                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Ionicons name="send" size={20} color={canSend ? ONB.surfaceInk : ONB.surfaceFaint} />
               </Pressable>

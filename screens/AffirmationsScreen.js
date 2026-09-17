@@ -368,7 +368,7 @@ export default function AffirmationsScreen() {
 
   if (loading || !state) {
     return (
-      <Screen>
+      <Screen scroll={false}>
         <Header title={t(S.title)} />
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.accent} />
@@ -552,10 +552,11 @@ export default function AffirmationsScreen() {
   return (
     <Screen>
       <Header title={t(S.title)} subtitle={t(S.subtitle)} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <View style={styles.content}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.chipScroller}
           contentContainerStyle={styles.chips}
         >
           {chips.map((chip) => {
@@ -566,6 +567,9 @@ export default function AffirmationsScreen() {
                 key={chip.key}
                 testID={`affirmation-filter-${chip.key}`}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={chip.label}
+                accessibilityState={{ selected: active }}
                 onPress={() => {
                   stopSpeech();
                   setAudioFailed(false);
@@ -626,15 +630,6 @@ export default function AffirmationsScreen() {
               // Sem onToggleSpeak: o ícone cinza de 20px saiu do card — ouvir
               // agora é o botão grande logo abaixo.
               onShare={openSharePreview}
-            />
-
-            <AiContentReportAction
-              contentType="affirmation"
-              contentRef={`affirmation:${current.id}:${current.speechLang || lang}`}
-              content={currentLoc.text}
-              visualRef={current.visualKey}
-              generation={{ source: current.source === 'dream' ? 'dream-result' : 'journey-suite' }}
-              lang={current.speechLang || lang}
             />
 
             <View style={styles.navRow}>
@@ -701,7 +696,7 @@ export default function AffirmationsScreen() {
         {/* O status do dia mora logo abaixo do card da afirmação — antes
             ficava em y=616, fora da tela. */}
         {current ? (
-          <Card style={[styles.todayCard, { backgroundColor: theme.surface }]}>
+          <Card style={[styles.todayCard, { backgroundColor: theme.surfaceAlt }]}>
             <View style={[styles.todayIcon, { backgroundColor: alpha(accentAt(theme, 3), 0.15) }]}>
               <Ionicons
                 name={readToday ? 'checkmark-circle' : 'notifications-outline'}
@@ -714,7 +709,7 @@ export default function AffirmationsScreen() {
                 {readToday ? t(S.readTitle) : t(S.readPrompt)}
               </Text>
               {daysLogged > 0 ? (
-                <Text style={[styles.todaySub, { color: theme.textMuted }]}>
+                <Text style={[styles.todaySub, { color: theme.textMutedOnAlt || theme.textMuted }]}>
                   {daysLogged === 1 ? t(S.loggedOne) : t(S.logged, { n: daysLogged })}
                 </Text>
               ) : null}
@@ -753,9 +748,12 @@ export default function AffirmationsScreen() {
             />
 
             {manual ? (
-              <Card style={[styles.manualCard, { backgroundColor: theme.surface }]}>
+              <Card style={[styles.manualCard, { backgroundColor: theme.surfaceAlt }]}>
                 <Text style={[styles.manualTitle, { color: theme.text }]}>{t(S.copyManual)}</Text>
-                <Text selectable style={[styles.manualText, { color: theme.textMuted }]}>
+                <Text
+                  selectable
+                  style={[styles.manualText, { color: theme.textMutedOnAlt || theme.textMuted }]}
+                >
                   {manual}
                 </Text>
                 <TouchableOpacity
@@ -774,7 +772,22 @@ export default function AffirmationsScreen() {
           </>
         ) : null}
 
-        <SectionHeading title={t(S.favTitle, { n: favorites.length })} />
+        {current ? (
+          <AiContentReportAction
+            contentType="affirmation"
+            contentRef={`affirmation:${current.id}:${current.speechLang || lang}`}
+            content={currentLoc.text}
+            visualRef={current.visualKey}
+            generation={{ source: current.source === 'dream' ? 'dream-result' : 'journey-suite' }}
+            lang={current.speechLang || lang}
+            style={styles.reportAction}
+          />
+        ) : null}
+
+        <SectionHeading
+          title={t(S.favTitle, { n: favorites.length })}
+          style={styles.favouritesHeading}
+        />
         {favorites.length === 0 ? (
           <EmptyState
             icon="heart-outline"
@@ -788,7 +801,7 @@ export default function AffirmationsScreen() {
               a.source === 'dream' ? a.accent : categoryMeta(a.category).accent
             );
             return (
-              <Card key={a.id} style={[styles.favRow, { backgroundColor: theme.surface }]}>
+              <Card key={a.id} style={[styles.favRow, { backgroundColor: theme.surfaceAlt }]}>
                 <View style={[styles.favBar, { backgroundColor: c }]} />
                 <View style={{ flex: 1, paddingLeft: 12 }}>
                   <Text style={[styles.favText, { color: theme.text }]}>{loc(a, lang).text}</Text>
@@ -812,8 +825,8 @@ export default function AffirmationsScreen() {
             );
           })
         )}
-        <View style={{ height: 28 }} />
-      </ScrollView>
+        <View style={styles.bottomSpacer} />
+      </View>
 
       <Modal
         visible={sharePreview}
@@ -850,7 +863,10 @@ export default function AffirmationsScreen() {
             </View>
           ) : null}
           <ScrollView
-            style={[styles.shareModalSheet, { backgroundColor: theme.surface }]}
+            style={[
+              styles.shareModalSheet,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
             contentContainerStyle={styles.shareModalContent}
             showsVerticalScrollIndicator={false}
             accessibilityViewIsModal
@@ -940,82 +956,117 @@ export default function AffirmationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  content: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    paddingBottom: 20,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  chips: { paddingRight: 8, paddingBottom: 16, paddingTop: 2 },
+  chipScroller: { width: '100%' },
+  chips: { paddingRight: 12, paddingBottom: 20, paddingTop: 4 },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
     marginRight: 8,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipText: { fontSize: 13, fontWeight: '700' },
+  chipText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: 20,
+    marginBottom: 2,
   },
-  navBtn: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  counter: { fontSize: 13, fontWeight: '700', marginHorizontal: 20 },
-  privateAudioNote: { fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 10 },
+  navBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  counter: {
+    minWidth: 54,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginHorizontal: 16,
+  },
+  privateAudioNote: {
+    maxWidth: 560,
+    alignSelf: 'center',
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 10,
+  },
   todayCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 18,
-    marginTop: 16,
+    padding: 18,
+    borderRadius: 20,
+    marginTop: 20,
   },
-  todayIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  todayTitle: { fontSize: 14.5, fontWeight: '700' },
-  todaySub: { fontSize: 12.5, marginTop: 3 },
-  favRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 10 },
-  favBar: { width: 4, height: 40, borderRadius: 2 },
-  // 44px de alvo real: hitSlop não aumenta área nenhuma no react-native-web.
+  todayIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  todayTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  todaySub: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  reportAction: { marginTop: 20 },
+  favouritesHeading: { marginTop: 32 },
+  favRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+  favBar: { width: 4, height: 48, borderRadius: 2 },
+  // 48px de alvo real: hitSlop não aumenta área nenhuma no react-native-web.
   // A margem negativa devolve o ícone ao alinhamento antigo da borda do card.
   favBtn: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: -12,
+    marginRight: -8,
   },
-  manualCard: { padding: 16, borderRadius: 18, marginTop: 12 },
-  manualTitle: { fontSize: 13.5, fontWeight: '700' },
-  manualText: { fontSize: 13, lineHeight: 20, marginTop: 8 },
-  manualClose: { alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
-  manualCloseText: { fontSize: 13.5, fontWeight: '700' },
+  manualCard: { padding: 18, borderRadius: 20, marginTop: 16 },
+  manualTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
+  manualText: { fontSize: 13.5, lineHeight: 21, marginTop: 8 },
+  manualClose: { alignSelf: 'flex-end', minHeight: 48, justifyContent: 'center', paddingHorizontal: 10 },
+  manualCloseText: { fontSize: 13.5, lineHeight: 19, fontWeight: '700' },
+  bottomSpacer: { height: 28 },
   shareModalBackdrop: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
     backgroundColor: 'rgba(5,12,22,0.68)',
   },
   shareModalSheet: {
     width: '100%',
-    maxWidth: 430,
+    maxWidth: 460,
     maxHeight: '96%',
-    borderRadius: 24,
+    borderWidth: 1,
+    borderRadius: 28,
     overflow: 'hidden',
   },
   shareModalContent: {
-    padding: 16,
+    padding: 20,
   },
-  shareModalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
-  shareModalCopy: { flex: 1, paddingRight: 12 },
-  shareModalTitle: { fontSize: 18, lineHeight: 24, fontWeight: '800' },
-  shareModalBody: { fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  shareModalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
+  shareModalCopy: { flex: 1, paddingRight: 14 },
+  shareModalTitle: { fontSize: 20, lineHeight: 27, fontWeight: '800' },
+  shareModalBody: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   shareModalClose: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shareModalButton: { marginTop: 14 },
-  sharePreviewViewport: { alignSelf: 'center', overflow: 'hidden' },
+  shareModalButton: { marginTop: 16 },
+  sharePreviewViewport: { alignSelf: 'center', overflow: 'hidden', borderRadius: 20 },
   // O alvo web fica fora da viewport, mas preserva os 360x640 sem transformacao.
   // Assim a captura nao rasteriza a miniatura reduzida exibida em celulares.
   shareCaptureHost: {
@@ -1025,7 +1076,7 @@ const styles = StyleSheet.create({
     width: AFFIRMATION_SHARE_LAYOUT_SIZE.width,
     height: AFFIRMATION_SHARE_LAYOUT_SIZE.height,
   },
-  shareError: { fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 10 },
-  favText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
-  favCat: { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.2, marginTop: 6 },
+  shareError: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 12 },
+  favText: { fontSize: 15, lineHeight: 22, fontWeight: '500' },
+  favCat: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 1.2, marginTop: 6 },
 });

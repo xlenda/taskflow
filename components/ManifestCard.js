@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   cover: { width: 62, height: 62 },
   body: { flex: 1, marginLeft: 14 },
   title: { fontSize: 15.5, fontWeight: '700' },
-  toggle: { minWidth: 44, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  toggle: { minWidth: 48, minHeight: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   subRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3, marginBottom: 10 },
   subIcon: { marginRight: 5 },
   sub: { fontSize: 12.5, flex: 1 },

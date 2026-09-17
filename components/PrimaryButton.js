@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Platform, Text, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme';
@@ -20,11 +20,20 @@ export default function PrimaryButton({
   testID,
 }) {
   const th = useTheme();
+  const [focused, setFocused] = React.useState(false);
   const { lang } = useT();
   const [a, b] = gradientPair(th, accent);
   const color = accentAt(th, accent);
   const text = txt(label, lang);
   const a11y = txt(accessibilityLabel, lang) || text;
+  const focusStyle = Platform.OS === 'web' && focused
+    ? {
+        outlineColor: th.accent,
+        outlineOffset: 2,
+        outlineStyle: 'solid',
+        outlineWidth: 2,
+      }
+    : null;
 
   if (variant === 'soft' || variant === 'ghost') {
     return (
@@ -33,6 +42,8 @@ export default function PrimaryButton({
         activeOpacity={0.75}
         onPress={onPress}
         disabled={disabled}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         accessibilityRole="button"
         accessibilityLabel={a11y}
         accessibilityState={{ disabled }}
@@ -44,6 +55,7 @@ export default function PrimaryButton({
             borderColor: alpha(color, 0.35),
             opacity: disabled ? 0.5 : 1,
           },
+          focusStyle,
           style,
         ]}
       >
@@ -61,10 +73,12 @@ export default function PrimaryButton({
       activeOpacity={0.85}
       onPress={onPress}
       disabled={disabled}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       accessibilityRole="button"
       accessibilityLabel={a11y}
       accessibilityState={{ disabled }}
-      style={[style, { opacity: disabled ? 0.6 : 1 }]}
+      style={[styles.focusFrame, style, { opacity: disabled ? 0.6 : 1 }, focusStyle]}
     >
       <LinearGradient
         colors={[a, b]}
@@ -82,6 +96,7 @@ export default function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
+  focusFrame: { borderRadius: 26 },
   base: {
     height: 52,
     borderRadius: 26,

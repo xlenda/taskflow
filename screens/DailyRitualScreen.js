@@ -403,7 +403,13 @@ export default function DailyRitualScreen() {
   if (!ritual) {
     return (
       <Screen testID="daily-ritual-screen">
-        <TopBar title={t(S.title)} backLabel={t(S.close)} onBack={close} theme={theme} />
+        <TopBar
+          title={t(S.title)}
+          backLabel={t(S.close)}
+          onBack={close}
+          theme={theme}
+          compact={compact}
+        />
         <EmptyState
           icon="sparkles-outline"
           title={t(S.emptyTitle)}
@@ -429,12 +435,24 @@ export default function DailyRitualScreen() {
     : [];
 
   return (
-    <Screen testID="daily-ritual-screen" style={styles.screen}>
-      <TopBar title={t(S.title)} backLabel={t(S.close)} onBack={close} theme={theme} />
+    <Screen
+      testID="daily-ritual-screen"
+      style={[styles.screen, compact && styles.screenCompact]}
+    >
+      <TopBar
+        title={t(S.title)}
+        backLabel={t(S.close)}
+        onBack={close}
+        theme={theme}
+        compact={compact}
+      />
 
       <View style={[styles.content, compact && styles.contentCompact]}>
         <Text style={[styles.eyebrow, { color: theme.accent }]}>{t(S.eyebrow)}</Text>
-        <Text numberOfLines={2} style={[styles.sourceTitle, { color: theme.text }]}>
+        <Text
+          numberOfLines={2}
+          style={[styles.sourceTitle, compact && styles.sourceTitleCompact, { color: theme.text }]}
+        >
           {sourceTitle}
         </Text>
         {ritual.chapter ? (
@@ -448,13 +466,31 @@ export default function DailyRitualScreen() {
           compact && styles.affirmationCompact,
           { backgroundColor: theme.surface, borderColor: theme.border },
         ]}>
-          <View style={[styles.quoteRule, { backgroundColor: accentAt(theme, 1) }]} />
-          <Text style={[styles.affirmationText, { color: theme.text }]}>{ritual.affirmation}</Text>
+          <View
+            style={[
+              styles.quoteRule,
+              compact && styles.quoteRuleCompact,
+              { backgroundColor: accentAt(theme, 1) },
+            ]}
+          />
+          <Text
+            style={[
+              styles.affirmationText,
+              compact && styles.affirmationTextCompact,
+              { color: theme.text },
+            ]}
+          >
+            {ritual.affirmation}
+          </Text>
         </View>
 
         {phase === 'ready' ? (
-          <View style={styles.actionArea}>
-            <Text style={[styles.guidance, { color: theme.textMuted }]}>{t(S.ready)}</Text>
+          <View style={[styles.actionArea, compact && styles.actionAreaCompact]}>
+            <Text
+              style={[styles.guidance, compact && styles.guidanceCompact, { color: theme.textMuted }]}
+            >
+              {t(S.ready)}
+            </Text>
             <PrimaryButton testID="start-daily-ritual" icon="play" label={t(S.start)} onPress={start} />
           </View>
         ) : null}
@@ -570,6 +606,7 @@ export default function DailyRitualScreen() {
           </View>
           <Switch
             testID="daily-ritual-reminder-toggle"
+            style={styles.switchControl}
             value={reminder.reminderEnabled === true}
             onValueChange={toggleReminder}
             disabled={reminderBusy || Platform.OS === 'web'}
@@ -634,9 +671,9 @@ export default function DailyRitualScreen() {
   );
 }
 
-function TopBar({ title, backLabel, onBack, theme }) {
+function TopBar({ title, backLabel, onBack, theme, compact = false }) {
   return (
-    <View style={styles.topBar}>
+    <View style={[styles.topBar, compact && styles.topBarCompact]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={backLabel}
@@ -645,60 +682,74 @@ function TopBar({ title, backLabel, onBack, theme }) {
       >
         <Ionicons name="arrow-back" size={23} color={theme.text} />
       </Pressable>
-      <Text numberOfLines={1} style={[styles.topTitle, { color: theme.text }]}>{title}</Text>
+      <Text
+        numberOfLines={1}
+        style={[styles.topTitle, compact && styles.topTitleCompact, { color: theme.text }]}
+      >
+        {title}
+      </Text>
       <View style={styles.backButton} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingHorizontal: 20, paddingBottom: 28 },
-  topBar: { height: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  screen: { paddingHorizontal: 20, paddingBottom: 36 },
+  screenCompact: { paddingHorizontal: 16, paddingBottom: 28 },
+  topBar: { width: '100%', maxWidth: 720, alignSelf: 'center', minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topBarCompact: { minHeight: 60 },
+  backButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.62 },
-  topTitle: { flex: 1, textAlign: 'center', fontSize: 16, lineHeight: 22, fontWeight: '800', letterSpacing: 0 },
-  content: { minHeight: 520, alignItems: 'center', justifyContent: 'center', paddingBottom: 8 },
-  contentCompact: { minHeight: 392, justifyContent: 'flex-start', paddingTop: 8 },
-  eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
-  sourceTitle: { maxWidth: 460, marginTop: 7, textAlign: 'center', fontSize: 22, lineHeight: 29, fontWeight: '800', letterSpacing: 0 },
-  chapter: { marginTop: 4, fontSize: 12, lineHeight: 18, fontWeight: '700', letterSpacing: 0 },
-  affirmation: { width: '100%', maxWidth: 560, minHeight: 150, marginTop: 20, borderWidth: 1, borderRadius: 8, paddingHorizontal: 24, paddingVertical: 22, justifyContent: 'center' },
-  affirmationCompact: { minHeight: 118, marginTop: 12, paddingVertical: 15 },
-  quoteRule: { width: 42, height: 3, borderRadius: 2, marginBottom: 17 },
-  affirmationText: { fontFamily: 'Georgia', fontSize: 23, lineHeight: 33, fontStyle: 'italic', fontWeight: '500', letterSpacing: 0 },
-  actionArea: { width: '100%', maxWidth: 420, alignItems: 'stretch', marginTop: 22 },
-  preparing: { minHeight: 74, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 22 },
+  topTitle: { flex: 1, textAlign: 'center', fontSize: 18, lineHeight: 24, fontWeight: '800', letterSpacing: -0.15 },
+  topTitleCompact: { fontSize: 16, lineHeight: 22 },
+  content: { width: '100%', maxWidth: 720, minHeight: 540, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', paddingBottom: 12 },
+  contentCompact: { minHeight: 0, justifyContent: 'flex-start', paddingTop: 2 },
+  eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.4 },
+  sourceTitle: { maxWidth: 540, marginTop: 8, textAlign: 'center', fontSize: 25, lineHeight: 32, fontWeight: '800', letterSpacing: -0.35 },
+  sourceTitleCompact: { marginTop: 5, fontSize: 21, lineHeight: 27 },
+  chapter: { marginTop: 5, fontSize: 12, lineHeight: 18, fontWeight: '700', letterSpacing: 0.2 },
+  affirmation: { width: '100%', maxWidth: 620, minHeight: 164, marginTop: 24, borderWidth: 1, borderRadius: 24, paddingHorizontal: 26, paddingVertical: 25, justifyContent: 'center' },
+  affirmationCompact: { minHeight: 108, marginTop: 10, paddingHorizontal: 18, paddingVertical: 14 },
+  quoteRule: { width: 48, height: 4, borderRadius: 2, marginBottom: 19 },
+  quoteRuleCompact: { width: 40, marginBottom: 10 },
+  affirmationText: { fontFamily: 'Georgia', fontSize: 25, lineHeight: 36, fontStyle: 'italic', fontWeight: '500', letterSpacing: -0.15 },
+  affirmationTextCompact: { fontSize: 20, lineHeight: 28 },
+  actionArea: { width: '100%', maxWidth: 460, alignItems: 'stretch', marginTop: 26 },
+  actionAreaCompact: { marginTop: 14 },
+  preparing: { minHeight: 80, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 24 },
   preparingText: { marginLeft: 9, fontSize: 13.5, lineHeight: 20, fontWeight: '600', letterSpacing: 0 },
-  guidance: { minHeight: 40, marginBottom: 10, textAlign: 'center', fontSize: 13.5, lineHeight: 20, fontWeight: '600', letterSpacing: 0 },
-  timer: { alignSelf: 'center', width: 106, height: 106, borderRadius: 53, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
-  timerNumber: { fontSize: 36, lineHeight: 40, fontWeight: '800', letterSpacing: 0 },
+  guidance: { minHeight: 42, marginBottom: 12, textAlign: 'center', fontSize: 14, lineHeight: 21, fontWeight: '600', letterSpacing: 0 },
+  guidanceCompact: { minHeight: 0, marginBottom: 6, fontSize: 13, lineHeight: 18 },
+  timer: { alignSelf: 'center', width: 118, height: 118, borderRadius: 59, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
+  timerNumber: { fontSize: 40, lineHeight: 44, fontWeight: '800', letterSpacing: -0.4 },
   timerLabel: { fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 0 },
-  progressTrack: { width: '100%', height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 18, marginBottom: 13 },
+  progressTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 20, marginBottom: 15 },
   progressFill: { height: '100%', borderRadius: 3 },
-  completeArea: { width: '100%', maxWidth: 520, alignItems: 'center', marginTop: 17 },
-  doneIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  doneTitle: { marginTop: 9, fontSize: 20, lineHeight: 27, fontWeight: '800', letterSpacing: 0 },
-  doneBody: { marginTop: 3, textAlign: 'center', fontSize: 13, lineHeight: 19, letterSpacing: 0 },
-  bridge: { width: '100%', marginTop: 17, paddingTop: 15, borderTopWidth: 1 },
+  completeArea: { width: '100%', maxWidth: 600, alignItems: 'center', marginTop: 20 },
+  doneIcon: { width: 56, height: 56, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  doneTitle: { marginTop: 12, fontSize: 23, lineHeight: 30, fontWeight: '800', letterSpacing: -0.3 },
+  doneBody: { marginTop: 4, textAlign: 'center', fontSize: 14, lineHeight: 21, letterSpacing: 0 },
+  bridge: { width: '100%', marginTop: 20, paddingTop: 18, borderTopWidth: 1 },
   bridgeLabel: { fontSize: 11, lineHeight: 16, textTransform: 'uppercase', fontWeight: '800', letterSpacing: 1 },
-  bridgeText: { marginTop: 6, fontSize: 16, lineHeight: 23, fontWeight: '600', letterSpacing: 0 },
-  fullButton: { width: '100%', marginTop: 10 },
-  evolvingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  bridgeText: { marginTop: 7, fontSize: 17, lineHeight: 25, fontWeight: '600', letterSpacing: 0 },
+  fullButton: { width: '100%', marginTop: 12 },
+  evolvingRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', marginTop: 14 },
   evolvingText: { marginLeft: 9, fontSize: 13, lineHeight: 19, fontWeight: '600', letterSpacing: 0 },
   evolutionArea: { width: '100%', marginTop: 12 },
   evolvedText: { textAlign: 'center', marginBottom: 4, fontSize: 13, lineHeight: 19, fontWeight: '800', letterSpacing: 0 },
   evolvedToday: { marginTop: 13, fontSize: 12.5, lineHeight: 18, fontWeight: '600', letterSpacing: 0 },
   error: { marginTop: 10, textAlign: 'center', fontSize: 12.5, lineHeight: 18, fontWeight: '600', letterSpacing: 0 },
-  memoryBar: { minHeight: 52, borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  memoryBar: { width: '100%', maxWidth: 720, minHeight: 58, alignSelf: 'center', borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   memoryText: { flexShrink: 1, marginLeft: 8, textAlign: 'center', fontSize: 11.5, lineHeight: 17, fontWeight: '600', letterSpacing: 0 },
-  reminderSection: { width: '100%', maxWidth: 560, alignSelf: 'center', borderWidth: 1, borderRadius: 8, padding: 14, marginTop: 14 },
+  reminderSection: { width: '100%', maxWidth: 620, alignSelf: 'center', borderWidth: 1, borderRadius: 22, padding: 18, marginTop: 18 },
   reminderHeader: { flexDirection: 'row', alignItems: 'center' },
-  reminderIcon: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  reminderCopy: { flex: 1, minWidth: 0, marginHorizontal: 11 },
+  reminderIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  reminderCopy: { flex: 1, minWidth: 0, marginHorizontal: 13 },
   reminderTitle: { fontSize: 14, lineHeight: 19, fontWeight: '800', letterSpacing: 0 },
   reminderBody: { marginTop: 2, fontSize: 11.5, lineHeight: 16, fontWeight: '500', letterSpacing: 0 },
-  reminderTimes: { flexDirection: 'row', marginTop: 12, marginHorizontal: -4 },
-  reminderTime: { flex: 1, minHeight: 40, marginHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  switchControl: { minWidth: 52, minHeight: 48 },
+  reminderTimes: { flexDirection: 'row', marginTop: 15, marginHorizontal: -4 },
+  reminderTime: { flex: 1, minHeight: 48, marginHorizontal: 4, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   reminderTimeText: { fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0 },
   reminderError: { marginTop: 9, fontSize: 11.5, lineHeight: 16, fontWeight: '600', letterSpacing: 0 },
 });

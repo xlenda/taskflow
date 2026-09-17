@@ -1,11 +1,23 @@
 import React, { createContext, useContext, useState } from 'react';
+import {
+  breakpoints,
+  dimensions,
+  elevation,
+  motion,
+  opacity,
+  radius,
+  spacing,
+  textMutedStrongByTheme,
+  typography,
+  typeFamilies,
+} from './tokens';
 
 // ── Themes ──────────────────────────────────────────────────────────────────
 // Each theme is a complete palette. accents[] drives category colors, chart
 // bars, avatars, tag chips — the "no monochrome apps" rule made concrete.
 const base = {
-  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
-  radius: { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 },
+  spacing,
+  radius,
   font: {
     title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
     heading: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
@@ -13,6 +25,14 @@ const base = {
     label: { fontSize: 13, fontWeight: '600' },
     caption: { fontSize: 12, fontWeight: '500' },
   },
+  typography,
+  typeFamilies,
+  size: dimensions,
+  dimensions,
+  breakpoints,
+  motion,
+  opacity,
+  elevations: elevation,
 };
 
 const themes = {
@@ -31,13 +51,33 @@ const themes = {
 // without losing that foundation — so "make it red and blue" keeps a clean base
 // but recolors buttons, icons, and highlights.
 function resolve(name, ov) {
-  const t = themes[name] || themes.midnight;
-  const m = Object.assign({}, base, t, { name: themes[name] ? name : 'midnight' });
+  const resolvedName = themes[name] ? name : 'midnight';
+  const t = themes[resolvedName];
+  const m = Object.assign({}, base, t, { name: resolvedName });
   if (ov) {
     if (ov.accent) m.accent = ov.accent;
     if (ov.accentSoft) m.accentSoft = ov.accentSoft;
     if (ov.accents && ov.accents.length) m.accents = ov.accents;
   }
+  m.textMutedStrong = textMutedStrongByTheme[resolvedName] || m.textMuted;
+  m.textMutedOnAlt = m.textMutedStrong;
+  m.accentInk = m.dark ? '#0B0E14' : '#FFFFFF';
+  m.elevation = m.dark ? elevation.dark : elevation.light;
+  m.semantic = {
+    background: m.bg,
+    surface: m.surface,
+    surfaceAlt: m.surfaceAlt,
+    text: m.text,
+    textMuted: m.textMuted,
+    textMutedOnAlt: m.textMutedStrong,
+    border: m.border,
+    accent: m.accent,
+    accentSoft: m.accentSoft,
+    accentInk: m.accentInk,
+    success: m.success,
+    warning: m.warning,
+    danger: m.danger,
+  };
   return m;
 }
 

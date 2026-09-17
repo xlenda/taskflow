@@ -242,11 +242,11 @@ const styles = StyleSheet.create({
   option: {
     width: '100%',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 18,
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
-  compactOption: { borderRadius: 7 },
+  compactOption: { borderRadius: 16 },
   optionRow: { minHeight: 72, flexDirection: 'row', alignItems: 'stretch' },
   compactRow: { minHeight: 58 },
   choice: {
@@ -273,10 +273,10 @@ const styles = StyleSheet.create({
   description: { fontSize: 12.5, lineHeight: 18, marginTop: 2, letterSpacing: 0 },
   compactDescription: { fontSize: 12, lineHeight: 16, marginTop: 1 },
   previewButton: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
+    borderRadius: 16,
     borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',

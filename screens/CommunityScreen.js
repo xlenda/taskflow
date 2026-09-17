@@ -257,7 +257,13 @@ function StoryCard({
   const author = item.authorHandle ? `@${item.authorHandle}` : mine ? t(S.personalExperience) : t(S.member);
   const canInteract = !mine && !item.isOwn && item.remoteId;
   return (
-    <View style={[styles.storyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View
+      style={[
+        styles.storyCard,
+        theme.elevation?.e1,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+      ]}
+    >
       <View style={styles.storyMetaRow}>
         <View style={[styles.avatar, { backgroundColor: theme.accents[2] + '22' }]}>
           <Ionicons name="sparkles" size={17} color={theme.accents[2]} />
@@ -645,9 +651,26 @@ export default function CommunityScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, styles.screenContent]}
       >
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View
+          pointerEvents="none"
+          style={[styles.headerGlow, { backgroundColor: theme.accentSoft }]}
+        />
+        <View
+          pointerEvents="none"
+          style={[styles.headerOrbit, { borderColor: `${theme.accent}24` }]}
+        />
+        <View
+          pointerEvents="none"
+          style={[styles.headerStar, { backgroundColor: theme.accents[2] }]}
+        />
         <View style={styles.headerText}>
-          <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{t(S.title)}</Text>
+          <Text
+            accessibilityRole="header"
+            style={[styles.title, { color: theme.text, fontFamily: theme.typeFamilies?.serif }]}
+          >
+            {t(S.title)}
+          </Text>
           <Text style={[styles.subtitle, { color: theme.textMuted }]}>{t(S.subtitle)}</Text>
         </View>
         <Pressable
@@ -662,7 +685,13 @@ export default function CommunityScreen() {
       </View>
 
       {composer ? (
-        <View style={[styles.composer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View
+          style={[
+            styles.composer,
+            theme.elevation?.e2,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.composerHeader}>
             <View style={styles.composerHeadingWrap}>
               <Text accessibilityRole="header" style={[styles.composerTitle, { color: theme.text }]}>{t(S.composeTitle)}</Text>
@@ -694,7 +723,10 @@ export default function CommunityScreen() {
                   onPress={() => chooseKind(postKind)}
                   style={[
                     styles.choice,
-                    { borderColor: selected ? theme.accent : theme.border, backgroundColor: theme.bg },
+                    {
+                      borderColor: selected ? theme.accent : theme.border,
+                      backgroundColor: selected ? theme.accentSoft : theme.bg,
+                    },
                   ]}
                 >
                   <Text style={[styles.choiceText, { color: selected ? theme.accent : theme.text }]}>
@@ -721,7 +753,10 @@ export default function CommunityScreen() {
                   onPress={() => chooseCircle(circle.slug)}
                   style={[
                     styles.choice,
-                    { borderColor: selected ? theme.accent : theme.border, backgroundColor: theme.bg },
+                    {
+                      borderColor: selected ? theme.accent : theme.border,
+                      backgroundColor: selected ? theme.accentSoft : theme.bg,
+                    },
                   ]}
                 >
                   <Text style={[styles.choiceText, { color: selected ? theme.accent : theme.text }]}>
@@ -754,7 +789,12 @@ export default function CommunityScreen() {
             {normalizedBody.length}/{COMMUNITY_BODY_MAX}
           </Text>
 
-          <View style={[styles.previewSection, { borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.previewSection,
+              { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+            ]}
+          >
             <Text style={[styles.previewTitle, { color: theme.text }]}>
               {t(COMMUNITY_REMOTE_ENABLED ? S.previewTitle : S.previewTitleLocal)}
             </Text>
@@ -765,12 +805,21 @@ export default function CommunityScreen() {
                 </Text>
                 <View style={styles.storyTaxonomy}>
                   <Text style={[styles.storyTaxonomyText, { color: theme.accent }]}>{t(KIND_COPY[kind].label)}</Text>
-                  <Text style={[styles.storyTaxonomyText, { color: theme.textMuted }]}>{selectedCircleLabel}</Text>
+                  <Text
+                    style={[
+                      styles.storyTaxonomyText,
+                      { color: theme.textMutedOnAlt || theme.textMuted },
+                    ]}
+                  >
+                    {selectedCircleLabel}
+                  </Text>
                 </View>
                 <Text style={[styles.previewBody, { color: theme.text }]}>{normalizedBody}</Text>
               </>
             ) : (
-              <Text style={[styles.helperText, { color: theme.textMuted }]}>{t(S.previewPending)}</Text>
+              <Text style={[styles.helperText, { color: theme.textMutedOnAlt || theme.textMuted }]}>
+                {t(S.previewPending)}
+              </Text>
             )}
           </View>
 
@@ -826,7 +875,13 @@ export default function CommunityScreen() {
         </View>
       ) : (
         <>
-          <View style={[styles.truthBand, { borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.truthBand,
+              theme.elevation?.e1,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
             <View style={[styles.truthIcon, { backgroundColor: theme.accents[2] + '1C' }]}>
               <Ionicons name="people-outline" size={22} color={theme.accents[2]} />
             </View>
@@ -848,9 +903,20 @@ export default function CommunityScreen() {
                   accessibilityState={{ selected }}
                   key={item.id}
                   onPress={() => setTab(item.id)}
-                  style={[styles.tab, selected && { backgroundColor: theme.surface, borderColor: theme.border }]}
+                  style={[
+                    styles.tab,
+                    selected && theme.elevation?.e1,
+                    selected && { backgroundColor: theme.surface, borderColor: theme.border },
+                  ]}
                 >
-                  <Text style={[styles.tabText, { color: selected ? theme.text : theme.textMuted }]}>{item.label}</Text>
+                  <Text
+                    style={[
+                      styles.tabText,
+                      { color: selected ? theme.text : (theme.textMutedOnAlt || theme.textMuted) },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -898,7 +964,11 @@ export default function CommunityScreen() {
             <View accessibilityRole="alert" style={[styles.result, { backgroundColor: theme.danger + '12' }]}>
               <Ionicons name="alert-circle-outline" size={20} color={theme.danger} />
               <Text style={[styles.resultText, { color: theme.text }]}>{error}</Text>
-              <Pressable accessibilityRole="button" onPress={refresh}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={refresh}
+                style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+              >
                 <Text style={[styles.retryText, { color: theme.accent }]}>{t(S.retry)}</Text>
               </Pressable>
             </View>
@@ -993,87 +1063,140 @@ const styles = StyleSheet.create({
   safe: { flex: 1, minHeight: 0 },
   webViewport: { height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' },
   scrollView: { flex: 1, minHeight: 0 },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 96, alignItems: 'center' },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 112, alignItems: 'center' },
   screenContent: { width: '100%', maxWidth: 720, alignSelf: 'center' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 14, paddingBottom: 18 },
-  headerText: { flex: 1, minWidth: 0 },
-  title: { fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: 0 },
-  subtitle: { marginTop: 3, fontSize: 14, lineHeight: 20, letterSpacing: 0 },
-  createIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-  pressed: { opacity: 0.76 },
-  truthBand: { flexDirection: 'row', paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, marginBottom: 16 },
-  truthIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 13 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 112,
+    marginTop: 12,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  headerGlow: {
+    position: 'absolute',
+    width: 164,
+    height: 164,
+    borderRadius: 82,
+    right: -62,
+    top: -72,
+    opacity: 0.88,
+  },
+  headerOrbit: {
+    position: 'absolute',
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 1,
+    right: -18,
+    top: -35,
+  },
+  headerStar: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    right: 76,
+    top: 25,
+  },
+  headerText: { flex: 1, minWidth: 0, zIndex: 1 },
+  title: { fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -0.7 },
+  subtitle: { marginTop: 4, maxWidth: 440, fontSize: 14, lineHeight: 20, letterSpacing: 0 },
+  createIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 16,
+    zIndex: 1,
+  },
+  pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
+  truthBand: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 18,
+    borderWidth: 1,
+    borderRadius: 20,
+    marginBottom: 18,
+  },
+  truthIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   truthCopy: { flex: 1, minWidth: 0 },
-  truthTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700', letterSpacing: 0 },
-  truthBody: { fontSize: 13, lineHeight: 19, marginTop: 3, letterSpacing: 0 },
-  tabs: { flexDirection: 'row', padding: 3, borderRadius: 8, marginBottom: 16 },
-  tab: { flex: 1, minHeight: 42, borderRadius: 6, borderWidth: 1, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  truthTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700', letterSpacing: -0.1 },
+  truthBody: { fontSize: 14, lineHeight: 21, marginTop: 4, letterSpacing: 0 },
+  tabs: { flexDirection: 'row', padding: 4, borderRadius: 18, marginBottom: 20 },
+  tab: { flex: 1, minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   tabText: { fontSize: 14, fontWeight: '700', letterSpacing: 0 },
-  circleFilterSection: { marginBottom: 16 },
-  circleFilterLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700', marginBottom: 7, letterSpacing: 0 },
-  circleFilterWrap: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 },
-  circleFilter: { minHeight: 36, borderWidth: 1, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, margin: 3 },
-  circleFilterText: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0 },
-  loader: { marginTop: 54 },
-  result: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, marginBottom: 14 },
+  circleFilterSection: { marginBottom: 20 },
+  circleFilterLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', marginBottom: 8, letterSpacing: 0.4 },
+  circleFilterWrap: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  circleFilter: { minWidth: 48, minHeight: 48, borderWidth: 1, borderRadius: 24, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, margin: 4 },
+  circleFilterText: { fontSize: 12, lineHeight: 17, fontWeight: '700', letterSpacing: 0 },
+  loader: { marginTop: 64 },
+  result: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, marginBottom: 16 },
   resultText: { flex: 1, marginLeft: 9, fontSize: 13, lineHeight: 18, letterSpacing: 0 },
-  retryText: { fontSize: 13, fontWeight: '700', marginLeft: 8, letterSpacing: 0 },
-  empty: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 52 },
-  emptyIcon: { width: 58, height: 58, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { marginTop: 18, fontSize: 20, lineHeight: 25, fontWeight: '700', textAlign: 'center', letterSpacing: 0 },
+  retryButton: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 8, marginLeft: 4 },
+  retryText: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+  empty: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 58 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { marginTop: 20, fontSize: 22, lineHeight: 28, fontWeight: '700', textAlign: 'center', letterSpacing: -0.25 },
   emptyBody: { maxWidth: 440, marginTop: 8, fontSize: 14, lineHeight: 21, textAlign: 'center', letterSpacing: 0 },
-  primaryButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingHorizontal: 18, marginTop: 22 },
+  primaryButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26, paddingHorizontal: 22, marginTop: 24 },
   mineCreate: { alignSelf: 'flex-start', marginTop: 0, marginBottom: 14 },
   primaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginLeft: 8, letterSpacing: 0 },
-  storyCard: { borderRadius: 8, borderWidth: 1, padding: 16, marginBottom: 12 },
+  storyCard: { borderRadius: 22, borderWidth: 1, padding: 18, marginBottom: 14 },
   storyMetaRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  storyMetaText: { flex: 1, minWidth: 0, marginLeft: 10 },
-  storyAuthor: { fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0 },
-  storyDate: { fontSize: 11, lineHeight: 16, letterSpacing: 0 },
-  storyTaxonomy: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, marginHorizontal: -4 },
-  storyTaxonomyText: { fontSize: 11, lineHeight: 16, fontWeight: '700', marginHorizontal: 4, letterSpacing: 0 },
-  storyBody: { marginTop: 14, fontSize: 16, lineHeight: 24, letterSpacing: 0 },
+  avatar: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  storyMetaText: { flex: 1, minWidth: 0, marginLeft: 12 },
+  storyAuthor: { fontSize: 14, lineHeight: 20, fontWeight: '700', letterSpacing: 0 },
+  storyDate: { fontSize: 12, lineHeight: 17, marginTop: 1, letterSpacing: 0 },
+  storyTaxonomy: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, marginHorizontal: -5 },
+  storyTaxonomyText: { fontSize: 11, lineHeight: 16, fontWeight: '800', marginHorizontal: 5, letterSpacing: 0.55, textTransform: 'uppercase' },
+  storyBody: { marginTop: 16, fontSize: 16, lineHeight: 25, letterSpacing: 0 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 9, marginLeft: 8 },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   statusText: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 0 },
-  linkedRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, marginTop: 14, paddingTop: 11 },
+  linkedRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, marginTop: 16, paddingTop: 13 },
   linkedText: { flex: 1, marginLeft: 7, fontSize: 12, lineHeight: 17, letterSpacing: 0 },
   localNote: { fontSize: 12, lineHeight: 17, marginTop: 10, letterSpacing: 0 },
-  deleteStory: { minHeight: 40, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 10 },
+  deleteStory: { minHeight: 48, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 2 },
   deleteStoryText: { fontSize: 12, lineHeight: 17, fontWeight: '700', marginLeft: 7, letterSpacing: 0 },
-  interactionArea: { borderTopWidth: 1, marginTop: 15, paddingTop: 13 },
-  interactionLabel: { fontSize: 11, lineHeight: 16, fontWeight: '600', letterSpacing: 0 },
-  reactionWrap: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, marginTop: 6 },
-  reactionChoice: { minHeight: 38, minWidth: 92, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, margin: 3 },
-  reactionText: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 0 },
-  safetyActions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 7, marginHorizontal: -8 },
-  safetyAction: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 8 },
-  safetyActionText: { fontSize: 11, lineHeight: 16, fontWeight: '600', letterSpacing: 0 },
-  composer: { borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 24 },
+  interactionArea: { borderTopWidth: 1, marginTop: 17, paddingTop: 15 },
+  interactionLabel: { fontSize: 12, lineHeight: 17, fontWeight: '700', letterSpacing: 0 },
+  reactionWrap: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginTop: 7 },
+  reactionChoice: { minHeight: 48, minWidth: 108, borderWidth: 1, borderRadius: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, paddingVertical: 10, margin: 4 },
+  reactionText: { fontSize: 12, lineHeight: 17, fontWeight: '700', letterSpacing: 0 },
+  safetyActions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, marginHorizontal: -10 },
+  safetyAction: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 10 },
+  safetyActionText: { fontSize: 12, lineHeight: 17, fontWeight: '600', letterSpacing: 0 },
+  composer: { borderWidth: 1, borderRadius: 28, padding: 20, marginBottom: 28 },
   composerHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   composerHeadingWrap: { flex: 1, minWidth: 0 },
-  composerTitle: { fontSize: 21, lineHeight: 27, fontWeight: '800', letterSpacing: 0 },
-  composerBody: { fontSize: 13, lineHeight: 19, marginTop: 4, letterSpacing: 0 },
-  closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
-  fieldLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 20, marginBottom: 7, letterSpacing: 0 },
-  compactFieldLabel: { marginTop: 15 },
-  textInput: { minHeight: 138, borderWidth: 1, borderRadius: 8, padding: 13, fontSize: 15, lineHeight: 22, letterSpacing: 0 },
+  composerTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', letterSpacing: -0.35 },
+  composerBody: { fontSize: 14, lineHeight: 21, marginTop: 5, letterSpacing: 0 },
+  closeButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  fieldLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', marginTop: 24, marginBottom: 9, letterSpacing: 0.25 },
+  compactFieldLabel: { marginTop: 20 },
+  textInput: { minHeight: 150, borderWidth: 1, borderRadius: 20, padding: 16, fontSize: 15, lineHeight: 23, letterSpacing: 0 },
   counter: { alignSelf: 'flex-end', fontSize: 11, lineHeight: 16, marginTop: 5, letterSpacing: 0 },
   choiceWrap: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  choice: { maxWidth: '100%', minHeight: 38, borderWidth: 1, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 11, paddingVertical: 8, margin: 4 },
-  choiceText: { maxWidth: 260, fontSize: 12, lineHeight: 17, fontWeight: '600', letterSpacing: 0 },
-  helperText: { fontSize: 12, lineHeight: 18, marginTop: 4, letterSpacing: 0 },
-  previewSection: { borderTopWidth: 1, borderBottomWidth: 1, marginTop: 18, paddingVertical: 14 },
-  previewTitle: { fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0 },
-  previewAuthor: { fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 11, letterSpacing: 0 },
-  previewBody: { fontSize: 15, lineHeight: 22, marginTop: 11, letterSpacing: 0 },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 21 },
-  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  choice: { maxWidth: '100%', minHeight: 48, borderWidth: 1, borderRadius: 24, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, margin: 4 },
+  choiceText: { maxWidth: 260, fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0 },
+  helperText: { fontSize: 13, lineHeight: 19, marginTop: 5, letterSpacing: 0 },
+  previewSection: { borderWidth: 1, borderRadius: 20, marginTop: 20, padding: 16 },
+  previewTitle: { fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0.25 },
+  previewAuthor: { fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 13, letterSpacing: 0 },
+  previewBody: { fontSize: 15, lineHeight: 23, marginTop: 12, letterSpacing: 0 },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', minHeight: 48, marginTop: 21, paddingVertical: 4 },
+  checkbox: { width: 28, height: 28, borderRadius: 9, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   consentText: { flex: 1, minWidth: 0, marginLeft: 11, fontSize: 13, lineHeight: 19, letterSpacing: 0 },
-  reviewNotice: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: 8, marginTop: 17 },
-  reviewText: { flex: 1, minWidth: 0, marginLeft: 9, fontSize: 12, lineHeight: 18, letterSpacing: 0 },
+  reviewNotice: { flexDirection: 'row', alignItems: 'flex-start', padding: 15, borderRadius: 18, marginTop: 18 },
+  reviewText: { flex: 1, minWidth: 0, marginLeft: 10, fontSize: 13, lineHeight: 19, letterSpacing: 0 },
   feedback: { fontSize: 12, lineHeight: 17, marginTop: 11, fontWeight: '600', letterSpacing: 0 },
-  submitButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 8, marginTop: 18, paddingHorizontal: 18 },
+  submitButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26, marginTop: 20, paddingHorizontal: 20 },
   submitText: { color: '#FFFFFF', fontSize: 15, lineHeight: 20, fontWeight: '700', marginLeft: 8, letterSpacing: 0 },
 });
