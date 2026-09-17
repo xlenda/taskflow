@@ -215,7 +215,25 @@ const ENGLISH_LEAKS = [
   if (!audio.temOuvir) failures.push('botão de ouvir NÃO encontrado na tela de Afirmações');
   const audioBefore = audioRequests.length;
   if (await tapText('Ouvir esta afirmação')) {
-    await sleep(700);
+    await sleep(250);
+    const consentPrompt = await page.evaluate(() => {
+      const dialog = [...document.querySelectorAll('[role="dialog"]')].find(
+        (el) =>
+          el.getAttribute('aria-label') === 'Ativar voz e imagens pessoais?' &&
+          el.offsetParent !== null
+      );
+      if (!dialog) return 'absent';
+      const cancel = [...dialog.querySelectorAll('button')].find(
+        (button) => button.textContent.trim() === 'Agora não'
+      );
+      if (!cancel) return 'missing_cancel';
+      cancel.click();
+      return 'cancelled';
+    });
+    if (consentPrompt !== 'cancelled') {
+      failures.push(`confirmação unificada de voz/imagem inválida: ${consentPrompt}`);
+    }
+    await sleep(450);
     if (audioRequests.length > audioBefore) {
       failures.push('afirmação pessoal tentou buscar MP3 em /audio/');
     }
