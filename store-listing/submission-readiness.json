@@ -14,7 +14,7 @@
     "nativeFeatureValidation": {
       "ready": false,
       "evidence": null,
-      "note": "The generated Android prebuild passed autolinking with target SDK 36 and excluded the alarm module and forbidden permissions. The signed AAB still needs validation on a physical device: ordinary reminder, local fallback, AI reporting, storage, network traffic and final packaged permissions."
+      "note": "The generated Android prebuild passed autolinking with target SDK 36 and excluded the alarm module and forbidden permissions. Because expo-speech was added, a new prebuild and signed binary are required. The final AAB still needs physical-device validation of the ordinary reminder; visible image and text; full narration started only by a tap and completed, or full reading confirmed through the accessible alternative, before two repetitions are unlocked; system TTS with and without network; on-device recognition; AI reporting; storage; network traffic; and final packaged permissions. System or browser TTS must not be described as always offline until the effective engine is verified."
     },
     "aiContentReporting": {
       "ready": true,

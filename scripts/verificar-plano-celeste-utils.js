@@ -33,6 +33,7 @@ const visionOptions = journey.personalVisionOptionsForState({
     title: 'Meu próximo capítulo',
     story: anchorStory,
     lang: 'pt',
+    visual: { cacheKey: 'anchor-visual-cache' },
     journeySuiteByLang: {
       pt: {
         visions: [{ category: 'Peace', title: 'Visão pessoal', story: 'Uma visão criada para mim.' }],
@@ -43,6 +44,7 @@ const visionOptions = journey.personalVisionOptionsForState({
 const anchorOption = visionOptions.find((item) => item.id === 'anchor:m-anchor');
 assert.ok(anchorOption, 'Cena-Âncora precisa entrar no catálogo de visões do Plano');
 assert.strictEqual(anchorOption.source, 'anchor');
+assert.strictEqual(anchorOption.visualKey, 'anchor-visual-cache');
 assert.ok(anchorOption.story.length > 280, 'Plano precisa manter mais que o resumo falado pelo despertador');
 assert.strictEqual(anchorOption.story, anchorStory.trim().slice(0, 1200));
 

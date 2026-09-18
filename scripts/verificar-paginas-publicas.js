@@ -76,13 +76,21 @@ for (const [label, html] of [
 assert(
   privacyPt.includes('O questionário inicial cria a primeira prática no aparelho') &&
     privacyPt.includes('afirmação, visão, Cena-Âncora, frase de sonho ou frase própria') &&
-    privacyPt.includes('visão ou Cena-Âncora e a afirmação'),
+    privacyPt.includes('imagem e o texto da visão ou Cena-Âncora') &&
+    privacyPt.includes('narração completa só começa') &&
+    privacyPt.includes('confirmação acessível de que a visão foi lida') &&
+    privacyPt.includes('liberadas duas repetições') &&
+    privacyPt.includes('síntese de voz fornecida pelo'),
   'Privacidade PT não descreve onboarding local, despertador completo e Plano com Cena-Âncora'
 );
 assert(
   privacyEn.includes('Onboarding creates the first practice on the device') &&
     privacyEn.includes('affirmation, vision, Anchor Scene, dream phrase or personal phrase') &&
-    privacyEn.includes('vision or Anchor Scene and the affirmation'),
+    privacyEn.includes('vision or Anchor Scene image and text') &&
+    privacyEn.includes('Full narration begins only') &&
+    privacyEn.includes('accessible confirmation that the vision was') &&
+    privacyEn.includes('repetitions are enabled') &&
+    privacyEn.includes('speech synthesis supplied by'),
   'Privacy EN não descreve onboarding local, despertador completo e Plano com Anchor Scene'
 );
 
@@ -104,13 +112,17 @@ for (const [label, html, privacyRoute] of [
 assert(
   supportPt.includes('deixa a nuvem desligada') &&
     supportPt.includes('afirmação, visão, Cena-Âncora, frase de sonho ou frase') &&
-    supportPt.includes('A visão ou Cena-Âncora e a afirmação'),
+    supportPt.includes('imagem e o texto da visão ou Cena-Âncora') &&
+    supportPt.includes('Ouvir visão completa') &&
+    supportPt.includes('duas repetições são liberados'),
   'Suporte PT não acompanha o onboarding local e os conteúdos novos'
 );
 assert(
   supportEn.includes('leaves cloud processing off') &&
     supportEn.includes('affirmation, vision, Anchor Scene, dream phrase or personal') &&
-    supportEn.includes('The vision or Anchor Scene and the affirmation'),
+    supportEn.includes('vision or Anchor Scene image and text') &&
+    supportEn.includes('Play full vision') &&
+    supportEn.includes('repetitions are enabled'),
   'Support EN não acompanha o onboarding local e os conteúdos novos'
 );
 

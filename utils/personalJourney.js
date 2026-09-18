@@ -185,6 +185,7 @@ function personalVisionOptionsForState(state, requestedLang) {
     lang,
     speechLang: lang,
     accent: CATEGORY_ACCENTS[anchor.category] ?? 0,
+    visualKey: clean(sourceObject(anchor.visual).cacheKey, 180) || undefined,
     personalized: true,
     source: 'anchor',
   };

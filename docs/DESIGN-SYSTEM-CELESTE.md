@@ -14,7 +14,8 @@ O redesign é apenas de apresentação. Devem permanecer intactos:
 - questionário e Cena-Âncora;
 - geração de texto por Anthropic, com OpenAI e Gemini nos fallbacks já definidos;
 - imagens pessoais pelo Gemini;
-- narração sob demanda pela ElevenLabs, seus seis narradores e cache privado;
+- narração neural sob demanda pela ElevenLabs, seus seis narradores e cache
+  privado, somente quando o consentimento de nuvem aplicável já está ativo;
 - traduções, sonhos, alarmes, Plano Celeste, rituais e compartilhamento;
 - consentimentos, privacidade, denúncias, cotas, feature flags e limites por loja;
 - dados salvos, rotas, deep links, testIDs e idiomas PT-BR/EN.
@@ -39,6 +40,23 @@ contraste WCAG 2.2 AA.
 - tipografia serifada somente em momentos emocionais, não em controles;
 - uma ação principal evidente por bloco;
 - nenhuma função escondida ou botão decorativo sem ação real.
+
+## Plano Celeste
+
+A prática diurna mostra a imagem e o texto da visão ou Cena-Âncora antes de
+qualquer áudio. A narração completa começa somente após o toque em **Ouvir visão
+completa** e deve terminar, ou a leitura integral deve ser confirmada pela
+alternativa acessível, antes de liberar as duas repetições da afirmação.
+
+Quando o consentimento de nuvem já está ativo, a prática tenta a voz neural da
+ElevenLabs. Sem esse consentimento, ou se a tentativa falhar, usa o TTS do sistema
+ou navegador. A aparência deve tratar os dois caminhos como a mesma ação, sem
+afirmar que o TTS do sistema seja sempre offline. O microfone das repetições usa
+reconhecimento no dispositivo e não salva áudio nem transcrição.
+
+`expo-speech` não adiciona permissão sensível, mas sua integração nativa exige
+novos binários Android e iOS; uma publicação apenas web não atualiza os apps das
+lojas.
 
 ## Imagens pessoais V3
 

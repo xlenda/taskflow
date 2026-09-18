@@ -31,7 +31,8 @@ export function usePersonalNarration() {
       narration.prime();
       const consent = await ensureConsent();
       if (!consent.ok) {
-        narration.stop();
+        if (playbackId) narration.stop(playbackId);
+        else narration.stop();
         return consent;
       }
       const resolvedLang = contentLang === 'en' ? 'en' : contentLang === 'pt' ? 'pt' : lang;

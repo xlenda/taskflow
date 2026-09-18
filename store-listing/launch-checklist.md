@@ -22,13 +22,17 @@
 - [ ] validar lembrete comum, denúncia de IA, armazenamento, tráfego e fallback
   local no AAB instalado em Android físico;
 - [ ] validar Plano Celeste em Android e iPhone físicos: visão e Cena-Âncora como
-  alternativas, afirmação sempre visível, toque para microfone, duas leituras
-  da afirmação (`1/2` e `2/2`), reconhecedor local
-  disponível/ausente, permissão negada, conclusão manual, cancelamento,
-  `Agora não` e `Adiar 10 min`;
+  alternativas, imagem e texto sempre visíveis, narração completa iniciada
+  somente por toque e concluída, ou leitura integral confirmada pela alternativa
+  acessível, antes de liberar as duas leituras da afirmação
+  (`1/2` e `2/2`), reconhecedor local disponível/ausente, permissão negada,
+  conclusão manual, cancelamento, `Agora não` e `Adiar 10 min`;
+- [ ] validar o sintetizador do sistema com e sem rede, voz instalada/ausente e,
+  no iPhone, modo silencioso; não afirmar que o TTS é sempre offline sem
+  inspecionar a engine, os termos do fornecedor e o tráfego do binário;
 - [ ] confirmar por inspeção de tráfego, logs e backup que áudio e transcrição
-  do Plano Celeste não são armazenados nem enviados e que o app nunca bloqueia
-  o aparelho;
+  do microfone no Plano Celeste não são armazenados nem enviados, que a
+  narração não cria arquivo persistente e que o app nunca bloqueia o aparelho;
 - [ ] testar AlarmKit em iPhone compatível com afirmação, visão, Cena-Âncora,
   frase de sonho e frase própria antes de anunciá-lo;
 - [x] incluir mecanismo de denúncia para conteúdo gerado inadequado nas quatro
@@ -44,9 +48,11 @@
 - [x] excluir da v1 Android o despertador exato, seu módulo nativo e suas
   permissões, além da geração/narração paga em nuvem;
 - [ ] regenerar o prebuild a partir da árvore final do Plano Celeste e confirmar SDK 57 com
-  `compileSdk`/`targetSdk` 36, package, `versionCode`, autolinking do módulo de
-  voz, `RECORD_AUDIO` e remoções explícitas de alarmes exatos, overlay e
-  armazenamento legado, além da ausência de foreground service de áudio;
+  `compileSdk`/`targetSdk` 36, package, `versionCode`, autolinking de
+  `CelestePracticeSpeech` e `expo-speech`, `RECORD_AUDIO`, consulta ao serviço
+  TTS e remoções explícitas de alarmes exatos, overlay e armazenamento legado,
+  além da ausência de foreground service de áudio; a inclusão do módulo exige
+  binários Android e iOS novos;
 - [ ] conferir todos os SDKs e permissões do arquivo enviado;
 - [ ] gerar builds assinados com versão e número de build definitivos.
 
@@ -71,6 +77,9 @@
 - [ ] preencher App Privacy com contratos e retenção confirmados;
 - [ ] conferir descrições de uso de microfone e reconhecimento de fala e
   explicar nas notas que o Plano Celeste usa processamento local e efêmero;
+- [ ] explicar que a narração completa é iniciada por toque, usa ElevenLabs
+  somente com consentimento de nuvem já ativo e, caso contrário, o sintetizador
+  do sistema; testar modo silencioso sem criar nova descrição de permissão;
 - [ ] responder direitos de conteúdo e export compliance;
 - [ ] enviar screenshots e preview nativos por idioma;
 - [ ] associar build, notas de revisão e forma de liberação;
@@ -90,6 +99,9 @@
 - [ ] declarar e justificar `RECORD_AUDIO`; confirmar que o fluxo local não
   adiciona `Audio files` coletado/compartilhado e que não há permissão de alarme
   exato;
+- [ ] confirmar no tráfego do AAB se a engine TTS padrão processa o texto da
+  visão somente no aparelho; se usar rede, revisar a declaração do texto
+  transmitido, mesmo sem nova permissão sensível;
 - [ ] declarar ausência de anúncios, contas e compras somente após confirmar;
 - [ ] enviar ícone, feature graphic, screenshots e vídeo localizado;
 - [ ] concluir teste fechado exigido para o tipo da conta, quando aplicável;

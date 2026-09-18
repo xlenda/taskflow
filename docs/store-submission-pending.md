@@ -29,20 +29,30 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - Publicar e confirmar as URLs HTTPS de privacidade e suporte.
 - Validar o AlarmKit em iPhone compativel com afirmacao, visao, Cena-Ancora,
   frase de sonho e frase propria, e anexar instrucoes de revisao.
-- Validar o Plano Celeste em iPhone fisico: visao ou Cena-Ancora e afirmacao
-  sempre visiveis, permissao pedida somente depois do toque, indicador de escuta,
-  progresso `1/2` e `2/2` para a afirmacao,
+- Validar o Plano Celeste em iPhone fisico: imagem, visao ou Cena-Ancora e
+  afirmacao sempre visiveis; narracao completa iniciada somente por toque e
+  concluida, ou leitura integral confirmada pela alternativa acessivel, antes de
+  liberar as duas repeticoes; permissao do microfone pedida
+  somente depois de outro toque; indicador de escuta; progresso `1/2` e `2/2`;
   cancelamento, adiamento e conclusao manual acessivel. O reconhecimento deve
   permanecer no aparelho quando o modelo/idioma oferecer suporte e nunca usar
   a nuvem como fallback silencioso.
+- Testar a narracao com consentimento de nuvem ja ativo e sem ele. ElevenLabs so
+  pode ser chamada no primeiro caso; no segundo, a Celeste usa o sintetizador do
+  sistema ou navegador. Testar voz instalada/ausente, rede ligada/desligada e
+  modo silencioso do iPhone; nao afirmar que o TTS e sempre offline sem validar
+  a engine e o trafego.
 - Conferir no binario final as descricoes de uso de microfone e reconhecimento
   de fala. Nas notas da revisao, explicar que audio e transcricao do Plano
   Celeste sao efemeros, nao saem do aparelho e nao sao armazenados; somente o
-  recibo minimo da pratica fica localmente.
+  recibo minimo da pratica fica localmente. Essa frase se refere ao fluxo de
+  entrada do microfone, nao ao sintetizador de saida, que segue as regras da
+  engine do sistema ou navegador.
 - Confirmar a declaracao de criptografia, App Privacy, direitos dos assets,
   territorios, categoria e screenshots capturados do build nativo final. A
   resposta de App Privacy deve ser conferida contra o binario: o fluxo local do
-  Plano Celeste, por si so, nao coleta Audio Data fora do aparelho.
+  microfone no Plano Celeste, por si so, nao coleta Audio Data fora do aparelho;
+  a sintese de saida deve ser avaliada separadamente pela engine efetiva.
 
 ## Google Play Console
 
@@ -63,6 +73,10 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   para o revisor chegar ao Plano Celeste. `RECORD_AUDIO` serve apenas a escuta
   iniciada por toque; o audio e a transcricao nao sao coletados nem
   compartilhados. Confirmar essa afirmacao novamente no AAB final.
+- A v1 Android bloqueia ElevenLabs, mas o Plano pode narrar a visao por
+  `expo-speech` depois de um toque. A biblioteca nao acrescenta permissao
+  sensivel; ainda assim, confirmar no trafego se a engine/voz padrao usa rede e,
+  se usar, revisar a declaracao do texto transmitido.
 - Nao preencher declaracao de alarme exato para o Plano Celeste: ele usa
   lembretes comuns, nao pede `SCHEDULE_EXACT_ALARM` ou `USE_EXACT_ALARM` e pode
   sofrer atraso imposto pelo sistema. A ficha nao deve prometer horario exato,
@@ -91,7 +105,9 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   `X-Celeste-Client` identifica apenas uma alegacao do cliente e nunca prova que
   a requisicao veio do app oficial.
 - Na v1 Android, o cliente tambem bloqueia geracao e narracao pagas antes de
-  criar sessao Supabase ou chamar o backend. A experiencia usa o fallback local.
+  criar sessao Supabase ou chamar o backend. A experiencia usa o caminho local
+  do app e o sintetizador do sistema; este ultimo nao deve ser chamado de
+  necessariamente offline ate a engine efetiva ser validada.
 - No iOS, habilitar App Attest para o Team ID e o bundle
   `com.celesteapp.affirmations`, enviar atestacao/assertion por chamada e guardar no
   servidor a chave publica e o contador de cada instalacao.
@@ -119,9 +135,10 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   denúncias, consentimentos, notificações agendadas e arquivos de imagem.
 - A configuração e as dependências instaladas fixam SDK 57 com
   `compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
-  O novo prebuild da árvore final ainda precisa confirmar autolinking,
-  `RECORD_AUDIO` e a ausência de alarme exato, overlay, armazenamento legado e
-  foreground service de áudio.
+  A adicao de `expo-speech` exige novos binarios Android e iOS. O novo prebuild
+  da arvore final ainda precisa confirmar autolinking de `CelestePracticeSpeech`
+  e `expo-speech`, `RECORD_AUDIO`, consulta ao servico TTS e a ausencia de alarme
+  exato, overlay, armazenamento legado e foreground service de audio.
 - `verify:practice-plan`, `verify:android-release`, `verify:store` e a
   verificacao Android do autolinking passaram depois da integracao. A
   compilacao Kotlin e o AAB assinado ainda dependem do ambiente Android/EAS.
@@ -138,13 +155,17 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   Legacy Architecture e projetos CNG precisam regenerar `ios/` e `android/`.
 - Conferir o comportamento e o som do video de abertura em um dispositivo do
   build final; o componente ja usa o contrato `fullscreenOptions` do SDK 57.
-- Em Android e iOS reais, testar visao e Cena-Ancora no Plano e os lembretes com app aberto, em segundo plano e
-  encerrado; permissao concedida/negada; reconhecedor local disponivel/ausente;
-  dois acertos consecutivos; duas falhas; `Agora nao`; `Adiar 10 min`; tela
-  bloqueada; reinicio; economia de bateria; mudanca de idioma, horario e fuso.
-- Confirmar que a visao ou Cena-Ancora e a afirmacao ficam legiveis durante toda a escuta, que o app nunca
-  exige memorizacao, que o restante do aparelho nao e bloqueado e que nenhum
-  audio ou texto reconhecido aparece em backup, log ou trafego de rede.
+- Em Android e iOS reais, testar imagem, visao e Cena-Ancora no Plano e os
+  lembretes com app aberto, em segundo plano e encerrado; narracao completa por
+  toque; bloqueio das repeticoes ate o fim da narracao; permissao
+  concedida/negada; reconhecedor local disponivel/ausente; dois acertos
+  consecutivos; duas falhas; `Agora nao`; `Adiar 10 min`; tela bloqueada;
+  reinicio; economia de bateria; mudanca de idioma, horario e fuso.
+- Confirmar que a visao ou Cena-Ancora e a afirmacao ficam legiveis durante toda
+  a pratica, que o app nunca exige memorizacao, que o restante do aparelho nao e
+  bloqueado e que nenhum audio ou texto reconhecido pelo microfone aparece em
+  backup, log ou trafego de rede. Separadamente, inspecionar se o sintetizador
+  envia o texto da visao para sua propria engine de rede.
 
 Referencias oficiais:
 

@@ -1,9 +1,19 @@
 # Despertador com conteudo pessoal no iOS
 
 > Este documento descreve o despertador AlarmKit. O Plano Celeste e separado:
-> usa lembretes locais comuns, mostra a visao ou Cena-Ancora e a afirmacao para
-> leitura, pede duas repeticoes da afirmacao por voz quando o reconhecimento no dispositivo esta
-> disponivel e nunca bloqueia o aparelho.
+> usa lembretes locais comuns, mostra a imagem e o texto da visao ou Cena-Ancora,
+> inicia a narracao completa somente depois de um toque e a conclui, ou confirma
+> a leitura integral pela alternativa acessivel, antes de liberar duas repeticoes
+> da afirmacao. O reconhecimento do microfone ocorre no
+> dispositivo, sem salvar audio ou transcricao, e a pratica nunca bloqueia o
+> aparelho.
+
+Na pratica do Plano Celeste, a ElevenLabs so e usada quando o consentimento de
+nuvem ja esta ativo. Sem esse consentimento, ou se a voz neural falhar,
+`expo-speech` usa o sintetizador do sistema ou navegador. Esse caminho depende da
+voz e da engine configuradas e nao deve ser descrito como necessariamente
+offline. O pacote nao adiciona permissao sensivel, mas exige um novo binario iOS;
+publicar somente a versao web nao atualiza o app da loja.
 
 Esta integracao agenda um despertador real do AlarmKit cuja faixa de alerta e a
 conteudo pessoal sintetizado no aparelho. A pessoa pode escolher uma afirmacao,
@@ -29,8 +39,10 @@ nao e apenas um preview de audio.
 
 Arquivos de audio recebem nomes unicos. O modulo guarda somente a associacao
 entre UUID e nome do arquivo em `UserDefaults`, remove o audio substituido ao
-reagendar e remove o audio conhecido ao cancelar. Texto e audio nao saem do
-aparelho.
+reagendar e remove o audio conhecido ao cancelar. O modulo do AlarmKit nao envia
+texto ou audio a um servidor. Essa garantia e especifica deste modulo e nao deve
+ser confundida com o fallback de TTS do Plano Celeste, cujo comportamento de rede
+depende da voz e da engine do sistema.
 
 ## Requisitos reais
 

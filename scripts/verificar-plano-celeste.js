@@ -63,6 +63,8 @@ assert.ok(
     planScreen.includes('testID="try-practice-plan-now"') &&
     planScreen.includes('appendSuggestedPracticeSlot(current.slots, current, options)') &&
     planScreen.includes('current.slots.length || 3') &&
+    planScreen.includes('preserveDraftOnNextFocusRef.current = true') &&
+    planScreen.includes('testID="practice-preview-draft-preserved"') &&
     planScreen.includes('const firstEnabledSlot = draft.slots.find((slot) => slot.enabled) || null') &&
     planScreen.includes("navigation.navigate('PracticeRitual', { slotId: firstEnabledSlot.id })") &&
     planScreen.includes('audio and transcript are not stored'),
@@ -76,12 +78,30 @@ assert.ok(
     planScreen.includes('Plan vision or Anchor Scene') &&
     planScreen.includes('Sua visão ou Cena-Âncora e sua afirmação ficam visíveis') &&
     home.includes('Escolha sua visão ou Cena-Âncora, afirmação e momentos do dia') &&
-    ritualScreen.includes('Leia sua visão ou Cena-Âncora') &&
-    ritualScreen.includes('Read your vision or Anchor Scene'),
+    ritualScreen.includes('Veja e ouça sua visão ou Cena-Âncora') &&
+    ritualScreen.includes('See and hear your vision or Anchor Scene'),
   'Cena-Âncora precisa ser uma visão estável no Plano, na prática e na hidratação'
 );
 assert.ok(
+  ritualScreen.includes("import * as Speech from 'expo-speech'") &&
+    ritualScreen.includes("import GradientCover from '../components/GradientCover'") &&
+    ritualScreen.includes('testID="practice-vision-visual"') &&
+    ritualScreen.includes('visualKey={vision?.visualKey}') &&
+    ritualScreen.includes('testID="practice-play-full-vision"') &&
+    ritualScreen.includes('testID="practice-confirm-vision-read"') &&
+    ritualScreen.includes('const [visionStepComplete, setVisionStepComplete]') &&
+    ritualScreen.includes('if (!slot || !affirmationText || !visionStepComplete') &&
+    ritualScreen.includes('hasUnifiedCloudMediaConsent(state?.profile)') &&
+    ritualScreen.includes('if (cloudNarrationEnabled)') &&
+    ritualScreen.includes('narration.playPersonal({') &&
+    ritualScreen.includes('Speech.speak(visionText'),
+  'pratica diurna precisa concluir a Visao antes da afirmacao sem forcar consentimento de nuvem'
+);
+assert.ok(
   ritualScreen.includes('const REQUIRED_REPETITIONS = 2') &&
+    ritualScreen.includes('() => !isPreviewSession && plan.receipts.some') &&
+    ritualScreen.includes("previewFinish: { pt: 'Voltar ao Plano Celeste'") &&
+    ritualScreen.includes("else navigation.replace('PracticePlan')") &&
     ritualScreen.includes('if (next >= REQUIRED_REPETITIONS)') &&
     ritualScreen.includes('{visionText}</Text>') &&
     ritualScreen.includes('{affirmationText}') &&

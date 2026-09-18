@@ -23,6 +23,7 @@ export default function GradientCover({
   imageTransition = 280,
   onVisualReady,
   onVisualError,
+  decorative = false,
 }) {
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
@@ -34,6 +35,10 @@ export default function GradientCover({
   return (
     <LinearGradient
       testID={testID}
+      aria-hidden={decorative ? true : undefined}
+      accessible={decorative ? false : undefined}
+      accessibilityElementsHidden={decorative || undefined}
+      importantForAccessibility={decorative ? 'no-hide-descendants' : undefined}
       colors={[alpha(a, 0.95 * intensity), alpha(b, 0.82 * intensity), alpha(b, 0.62 * intensity)]}
       start={{ x: 0.05, y: 0 }}
       end={{ x: 0.95, y: 1 }}

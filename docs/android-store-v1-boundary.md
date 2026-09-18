@@ -12,8 +12,10 @@ um runtime Android, a mesma fronteira continua ativa.
 - diário de sonhos e Ritual de Um Minuto;
 - lembretes comuns do Ritual de Um Minuto via `expo-notifications`;
 - Plano Celeste opcional, com um a quatro lembretes comuns por dia. Ao abrir a
-  prática, a visão ou Cena-Âncora e a afirmação escolhidas ficam visíveis em
-  texto grande; a afirmação precisa ser lida e repetida duas vezes para registrar
+  prática, a imagem e o texto da visão ou Cena-Âncora e a afirmação escolhida
+  ficam visíveis. A narração completa começa somente depois de um toque e
+  precisa terminar, ou a leitura integral precisa ser confirmada pela alternativa
+  acessível, antes de liberar duas repetições da afirmação para registrar
   a conclusão por voz (`1/2` e `2/2`).
 
 ## O que não aparece no Android
@@ -22,7 +24,8 @@ um runtime Android, a mesma fronteira continua ativa.
 - card, CTA de sonho, tela e deep link do despertador com conteúdo pessoal;
 - sincronização em segundo plano do despertador nativo;
 - pergunta, controle e chamadas de processamento pago em nuvem. A criação usa
-  o caminho local nesta primeira versão.
+  o caminho local nesta primeira versão. A narração do Plano usa o sintetizador
+  do sistema, não ElevenLabs.
 
 A Comunidade e o despertador continuam disponíveis no site e no iOS. Uma build
 Android local dedicada pode definir a flag como `0` para exercitar apenas a UI
@@ -47,6 +50,21 @@ exatos e podem sofrer atraso por regras do sistema, economia de bateria ou
 restrições do fabricante. O plano não usa tela sobreposta, Acessibilidade,
 modo quiosque nem administração do aparelho e nunca bloqueia o restante do
 celular. `Agora não` e `Adiar 10 min` permanecem disponíveis sem exigir fala.
+
+## Narração da visão no Plano Celeste
+
+`expo-speech` entrega ao sintetizador do sistema o texto completo da visão ou
+Cena-Âncora somente depois que a pessoa toca em ouvir. A Celeste não grava um
+novo arquivo de áudio e a biblioteca não acrescenta permissão sensível. Os
+controles de repetição e o microfone só são liberados depois que a narração
+termina ou que a pessoa confirma ter lido a visão completa.
+
+Este fluxo é separado do reconhecimento de fala. Não se deve afirmar que toda
+engine ou voz TTS é offline: o fornecedor instalado no aparelho pode precisar de
+rede. O AAB final precisa ser testado com e sem conexão e ter o tráfego
+inspecionado. Se o sintetizador transmitir o texto, o Data Safety deve refletir
+o comportamento observado. A inclusão do módulo nativo exige um novo prebuild e
+um novo binário Android.
 
 ## Microfone no Plano Celeste
 

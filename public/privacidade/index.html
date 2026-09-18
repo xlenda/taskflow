@@ -23,13 +23,13 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Documento público · versão 1.3.0</p>
+          <p class="eyebrow">Documento público · versão 1.4.0</p>
           <h1>Política de privacidade</h1>
           <p class="lead">
             Esta política descreve como a Celeste trata dados no site e no aplicativo
             identificado pelo pacote <code>com.celesteapp.affirmations</code>.
           </p>
-          <p class="updated">Atualizada em 4 de setembro de 2026.</p>
+          <p class="updated">Atualizada em 17 de setembro de 2026.</p>
         </header>
 
         <div class="content">
@@ -159,9 +159,22 @@
             <h2 id="voz">4. Voz, mídia, notificações e alarme</h2>
             <ul>
               <li>
-                Tocar em Reproduzir com autorização envia o texto escolhido, idioma e narrador
-                para a ElevenLabs. O áudio devolvido não é publicado e pode ser guardado em cache
-                privado; itens sem uso por 30 dias são removidos periodicamente.
+                No Plano Celeste, a imagem e o texto da visão ou Cena-Âncora aparecem antes da
+                narração. A narração completa só começa depois que a pessoa toca no controle para
+                ouvi-la; ela não é iniciada automaticamente.
+              </li>
+              <li>
+                Se o consentimento para processamento em nuvem já estiver ativo, esse toque pode
+                enviar à ElevenLabs o texto escolhido, idioma e narrador para produzir a narração.
+                O áudio devolvido não é publicado e pode ser guardado em cache privado; itens sem
+                uso por 30 dias são removidos periodicamente.
+              </li>
+              <li>
+                Sem esse consentimento ativo, a Celeste usa a síntese de voz fornecida pelo
+                navegador ou sistema operacional. Essa síntese segue as regras do respectivo
+                fornecedor e, conforme a voz ou mecanismo instalado, pode depender de rede; por
+                isso, a Celeste não afirma que ela seja sempre processada offline. A síntese não
+                exige uma nova permissão sensível.
               </li>
               <li>
                 As prévias dos narradores já vêm com o aplicativo e não contêm respostas do
@@ -174,18 +187,21 @@
                 Gemini quando a reflexão em nuvem é solicitada e autorizada.
               </li>
               <li>
-                No Plano Celeste, a visão ou Cena-Âncora e a afirmação permanecem visíveis em texto
-                grande para leitura; não é necessário decorá-las. O microfone só começa após um
-                toque e a afirmação é comparada localmente duas vezes, com progresso <strong>1/2</strong> e
-                <strong>2/2</strong>. O app aceita apenas reconhecimento no dispositivo quando o
+                Depois da narração completa, ou da confirmação acessível de que a visão foi lida,
+                a afirmação permanece visível em texto grande e são liberadas duas repetições;
+                não é necessário decorá-la. O microfone só começa após
+                outro toque e a afirmação é comparada localmente duas vezes, com progresso
+                <strong>1/2</strong> e <strong>2/2</strong>. A permissão de microfone é usada somente
+                para essa etapa, e o app aceita apenas reconhecimento no dispositivo quando o
                 aparelho e o idioma oferecem suporte. Se não oferecem, se a permissão for negada ou
                 se a leitura não for reconhecida, há uma conclusão manual acessível.
               </li>
               <li>
-                O áudio e a transcrição temporária dessa prática não são guardados, enviados ao
-                backend, incluídos em backup nem escritos em logs. A Celeste mantém no aparelho
-                somente um recibo mínimo, como dia, horário, forma de conclusão e pontuação de correspondência,
-                sem o texto reconhecido.
+                O áudio do microfone e a transcrição temporária dessa prática não são guardados,
+                enviados ao backend, incluídos em backup nem escritos em logs. A Celeste mantém no
+                aparelho somente um recibo mínimo, como dia, horário, forma de conclusão e pontuação
+                de correspondência, sem o texto reconhecido. Isso não descreve o tratamento feito
+                pelo fornecedor do sintetizador de saída, informado acima.
               </li>
               <li>
                 No aplicativo instalado, a Celeste pode pedir acesso a notificações. Somente em um

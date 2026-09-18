@@ -72,21 +72,30 @@ que apareçam e descrevam o app real.
 ### Fronteira Data Safety da v1 Android
 
 No Android, as APIs pagas de Anthropic, OpenAI, Gemini e ElevenLabs falham antes
-de criar sessão ou fazer a chamada. O único fluxo intencional para fora do
-aparelho é a denúncia opcional de conteúdo, que envia pelo gateway Celeste ao
+de criar sessão ou fazer a chamada. O único fluxo controlado pelo app para fora
+do aparelho é a denúncia opcional de conteúdo, que envia pelo gateway Celeste ao
 Supabase um UUID pseudônimo, somente a saída gerada escolhida (ou referência
 visual), motivo, nota opcional e metadados mínimos da geração. As linhas ficam
 por no máximo 180 dias e podem ser excluídas no Perfil enquanto a sessão desta
 instalação existir. O preenchimento exato está em `google-play-console-prefill.md`.
 
-O Plano Celeste pede microfone somente após um toque e usa reconhecimento no
-dispositivo quando suportado. A pessoa lê a afirmação que continua visível e a
-repete duas vezes (`1/2` e `2/2`). Áudio e transcrição são descartados sem envio
-ou armazenamento; somente um recibo mínimo fica local. Validar essa fronteira
-novamente no AAB assinado e no tráfego de um Android físico.
+O Plano Celeste mostra a imagem e o texto da visão ou Cena-Âncora. A narração
+completa começa somente após toque e, na v1 Android, usa o sintetizador do
+sistema porque ElevenLabs permanece bloqueada. A implementação não deve ser
+descrita como necessariamente offline: a engine ou voz padrão do aparelho pode
+usar rede e precisa ser verificada no AAB e no tráfego de um Android físico.
+Depois da narração, ou da confirmação acessível de leitura integral, o Plano
+libera duas repetições da afirmação (`1/2` e `2/2`).
+O microfone começa após outro toque e o reconhecimento aceito pelo app permanece
+no dispositivo quando suportado. Áudio e transcrição captados pelo microfone são
+descartados sem envio ou armazenamento; somente um recibo mínimo fica local.
+`expo-speech` não acrescenta uma nova permissão sensível, mas exige novo prebuild
+e novos binários Android/iOS; publicar somente a web não atualiza o app instalado.
 
-As tabelas abaixo continuam sendo o inventário para web/iOS e para uma futura
-release que habilite provedores em nuvem; não representam a v1 Android.
+As linhas de provedores pagos abaixo continuam sendo o inventário para web/iOS
+e para uma futura release Android que habilite nuvem; elas não representam a
+v1 Android. A linha do sintetizador do sistema ou navegador também deve ser
+conferida na plataforma em que a prática for executada.
 
 ### Dados transmitidos fora do aparelho
 
@@ -95,7 +104,8 @@ release que habilite provedores em nuvem; não representam a v1 Android.
 | Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; confirmar retenção |
 | Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini |
 | Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
-| Texto da narração, idioma e narrador | toque em Play com consentimento | gerar áudio | opcional | não identificado | ElevenLabs TTS |
+| Texto da narração, idioma e narrador | toque em Play quando o consentimento de nuvem já está ativo | gerar áudio neural | opcional | não identificado | ElevenLabs TTS |
+| Texto da visão e idioma | toque em ouvir sem consentimento de nuvem ativo | sintetizar a narração no ambiente da pessoa | opcional | não identificado | sintetizador do sistema ou navegador; confirmar se a voz efetiva usa rede e como o fornecedor trata o texto |
 | Relato de sonho | reflexão em nuvem autorizada | gerar reflexão e afirmação | opcional | não identificado | Google Gemini; fallback local disponível |
 | Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |
 | Cena anterior e contagens de progresso | novo capítulo do Espelho Vivo | personalização | opcional | não identificado | texto de Rastro não é enviado |
@@ -110,11 +120,15 @@ release que habilite provedores em nuvem; não representam a v1 Android.
 - configuração dos lembretes locais e, somente no iPhone compatível, do despertador com conteúdo pessoal escolhido;
 - horários, dias, seleção e recibos mínimos do Plano Celeste, sem áudio ou
   transcrição reconhecida;
+- imagem e texto exibidos na prática continuam sendo os conteúdos pessoais já
+  existentes; a Celeste não grava um arquivo novo para a narração do sistema;
 - nomes de filhos, pessoas importantes e pessoa específica nos campos próprios;
 - áudio bruto de ditado: a Celeste recebe a transcrição fornecida pelo sistema,
   não envia a gravação por conta própria.
-- áudio e transcrição do Plano Celeste: efêmeros e locais; a prática não faz
-  fallback silencioso para reconhecimento em nuvem.
+- áudio e transcrição do microfone no Plano Celeste: efêmeros e locais; a
+  prática não faz fallback silencioso para reconhecimento em nuvem. Essa
+  garantia não deve ser estendida ao sintetizador de saída sem validar a voz e
+  o fornecedor usados pelo sistema ou navegador.
 
 ### Respostas que ainda dependem de contrato ou binário
 
@@ -142,7 +156,8 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 - contraste suficiente;
 - redução de movimento respeitada na abertura;
 - legendas no preview da loja;
-- áudio não ser o único meio de receber uma afirmação.
+- áudio não ser o único meio de receber uma visão ou afirmação;
+- imagem possuir contexto textual equivalente e a visão permanecer legível;
 - afirmação permanecer visível durante a escuta e conclusão manual acessível
   existir quando o reconhecimento local não puder ser usado.
 
@@ -156,9 +171,11 @@ Preparar evidência no build nativo antes de selecionar os rótulos:
 5. Ativar o controle único com confirmação adulta para testar cena, sonho,
    imagem, tradução e narração em nuvem.
 6. Testar notificações no app instalado.
-7. Abrir o Plano Celeste, escolher uma visão ou Cena-Âncora, tocar para iniciar
-   o microfone e ler a afirmação visível duas vezes; conferir `1/2`, `2/2`,
-   cancelamento, `Agora não`, `Adiar 10 min` e conclusão manual.
+7. Abrir o Plano Celeste, escolher uma visão ou Cena-Âncora e uma afirmação,
+   conferir imagem e texto, tocar em `Ouvir visão completa` e esperar a narração
+   terminar. Depois, tocar para iniciar o microfone e ler a afirmação visível
+   duas vezes; conferir `1/2`, `2/2`, cancelamento, `Agora não`, `Adiar 10 min`
+   e conclusão manual.
 8. Testar o despertador somente em iPhone compatível com o módulo nativo,
    incluindo afirmação, visão, Cena-Âncora, frase de sonho e frase própria; ele
    é separado dos lembretes comuns do Plano Celeste.

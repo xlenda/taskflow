@@ -98,6 +98,9 @@ Também autorizo marcar individualmente no Play Console os assets criados ou edi
 - Responsável por revisar as denúncias de conteúdo: `EU` / `______________________________`
 - Frequência de revisão: `DIÁRIA` / `______________________________`
 - Confirmo que validarei o AAB, as capturas e os fluxos principais em um Android físico antes da liberação pública: `SIM` / `NÃO`
+- Confirmo que testarei o sintetizador do sistema com e sem rede e verificarei o
+  tráfego antes de afirmar que o texto da visão permanece somente no aparelho:
+  `SIM` / `NÃO`
 
 ## Informações já preparadas para preenchimento automático
 
@@ -114,6 +117,13 @@ Também autorizo marcar individualmente no Play Console os assets criados ou edi
 - Acesso para revisão: todas as funções disponíveis sem credenciais especiais
 - Conteúdo gerado ou personalizado por IA: sim, com denúncia dentro do aplicativo
 - Microfone: iniciado por toque e processado localmente no Plano Celeste; áudio e transcrição não devem sair do aparelho nem ser guardados
+- Narração diurna: imagem e texto permanecem visíveis; a narração completa começa
+  somente após toque e, ao terminar, libera as duas repetições. A alternativa
+  acessível permite confirmar a leitura integral quando o áudio não está disponível. Na v1 Android,
+  `expo-speech` usa o sintetizador do sistema sem acrescentar permissão sensível;
+  a engine pode usar rede e precisa ser validada no AAB final
+- Binário: a inclusão de `expo-speech` exige gerar um novo AAB e um novo build
+  iOS; atualizar apenas o site/Vercel não acrescenta o módulo aos apps instalados
 - Data Safety básico: UUID pseudônimo, conteúdo escolhido para denúncia e ações da denúncia; coleta opcional, não efêmera, para funcionalidade e segurança
 
 As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.

@@ -2,8 +2,20 @@
 
 > Este documento descreve o prototipo de despertador exato, que continua fora
 > da v1 Android. O Plano Celeste e outro recurso: usa lembretes comuns por
-> `expo-notifications`, nao pede permissao de alarme exato, nao bloqueia o
-> aparelho e mantem `Agora nao` e `Adiar 10 min` disponiveis sem fala.
+> `expo-notifications`, mostra a imagem e o texto da visao, inicia a narracao
+> completa somente depois de um toque e a conclui, ou confirma a leitura integral
+> pela alternativa acessivel, antes de liberar duas repeticoes da afirmacao. O
+> reconhecimento do microfone ocorre no dispositivo,
+> sem salvar audio ou transcricao; a pratica nao pede permissao de alarme exato,
+> nao bloqueia o aparelho e mantem `Agora nao` e `Adiar 10 min` disponiveis sem
+> fala.
+
+No Plano Celeste, a ElevenLabs so e usada quando o consentimento de nuvem ja esta
+ativo. Sem esse consentimento, ou se a voz neural falhar, `expo-speech` usa o TTS
+do sistema ou navegador. A engine ou a voz configurada pode depender de rede, por
+isso esse caminho nao deve ser anunciado como sempre offline. O pacote nao
+adiciona permissao sensivel, mas exige um novo binario Android; publicar somente
+a versao web nao atualiza o app da loja.
 
 O modulo `celeste-affirmation-alarm` usa um `AlarmManager` do Android para
 agendar o proximo horario escolhido, um `BroadcastReceiver` para reagendar a
@@ -37,8 +49,10 @@ Esse diretorio e privado ao app. A escrita usa arquivo temporario e rename; o
 novo `PendingIntent` e confirmado antes de o alarme e o WAV anteriores serem
 removidos. O token da versao impede que um alarme antigo toque um conteudo novo.
 
-Sem WAV selecionado, o service usa `TextToSpeech` local como alternativa. Nem
-o texto nem os bytes do audio sao enviados pelo modulo a qualquer servidor.
+Sem WAV selecionado, o service usa a engine Android `TextToSpeech` como
+alternativa. O modulo nao envia o texto nem os bytes de audio a um servidor, mas
+a engine ou a voz escolhida pode usar rede; portanto esse TTS nao deve ser
+descrito como necessariamente offline.
 
 ## Limites para Play e validacao em aparelho
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -50,8 +50,18 @@ const S = {
     en: 'Choose your vision or Anchor Scene, affirmation, and up to four moments in your day.',
   },
   privacy: {
-    pt: 'Sua visão ou Cena-Âncora e sua afirmação ficam visíveis na prática. Você lê a afirmação duas vezes; áudio e transcrição não são salvos. A tela bloqueada mostra só um lembrete discreto.',
-    en: 'Your vision or Anchor Scene and affirmation remain visible during practice. You read the affirmation twice; audio and transcript are not stored. The lock screen only shows a discreet reminder.',
+    pt: 'Sua visão ou Cena-Âncora e sua afirmação ficam visíveis na prática. Você lê a afirmação duas vezes; o áudio e a transcrição do microfone não são salvos. A tela bloqueada mostra só um lembrete discreto.',
+    en: 'Your vision or Anchor Scene and affirmation remain visible during practice. You read the affirmation twice; microphone audio and transcript are not stored. The lock screen only shows a discreet reminder.',
+  },
+  combination: {
+    pt: 'Em cada prática, você vê e ouve sua Visão ou Cena-Âncora e depois repete a afirmação duas vezes.',
+    en: 'In every practice, you see and hear your vision or Anchor Scene and then repeat the affirmation twice.',
+  },
+  changeChoice: { pt: 'Toque para ver e trocar', en: 'Tap to view and change' },
+  draftPreservedTitle: { pt: 'Rascunho preservado', en: 'Draft preserved' },
+  draftPreservedBody: {
+    pt: 'Suas escolhas continuam aqui. Revise o plano e use o botão no fim da tela quando estiver tudo certo.',
+    en: 'Your choices are still here. Review the plan and use the button at the end when everything looks right.',
   },
   noContentTitle: { pt: 'Crie seu primeiro conteúdo pessoal', en: 'Create your first personal content' },
   noContentBody: {
@@ -99,17 +109,18 @@ function choiceTitle(item, fallback) {
   return compact(item?.text || item?.title || item?.sourceTitle, 120) || fallback;
 }
 
-function ChoiceList({ items, selectedId, onSelect, theme, emptyLabel }) {
+function ChoiceList({ items, selectedId, onSelect, theme, emptyLabel, testID }) {
   if (!items.length) {
     return <Text style={[styles.helper, { color: theme.textMuted }]}>{emptyLabel}</Text>;
   }
   return (
-    <View style={styles.choiceList}>
+    <View testID={`${testID}-options`} style={styles.choiceList}>
       {items.map((item, index) => {
         const selected = item.id === selectedId;
         return (
           <Pressable
             key={item.id}
+            testID={`${testID}-option-${item.id}`}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             onPress={() => onSelect(item.id)}
@@ -137,6 +148,69 @@ function ChoiceList({ items, selectedId, onSelect, theme, emptyLabel }) {
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+function CompactChoice({
+  title,
+  items,
+  selectedId,
+  onSelect,
+  expanded,
+  onToggle,
+  theme,
+  emptyLabel,
+  helperLabel,
+  icon,
+  testID,
+}) {
+  const selectedItem = items.find((item) => item.id === selectedId) || null;
+  const selectedTitle = choiceTitle(selectedItem, emptyLabel);
+  return (
+    <View testID={`${testID}-section`}>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}: ${selectedTitle}`}
+        accessibilityHint={helperLabel}
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.compactChoice,
+          {
+            backgroundColor: theme.accentSoft,
+            borderColor: theme.accent,
+            opacity: pressed ? 0.75 : 1,
+          },
+        ]}
+      >
+        <View style={[styles.compactChoiceIcon, { backgroundColor: theme.surface }]}>
+          <Ionicons name={icon} size={20} color={theme.accent} />
+        </View>
+        <View style={styles.compactChoiceCopy}>
+          <Text numberOfLines={2} style={[styles.compactChoiceText, { color: theme.text }]}>
+            {selectedTitle}
+          </Text>
+          <Text style={[styles.compactChoiceHint, { color: theme.textMuted }]}>{helperLabel}</Text>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={theme.accent}
+        />
+      </Pressable>
+      {expanded ? (
+        <ChoiceList
+          items={items}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          theme={theme}
+          emptyLabel={emptyLabel}
+          testID={testID}
+        />
+      ) : null}
     </View>
   );
 }
@@ -188,12 +262,22 @@ export default function PracticePlanScreen() {
     () => normalizePracticePlan(state?.practicePlan, options),
     [options, state?.practicePlan]
   );
+  const preserveDraftOnNextFocusRef = useRef(false);
   const [draft, setDraft] = useState(stored);
+  const [expandedChoice, setExpandedChoice] = useState(null);
+  const [draftPreserved, setDraftPreserved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
-    if (isFocused && !busy) setDraft(stored);
+    if (!isFocused || busy) return;
+    if (preserveDraftOnNextFocusRef.current) {
+      preserveDraftOnNextFocusRef.current = false;
+      setDraftPreserved(true);
+      return;
+    }
+    setDraft(stored);
+    setDraftPreserved(false);
   }, [busy, isFocused, stored]);
 
   useEffect(() => {
@@ -304,6 +388,7 @@ export default function PracticePlanScreen() {
         syncError: false,
         notificationIdsBySlot: result.identifiersBySlot,
       });
+      setDraftPreserved(false);
       setFeedback('saved');
     } else if (!stored.enabled) {
       savePracticePlan({
@@ -335,6 +420,7 @@ export default function PracticePlanScreen() {
         permission: Platform.OS === 'web' ? 'unsupported' : stored.permission,
         syncError: false,
       });
+      setDraftPreserved(false);
       setFeedback('saved');
     } else {
       setFeedback('cancelFailed');
@@ -343,7 +429,22 @@ export default function PracticePlanScreen() {
   }, [draft, savePracticePlan, stored]);
 
   const firstEnabledSlot = draft.slots.find((slot) => slot.enabled) || null;
+  const previewSlot = normalizePracticePlan(draft, options).slots.find((slot) => slot.enabled) || null;
   const selectionSlot = firstEnabledSlot || draft.slots[0] || null;
+  const tryPracticeNow = () => {
+    if (!firstEnabledSlot || busy) return;
+    preserveDraftOnNextFocusRef.current = true;
+    setDraftPreserved(false);
+    if (!previewSlot) {
+      navigation.navigate('PracticeRitual', { slotId: firstEnabledSlot.id });
+      return;
+    }
+    navigation.navigate('PracticeRitual', {
+      slotId: previewSlot.id,
+      previewAffirmationId: previewSlot.affirmationId,
+      previewVisionId: previewSlot.visionId,
+    });
+  };
   if (!affirmations.length || !visions.length) {
     return (
       <Screen testID="practice-plan-screen">
@@ -372,22 +473,60 @@ export default function PracticePlanScreen() {
         </View>
       </Card>
 
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(S.affirmation)}</Text>
-      <ChoiceList
-        items={affirmations}
-        selectedId={selectionSlot?.affirmationId}
-        onSelect={(id) => setAllSlots('affirmationId', id)}
-        theme={theme}
-        emptyLabel={t(S.noContentBody)}
-      />
+      {draftPreserved ? (
+        <Card testID="practice-preview-draft-preserved" tone="alt" style={styles.draftPreservedCard}>
+          <View style={styles.draftPreservedRow} accessibilityLiveRegion="polite">
+            <View style={[styles.draftPreservedIcon, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons name="document-text-outline" size={20} color={theme.accent} />
+            </View>
+            <View style={styles.draftPreservedCopy}>
+              <Text style={[styles.draftPreservedTitle, { color: theme.text }]}>
+                {t(S.draftPreservedTitle)}
+              </Text>
+              <Text style={[styles.draftPreservedBody, { color: theme.textMutedOnAlt || theme.textMuted }]}>
+                {t(S.draftPreservedBody)}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
 
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(S.vision)}</Text>
-      <ChoiceList
+      <Text testID="practice-plan-combination" style={[styles.combination, { color: theme.textMuted }]}>
+        {t(S.combination)}
+      </Text>
+
+      <CompactChoice
+        testID="practice-vision-selector"
+        title={t(S.vision)}
         items={visions}
         selectedId={selectionSlot?.visionId}
-        onSelect={(id) => setAllSlots('visionId', id)}
+        onSelect={(id) => {
+          setAllSlots('visionId', id);
+          setExpandedChoice(null);
+        }}
+        expanded={expandedChoice === 'vision'}
+        onToggle={() => setExpandedChoice((current) => current === 'vision' ? null : 'vision')}
         theme={theme}
         emptyLabel={t(S.noContentBody)}
+        helperLabel={t(S.changeChoice)}
+        icon="images-outline"
+      />
+
+      <CompactChoice
+        testID="practice-affirmation-selector"
+        title={t(S.affirmation)}
+        items={affirmations}
+        selectedId={selectionSlot?.affirmationId}
+        onSelect={(id) => {
+          setAllSlots('affirmationId', id);
+          setExpandedChoice(null);
+        }}
+        expanded={expandedChoice === 'affirmation'}
+        onToggle={() => setExpandedChoice((current) => current === 'affirmation' ? null : 'affirmation')}
+        theme={theme}
+        emptyLabel={t(S.noContentBody)}
+        helperLabel={t(S.changeChoice)}
+        icon="sparkles-outline"
       />
 
       <Card style={styles.scheduleCard}>
@@ -420,6 +559,7 @@ export default function PracticePlanScreen() {
         >
           <View style={styles.slotRow}>
             <Switch
+              testID={`practice-slot-${slot.id}-enabled`}
               value={slot.enabled}
               onValueChange={(enabled) => updateSlot(slot.id, { enabled })}
               accessibilityLabel={`${t(S.moments)} ${index + 1}`}
@@ -540,7 +680,7 @@ export default function PracticePlanScreen() {
             variant="soft"
             icon="mic-outline"
             label={t(S.tryNow)}
-            onPress={() => navigation.navigate('PracticeRitual', { slotId: firstEnabledSlot.id })}
+            onPress={tryPracticeNow}
             disabled={busy}
             style={styles.actionButton}
           />
@@ -574,6 +714,13 @@ const styles = StyleSheet.create({
   privacyRow: { flexDirection: 'row', alignItems: 'flex-start' },
   privacyIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   privacyText: { flex: 1, marginLeft: 12, fontSize: 13, lineHeight: 20, fontWeight: '600' },
+  draftPreservedCard: { marginTop: 12, borderRadius: 20, paddingVertical: 16 },
+  draftPreservedRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  draftPreservedIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  draftPreservedCopy: { flex: 1 },
+  draftPreservedTitle: { fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  draftPreservedBody: { marginTop: 2, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  combination: { marginTop: 20, fontSize: 14, lineHeight: 21, fontWeight: '650' },
   sectionTitle: { marginTop: 28, marginBottom: 12, fontSize: 19, lineHeight: 25, fontWeight: '850', letterSpacing: -0.2 },
   helper: { marginTop: 8, fontSize: 13, lineHeight: 19 },
   choiceList: { marginBottom: 2 },
@@ -581,6 +728,11 @@ const styles = StyleSheet.create({
   choiceDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   choiceDotFill: { width: 10, height: 10, borderRadius: 5 },
   choiceText: { flex: 1, marginRight: 10, fontSize: 14, lineHeight: 20, fontWeight: '650' },
+  compactChoice: { minHeight: 72, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 10 },
+  compactChoiceIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  compactChoiceCopy: { flex: 1, marginRight: 10 },
+  compactChoiceText: { fontSize: 14, lineHeight: 20, fontWeight: '750' },
+  compactChoiceHint: { marginTop: 2, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   scheduleCard: { borderRadius: 22, paddingVertical: 20 },
   timeChoiceGroup: { marginBottom: 18 },
   label: { marginBottom: 10, fontSize: 13, lineHeight: 18, fontWeight: '800' },

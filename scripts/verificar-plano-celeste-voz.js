@@ -144,6 +144,13 @@ async function main() {
   assert.match(swift, /removeTap\(onBus:\s*0\)/);
   assert.match(swift, /request\.endAudio\(\)/);
   assert.match(swift, /session\.task\?\.cancel\(\)/);
+  assert.match(swift, /previousAudioCategory:\s*audioSession\.category/);
+  assert.match(swift, /previousAudioMode:\s*audioSession\.mode/);
+  assert.match(swift, /previousAudioOptions:\s*audioSession\.categoryOptions/);
+  assert.match(
+    swift,
+    /audioSession\.setCategory\(\s*session\.previousAudioCategory,[\s\S]*?mode:\s*session\.previousAudioMode,[\s\S]*?options:\s*session\.previousAudioOptions/
+  );
   assert.match(swift, /"candidates": normalized\.candidates[\s\S]*"confidence": normalized\.confidence/);
   assert.match(
     swift,
@@ -172,6 +179,28 @@ async function main() {
   assert.match(ritualScreen, /recognize\(\{\s*locale\s*\}\)/);
   assert.match(ritualScreen, /import\s*\{[\s\S]*?\bAppState\b[\s\S]*?\}\s*from 'react-native';/);
   assert.match(ritualScreen, /AppState\.addEventListener\(\s*['"]change['"]/);
+  assert.match(ritualScreen, /useIsFocused\(\)/);
+  assert.match(
+    ritualScreen,
+    /if \(isFocused \|\| !mountedRef\.current\) return;[\s\S]*?cancelPracticeSpeech\(\)\.catch[\s\S]*?stopOwnedCloudNarration\(\)/
+  );
+  assert.match(ritualScreen, /useApplicationAudioSession:\s*false/);
+  assert.match(ritualScreen, /narration\.stop\(attemptPlaybackId\)/);
+  assert.match(ritualScreen, /narrationStopRef\.current\?\.\(playbackId\)/);
+  assert.match(
+    ritualScreen,
+    /const visionPlaybackId = `practice-vision:\$\{narrationSessionIdRef\.current\}:\$\{contentFingerprint\}`;/
+  );
+  assert.match(
+    ritualScreen,
+    /if \(!narration\.error \|\| !cloudPlaybackStartedRef\.current\) return;[\s\S]*?speakVisionLocally\(narrationEpochRef\.current\)/
+  );
+  assert.match(ritualScreen, /result\?\.ok && result\.ready[\s\S]*?speakVisionLocally\(epoch\)/);
+  assert.match(ritualScreen, /const attemptPlaybackId = `\$\{visionPlaybackId\}:\$\{epoch\}`;/);
+  assert.match(
+    ritualScreen,
+    /if \(!mountedRef\.current \|\| !isFocused \|\| narrationEpochRef\.current !== epoch\) \{[\s\S]*?narration\.stop\(attemptPlaybackId\)/
+  );
   assert.match(
     ritualScreen,
     /if \(nextState === 'active' \|\| !mountedRef\.current\) return;[\s\S]*sessionRef\.current \+= 1;[\s\S]*cancelPracticeSpeech\(\)\.catch[\s\S]*setPhase\(\(current\) => current === 'complete' \? current : 'ready'\)/

@@ -30,8 +30,9 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 | Compras ou assinaturas | Não | nenhum SDK de billing nem produto ativo identificado |
 | Despertador Android | Não aparece e não entra no binário | módulo autoligado apenas para Apple; permissões de alarme exato bloqueadas em `app.json` |
 | Lembrete comum | Sim, opcional | `expo-notifications`; não é despertador nem alarme exato |
-| Plano Celeste | Sim, opcional | um a quatro lembretes comuns; visão ou Cena-Âncora e afirmação visíveis; duas repetições da afirmação para registrar a prática |
+| Plano Celeste | Sim, opcional | um a quatro lembretes comuns; imagem e texto da visão ou Cena-Âncora visíveis; narração completa iniciada por toque; depois, duas repetições da afirmação para registrar a prática |
 | Microfone | Sim, somente após toque | `RECORD_AUDIO` atende ao reconhecimento no dispositivo do Plano Celeste; sem fallback para nuvem e com conclusão manual acessível |
+| Síntese de voz da visão | Sim, somente após toque | `expo-speech` usa o sintetizador do sistema; não acrescenta permissão sensível, não usa ElevenLabs nesta v1 e não deve ser descrito como necessariamente offline sem validar a engine/voz do aparelho |
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de cena, tradução, imagem, sonho e voz | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
@@ -53,9 +54,9 @@ foram removidos. As políticas da Comunidade continuam desabilitadas por padrão
 A configuração e as dependências instaladas fixam SDK 57 com
 `compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
 Um novo prebuild a partir da árvore final ainda precisa confirmar o autolinking
-de `CelestePracticeSpeech`, `RECORD_AUDIO` e a ausência de alarme exato, overlay,
-armazenamento legado e foreground service. O AAB final deve repetir essa inspeção
-antes do envio.
+de `CelestePracticeSpeech` e `expo-speech`, `RECORD_AUDIO`, a consulta ao serviço
+TTS e a ausência de alarme exato, overlay, armazenamento legado e foreground
+service. O AAB final deve repetir essa inspeção antes do envio.
 
 ### Ainda não comprovado sem o AAB final
 
@@ -63,9 +64,13 @@ antes do envio.
 - presença das variáveis públicas Supabase no perfil EAS `production`;
 - funcionamento da denúncia, da notificação e do armazenamento no AAB instalado
   em um Android físico;
-- funcionamento do Plano Celeste com a visão ou Cena-Âncora e a afirmação visíveis, progresso `1/2` e
-  `2/2`, permissão concedida/negada, reconhecedor local disponível/ausente,
-  conclusão manual, cancelamento e adiamento;
+- funcionamento do Plano Celeste com imagem e texto da visão ou Cena-Âncora e a
+  afirmação visíveis; narração completa iniciada por toque e concluída, ou
+  leitura integral confirmada pela alternativa acessível, antes de liberar o
+  progresso `1/2` e `2/2`; permissão concedida/negada, reconhecedor
+  local disponível/ausente, conclusão manual, cancelamento e adiamento;
+- comportamento do sintetizador com e sem rede, voz instalada/indisponível e
+  inspeção de tráfego para identificar se a engine padrão transmite o texto;
 - tráfego de rede do binário confirmando que, fora uma denúncia escolhida pela
   pessoa, nenhuma API paga é contatada;
 - screenshots capturados desse mesmo build.
@@ -101,8 +106,9 @@ growth`, `Mindfulness`, `Journal`, `Meditation` e `Well-being`.
 
 > A versão Android não exige cadastro nem login. Conclua o onboarding; a primeira
 > Cena-Âncora é criada automaticamente no aparelho, com a nuvem desligada. O
-> Plano Celeste usa lembretes comuns e pode
-> pedir o microfone somente quando você tocar para iniciar uma prática. A
+> Plano Celeste usa lembretes comuns, mostra imagem e texto e narra a visão pelo
+> sintetizador do sistema somente depois de um toque. Após a narração, pode
+> pedir o microfone somente quando você tocar para iniciar as duas repetições. A
 > Comunidade, o despertador exato e os recursos pagos em nuvem não fazem parte
 > desta versão.
 
@@ -180,13 +186,20 @@ O Google define coleta como transmissão para fora do aparelho e exige declarar
 dados pseudônimos. Portanto, **não** marcar “nenhum dado coletado”: ao enviar
 uma denúncia, o app grava a evidência no Supabase para moderação.
 
-O Plano Celeste pede `RECORD_AUDIO`, mas seu fluxo de voz não transmite áudio ou
-transcrição para fora do aparelho. A frase permanece visível, a pessoa toca
-para iniciar e a repete duas vezes; o reconhecimento local só é usado quando
-suportado. A Celeste descarta áudio e texto reconhecido e guarda apenas um
-recibo local sem a transcrição. Assim, esse fluxo, isoladamente, não acrescenta
-`Audio files` nem um novo tipo coletado ao Data Safety. Confirmar por inspeção
-de tráfego e do AAB final antes de copiar essa conclusão para o console.
+O Plano Celeste pede `RECORD_AUDIO`, mas o fluxo de reconhecimento não transmite
+áudio ou transcrição para fora do aparelho. A afirmação permanece visível; após
+a narração completa da visão, a pessoa toca para iniciar o microfone e repete a
+frase duas vezes. O reconhecimento local só é usado quando suportado. A Celeste
+descarta áudio e texto reconhecido e guarda apenas um recibo local sem a
+transcrição. Assim, esse fluxo de entrada, isoladamente, não acrescenta `Audio
+files` nem um novo tipo coletado ao Data Safety.
+
+A narração de saída é separada: ElevenLabs permanece bloqueada na v1 Android e
+`expo-speech` entrega o texto da visão ao sintetizador escolhido pelo sistema.
+A biblioteca não adiciona uma nova permissão sensível, mas a engine ou voz pode
+usar rede. Antes de preencher o console, confirmar no AAB e no tráfego se o texto
+fica no aparelho. Se houver transmissão, reavaliar `Other user-generated
+content`, processamento efêmero, compartilhamento e finalidade.
 
 ### Data collection and security
 
@@ -252,7 +265,7 @@ Não há campos nem fluxos intencionais para:
 - e-mail, telefone, endereço, raça/etnia, crenças ou orientação sexual;
 - mensagens, fotos, vídeos, arquivos, calendário ou acesso ao catálogo de
   contatos do sistema;
-- áudio transmitido ou coletado: a permissão de microfone existe somente para o
+- áudio do microfone transmitido ou coletado: a permissão existe somente para o
   reconhecimento local e efêmero do Plano Celeste;
 - histórico de busca, lista de apps instalados;
 - crash logs, diagnostics ou outros dados de desempenho;
@@ -299,6 +312,8 @@ saúde. Classificar esse caso conforme a seção Data Safety.
 
 Os arquivos em `pt-BR/google-play` e `en-US/google-play` não prometem voz
 escolhida, narração paga, geração em nuvem, Comunidade pública nem despertador.
+A narração por sintetizador do sistema no Plano Celeste não altera essa
+fronteira e só deve ser anunciada depois do teste do AAB em aparelho real.
 Os textos e materiais Apple permanecem inalterados.
 
 Os rascunhos visuais da Google Play seguem o plano `googlePlayV1` de
@@ -320,9 +335,11 @@ Texto preparado para o campo de notas, se aparecer:
 > No sign-in or review credentials are required. On first launch, select a
 > language and complete onboarding. The first Anchor Scene is created on the
 > device automatically, with cloud processing off. To test Celeste Plan, open it
-> from Home, select a vision or Anchor Scene and an affirmation, enable an ordinary reminder, then tap to start the
-> microphone and read the visible affirmation twice. Audio and transcripts are
-> not retained or uploaded; Not now, Snooze 10 min and an accessible manual
+> from Home, select a vision or Anchor Scene and an affirmation, and enable an
+> ordinary reminder. Confirm that the image and text remain visible, tap Listen
+> to full vision, and wait for narration to finish. Then tap to start the
+> microphone and read the visible affirmation twice. Microphone audio and
+> transcripts are not retained or uploaded; Not now, Snooze 10 min and an accessible manual
 > completion remain available. Community, the exact personal-content alarm, purchases,
 > ads and paid cloud generation are not included in this Android release. To test
 > in-app AI content reporting, open a generated scene, vision, affirmation or
@@ -347,8 +364,12 @@ Texto preparado para o campo de notas, se aparecer:
     dias é obrigatório;
 12. aprovação do AAB, screenshots nativos e teste em aparelho antes do rollout;
 13. confirmação em Android físico de que o Plano Celeste nunca bloqueia o
-    aparelho, mantém a visão ou Cena-Âncora e a afirmação visíveis, descarta
-    áudio/transcrição e usa somente lembretes comuns e reconhecimento local quando suportado.
+    aparelho, mantém imagem, visão ou Cena-Âncora e afirmação visíveis, inicia a
+    narração somente por toque, libera as duas repetições depois dela, descarta
+    áudio/transcrição do microfone e usa somente lembretes comuns e reconhecimento
+    local quando suportado;
+14. confirmação, por tráfego do AAB e termos da engine efetiva, se o sintetizador
+    do sistema processa o texto da visão apenas no aparelho ou usa rede.
 
 ## Fontes oficiais consultadas
 

@@ -23,13 +23,13 @@
 
       <main id="content">
         <header class="hero">
-          <p class="eyebrow">Public document · version 1.3.0</p>
+          <p class="eyebrow">Public document · version 1.4.0</p>
           <h1>Privacy policy</h1>
           <p class="lead">
             This policy explains how Celeste handles data on its website and in the
             application identified by package <code>com.celesteapp.affirmations</code>.
           </p>
-          <p class="updated">Updated September 4, 2026.</p>
+          <p class="updated">Updated September 17, 2026.</p>
         </header>
 
         <div class="content">
@@ -156,9 +156,22 @@
             <h2 id="media">4. Voice, media, notifications and alarms</h2>
             <ul>
               <li>
-                Pressing Play with permission sends the selected text, language and narrator to
-                ElevenLabs. The returned audio is not published and may be kept in a private cache;
-                items unused for 30 days are periodically removed.
+                In the Celeste Plan, the vision or Anchor Scene image and text appear before
+                narration. Full narration begins only after the person taps the control to hear it;
+                it does not start automatically.
+              </li>
+              <li>
+                If consent for cloud processing is already active, that tap may send the selected
+                text, language and narrator to ElevenLabs to produce the narration. The returned
+                audio is not published and may be kept in a private cache; items unused for 30 days
+                are periodically removed.
+              </li>
+              <li>
+                Without active consent, Celeste uses speech synthesis supplied by the browser or
+                operating system. That synthesis follows the respective provider's rules and,
+                depending on the installed voice or engine, may require network access; Celeste
+                therefore does not claim it is always processed offline. Speech synthesis does not
+                require a new sensitive permission.
               </li>
               <li>
                 Narrator previews are bundled with the app. They contain no onboarding answers and
@@ -171,18 +184,21 @@
                 reflection is requested and authorized.
               </li>
               <li>
-                In the Celeste Plan, the vision or Anchor Scene and the affirmation remain visible
-                in large text while the person reads; memorization is not required. The microphone
-                starts only after a tap, and the affirmation is matched locally twice, with <strong>1/2</strong> and
-                <strong>2/2</strong> progress. The app accepts only on-device recognition when the
-                device and language support it. If they do not, permission is denied, or speech is
-                not recognized, an accessible manual completion option is available.
+                After full narration, or after the accessible confirmation that the vision was
+                read, the affirmation remains visible in large text and two repetitions are enabled;
+                memorization is not required. The microphone starts only
+                after another tap, and the affirmation is matched locally twice, with
+                <strong>1/2</strong> and <strong>2/2</strong> progress. Microphone permission is used
+                only for this step, and the app accepts only on-device recognition when the device
+                and language support it. If they do not, permission is denied, or speech is not
+                recognized, an accessible manual completion option is available.
               </li>
               <li>
-                Audio and the temporary transcript from this practice are not stored, sent to the
-                backend, included in backups or written to logs. Celeste keeps only a minimal
-                on-device receipt such as day, time slot, method and matching score, without the
-                recognized text.
+                Microphone audio and the temporary transcript from this practice are not stored,
+                sent to the backend, included in backups or written to logs. Celeste keeps only a
+                minimal on-device receipt such as day, time slot, method and matching score,
+                without the recognized text. This does not describe processing by the output
+                speech-synthesis provider identified above.
               </li>
               <li>
                 In the installed app, Celeste may request notification access. Only on a compatible

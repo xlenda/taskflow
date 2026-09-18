@@ -128,16 +128,19 @@ public final class CelestePracticeSpeechModule: Module {
     }
 
     let audioEngine = AVAudioEngine()
+    let audioSession = AVAudioSession.sharedInstance()
     let session = RecognitionSession(
       recognizer: recognizer,
       request: request,
       audioEngine: audioEngine,
-      promise: promise
+      promise: promise,
+      previousAudioCategory: audioSession.category,
+      previousAudioMode: audioSession.mode,
+      previousAudioOptions: audioSession.categoryOptions
     )
     activeSession = session
 
     do {
-      let audioSession = AVAudioSession.sharedInstance()
       try audioSession.setCategory(.record, mode: .measurement, options: [])
       try audioSession.setActive(true)
 
@@ -267,9 +270,15 @@ public final class CelestePracticeSpeechModule: Module {
       session.task?.cancel()
     }
     session.task = nil
-    try? AVAudioSession.sharedInstance().setActive(
+    let audioSession = AVAudioSession.sharedInstance()
+    try? audioSession.setActive(
       false,
       options: .notifyOthersOnDeactivation
+    )
+    try? audioSession.setCategory(
+      session.previousAudioCategory,
+      mode: session.previousAudioMode,
+      options: session.previousAudioOptions
     )
   }
 
@@ -399,6 +408,9 @@ public final class CelestePracticeSpeechModule: Module {
     let request: SFSpeechAudioBufferRecognitionRequest
     let audioEngine: AVAudioEngine
     let promise: Promise
+    let previousAudioCategory: AVAudioSession.Category
+    let previousAudioMode: AVAudioSession.Mode
+    let previousAudioOptions: AVAudioSession.CategoryOptions
     var task: SFSpeechRecognitionTask?
     var timeout: DispatchWorkItem?
     var tapInstalled = false
@@ -408,12 +420,18 @@ public final class CelestePracticeSpeechModule: Module {
       recognizer: SFSpeechRecognizer,
       request: SFSpeechAudioBufferRecognitionRequest,
       audioEngine: AVAudioEngine,
-      promise: Promise
+      promise: Promise,
+      previousAudioCategory: AVAudioSession.Category,
+      previousAudioMode: AVAudioSession.Mode,
+      previousAudioOptions: AVAudioSession.CategoryOptions
     ) {
       self.recognizer = recognizer
       self.request = request
       self.audioEngine = audioEngine
       self.promise = promise
+      self.previousAudioCategory = previousAudioCategory
+      self.previousAudioMode = previousAudioMode
+      self.previousAudioOptions = previousAudioOptions
     }
   }
 

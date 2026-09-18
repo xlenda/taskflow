@@ -57,8 +57,8 @@ const COPY = {
   },
   phraseTitle: { pt: 'Conteúdo do despertar', en: 'Wake-up content' },
   phraseBody: {
-    pt: 'Escolha uma afirmação, uma visão, sua Cena-Âncora, uma frase de sonho ou escreva a sua.',
-    en: 'Choose an affirmation, a vision, your Anchor Scene, a dream phrase, or write your own.',
+    pt: 'Escolha uma afirmação, uma visão, sua Cena-Âncora, uma frase de sonho ou escreva a sua. Ao despertar, basta ouvir: não há leitura nem microfone.',
+    en: 'Choose an affirmation, a vision, your Anchor Scene, a dream phrase, or write your own. When you wake, just listen: there is no reading or microphone task.',
   },
   choose: { pt: 'Escolher conteúdo', en: 'Choose content' },
   change: { pt: 'Trocar', en: 'Change' },

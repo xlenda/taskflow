@@ -608,7 +608,12 @@ if (
 if (!reviewNotes.includes('afirmacao, visao, cena-ancora, frase de sonho ou frase propria')) {
   fail('Review notes must describe every personal-content alarm choice');
 }
-if (!privacyReview.includes('visao ou cena-ancora e afirmacao escolhidas')) {
+if (
+  !privacyReview.includes('visao ou cena-ancora') ||
+  !privacyReview.includes('imagem pessoal quando existente') ||
+  !privacyReview.includes('afirmacao escolhida') ||
+  !privacyReview.includes('narrar a visao completa apos toque')
+) {
   fail('Privacy review must describe the Anchor Scene option stored by Celeste Plan');
 }
 
@@ -623,22 +628,27 @@ for (const [label, document, requiredIdeas] of [
   ['privacy review', privacyReview, [
     'record_audio` nao significa coleta',
     'audio e transcricao permanecem efemeros e locais',
-    'nao ha fallback de rede, log, backup ou sdk',
+    'nao ha fallback de reconhecimento em rede, log, backup ou sdk',
+    'sintetizador do sistema ou navegador',
+    'nao presumir que toda voz de sistema funciona offline',
   ]],
   ['review notes', reviewNotes, [
-    'microfone comeca somente apos toque',
+    'microfone comeca somente apos outro toque',
     'reconhecimento no dispositivo',
-    'audio e transcricao nao sao retidos nem enviados',
+    'audio e transcricao captados pelo microfone nao sao salvos',
+    'narracao e iniciada por toque',
   ]],
   ['public privacy pt-BR', publicPrivacyPt, [
-    'microfone so comeca apos um toque',
+    'microfone so comeca apos outro toque',
     'aceita apenas reconhecimento no dispositivo',
     'nao sao guardados, enviados ao backend, incluidos em backup nem escritos em logs',
+    'nao afirma que ela seja sempre processada offline',
   ]],
   ['public privacy en-US', publicPrivacyEn, [
-    'microphone starts only after a tap',
+    'microphone starts only after another tap',
     'accepts only on-device recognition',
     'not stored, sent to the backend, included in backups or written to logs',
+    'does not claim it is always processed offline',
   ]],
 ]) {
   for (const idea of requiredIdeas) {

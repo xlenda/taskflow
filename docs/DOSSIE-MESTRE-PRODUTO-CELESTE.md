@@ -21,9 +21,9 @@ nem consome créditos.
 O mecanismo recebe o nome **Cena-Âncora**. Seu ciclo é:
 
 1. **Reconhecer:** a pessoa declara uma intenção e alguns detalhes relevantes.
-2. **Escutar ou ler:** a Celeste devolve uma cena sensorial em texto e, quando há
-   voz comprovadamente local, também narrada. O recibo mostra os rótulos que o
-   gerador registrou.
+2. **Escutar ou ler:** a Celeste devolve uma cena sensorial em texto e, quando a
+   pessoa aciona a narração, também em áudio pelo caminho permitido. O recibo
+   mostra os rótulos que o gerador registrou.
 3. **Aterrar:** a cena termina numa Ponte de Hoje pequena e controlável.
 4. **Registrar:** a pessoa guarda Rastros de Mudança, sem precisar atribuir um
    acontecimento a forças sobrenaturais.
@@ -421,10 +421,12 @@ Princípios de RLS:
 - PT-BR e inglês com portões de paridade;
 - primeira manifestação criada com respostas reais;
 - recompensa antes da tela de acesso;
-- o seletor anterior já separava escolha de narrador de conteúdo pessoal, mas
-  ainda usava amostras empacotadas; esses arquivos foram removidos nesta onda;
+- o seletor anterior já separava escolha de narrador de conteúdo pessoal. As
+  amostras antigas foram removidas naquela onda; a versão atual volta a incluir
+  prévias fixas em WAV, separadas da narração pessoal;
 - a arquitetura anterior mantinha histórias em texto quando não comprovava uma
-  voz local; a revisão atual substituiu esse caminho pela voz neural consentida;
+  voz local; a revisão atual oferece voz neural consentida nos players e, no
+  Plano Celeste, síntese do sistema ou navegador quando a nuvem não está ativa;
 - prática de 21 dias com histórico;
 - edição de título e afirmação;
 - backup e restauração manual na web;
@@ -591,14 +593,19 @@ Princípios de RLS:
   narrador e os dois sinais de consentimento; preferências, histórico, perfil e
   respostas brutas do questionário ficam fora desse payload;
 - texto pessoal só é aceito com confirmação adulta e consentimento explícito para
-  voz neural. O endpoint exige origem permitida e BotID antes de chamar o Gemini;
-- a chave Gemini fica somente no servidor. A requisição ao provedor declara
-  `store: false`, e respostas de sucesso ou erro usam `no-store` no navegador,
-  CDN da Vercel e caches intermediários;
-- a escolha entre seis vozes Gemini é aplicada à prévia fixa e a todo conteúdo
-  pessoal. Não há MP3 de narrador empacotado nem fallback para voz robótica;
-- o WAV é reutilizado somente na memória privada da sessão, com chave composta
-  por texto, idioma e voz. Não há URL pessoal pública nem persistência no backend;
+  voz neural. O endpoint exige origem permitida e BotID antes de chamar a
+  ElevenLabs;
+- a chave da ElevenLabs fica somente no servidor. A chamada ao provedor usa
+  `enable_logging=false`, e respostas de sucesso ou erro usam `no-store` no
+  navegador, CDN da Vercel e caches intermediários;
+- a escolha entre seis vozes ElevenLabs é aplicada à narração neural sob demanda,
+  e as prévias fixas são empacotadas. No Plano Celeste, sem consentimento de
+  nuvem já ativo ou se a voz neural falhar, a visão usa o sintetizador do sistema
+  ou navegador; esse caminho depende da voz e da engine instaladas e não deve ser
+  descrito como necessariamente offline;
+- o WAV neural pode ser reutilizado em memória e no cache privado do app, com
+  chave composta por texto, idioma e voz. Não há URL pessoal pública nem
+  persistência no backend;
 - texto longo é dividido sem truncamento. Cada bloco mantém a mesma voz escolhida
   e só é solicitado quando necessário para reprodução.
 
@@ -754,7 +761,8 @@ precisam de validação em aparelho real. O gesto não imita as referências.
 
 ### 3S fechado como conceito, parcialmente implementado
 
-- **Sentir:** Cena-Âncora; implementado em texto e com áudio local quando comprovado.
+- **Sentir:** Cena-Âncora; implementado em texto e com narração sob demanda pelo
+  caminho permitido, sem presumir que todo TTS do sistema seja offline.
 - **Seguir:** Ponte de Hoje; escolha e edição implementadas, realização ainda sem
   estado próprio.
 - **Selar:** prática e Rastro de Mudança; ambos implementados, mas ainda não
@@ -772,27 +780,31 @@ entrar na aba não chama um modelo generativo nem cria uma nova frase.
 
 ### Decisão de voz fechada em 25/08/2026
 
-O MVP usa o endpoint server-side `/api/gerar-audio` com
-`gemini-3.1-flash-tts-preview`. Seis vozes foram curadas e a escolha da pessoa é
-persistida no aparelho. A mesma voz acompanha prévias, afirmações, cenas, visões,
-sonhos e o áudio preparado para o despertador compatível.
+O MVP usa o endpoint server-side `/api/gerar-audio` com o modelo
+`eleven_multilingual_v2` da ElevenLabs. Seis vozes foram curadas e a escolha da
+pessoa é persistida no aparelho. A mesma identidade de voz acompanha prévias,
+afirmações, cenas, visões, sonhos e o áudio preparado para o despertador
+compatível quando a narração neural está autorizada.
 
 Arquitetura: app -> consentimento adulto explícito -> backend da Celeste -> texto
-final minimizado + idioma + narrador -> Gemini TTS com `store: false` -> WAV
-`no-store` -> memória privada da sessão. A chave nunca entra em `EXPO_PUBLIC_*`,
-no bundle, em URL ou na resposta. Não há catálogo fixo, MP3 de narrador, cache de
-CDN, armazenamento remoto de áudio pessoal ou fallback para voz robótica.
+final minimizado + idioma + narrador -> ElevenLabs com
+`enable_logging=false` -> WAV `no-store` -> cache privado do app. A chave nunca
+entra em `EXPO_PUBLIC_*`, no bundle, em URL ou na resposta. Não há catálogo fixo,
+cache de CDN nem armazenamento remoto de áudio pessoal. No Plano Celeste, a
+ElevenLabs só é usada quando o consentimento de nuvem já está ativo; caso
+contrário, ou se ela falhar, a narração iniciada por toque usa o sintetizador do
+sistema ou navegador, sem promessa de funcionamento offline.
 
 O endpoint aceita somente origem allowlistada e BotID válido. A proteção de cota
-usa uma regra WAF distribuída para todas as quatro APIs Gemini, com limite de 12
-requisições por minuto por IP + JA4. O limite comporta a audição das seis prévias
-e uma prática pessoal, sem liberar rajadas anônimas. O deploy consulta a regra
-ativa e falha quando ela diverge do contrato versionado.
+usa uma regra WAF distribuída para as APIs de nuvem protegidas, com limite de 12
+requisições por minuto por IP + JA4. O limite comporta os fluxos pessoais de texto
+e áudio sem liberar rajadas anônimas. O deploy consulta a regra ativa e falha
+quando ela diverge do contrato versionado.
 
 Textos longos são divididos em blocos sem perder palavras. O cliente antecipa
-apenas o próximo bloco e reutiliza o WAV em memória quando texto, idioma e voz são
-iguais. Ao fechar a sessão ou trocar qualquer um desses elementos, não há arquivo
-pessoal persistente a reaproveitar. Clonagem de voz não entra no MVP.
+apenas o próximo bloco e reutiliza o WAV em memória ou no cache privado quando
+texto, idioma e voz são iguais. O cache é limitado, pode ser limpo e não cria
+arquivo no backend. Clonagem de voz não entra no MVP.
 
 ## 19. Base científica e conhecimento usado dentro do app — 27/08/2026
 
@@ -840,12 +852,22 @@ em uma rotina opcional de um a quatro lembretes comuns por dia. A pessoa ajusta
 os horários e os dias. Os avisos não são alarmes exatos, não prometem disparo no
 segundo escolhido e nunca bloqueiam o aparelho ou outros aplicativos.
 
-Ao abrir o aviso, a visão ou Cena-Âncora e a afirmação permanecem visíveis em
-texto grande. A pessoa lê da própria tela e repete a afirmação duas vezes; o progresso aparece
-como `1/2` e `2/2`. O microfone começa somente depois de um toque explícito e
-pode ser interrompido. `Agora não` e `Adiar 10 min` continuam disponíveis sem
-fala. Se o reconhecedor local não estiver disponível, a permissão for negada ou
-a leitura não for reconhecida, a Celeste oferece conclusão manual acessível.
+Ao abrir o aviso, a imagem e o texto da visão ou Cena-Âncora aparecem junto da
+afirmação. Nada é narrado automaticamente: a visão completa só começa depois do
+toque em **Ouvir visão completa**. Se o consentimento de nuvem já estiver ativo,
+a Celeste tenta a voz neural da ElevenLabs; sem esse consentimento, ou se a
+tentativa falhar, usa o sintetizador do sistema ou navegador. Esse sintetizador
+pode depender da engine, da voz instalada e de rede, portanto não é correto
+prometer que esse TTS seja sempre offline.
+
+A narração completa precisa terminar, ou a leitura integral precisa ser
+confirmada pela alternativa acessível, antes de os controles das duas repetições
+serem liberados. Depois disso, a pessoa lê a afirmação da própria tela duas
+vezes; o progresso aparece como `1/2` e `2/2`. O microfone começa somente depois
+de um toque explícito e pode ser interrompido. `Agora não` e `Adiar 10 min`
+continuam disponíveis sem fala. Se o reconhecedor local não estiver disponível,
+a permissão for negada ou a leitura não for reconhecida, a Celeste oferece
+conclusão manual acessível.
 
 O reconhecimento dessa prática é aceito somente no dispositivo quando o
 aparelho e o idioma oferecem suporte; não existe fallback silencioso para um
@@ -854,12 +876,17 @@ backup, logs ou chamadas de rede. O único registro persistente é um recibo loc
 mínimo, como dia, horário, método e pontuação de correspondência, sem o texto
 reconhecido.
 
+`expo-speech` não acrescenta permissão sensível. Como é uma dependência nativa,
+porém, sua inclusão exige novos binários Android e iOS; publicar somente a versão
+web não atualiza os aplicativos instalados pelas lojas.
+
 Antes de comunicar o recurso nas lojas, o contrato precisa passar em Android e
 iPhone físicos, incluindo permissão concedida e negada, reconhecedor local
-presente e ausente, duas leituras, falhas, cancelamento, adiamento, app encerrado,
-tela bloqueada, reinício, mudança de fuso e tecnologias assistivas. O Android
-continua sem `SCHEDULE_EXACT_ALARM` e `USE_EXACT_ALARM`; o AlarmKit do iPhone é
-um recurso separado.
+presente e ausente, imagem e texto corretos, narração completa com e sem rede,
+voz do sistema presente e ausente, modo silencioso, duas leituras, falhas,
+cancelamento, adiamento, app encerrado, tela bloqueada, reinício, mudança de fuso
+e tecnologias assistivas. O Android continua sem `SCHEDULE_EXACT_ALARM` e
+`USE_EXACT_ALARM`; o AlarmKit do iPhone é um recurso separado.
 
 ### Evolução planejada — ciclos de prática
 
