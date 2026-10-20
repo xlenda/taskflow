@@ -12,7 +12,7 @@ export function installCenaViva(root) {
   const SERIF = "Georgia, 'Times New Roman', serif";
 
   const clamp01 = (v) => (v > 0 ? (v < 1 ? v : 1) : 0);
-  const hasText = (v) => v != null && String(v).trim() !== ''; // só espaços não é legenda
+  const hasText = (v) => !!v && String(v).trim() !== ''; // só espaços (ou false/0/NaN) não é legenda
   const span = (t, start, duration) => clamp01((t - start) / duration);
   const smooth = (p) => p * p * (3 - 2 * p);
   const inOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
@@ -134,9 +134,11 @@ export function installCenaViva(root) {
     let layout = null;
     let layoutKey = '';
     let playing = false;
+    let destroyed = false; // a tela saiu: callbacks atrasados (legenda, imagem, mensagem) não pintam mais
     let raf = 0;
     let elapsed = 0;
     let startedAt = 0;
+    let shown = 0; // t do último quadro pintado
 
     // estrela i: no arco do Traço Celeste até partir; depois voa em curva (meio puxado para cima) até o sol
     function starAt(i, t, r, k, sun) {
@@ -468,8 +470,9 @@ export function installCenaViva(root) {
     function drawFrame(tMs) {
       const W = canvas.width;
       const H = canvas.height;
-      if (!ctx || !W || !H) return;
+      if (destroyed || !ctx || !W || !H) return;
       const t = still ? 0 : Math.max(0, Number(tMs) || 0);
+      shown = t;
       // r = onde a imagem 4:5 fica nítida (no 9:16, centralizada); estrelas, sol e legenda se medem por ela
       const r = tall ? { x: 0, y: (H - W * 1.25) / 2, w: W, h: W * 1.25 } : { x: 0, y: 0, w: W, h: H };
       const k = r.w / 320; // escala do céu do CelestialTrace
@@ -550,7 +553,7 @@ export function installCenaViva(root) {
     }
 
     function start() {
-      if (playing) return;
+      if (playing || destroyed) return;
       if (still) {
         drawFrame(0); // reduzir movimento: imagem parada, sem laço
         return;
@@ -576,13 +579,15 @@ export function installCenaViva(root) {
     }
 
     function setCaption(next) {
-      assignCaption(next);
-      // parado (antes do start, depois do stop, reduzir movimento) ninguém repinta: a legenda nova aparece já
-      if (!playing) drawFrame(elapsed);
+      assignCaption(next); // destruído, o drawFrame abaixo não pinta
+      // parado (antes do start, depois do stop, reduzir movimento) ninguém repinta: a legenda nova aparece já, no
+      // mesmo quadro que está na tela (o relógio pode ter andado depois dele)
+      if (!playing) drawFrame(shown);
     }
 
     function destroy() {
       stop();
+      destroyed = true;
       grain = null;
       grainPattern = null;
       rayLayer = null;

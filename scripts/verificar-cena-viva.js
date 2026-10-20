@@ -113,6 +113,232 @@ function veilBefore(calls, word, color = VEIL) {
   return null;
 }
 
+// carrega um módulo do app com Babel trocando dependências por dublês; imports relativos também passam pelo Babel
+function loadWith(relative, mocks) {
+  const cache = new Map();
+  const compile = (file) => {
+    if (cache.has(file)) return cache.get(file).exports;
+    const code = transformSync(fs.readFileSync(file, 'utf8'), {
+      filename: file,
+      presets: ['babel-preset-expo'],
+      sourceType: 'module',
+    }).code;
+    const loaded = new Module(file, module);
+    loaded.filename = file;
+    loaded.paths = Module._nodeModulePaths(path.dirname(file));
+    cache.set(file, loaded);
+    loaded._compile(code, file);
+    return loaded.exports;
+  };
+  const original = Module._load;
+  Module._load = (request, parent, isMain) => {
+    if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
+    if (request.startsWith('.') && !/[\\/]node_modules[\\/]/.test(parent.filename)) {
+      return compile(require.resolve(path.resolve(path.dirname(parent.filename), request)));
+    }
+    return original(request, parent, isMain);
+  };
+  try {
+    return compile(path.join(root, relative));
+  } finally {
+    Module._load = original;
+  }
+}
+
+// React de mentira (estado, refs, memo e efeitos na ordem do React) para exercitar a fiação dos componentes sem
+// navegador nem aparelho; `hosts` cria a instância de cada elemento com ref (canvas, WebView)
+function fakeReact(hosts) {
+  let current = null;
+  const changed = (prev, next) =>
+    !prev || !next || prev.length !== next.length || next.some((value, i) => !Object.is(value, prev[i]));
+  const slot = (make) => {
+    const i = current.cursor++;
+    if (!current.slots[i]) current.slots[i] = make();
+    return current.slots[i];
+  };
+  const React = {
+    useState(initial) {
+      const instance = current;
+      const state = slot(() => ({ value: typeof initial === 'function' ? initial() : initial }));
+      state.set =
+        state.set ||
+        ((next) => {
+          const value = typeof next === 'function' ? next(state.value) : next;
+          if (Object.is(value, state.value)) return;
+          state.value = value;
+          instance.dirty = true;
+        });
+      return [state.value, state.set];
+    },
+    useRef: (initial) => slot(() => ({ current: initial })),
+    useMemo(make, deps) {
+      const memo = slot(() => ({}));
+      if (!('value' in memo) || changed(memo.deps, deps)) Object.assign(memo, { value: make(), deps });
+      return memo.value;
+    },
+    useEffect(effect, deps) {
+      const instance = current;
+      const hook = slot(() => ({ effect: true }));
+      if (hook.ran && deps && !changed(hook.deps, deps)) return;
+      Object.assign(hook, { ran: true, deps });
+      instance.queue.push(() => {
+        if (hook.cleanup) hook.cleanup();
+        hook.cleanup = effect();
+      });
+    },
+    useImperativeHandle(ref, make, deps) {
+      React.useEffect(() => {
+        if (ref) ref.current = make();
+      }, deps);
+    },
+    forwardRef: (render) => render,
+  };
+  const element = (type, props, key) => ({ type, props: props || {}, key });
+  const nodes = (node) =>
+    Array.isArray(node)
+      ? node.flatMap(nodes)
+      : node && typeof node === 'object'
+        ? [node, ...nodes(node.props.children)]
+        : [];
+  function mount(Component, props, ref = null) {
+    const instance = { slots: [], cursor: 0, queue: [], dirty: false, props, attached: new Set() };
+    const render = () => {
+      for (let pass = 0; pass < 30; pass++) {
+        instance.dirty = false;
+        instance.cursor = 0;
+        current = instance;
+        try {
+          instance.tree = Component(instance.props, ref);
+        } finally {
+          current = null;
+        }
+        // como o React: o elemento que aparece ganha a instância na ref; o que some a solta
+        const live = new Set();
+        for (const node of nodes(instance.tree)) {
+          const target = node.props.ref;
+          if (!target || typeof target !== 'object') continue;
+          live.add(target);
+          if (!instance.attached.has(target)) {
+            target.current = hosts[node.type](node.props);
+            instance.attached.add(target);
+          }
+        }
+        for (const target of instance.attached) {
+          if (live.has(target)) continue;
+          target.current = null;
+          instance.attached.delete(target);
+        }
+        instance.queue.splice(0).forEach((run) => run());
+        if (!instance.dirty) return instance;
+      }
+      throw new Error('renderização em laço');
+    };
+    instance.find = (type) => nodes(instance.tree).find((node) => node.type === type) || null;
+    instance.update = (next) => {
+      instance.props = { ...instance.props, ...next };
+      return render();
+    };
+    instance.flush = render; // depois de evento assíncrono (imagem carregou, mensagem da WebView)
+    instance.unmount = () => instance.slots.forEach((hook) => hook && hook.effect && hook.cleanup && hook.cleanup());
+    render();
+    return instance;
+  }
+  return { React, jsxRuntime: { jsx: element, jsxs: element, Fragment: 'Fragment' }, mount };
+}
+
+// <img> de mentira: carrega no próximo giro do laço, como no navegador (antes disso não tem medidas); src vazio = erro
+class FakeImage {
+  set src(value) {
+    this.source = value;
+    setImmediate(() => {
+      if (value) Object.assign(this, { width: 720, height: 900, naturalWidth: 720, naturalHeight: 900 });
+      const done = value ? this.onload : this.onerror;
+      if (done) done();
+    });
+  }
+  get src() {
+    return this.source;
+  }
+}
+const drewImage = (calls) =>
+  ops(calls, 'drawImage').some((call) => call.args[0] instanceof FakeImage && call.args[0].naturalWidth > 0);
+// 1º quadro de uma gravação: do começo até o fundo de tinta do 2º quadro
+const firstFrame = (calls) => {
+  const starts = calls.flatMap((call, i) => (call.op === '=fillStyle' && call.args[0] === '#1C2E4F' ? [i] : []));
+  return calls.slice(0, starts[1]);
+};
+
+// FileReader de mentira: data URL com o tipo do blob (com codecs, como no Chrome)
+class FakeFileReader {
+  readAsDataURL(blob) {
+    blob.arrayBuffer().then((buffer) => {
+      this.result = `data:${blob.type};base64,${Buffer.from(buffer).toString('base64')}`;
+      this.onload();
+    });
+  }
+}
+
+// MediaRecorder de mentira: `support` decide os mimes; ao parar entrega `payload` num blob só
+function recorderClass(support, payload = 'abc') {
+  return class FakeRecorder {
+    static isTypeSupported(mime) {
+      return support(mime);
+    }
+    constructor(stream, options) {
+      Object.assign(this, { stream, options, state: 'inactive' });
+    }
+    start() {
+      this.state = 'recording';
+    }
+    stop() {
+      this.state = 'inactive';
+      this.ondataavailable({ data: new Blob([payload]) });
+      this.onstop();
+    }
+  };
+}
+
+// relógio que anda 100 ms a cada setTimeout: os 8 s de gravação passam em milissegundos
+function fastClock() {
+  let clock = 0;
+  return {
+    performance: { now: () => clock },
+    setTimeout(fn) {
+      clock += 100;
+      setImmediate(fn);
+    },
+  };
+}
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+async function until(check, label) {
+  for (let i = 0; i < 5000; i++) {
+    if (check()) return;
+    await tick();
+  }
+  throw new Error(`esperou demais: ${label}`);
+}
+
+// roda o HTML da WebView num sandbox: cada <script> em ordem, com window = o próprio global da página e
+// window.ReactNativeWebView.postMessage gravando o que a página manda para o app
+function runPage(html, extra = {}) {
+  const posted = [];
+  const size = /<canvas id="c" width="(\d+)" height="(\d+)"/.exec(html);
+  const canvas = size ? fakeCanvas(Number(size[1]), Number(size[2])) : null;
+  const page = fakeWindow({
+    Image: FakeImage,
+    FileReader: FakeFileReader,
+    Blob,
+    ReactNativeWebView: { postMessage: (text) => posted.push(JSON.parse(text)) },
+    ...extra,
+  });
+  page.window = page;
+  page.document.getElementById = (id) => (id === 'c' ? canvas : null);
+  const context = vm.createContext(page);
+  for (const [, code] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) vm.runInContext(code, context);
+  return { page, posted, canvas, run: (code) => vm.runInContext(code, context) };
+}
+
 async function main() {
   const { installCenaViva } = load('components/cenaViva/renderer.js');
   const win = fakeWindow();
@@ -300,6 +526,42 @@ async function main() {
   const calm = fakeCanvas(320, 400);
   CV.createRenderer(calm, { ...options, reducedMotion: true }).setCaption({ text: 'gg hh', progress: 1 });
   assert.deepStrictEqual(words(calm.calls), ['gg', 'hh'], 'reduzir movimento: a legenda nova aparece já');
+  // parado, a legenda nova repinta o ÚLTIMO quadro mostrado: o relógio já andou e a cena não pode pular
+  let wall = 0;
+  const timed = fakeWindow({ performance: { now: () => wall } });
+  installCenaViva(timed);
+  const held = fakeCanvas(320, 400);
+  const holding = timed.CenaViva.createRenderer(held, options);
+  holding.start(); // quadro t=0
+  wall = 1000;
+  timed.frames[timed.frames.length - 1](); // quadro t=1000
+  wall = 1500;
+  holding.stop();
+  held.calls.length = 0;
+  holding.setCaption({ text: 'aa', progress: 1 });
+  const zoomAt = (calls) => ops(calls, 'drawImage').find((call) => call.args[0] === image).args[7];
+  assert.ok(!near(zoomAt(render({}, 1000)), zoomAt(render({}, 1500))), 'a câmera denuncia o tempo do quadro');
+  assert.strictEqual(zoomAt(held.calls), zoomAt(render({}, 1000)), 'parado: repinta o último quadro mostrado');
+  holding.destroy();
+  // destruído (a tela saiu): legenda, quadro e start viram nada — callbacks atrasados não pintam nem agendam
+  const gone = fakeCanvas(320, 400);
+  const dead = CV.createRenderer(gone, options);
+  dead.destroy();
+  gone.calls.length = 0;
+  const pending = win.frames.length;
+  dead.setCaption({ text: 'aa', progress: 1 });
+  dead.drawFrame(100);
+  dead.start();
+  assert.strictEqual(gone.calls.length, 0, 'destruído: não pinta');
+  assert.strictEqual(win.frames.length, pending, 'destruído: não agenda quadro');
+  // valores falsos não viram legenda (false/0/NaN viravam "false"/"0"/"NaN" na tela)
+  for (const phrase of [false, 0, Number.NaN]) {
+    assert.deepStrictEqual(words(render({ phrase }, 4000)), [], `frase ${String(phrase)} não vira legenda`);
+  }
+  for (const text of [false, 0]) {
+    const falsy = render({}, 4000, [320, 400], { text, progress: 1 });
+    assert.ok(!ops(falsy, 'fillText').length && !usesColor(falsy, VEIL), `legenda ${String(text)} não vira legenda`);
+  }
 
   // 11) recordVideo: sem gravador compatível rejeita com recorder_unsupported (a tela oferece o cartão)
   await assert.rejects(CV.recordVideo({ image, phrase: 'aa' }), (error) => error.code === 'recorder_unsupported');
@@ -381,7 +643,370 @@ async function main() {
   sandbox.window.CenaViva.createRenderer(webview, { image, format: '9:16', mode: 'intro', signature: true }).drawFrame(2400);
   assert.ok(ops(webview.calls, 'drawImage').length >= 2, 'a cópia da WebView desenha');
 
-  console.log('Cena viva aprovada: mime, pedaços, intro estrelas → sol, partículas semeadas, legenda, 9:16 e fonte da WebView');
+  // 13) fronteiras: o site importa o renderizador como módulo (CSP script-src 'self': nada de eval) e não usa
+  //     WebView; o app usa react-native-webview com a MESMA fonte gerada
+  const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+  assert.ok(JSON.parse(read('package.json')).dependencies['react-native-webview'], 'react-native-webview instalado');
+  for (const file of ['CenaViva.web.js', 'CenaVivaRecorder.web.js']) {
+    const code = read(`components/cenaViva/${file}`);
+    assert.ok(!/react-native-webview|WebView/.test(code), `${file} não usa WebView`);
+    assert.ok(/from '\.\/renderer'/.test(code), `${file} importa o renderizador como módulo`);
+    assert.ok(!/CENA_VIVA_RENDERER_SOURCE|new Function|\beval\(/.test(code), `${file} sem eval (CSP script-src 'self')`);
+  }
+  for (const file of ['CenaViva.js', 'CenaVivaRecorder.js']) {
+    assert.ok(/from 'react-native-webview'/.test(read(`components/cenaViva/${file}`)), `${file} usa react-native-webview`);
+  }
+  assert.ok(/CENA_VIVA_RENDERER_SOURCE/.test(read('components/cenaViva/CenaViva.js')), 'CenaViva.js injeta a fonte gerada');
+
+  // dublês do app: React de mentira, react-native, WebView, expo-file-system (grava em memória) e expo-asset
+  const hosts = {
+    canvas: (props) => fakeCanvas(props.width, props.height),
+    WebView: () => ({
+      injected: [],
+      injectJavaScript(code) {
+        this.injected.push(code);
+      },
+    }),
+  };
+  const device = { reduce: false };
+  const RN = {
+    View: 'View',
+    StyleSheet: { create: (styles) => styles },
+    Platform: { OS: 'android' },
+    AccessibilityInfo: {
+      isReduceMotionEnabled: () => Promise.resolve(device.reduce),
+      addEventListener: () => ({ remove() {} }),
+    },
+  };
+  const written = [];
+  class DeviceFile {
+    constructor(...parts) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
+    }
+    create() {}
+    write(content, writeOptions) {
+      written.push({ uri: this.uri, content, options: writeOptions });
+    }
+    base64() {
+      return Promise.resolve(`b64(${this.uri})`);
+    }
+  }
+  const assetRequests = [];
+  const assetModule = {
+    Asset: {
+      fromModule: (source) => {
+        assetRequests.push(source);
+        const uri = `/assets/scene-${source}.jpg`;
+        const asset = { uri, localUri: RN.Platform.OS === 'web' ? uri : `file:///cache/scene-${source}.jpg` };
+        return { downloadAsync: () => Promise.resolve(asset) };
+      },
+    },
+  };
+  const app = fakeReact(hosts);
+  const mocks = {
+    react: app.React,
+    'react/jsx-runtime': app.jsxRuntime,
+    'react-native': RN,
+    'react-native-webview': { WebView: 'WebView' },
+    'expo-file-system': { File: DeviceFile, Paths: { cache: { uri: 'file:///cache' } } },
+    'expo-asset': assetModule,
+  };
+  const message = (data) => ({ nativeEvent: { data: JSON.stringify(data) } });
+
+  // 14) imagem da cena: pessoal (blob: no site, file:// no app) ou cena pronta; no app vira data URI para a WebView
+  const { imageUriForCenaViva } = loadWith('components/cenaViva/imageSource.js', mocks);
+  const readyScene = { id: 'beach-Love', source: 7, place: 'beach', category: 'Love' };
+  assert.strictEqual(
+    await imageUriForCenaViva({ personalUri: 'file:///document/v.jpg', readyScene }),
+    'data:image/jpeg;base64,b64(file:///document/v.jpg)',
+    'app: imagem pessoal vira data URI'
+  );
+  assert.deepStrictEqual(assetRequests, [], 'com imagem pessoal a cena pronta nem carrega');
+  assert.strictEqual(
+    await imageUriForCenaViva({ personalUri: null, readyScene }),
+    'data:image/jpeg;base64,b64(file:///cache/scene-7.jpg)',
+    'app: cena pronta baixada do pacote (localUri) e lida em base64'
+  );
+  RN.Platform.OS = 'ios';
+  assert.strictEqual(
+    await imageUriForCenaViva({ personalUri: 'file:///document/v.jpg', readyScene }),
+    'data:image/jpeg;base64,b64(file:///document/v.jpg)',
+    'iPhone também: data URI para a WebView'
+  );
+  RN.Platform.OS = 'web';
+  const blobUri = 'blob:http://localhost/abc';
+  assert.strictEqual(await imageUriForCenaViva({ personalUri: blobUri, readyScene }), blobUri, 'site: blob: direto');
+  assert.strictEqual(await imageUriForCenaViva({ personalUri: null, readyScene }), '/assets/scene-7.jpg', 'site: URL do asset');
+  RN.Platform.OS = 'android';
+
+  // 15) app: WebView com HTML inline (MESMA fonte), pôster parado até ficar ativa, comandos sem recarregar
+  const { default: NativeScene } = loadWith('components/cenaViva/CenaViva.js', mocks);
+  const sneaky = 'aa </script><b>bb';
+  let readyCalls = 0;
+  const scene = app.mount(NativeScene, {
+    imageUri: 'data:image/jpeg;base64,QUJD',
+    phrase: sneaky,
+    onReady: () => (readyCalls += 1),
+  });
+  assert.strictEqual(scene.tree.props.testID, 'cena-viva');
+  assert.ok(scene.tree.props.accessibilityRole === 'image' && scene.tree.props.accessibilityLabel === sneaky, 'leitor de tela lê a frase');
+  assert.strictEqual(scene.tree.props.pointerEvents, 'none', 'o toque passa para o card de fora (a WebView não engole)');
+  assert.strictEqual(scene.find('WebView'), null, 'antes de saber se o aparelho pede menos movimento, nada de WebView');
+  await tick();
+  scene.flush();
+  const shownView = scene.find('WebView');
+  assert.ok(shownView, 'WebView aberta');
+  assert.deepStrictEqual(shownView.props.originWhitelist, ['*']);
+  assert.ok(shownView.props.javaScriptEnabled && shownView.props.allowsInlineMediaPlayback, 'JS e mídia inline ligados');
+  const sceneHtml = shownView.props.source.html;
+  assert.ok(sceneHtml.includes(source), 'a página roda a MESMA fonte gerada');
+  assert.strictEqual(sceneHtml.split('</script>').length - 1, 2, 'a frase não fecha a tag <script>');
+  const shown = runPage(sceneHtml);
+  assert.ok(shown.canvas.width === 720 && shown.canvas.height === 900, '4:5 em 720×900, como o vídeo');
+  await until(() => shown.posted.length, 'cena pronta');
+  assert.deepStrictEqual(shown.posted.map((sent) => sent.type), ['ready']);
+  assert.ok(drewImage(shown.canvas.calls), 'pôster: primeiro quadro com a imagem carregada');
+  assert.ok(words(shown.canvas.calls).includes('</script><b>bb'), 'a frase chega inteira na página');
+  assert.strictEqual(shown.page.frames.length, 0, 'sem o app mandar, não anima');
+  shownView.props.onMessage(message(shown.posted[0]));
+  scene.flush();
+  assert.strictEqual(readyCalls, 1, 'onReady quando a página desenhou');
+  const webHost = scene.find('WebView').props.ref.current;
+  const deliver = () => webHost.injected.splice(0).forEach((code) => shown.run(code));
+  deliver();
+  assert.strictEqual(shown.page.frames.length, 1, 'ativa (padrão): anima');
+  scene.update({ active: false });
+  deliver();
+  assert.deepStrictEqual(shown.page.cancelled, [1], 'active=false: para no quadro');
+  shown.canvas.calls.length = 0;
+  scene.update({ caption: { text: 'cc dd', progress: 1 } });
+  deliver();
+  assert.deepStrictEqual(words(shown.canvas.calls), ['cc', 'dd'], 'legenda chega sem recarregar e aparece parada');
+  assert.strictEqual(scene.tree.props.accessibilityLabel, 'cc dd', 'leitor de tela lê a legenda');
+  assert.strictEqual(scene.find('WebView').props.source.html, sceneHtml, 'active/legenda não recarregam a WebView');
+  scene.update({ format: '9:16' });
+  assert.notStrictEqual(scene.find('WebView').props.source.html, sceneHtml, 'formato novo = cena nova');
+  const tallPage = runPage(scene.find('WebView').props.source.html);
+  assert.ok(tallPage.canvas.height === 1280, '9:16 em 720×1280');
+  // o 'ready' atrasado da página velha não vale para a nova (comandos iriam antes de o renderizador existir)
+  scene.find('WebView').props.onMessage(message(shown.posted[0]));
+  scene.flush();
+  assert.deepStrictEqual(webHost.injected, [], 'ready da página velha: nenhum comando para a nova');
+  await until(() => tallPage.posted.length, 'cena 9:16 pronta');
+  scene.find('WebView').props.onMessage(message(tallPage.posted[0]));
+  scene.flush();
+  webHost.injected.splice(0).forEach((code) => tallPage.run(code));
+  assert.deepStrictEqual(words(tallPage.canvas.calls).slice(-2), ['cc', 'dd'], 'página nova recebe a legenda atual');
+  assert.strictEqual(tallPage.page.frames.length, 0, 'página nova recebe o estado atual (parada)');
+  assert.strictEqual(readyCalls, 2, 'onReady a cada cena nova pronta');
+  scene.update({ active: true });
+  webHost.injected.splice(0).forEach((code) => tallPage.run(code));
+  assert.strictEqual(tallPage.page.frames.length, 1, 'e anima quando o app manda');
+  scene.unmount();
+  // reduzir movimento no aparelho: a página nasce parada e o app nunca manda animar
+  device.reduce = true;
+  const calmScene = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD' });
+  await tick();
+  calmScene.flush();
+  const stillPage = runPage(calmScene.find('WebView').props.source.html);
+  await until(() => stillPage.posted.length, 'cena parada pronta');
+  calmScene.find('WebView').props.onMessage(message(stillPage.posted[0]));
+  calmScene.flush();
+  calmScene.find('WebView').props.ref.current.injected.splice(0).forEach((code) => stillPage.run(code));
+  assert.strictEqual(stillPage.page.frames.length, 0, 'reduzir movimento: imagem parada');
+  assert.strictEqual(ops(stillPage.canvas.calls, 'drawImage').length, 1, 'reduzir movimento: um único drawImage');
+  calmScene.unmount();
+  device.reduce = false;
+  assert.strictEqual(app.mount(NativeScene, {}).find('WebView'), null, 'sem imagem ainda: só o fundo');
+
+  // 16) app: gravador numa WebView oculta; o vídeo volta em pedaços { type: 'chunk', index, total, data } e
+  //     { type: 'done', mimeType }, é remontado igual e gravado em Paths.cache/celeste-share-<ts>.mp4|webm
+  const { default: NativeRecorder, collectVideo } = loadWith('components/cenaViva/CenaVivaRecorder.js', mocks);
+  const recorderRef = { current: null };
+  const recorder = app.mount(NativeRecorder, {}, recorderRef);
+  assert.strictEqual(recorder.find('WebView'), null, 'sem gravação, sem WebView');
+  const job = { imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa bb', linkText: 'celeste.app' };
+  const payload = require('crypto').randomBytes(1300000); // ~1,7 MB em base64 = 4 pedaços de 512 KB
+  async function recordOnPage(pageExtra) {
+    const pending = recorderRef.current.record(job);
+    recorder.flush();
+    const hidden = recorder.find('WebView');
+    assert.ok(hidden, 'gravando: WebView oculta montada');
+    const studio = runPage(hidden.props.source.html, { ...fastClock(), ...pageExtra });
+    await until(() => studio.posted.some((sent) => sent.type === 'done' || sent.type === 'error'), 'gravação');
+    studio.posted.forEach((sent) => hidden.props.onMessage(message(sent)));
+    recorder.flush();
+    return { pending, studio, hidden };
+  }
+  const mp4 = await recordOnPage({ MediaRecorder: recorderClass((mime) => mime.startsWith('video/mp4'), payload) });
+  const chunks = mp4.studio.posted.filter((sent) => sent.type === 'chunk');
+  assert.ok(chunks.length === 4, `4 pedaços (veio ${chunks.length})`);
+  chunks.forEach((sent, i) => {
+    assert.deepStrictEqual(Object.keys(sent).sort(), ['data', 'index', 'total', 'type'], 'pedaço { type, index, total, data }');
+    assert.ok(sent.index === i && sent.total === 4 && sent.data.length <= 512 * 1024, 'pedaços em ordem, até 512 KB');
+  });
+  assert.deepStrictEqual(mp4.studio.posted[mp4.studio.posted.length - 1], { type: 'done', mimeType: 'video/mp4;codecs=avc1.42E01E' });
+  const filmed = words(mp4.studio.page.made[0].calls);
+  assert.ok(filmed.includes('bb') && filmed.includes('Celeste') && filmed.includes('celeste.app'), 'frase, assinatura e link no vídeo');
+  assert.ok(drewImage(firstFrame(mp4.studio.page.made[0].calls)), 'o vídeo já começa com a imagem (gravou depois de carregar)');
+  const mp4Video = await mp4.pending;
+  assert.match(mp4Video.uri, /^file:\/\/\/cache\/celeste-share-\d+\.mp4$/, 'mp4 no cache do app');
+  assert.strictEqual(mp4Video.mimeType, 'video/mp4', 'mime sem codecs (o filtro do Android casa video/mp4)');
+  const saved = written.find((file) => file.uri === mp4Video.uri);
+  assert.strictEqual(saved.content, payload.toString('base64'), 'vídeo remontado igual ao gravado');
+  assert.deepStrictEqual(saved.options, { encoding: 'base64' });
+  assert.strictEqual(recorder.find('WebView'), null, 'terminou: a WebView oculta sai');
+  const webm = await recordOnPage({ MediaRecorder: recorderClass((mime) => mime.startsWith('video/webm')) });
+  const webmVideo = await webm.pending;
+  assert.ok(/\.webm$/.test(webmVideo.uri) && webmVideo.mimeType === 'video/webm', 'só webm: .webm e video/webm');
+  const unsupported = await recordOnPage({});
+  assert.deepStrictEqual(unsupported.studio.posted, [{ type: 'error', code: 'recorder_unsupported' }]);
+  await assert.rejects(unsupported.pending, (error) => error.code === 'recorder_unsupported', 'sem gravador: a tela oferece o cartão');
+  // ocupado: uma gravação por vez
+  const first = recorderRef.current.record(job);
+  await assert.rejects(recorderRef.current.record(job), (error) => error.code === 'recorder_busy');
+  recorder.unmount(); // fechou a tela no meio: a promessa não fica pendurada
+  await assert.rejects(first, (error) => error.code === 'recorder_cancelled');
+  // a WebView travou: desiste com recorder_timeout e solta a WebView
+  const stuckRef = { current: null };
+  const stuckRecorder = app.mount(NativeRecorder, {}, stuckRef);
+  const realSetTimeout = global.setTimeout;
+  const timers = [];
+  global.setTimeout = (fn, ms) => timers.push({ fn, ms }) && {};
+  let stuck;
+  try {
+    stuck = stuckRef.current.record(job);
+  } finally {
+    global.setTimeout = realSetTimeout;
+  }
+  stuckRecorder.flush();
+  assert.ok(stuckRecorder.find('WebView') && timers.length === 1 && timers[0].ms >= 20000, 'prazo para a WebView responder');
+  timers[0].fn();
+  await assert.rejects(stuck, (error) => error.code === 'recorder_timeout');
+  stuckRecorder.flush();
+  assert.strictEqual(stuckRecorder.find('WebView'), null, 'prazo vencido: a WebView sai');
+  const crashed = stuckRef.current.record(job); // a WebView não carregou a página
+  stuckRecorder.flush();
+  stuckRecorder.find('WebView').props.onError();
+  await assert.rejects(crashed, (error) => error.code === 'recorder_error', 'WebView com erro: rejeita');
+  stuckRecorder.flush();
+  assert.strictEqual(stuckRecorder.find('WebView'), null, 'WebView com erro: sai');
+  // pedaço faltando ou mime estranho = erro, nunca um arquivo corrompido
+  for (const done of [{ type: 'done', mimeType: 'video/mp4' }, { type: 'done', mimeType: 'image/png' }]) {
+    const broken = { parts: [], total: 0 };
+    collectVideo(broken, { type: 'chunk', index: 1, total: 2, data: 'QUJD' });
+    if (done.mimeType === 'image/png') collectVideo(broken, { type: 'chunk', index: 0, total: 2, data: 'QUJD' });
+    assert.throws(() => collectVideo(broken, done), (error) => error.code === 'recorder_error', `rejeita ${done.mimeType}`);
+  }
+
+  // 17) site: <canvas> real (720×900 ou 720×1280, o CSS só escala); data-active marca a única cena animada
+  const site = fakeReact(hosts);
+  const webMocks = { ...mocks, react: site.React, 'react/jsx-runtime': site.jsxRuntime, 'react-native': { ...RN, Platform: { OS: 'web' } } };
+  const { default: WebScene } = loadWith('components/cenaViva/CenaViva.web.js', webMocks);
+  const media = new Set(); // ouvintes de prefers-reduced-motion
+  const browser = fakeWindow({
+    Image: FakeImage,
+    matchMedia: () => ({
+      matches: !!browser.reduce,
+      addEventListener: (type, listener) => media.add(listener),
+      removeEventListener: (type, listener) => media.delete(listener),
+    }),
+  });
+  global.window = browser;
+  try {
+    let webReady = 0;
+    const card = site.mount(WebScene, { imageUri: blobUri, phrase: 'aa bb', onReady: () => (webReady += 1) });
+    const canvasNode = card.find('canvas');
+    assert.ok(canvasNode.props.width === 720 && canvasNode.props.height === 900, '4:5 em 720×900');
+    assert.strictEqual(card.tree.props.testID, 'cena-viva');
+    assert.ok(card.tree.props.accessibilityRole === 'image' && card.tree.props.accessibilityLabel === 'aa bb', 'leitor de tela lê a frase');
+    assert.strictEqual(card.tree.props.dataSet.active, 'false', 'antes da imagem carregar, nada anima');
+    await tick();
+    card.flush();
+    const paper = canvasNode.props.ref.current;
+    assert.strictEqual(webReady, 1, 'onReady quando o primeiro quadro saiu');
+    assert.ok(drewImage(paper.calls), 'desenha a imagem carregada no canvas');
+    assert.strictEqual(card.tree.props.dataSet.active, 'true', 'ativa (padrão): data-active=true');
+    assert.strictEqual(browser.frames.length, 1, 'ativa: laço de requestAnimationFrame');
+    card.update({ active: false });
+    assert.strictEqual(card.tree.props.dataSet.active, 'false', 'pôster: data-active=false');
+    assert.deepStrictEqual(browser.cancelled, [1], 'pôster: o laço para');
+    paper.calls.length = 0;
+    card.update({ caption: { text: 'cc dd', progress: 1 } });
+    assert.deepStrictEqual(words(paper.calls), ['cc', 'dd'], 'legenda nova aparece já, parada');
+    assert.strictEqual(card.tree.props.accessibilityLabel, 'cc dd', 'leitor de tela lê a legenda');
+    card.update({ active: true });
+    assert.strictEqual(browser.frames.length, 2, 'volta a animar');
+    // ligou "reduzir movimento" no sistema com a cena tocando: para na hora e volta como imagem parada
+    assert.strictEqual(media.size, 1, 'um ouvinte de reduzir movimento por card');
+    browser.reduce = true;
+    media.forEach((listener) => listener({ matches: true }));
+    card.flush();
+    assert.strictEqual(card.tree.props.dataSet.active, 'false', 'reduzir movimento ligado: nada anima');
+    assert.deepStrictEqual(browser.cancelled, [1, 2], 'reduzir movimento ligado: o laço para');
+    await tick();
+    card.flush();
+    assert.strictEqual(browser.frames.length, 2, 'reduzir movimento ligado: não volta a animar');
+    browser.reduce = false;
+    card.unmount();
+    assert.strictEqual(media.size, 0, 'saiu da tela: solta o ouvinte');
+    // saiu da tela tocando: o laço para e quadro atrasado não pinta
+    const tallCard = site.mount(WebScene, { imageUri: blobUri, format: '9:16' });
+    assert.ok(tallCard.find('canvas').props.height === 1280, '9:16 em 720×1280');
+    await tick();
+    tallCard.flush();
+    const tallPaper = tallCard.find('canvas').props.ref.current;
+    const scheduled = browser.frames.length;
+    tallCard.unmount();
+    assert.ok(scheduled === 3 && browser.cancelled.includes(scheduled), 'saiu da tela: o laço para');
+    tallPaper.calls.length = 0;
+    browser.frames.forEach((frame) => frame());
+    assert.strictEqual(tallPaper.calls.length, 0, 'saiu da tela: quadro atrasado não pinta');
+    // reduzir movimento (prefers-reduced-motion): imagem parada e nenhuma cena ativa
+    browser.reduce = true;
+    const calmCard = site.mount(WebScene, { imageUri: blobUri, phrase: 'aa' });
+    await tick();
+    calmCard.flush();
+    assert.strictEqual(calmCard.tree.props.dataSet.active, 'false', 'reduzir movimento: nenhuma cena ativa');
+    assert.strictEqual(browser.frames.length, 3, 'reduzir movimento: não anima');
+    assert.strictEqual(ops(calmCard.find('canvas').props.ref.current.calls, 'drawImage').length, 1, 'um único drawImage');
+    browser.reduce = false;
+
+    // 18) site: gravador no próprio navegador devolve um File (mime sem codecs) para o navigator.share
+    const { default: WebRecorder } = loadWith('components/cenaViva/CenaVivaRecorder.web.js', webMocks);
+    class BrowserFile {
+      constructor(parts, name, fileOptions) {
+        Object.assign(this, { parts, name, type: fileOptions.type });
+      }
+    }
+    const studioRef = { current: null };
+    site.mount(WebRecorder, {}, studioRef);
+    const record = async (support) => {
+      global.window = fakeWindow({ Image: FakeImage, File: BrowserFile, Blob, MediaRecorder: support && recorderClass(support), ...fastClock() });
+      return studioRef.current.record({ imageUri: blobUri, phrase: 'aa', linkText: 'celeste.app' });
+    };
+    const shared = await record((mime) => mime.startsWith('video/mp4'));
+    assert.strictEqual(shared.mimeType, 'video/mp4', 'mime sem codecs');
+    assert.match(shared.file.name, /^celeste-share-\d+\.mp4$/);
+    assert.ok(shared.file.type === 'video/mp4' && shared.file.parts[0].size === 3, 'File com o vídeo gravado');
+    assert.ok(drewImage(firstFrame(global.window.made[0].calls)), 'o vídeo já começa com a imagem (gravou depois de carregar)');
+    const sharedWebm = await record((mime) => mime.startsWith('video/webm'));
+    assert.ok(/\.webm$/.test(sharedWebm.file.name) && sharedWebm.mimeType === 'video/webm', 'só webm: .webm');
+    await assert.rejects(record(null), (error) => error.code === 'recorder_unsupported', 'sem gravador: recorder_unsupported');
+    global.window = fakeWindow({ Image: FakeImage });
+    await assert.rejects(
+      studioRef.current.record({ imageUri: '', phrase: 'aa' }),
+      (error) => error.code === 'image_error',
+      'imagem que não carrega: image_error'
+    );
+  } finally {
+    delete global.window;
+  }
+
+  console.log(
+    'Cena viva aprovada: mime, pedaços, intro estrelas → sol, partículas semeadas, legenda, 9:16, fonte da WebView, ' +
+      'componentes do site e do app, gravador e imagem da cena'
+  );
 }
 
 main().catch((error) => {
