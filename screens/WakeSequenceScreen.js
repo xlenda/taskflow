@@ -49,6 +49,7 @@ const S = {
   readyScene: { pt: 'Cena inspirada nas suas respostas', en: 'Scene inspired by your answers' },
   pause: { pt: 'Pausar', en: 'Pause' },
   resume: { pt: 'Continuar', en: 'Continue' },
+  startOver: { pt: 'Recomeçar', en: 'Start over' },
   next: { pt: 'Próximo', en: 'Next' },
   stop: { pt: 'Parar', en: 'Stop' },
   voiceFailed: {
@@ -94,13 +95,16 @@ export default function WakeSequenceScreen() {
   const [phase, setPhase] = useState('idle'); // idle | playing | paused | done | stopped
   const [traceDone, setTraceDone] = useState(false);
   const [voiceFailed, setVoiceFailed] = useState(false);
+  // Paused mid-item with a voice that cannot resume: Continue replays the item, so it says so.
+  const [restartOnResume, setRestartOnResume] = useState(false);
 
   const latest = useRef(null);
   latest.current = { items, narration, cloudVoice };
   const scrollRef = useRef(null);
   const sessionRef = useRef(Date.now().toString(36));
   const epochRef = useRef(0);
-  const positionRef = useRef(0);
+  const positionRef = useRef(0); // the item on screen
+  const resumeAtRef = useRef(0); // what Continue plays: this item, or the next one during the breath
   const cloudIdRef = useRef(null);
   const cloudBrokenRef = useRef(false);
   const deviceActiveRef = useRef(false);
@@ -129,6 +133,8 @@ export default function WakeSequenceScreen() {
       setPhase('done');
       return;
     }
+    // A pause during this breath continues with the next item, not this one again.
+    resumeAtRef.current = next;
     gapRef.current = setTimeout(() => {
       if (epochRef.current === epoch) playItem(next);
     }, GAP_MS);
@@ -189,10 +195,16 @@ export default function WakeSequenceScreen() {
     }
     const epoch = epochRef.current;
     positionRef.current = position;
+    resumeAtRef.current = position;
     setIndex(position);
     setPhase('playing');
     setVoiceFailed(false);
     if (latest.current.cloudVoice && !cloudBrokenRef.current) {
+      // Silent utterance in this same tap: unlocks the device voice so a later
+      // fallback can speak on the iPhone without asking for another tap.
+      try {
+        Speech.speak(' ', { volume: 0 });
+      } catch (_error) {}
       const playbackId = `wake:${sessionRef.current}:${epoch}`;
       cloudIdRef.current = playbackId;
       latest.current.narration
@@ -204,6 +216,7 @@ export default function WakeSequenceScreen() {
             // Stopped elsewhere (the global player): this item waits for Continue.
             if (cloudIdRef.current === playbackId && epochRef.current === epoch) {
               cloudIdRef.current = null;
+              setRestartOnResume(true);
               setPhase('paused');
             }
             return;
@@ -216,16 +229,23 @@ export default function WakeSequenceScreen() {
     speakWithDevice(item, epoch);
   }
 
+  // ponytail: the device voice cannot pause (Android), so holding stops it and
+  // Continue replays this item ("Recomeçar"), or plays the next one when the
+  // pause fell in the breath between items.
+  function holdForContinue() {
+    setRestartOnResume(resumeAtRef.current === positionRef.current);
+    silence();
+    setPhase((current) => (current === 'playing' ? 'paused' : current));
+  }
+
   function pause() {
     const playbackId = cloudIdRef.current;
     if (playbackId && narration.activePlaybackId === playbackId && narration.pause()) {
+      setRestartOnResume(false);
       setPhase('paused');
       return;
     }
-    // ponytail: the device voice cannot pause on Android, so pausing stops it and
-    // Continue replays this item from its start.
-    silence();
-    setPhase('paused');
+    holdForContinue();
   }
 
   function resume() {
@@ -235,7 +255,7 @@ export default function WakeSequenceScreen() {
       narration.resume().catch(() => {});
       return;
     }
-    playItem(positionRef.current);
+    playItem(resumeAtRef.current);
   }
 
   function stop() {
@@ -271,17 +291,13 @@ export default function WakeSequenceScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => silence(), []);
   useEffect(() => {
-    if (focused) return;
-    silence();
-    setPhase((current) => (current === 'playing' ? 'paused' : current));
+    if (!focused) holdForContinue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused]);
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active') return;
-      silence();
-      setPhase((current) => (current === 'playing' ? 'paused' : current));
+      if (next !== 'active') holdForContinue();
     });
     return () => subscription.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,7 +337,12 @@ export default function WakeSequenceScreen() {
   const controls = [
     phase === 'playing'
       ? { testID: 'wake-pause', icon: 'pause', label: S.pause, onPress: pause }
-      : { testID: 'wake-resume', icon: 'play', label: S.resume, onPress: resume },
+      : {
+          testID: 'wake-resume',
+          icon: restartOnResume ? 'refresh' : 'play',
+          label: restartOnResume ? S.startOver : S.resume,
+          onPress: resume,
+        },
     { testID: 'wake-next', icon: 'play-skip-forward', label: S.next, onPress: () => playItem(positionRef.current + 1) },
     { testID: 'wake-stop', icon: 'stop', label: S.stop, onPress: stop },
   ];

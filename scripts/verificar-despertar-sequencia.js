@@ -38,6 +38,7 @@ const {
   firstPhraseForAlarm,
   normalizeWakeSequence,
   pendingAlarmSound,
+  reminderRitualAfterDeletion,
   restoreWakeSequence,
   ritualWithWakeSequence,
   wakeSequenceItemsForState,
@@ -559,6 +560,100 @@ for (const testID of ['wake-sequence-screen', 'wake-player', 'wake-pause', 'wake
   );
 }
 
+// 12b. Rodada de correção 1.
+// (1) Android não ativa lembrete para uma sequência vazia (ele abriria "Sua sequência está vazia").
+assert.ok(
+  reminderActivation.includes('items.length === 0') &&
+    alarmScreen.includes('const reminderEmpty = reminderMode && items.length === 0') &&
+    alarmScreen.includes('disabled={busy || reminderEmpty ||') &&
+    alarmScreen.includes(': reminderEmpty\n    ? t(COPY.emptySequence)'),
+  'lembrete Android com sequência vazia precisa ficar desligado e dizer por quê'
+);
+// (4) No Android nenhum texto alcançável fala em alarme; a permissão só é anunciada quando falta.
+assert.ok(
+  alarmScreen.includes('t(reminderMode ? COPY.reminderNoPhrase : COPY.noPhrase)') &&
+    alarmScreen.includes('t(reminderMode ? COPY.reminderUnsupported : COPY.unsupported)') &&
+    alarmScreen.includes("!reminderMode && capability.reason === 'native_module_missing'") &&
+    reminderActivation.includes("capability?.authorization === 'authorized' ? null : t(COPY.reminderPermissionNote)") &&
+    !/reminder\w*:\s*\{\s*pt: '[^']*alarme/i.test(alarmScreen),
+  'textos do lembrete Android não podem falar em alarme nem prometer pedido de permissão já concedida'
+);
+// (3) Voz do aparelho não pausa: o botão diz "Recomeçar"; pausa no intervalo segue para o próximo item.
+assert.ok(
+  wakeScreen.includes("startOver: { pt: 'Recomeçar', en: 'Start over' }") &&
+    screenBlock('function itemFinished(').includes('resumeAtRef.current = next') &&
+    screenBlock('function resume(').includes('playItem(resumeAtRef.current)') &&
+    playItemBlock.includes('resumeAtRef.current = position') &&
+    wakeCode.includes('label: restartOnResume ? S.startOver : S.resume'),
+  '"Continuar" precisa ser honesto: recomeça o item ou segue para o próximo depois do intervalo'
+);
+// (7) No toque que inicia a voz da nuvem, a fala do aparelho é destravada (sem som) para a reserva.
+assert.ok(
+  /Speech\.speak\(' ', \{\s*volume: 0\s*\}\)/.test(playItemBlock) &&
+    playItemBlock.indexOf("Speech.speak(' '") < playItemBlock.indexOf('.playPersonal('),
+  'reserva da voz do aparelho precisa ser destravada no mesmo toque da voz da Celeste'
+);
+// (6) Android: apagar o conteúdo da frase reaponta e mantém o lembrete; só a sequência vazia desliga.
+const dreamAndCustomOn = withSequence(
+  [{ kind: 'affirmation', id: 'ritual:x' }, { kind: 'affirmation', id: 'custom' }],
+  { reminderEnabled: true, wakeAffirmationId: 'ritual:x', wakeAffirmationText: 'Eu recebo a manhã.' }
+);
+const afterDreamDeleted = reminderRitualAfterDeletion({
+  ...dreamAndCustomOn,
+  morningRitual: { ...dreamAndCustomOn.morningRitual, entries: [] },
+});
+assert.strictEqual(afterDreamDeleted.reminderEnabled, true, 'apagar a frase não pode desligar o lembrete inteiro');
+assert.deepStrictEqual(afterDreamDeleted.wakeSequence, [{ kind: 'affirmation', id: 'custom' }]);
+assert.strictEqual(afterDreamDeleted.wakeAffirmationId, 'custom', 'a frase precisa ser reapontada');
+assert.strictEqual(afterDreamDeleted.wakeAffirmationText, 'Minha frase própria para acordar.');
+const onlyAnchorOn = withSequence([{ kind: 'anchor', id: 'anchor:m1' }], {
+  reminderEnabled: true,
+  wakeAffirmationId: 'manifestation:m1',
+});
+const anchorDeleted = reminderRitualAfterDeletion({ ...onlyAnchorOn, anchorSceneId: null, manifestations: [] });
+assert.strictEqual(anchorDeleted.reminderEnabled, false, 'sequência vazia desliga o lembrete');
+assert.deepStrictEqual(anchorDeleted.wakeSequence, []);
+const onlyDreamOn = withSequence([{ kind: 'affirmation', id: 'ritual:x' }], {
+  reminderEnabled: true,
+  wakeAffirmationId: 'ritual:x',
+});
+const onlyDreamDeleted = reminderRitualAfterDeletion({
+  ...onlyDreamOn,
+  morningRitual: { ...onlyDreamOn.morningRitual, entries: [] },
+});
+assert.strictEqual(
+  onlyDreamDeleted.reminderEnabled,
+  false,
+  'sequência vazia desliga mesmo quando ainda existe a afirmação da Cena-Âncora'
+);
+const anchorAndDreamOn = withSequence(
+  [{ kind: 'anchor', id: 'anchor:m1' }, { kind: 'affirmation', id: 'ritual:x' }],
+  { reminderEnabled: true, wakeAffirmationId: 'ritual:x' }
+);
+const anchorGoneDreamStays = reminderRitualAfterDeletion({ ...anchorAndDreamOn, anchorSceneId: null, manifestations: [] });
+assert.strictEqual(anchorGoneDreamStays.reminderEnabled, true);
+assert.deepStrictEqual(anchorGoneDreamStays.wakeSequence, [{ kind: 'affirmation', id: 'ritual:x' }]);
+assert.strictEqual(anchorGoneDreamStays.wakeAffirmationId, 'ritual:x');
+const removeManifestationBlock = context.slice(
+  context.indexOf('const removeManifestation = useCallback'),
+  context.indexOf('const toggleFavoriteAffirmation = useCallback')
+);
+const removeDreamBlock = context.slice(
+  context.indexOf('const removeDreamRitual = useCallback'),
+  context.indexOf('const exportStateJson = useCallback')
+);
+for (const [name, block] of [
+  ['removeManifestation', removeManifestationBlock],
+  ['removeDreamRitual', removeDreamBlock],
+]) {
+  assert.ok(
+    block.includes('usedAsAlarm && RELEASE_FEATURES.affirmationAlarm') &&
+      block.includes('reminderEnabled: false') &&
+      /if \(!RELEASE_FEATURES\.affirmationAlarm\)[\s\S]*reminderRitualAfterDeletion\(/.test(block),
+    `${name}: iPhone desliga o alarme como antes; Android reaponta pelo reminderRitualAfterDeletion`
+  );
+}
+
 // 13. Lembrete Android (expo-notifications falso + Platform falso): DAILY com os 7 dias,
 // WEEKLY por dia (domingo = 1 no Expo), canal próprio com som e web honesta.
 function loadWakeReminders(OS) {
@@ -706,6 +801,32 @@ async function verifyWakeReminders() {
     { ok: false, error: 'schedule_failed', permission: 'granted' }
   );
   assert.deepStrictEqual(mock.calls.cancelled, ['new-wake-1'], 'falha no meio apagou o lembrete antigo ou deixou o novo');
+
+  // Os novos já existem e cancelar um antigo falha (seg/qua/sex → 08:00, quarta falha): os
+  // novos ficam, os outros antigos saem um a um e o lembrete segue ativo de verdade.
+  const live = new Set(['old-mon', 'old-wed', 'old-fri']);
+  let created = 0;
+  useMock(
+    notificationsMock({
+      async getAllScheduledNotificationsAsync() {
+        return [...live].map(scheduledWake);
+      },
+      async scheduleNotificationAsync() {
+        created += 1;
+        live.add(`new-${created}`);
+        return `new-${created}`;
+      },
+      async cancelScheduledNotificationAsync(identifier) {
+        if (identifier === 'old-wed') throw new Error('native_failure');
+        live.delete(identifier);
+      },
+    })
+  );
+  assert.deepStrictEqual(
+    await service.scheduleWakeReminders({ time: '08:00', weekdays: [1, 3, 5], lang: 'pt' }),
+    { ok: true, identifiers: ['new-1', 'new-2', 'new-3'], permission: 'granted' }
+  );
+  assert.deepStrictEqual([...live].sort(), ['new-1', 'new-2', 'new-3', 'old-wed'], 'segunda e sexta novas sumiram');
 
   // Permissão: pedida só aqui (na ativação); negada não agenda nada.
   mock = useMock(

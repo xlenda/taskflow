@@ -129,6 +129,24 @@ export function appendToWakeSequence(state, entry) {
   return { ok: true, sequence: [...sequence, { kind, id: target }] };
 }
 
+// Without AlarmKit (Android) the reminder only opens the sequence: deleted
+// content re-points the phrase, and the reminder turns off only when nothing
+// is left to hear.
+export function reminderRitualAfterDeletion(state) {
+  const ritual = (state && state.morningRitual) || {};
+  const wakeSequence = normalizeWakeSequence(ritual.wakeSequence, { validIds: alarmIds(state) });
+  const phrase = firstPhraseForAlarm(wakeSequence, state);
+  return {
+    ...ritual,
+    wakeSequence,
+    reminderEnabled: ritual.reminderEnabled === true && wakeSequence.length > 0 && !!phrase,
+    alarmSyncError: false,
+    wakeAffirmationId: phrase ? phrase.id : null,
+    wakeAffirmationText: phrase ? phrase.text : '',
+    wakeAffirmationLang: phrase ? phrase.lang : ritual.wakeAffirmationLang,
+  };
+}
+
 // Saving the sequence re-points the AlarmKit phrase. While a native alarm is
 // active, text and language stay what the device confirmed, so
 // NativeAlarmContentSync sees the difference and replaces the audio first.

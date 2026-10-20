@@ -54,9 +54,11 @@ import { createSerialStorageWriter } from '../utils/serialStorageWriter';
 import { alarmWeekdaysOrDefault, normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 import {
   appendToWakeSequence,
+  reminderRitualAfterDeletion,
   restoreWakeSequence,
   ritualWithWakeSequence,
 } from '../utils/wakeSequence';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import {
   bridgeDoneOn,
   buildEvolutionContinuity,
@@ -2684,7 +2686,7 @@ export function AppProvider({ children }) {
             !String(play?.visionId || '').startsWith(visionPrefix) &&
             play?.visionId !== `anchor:${id}`
         ),
-        ...(usedAsAlarm
+        ...(usedAsAlarm && RELEASE_FEATURES.affirmationAlarm
           ? {
               morningRitual: {
                 ...s.morningRitual,
@@ -2699,6 +2701,11 @@ export function AppProvider({ children }) {
             }
           : {}),
       };
+      // Android: the reminder only opens the sequence, so the phrase is re-pointed
+      // and the reminder turns off only when nothing is left to hear.
+      if (!RELEASE_FEATURES.affirmationAlarm) {
+        nextState.morningRitual = reminderRitualAfterDeletion(nextState);
+      }
       if (usedByPracticePlan) {
         nextState.practicePlan = normalizePracticePlan(
           {
@@ -3215,12 +3222,12 @@ export function AppProvider({ children }) {
     setState((s) => {
       const ritual = s.morningRitual || initialState().morningRitual;
       const usedAsAlarm = ritual.wakeAffirmationId === `ritual:${target}`;
-      return {
+      const next = {
         ...s,
         morningRitual: {
           ...ritual,
           entries: (ritual.entries || []).filter((entry) => entry.id !== target),
-          ...(usedAsAlarm
+          ...(usedAsAlarm && RELEASE_FEATURES.affirmationAlarm
             ? {
                 reminderEnabled: false,
                 wakeAffirmationId: null,
@@ -3231,6 +3238,11 @@ export function AppProvider({ children }) {
             : {}),
         },
       };
+      // Android: re-point the phrase; only an emptied sequence turns the reminder off.
+      if (!RELEASE_FEATURES.affirmationAlarm) {
+        next.morningRitual = reminderRitualAfterDeletion(next);
+      }
+      return next;
     });
   }, [setPersonalVisualPhase]);
 

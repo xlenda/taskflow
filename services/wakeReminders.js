@@ -44,6 +44,15 @@ async function cancelEach(client, identifiers) {
   for (const identifier of identifiers) await client.cancelScheduledNotificationAsync(identifier);
 }
 
+// One failing id never keeps the others alive.
+async function cancelEachQuietly(client, identifiers) {
+  for (const identifier of identifiers) {
+    await Promise.resolve()
+      .then(() => client.cancelScheduledNotificationAsync(identifier))
+      .catch(() => {});
+  }
+}
+
 function wakeContent(lang) {
   const en = lang === 'en';
   return {
@@ -158,12 +167,13 @@ export async function scheduleWakeReminders({ time, weekdays, lang = 'pt' } = {}
         if (typeof identifier !== 'string' || !identifier) throw new Error('empty_identifier');
         created.push(identifier);
       }
-      // ponytail: an old reminder whose cancel fails stays scheduled; turning off sweeps them all.
-      await cancelEach(client, previous);
     } catch (_error) {
-      await cancelEach(client, created).catch(() => {});
+      await cancelEachQuietly(client, created);
       return { ok: false, error: 'schedule_failed', permission };
     }
+    // The new reminders exist, so the old ones go one by one. ponytail: an old one
+    // whose cancel fails stays scheduled; turning the reminder off sweeps them all.
+    await cancelEachQuietly(client, previous);
     return { ok: true, identifiers: created, permission };
   } catch (_error) {
     return { ok: false, error: 'schedule_failed', permission };

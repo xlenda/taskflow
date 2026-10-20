@@ -192,8 +192,20 @@ const COPY = {
   reminderDeactivate: { pt: 'Desativar lembrete', en: 'Turn reminder off' },
   reminderConfirmTitle: { pt: 'Ativar este lembrete?', en: 'Turn on this reminder?' },
   reminderConfirmBody: {
-    pt: 'Receber um lembrete com som às {time} nos dias escolhidos para ouvir sua sequência? O aparelho pedirá permissão para notificações.',
-    en: 'Get a reminder with sound at {time} on the selected days to hear your sequence? Your device will ask for notification permission.',
+    pt: 'Receber um lembrete com som às {time} nos dias escolhidos para ouvir sua sequência?',
+    en: 'Get a reminder with sound at {time} on the selected days to hear your sequence?',
+  },
+  reminderPermissionNote: {
+    pt: 'O aparelho pedirá permissão para notificações.',
+    en: 'Your device will ask for notification permission.',
+  },
+  reminderNoPhrase: {
+    pt: 'Adicione uma afirmação à sua sequência para ativar o lembrete.',
+    en: 'Add an affirmation to your sequence to turn the reminder on.',
+  },
+  reminderUnsupported: {
+    pt: 'O lembrete do despertar não está disponível neste aparelho.',
+    en: 'The wake-up reminder is unavailable on this device.',
   },
   reminderDeactivateTitle: { pt: 'Desativar o lembrete?', en: 'Turn the reminder off?' },
   reminderDeactivateBody: {
@@ -274,6 +286,8 @@ export default function AffirmationAlarmScreen() {
   const soundUpdate = reminderMode ? null : pendingAlarmSound(state, selected);
   const sequenceIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const full = items.length >= WAKE_SEQUENCE_MAX;
+  // The reminder promises "sua sequência": with nothing in it, it stays off.
+  const reminderEmpty = reminderMode && items.length === 0;
   const listeningSeconds = estimateListeningSeconds(items);
 
   const [time, setTime] = useState(() => isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00');
@@ -493,10 +507,17 @@ export default function AffirmationAlarmScreen() {
   // Android: the reminder opens the sequence, so no voice is generated here and
   // notification permission is asked only after this explicit confirmation.
   const activateReminder = useCallback(async () => {
-    if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
+    if (operationRef.current || items.length === 0 || !selected || !isValidTime(time) || weekdays.length === 0) {
+      return;
+    }
     const confirmed = await confirmAsync({
       title: t(COPY.reminderConfirmTitle),
-      message: t(COPY.reminderConfirmBody, { time }),
+      message: [
+        t(COPY.reminderConfirmBody, { time }),
+        capability?.authorization === 'authorized' ? null : t(COPY.reminderPermissionNote),
+      ]
+        .filter(Boolean)
+        .join(' '),
       confirmLabel: t(COPY.reminderActivate),
       cancelLabel: t(COPY.cancel),
       destructive: false,
@@ -533,7 +554,7 @@ export default function AffirmationAlarmScreen() {
       if (mountedRef.current) setBusy(false);
       refreshCapability();
     }
-  }, [haptic, lang, refreshCapability, saveMorningRitualPreferences, selected, t, time, weekdays]);
+  }, [capability, haptic, items.length, lang, refreshCapability, saveMorningRitualPreferences, selected, t, time, weekdays]);
 
   const saveWebChoice = useCallback(() => {
     if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
@@ -627,16 +648,18 @@ export default function AffirmationAlarmScreen() {
     ? t(COPY.soundUpdate, { phrase: soundUpdate.text })
     : ritual.reminderEnabled
     ? t(reminderMode ? COPY.reminderActive : COPY.active, { time: ritual.reminderTime || '07:00' })
+    : reminderEmpty
+    ? t(COPY.emptySequence)
     : !selected
-    ? t(COPY.noPhrase)
+    ? t(reminderMode ? COPY.reminderNoPhrase : COPY.noPhrase)
     : !capability
     ? t(COPY.checking)
     : Platform.OS === 'web'
     ? t(COPY.webUnsupported)
-    : capability.reason === 'native_module_missing'
+    : !reminderMode && capability.reason === 'native_module_missing'
     ? t(COPY.nativeMissing)
     : capability.supported !== true
-    ? t(COPY.unsupported)
+    ? t(reminderMode ? COPY.reminderUnsupported : COPY.unsupported)
     : t(reminderMode ? COPY.reminderReady : COPY.ready);
 
   const sourceLabel = (source) =>
@@ -956,7 +979,7 @@ export default function AffirmationAlarmScreen() {
                   ? 'notifications-outline'
                   : 'alarm-outline'
               }
-              disabled={busy || (Platform.OS === 'web' ? !canSaveChoice : !canSchedule)}
+              disabled={busy || reminderEmpty || (Platform.OS === 'web' ? !canSaveChoice : !canSchedule)}
               onPress={Platform.OS === 'web' ? saveWebChoice : reminderMode ? activateReminder : activate}
               style={styles.primaryAction}
             />
