@@ -10,6 +10,8 @@ export function installCenaViva(root) {
   const TRACE = [[46, 112], [160, 45], [274, 112]]; // CelestialTrace.js:59-66 num céu de 320×168
   const IGNITE = 2100; // as estrelas chegam e o sol acende (a intro cabe em 0–2400 ms)
   const SERIF = "Georgia, 'Times New Roman', serif";
+  const END_HOLD_MS = 1200; // cartão final do vídeo: frase inteira + assinatura + link parados no fim (85% de 8 s)
+  const SETTLE_MS = 300; // no cartão final, a janela que rola se dissolve na frase inteira ajustada
 
   const clamp01 = (v) => (v > 0 ? (v < 1 ? v : 1) : 0);
   const hasText = (v) => !!v && String(v).trim() !== ''; // só espaços (ou false/0/NaN) não é legenda
@@ -130,9 +132,8 @@ export function installCenaViva(root) {
     let rayLayer = null;
     let backdrop = null;
     let backdropKey = '';
-    let caption = hasText(o.phrase) ? { text: String(o.phrase), progress: 1, phrase: true } : null;
-    let layout = null;
-    let layoutKey = '';
+    let caption = hasText(o.phrase) ? { text: String(o.phrase), progress: 1, phrase: true, settle: 1 } : null;
+    let layouts = {}; // legenda quebrada por modo (em andamento / parada): o cartão final do vídeo desenha os dois
     let playing = false;
     let destroyed = false; // a tela saiu: callbacks atrasados (legenda, imagem, mensagem) não pintam mais
     let raf = 0;
@@ -388,8 +389,9 @@ export function installCenaViva(root) {
     // Parada (phrase, ou progress 1): INTEIRA — a fonte desce 5% por vez até caber em 5 linhas (no mínimo 60%);
     // se nem assim, a 5ª linha termina em "…"
     function captionLayout(text, W, base, whole) {
-      const key = `${text}|${W}|${base}|${whole}`;
-      if (key === layoutKey) return layout;
+      const key = `${text}|${W}|${base}`;
+      const cached = layouts[whole];
+      if (cached && cached.key === key) return cached.fit;
       let fit = wrapCaption(text, W, base);
       for (let step = 1; whole && fit.lines.length > 5 && step <= 8; step++) {
         fit = wrapCaption(text, W, Math.round(base * (1 - 0.05 * step) * 10) / 10);
@@ -403,52 +405,75 @@ export function installCenaViva(root) {
           x += (word.width + fit.space) * ln.scale;
         });
       });
-      layoutKey = key;
-      layout = fit;
+      layouts[whole] = { key, fit };
       return fit;
     }
 
     // legenda: só as palavras cujo começo o progresso já passou. Em andamento, narração longa mostra só as últimas
-    // 3 linhas (karaokê); parada, a frase inteira no tamanho que coube
+    // 3 linhas (karaokê); parada, a frase inteira no tamanho que coube. Cartão final do vídeo (settle < 1): a janela
+    // que rola se dissolve na frase inteira ajustada
     function drawCaption(t, W, H, r, current) {
+      const base = Math.round(r.w * 0.058);
       const whole = current.phrase || current.progress >= 1;
-      const { lines, size } = captionLayout(current.text, W, Math.round(r.w * 0.058), whole);
-      if (!lines.length) return;
-      const slots = whole ? lines.length : Math.min(3, lines.length);
-      const lineHeight = size * 1.32;
+      const fit = captionLayout(current.text, W, base, whole);
+      if (!fit.lines.length) return;
+      const blend = whole && current.settle < 1 ? smooth(current.settle) : 1;
       const bottom = r.y + r.h * 0.93 - (o.signature && !tall ? 96 * (W / 720) : 0);
       const fade = current.phrase && intro && !still ? smooth(span(t, 2400, 900)) : 1;
+      // bloco: quantas linhas a janela mostra e onde o véu fica sólido (acima da 1ª linha)
+      const block = (layout, all) => {
+        const slots = all ? layout.lines.length : Math.min(3, layout.lines.length);
+        const lineHeight = layout.size * 1.32;
+        return { layout, slots, lineHeight, solid: bottom - (slots - 1) * lineHeight - layout.size * 1.1 };
+      };
+      const to = block(fit, whole);
+      const from = blend < 1 ? block(captionLayout(current.text, W, base, false), false) : null;
       ctx.save();
       // véu de legibilidade: transparente no meio, rgba(8,16,28,0.62) a partir do topo do bloco até embaixo, para o
       // texto claro passar de 4,5:1 até nas cenas prontas de centro claro; fica parado enquanto as palavras surgem
-      const solid = bottom - (slots - 1) * lineHeight - size * 1.1;
-      const from = solid - r.h * 0.16;
-      const veil = ctx.createLinearGradient(0, from, 0, solid);
+      // (no dissolve, desliza da janela para o bloco inteiro)
+      const solid = from ? from.solid + (to.solid - from.solid) * blend : to.solid;
+      const top = solid - r.h * 0.16;
+      const veil = ctx.createLinearGradient(0, top, 0, solid);
       veil.addColorStop(0, 'rgba(8,16,28,0)');
       veil.addColorStop(1, 'rgba(8,16,28,0.62)');
       ctx.globalAlpha = fade;
       ctx.fillStyle = veil;
-      ctx.fillRect(0, from, W, H - from);
+      ctx.fillRect(0, top, W, H - top);
       const reached = current.progress * current.text.length;
-      let last = -1;
-      lines.forEach((ln, i) => {
-        if (ln.words[0].start < reached) last = i;
-      });
-      const first = Math.max(0, last - slots + 1);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.shadowColor = 'rgba(8,16,30,0.6)';
-      ctx.shadowBlur = size * 0.45;
+      ctx.shadowBlur = fit.size * 0.45;
       ctx.fillStyle = '#FFF9F0';
-      for (let i = first; i <= last; i++) {
-        const y = bottom - (slots - 1 - (i - first)) * lineHeight;
-        ctx.font = captionFont(Math.round(size * lines[i].scale * 10) / 10);
-        for (const word of lines[i].words) {
-          const alpha = fade * clamp01((reached - word.start) / Math.min(3, word.text.length));
-          if (alpha <= 0) break;
-          ctx.globalAlpha = alpha;
-          ctx.fillText(word.text, word.x, y);
+      // linhas que o progresso alcançou, na janela do bloco; lineAmount(i) = opacidade da linha i
+      const drawLines = (b, amount, lineAmount) => {
+        const lines = b.layout.lines;
+        let last = -1;
+        lines.forEach((ln, i) => {
+          if (ln.words[0].start < reached) last = i;
+        });
+        const first = Math.max(0, last - b.slots + 1);
+        for (let i = first; i <= last; i++) {
+          const y = bottom - (b.slots - 1 - (i - first)) * b.lineHeight;
+          const lineAlpha = amount * lineAmount(i);
+          ctx.font = captionFont(Math.round(b.layout.size * lines[i].scale * 10) / 10);
+          for (const word of lines[i].words) {
+            const alpha = lineAlpha * clamp01((reached - word.start) / Math.min(3, word.text.length));
+            if (alpha <= 0) break;
+            ctx.globalAlpha = alpha;
+            ctx.fillText(word.text, word.x, y);
+          }
         }
+      };
+      if (from && from.layout.size !== fit.size) {
+        // a frase inteira precisou de fonte menor: as duas se cruzam (opacidades somam 1)
+        drawLines(from, fade * (1 - blend), () => 1);
+        drawLines(to, fade * blend, () => 1);
+      } else {
+        // mesmo tamanho = mesmas quebras: as linhas da janela ficam onde estão e só as de cima aparecem
+        const kept = from ? fit.lines.length - from.slots : 0;
+        drawLines(to, fade, (i) => (i >= kept ? 1 : blend));
       }
       ctx.restore();
     }
@@ -598,10 +623,16 @@ export function installCenaViva(root) {
       raf = 0;
     }
 
-    function assignCaption(next) {
+    // settle: só o cartão final do vídeo passa (< 1 durante o dissolve); exibindo, a legenda completa já vem parada
+    function assignCaption(next, settle) {
       caption =
         next && hasText(next.text)
-          ? { text: String(next.text), progress: next.progress == null ? 1 : clamp01(Number(next.progress)), phrase: false }
+          ? {
+              text: String(next.text),
+              progress: next.progress == null ? 1 : clamp01(Number(next.progress)),
+              phrase: false,
+              settle: settle == null ? 1 : clamp01(settle),
+            }
           : null;
     }
 
@@ -620,21 +651,22 @@ export function installCenaViva(root) {
       rayLayer = null;
       backdrop = null;
       backdropKey = '';
-      layout = null;
-      layoutKey = '';
+      layouts = {};
     }
 
     return {
       api: { start, stop, drawFrame, setCaption, destroy },
       // gravação: troca a legenda e pinta o quadro t numa passada só (setCaption parado repintaria antes: custo dobrado)
-      paintWithCaption: (t, next) => {
-        assignCaption(next);
+      paintWithCaption: (t, next, settle) => {
+        assignCaption(next, settle);
         drawFrame(t);
       },
     };
   }
 
-  // grava o vídeo compartilhável: 9:16 com a intro, legenda progressiva (progress = t / duração) e assinatura
+  // grava o vídeo compartilhável: 9:16 com a intro, legenda progressiva e assinatura. Cartão final: a legenda completa
+  // em 85% (6,8 s de 8 s), a janela se dissolve na frase inteira ajustada e ela fica parada com o Traço Celeste e o
+  // link até o fim; clipe curto demais para isso (até 2,4 s) não tem cartão final (progress = t / duração)
   function recordVideo(params) {
     const { image, phrase, linkText, durationMs = 8000, width = 720, height = 1280, fps = 30 } = params || {};
     const Recorder = root.MediaRecorder;
@@ -656,7 +688,9 @@ export function installCenaViva(root) {
     }
     const scene = buildRenderer(canvas, { image, format: '9:16', mode: 'intro', reducedMotion: false, signature: true, linkText });
     const renderer = scene.api;
-    const paint = (t) => scene.paintWithCaption(t, { text: phrase || '', progress: t / durationMs });
+    const reveal = durationMs > 2 * END_HOLD_MS ? durationMs - END_HOLD_MS : durationMs;
+    const paint = (t) =>
+      scene.paintWithCaption(t, { text: phrase || '', progress: t / reveal }, reveal < durationMs ? span(t, reveal, SETTLE_MS) : 1);
     return new Promise((resolve, reject) => {
       const chunks = [];
       let stream = null;

@@ -14,6 +14,7 @@ const files = [
   'screens/VisionPlayerScreen.js',
   'screens/AffirmationsScreen.js',
   'components/AffirmationShareCard.js',
+  'components/ShareCard.js',
   'components/GradientCover.js',
   'utils/shareAffirmationCard.js',
   'utils/personalJourney.js',
@@ -24,6 +25,8 @@ files.forEach(parse);
 const player = read('screens/VisionPlayerScreen.js');
 const affirmations = read('screens/AffirmationsScreen.js');
 const shareCard = read('components/AffirmationShareCard.js');
+// o cartão de afirmação virou wrapper do ShareCard (cartão 9:16 de tudo que é compartilhado)
+const genericShareCard = read('components/ShareCard.js');
 const shareHelper = read('utils/shareAffirmationCard.js');
 const gradientCover = read('components/GradientCover.js');
 const context = read('context/AppContext.js');
@@ -55,13 +58,16 @@ assert.match(
 assert.match(context, /journeyKey\.endsWith\(':secondary'\)/);
 assert.match(gradientCover, /transition=\{imageTransition\}/);
 
-assert.match(shareCard, /AFFIRMATION_SHARE_ASPECT_RATIO = 9 \/ 16/);
-assert.match(shareCard, /AFFIRMATION_SHARE_LAYOUT_SIZE = Object\.freeze\(\{ width: 360, height: 640 \}\)/);
-assert.match(shareCard, /APP_NAME/);
-assert.match(shareCard, /APP_URL/);
+assert.match(genericShareCard, /SHARE_CARD_ASPECT_RATIO = 9 \/ 16/);
+assert.match(genericShareCard, /SHARE_CARD_LAYOUT_SIZE = Object\.freeze\(\{ width: 360, height: 640 \}\)/);
+assert.match(shareCard, /AFFIRMATION_SHARE_ASPECT_RATIO = SHARE_CARD_ASPECT_RATIO/);
+assert.match(shareCard, /AFFIRMATION_SHARE_LAYOUT_SIZE = SHARE_CARD_LAYOUT_SIZE/);
+assert.match(genericShareCard, /APP_NAME/);
+assert.match(genericShareCard, /APP_URL/);
 assert.match(shareCard, /visualKey=\{visualKey\}/);
-assert.match(shareCard, /imageTransition=\{0\}/);
-assert.ok((shareCard.match(/maxFontSizeMultiplier=\{1\}/g) || []).length >= 4);
+assert.match(genericShareCard, /acquirePersonalVisual\(visualKey\)/);
+assert.match(genericShareCard, /transition=\{0\}/);
+assert.ok((genericShareCard.match(/maxFontSizeMultiplier=\{1\}/g) || []).length >= 4);
 assert.match(affirmations, /<Modal/);
 assert.match(affirmations, /affirmation-share-preview-submit/);
 assert.match(affirmations, /sharePreviewScale/);
