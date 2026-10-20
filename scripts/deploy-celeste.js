@@ -146,7 +146,12 @@ function runCapture(
         if (code === 0) resolve({ stdout, stderr });
         else {
           const reason = signal ? `sinal ${signal}` : `codigo ${code}`;
-          reject(new Error(`${failure} (${reason}): ${stderr.trim().slice(0, 500)}`));
+          // CLIs como o do Supabase escrevem o motivo real no stdout; sem ele o erro fica mudo.
+          const detail = [stderr.trim().slice(0, 500), stdout.trim().slice(0, 500)]
+            .filter(Boolean)
+            .join(' | stdout: ')
+            .replace(/(postgres(?:ql)?:\/\/)[^@\s]+@/gi, '$1***@');
+          reject(new Error(`${failure} (${reason}): ${detail}`));
         }
       });
     });
