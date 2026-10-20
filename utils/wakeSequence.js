@@ -1,4 +1,4 @@
-import { personalAlarmContentForState } from './personalAffirmations';
+import { personalAlarmContentForState, resolvePersonalAlarmContent } from './personalAffirmations';
 import {
   anchorManifestationForState,
   personalJourneyItemsForState,
@@ -85,17 +85,36 @@ export const estimateListeningSeconds = (items) =>
     ) / CHARS_PER_SECOND
   );
 
-// AlarmKit sound: the first affirmation of the sequence; without one, the
-// Anchor Scene affirmation; an empty sequence has no alarm phrase.
+const phraseOf = (option) => (option ? { id: option.id, text: option.text, lang: option.lang } : null);
+
+// AlarmKit sound: the first affirmation of the sequence; without one (empty
+// sequence included), the Anchor Scene affirmation; with neither, no phrase.
 export function firstPhraseForAlarm(items, state) {
-  if (!Array.isArray(items) || !items.length) return null;
   const phrases = new Map(personalAlarmContentForState(state).map((option) => [option.id, option]));
-  const firstId = items
+  const firstId = (Array.isArray(items) ? items : [])
     .map((item) => cleanId(item && item.id))
     .find((id) => kindForId(id) === 'affirmation' && phrases.has(id));
   const anchor = anchorManifestationForState(state);
-  const phrase = firstId ? phrases.get(firstId) : anchor && phrases.get(`manifestation:${anchor.id}`);
-  return phrase ? { id: phrase.id, text: phrase.text, lang: phrase.lang } : null;
+  return phraseOf(firstId ? phrases.get(firstId) : anchor && phrases.get(`manifestation:${anchor.id}`));
+}
+
+// What the alarm plays: the saved pointer while it resolves. Every sequence save
+// re-points it, so a legacy single-item alarm (Anchor Scene, vision) keeps its
+// sound until the sequence is first edited; without a pointer, the sequence decides.
+export function alarmPhraseForState(state, items) {
+  return phraseOf(resolvePersonalAlarmContent(state)) || firstPhraseForAlarm(items, state);
+}
+
+// The phrase an active alarm is about to switch to, or null when the device
+// already plays it (or no alarm is active).
+export function pendingAlarmSound(state, phrase) {
+  const ritual = (state && state.morningRitual) || {};
+  if (!ritual.reminderEnabled || !phrase) return null;
+  // Stored language defaults to 'pt', the same rule the provider applies on load.
+  const confirmedLang = ritual.wakeAffirmationLang === 'en' ? 'en' : 'pt';
+  return phrase.text !== ritual.wakeAffirmationText || phrase.lang !== confirmedLang
+    ? phrase
+    : null;
 }
 
 export function appendToWakeSequence(state, entry) {

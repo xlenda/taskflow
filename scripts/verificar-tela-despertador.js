@@ -135,7 +135,7 @@ for (const label of ['Afirmação', 'Visão', 'Cena-Âncora', 'Sonho', 'Sua fras
 assert.ok(
   screen.includes('wakeSequenceItemsForState(state, lang)') &&
     screen.includes('wakeSequenceOptionsForState(state, lang)') &&
-    screen.includes('firstPhraseForAlarm(items, state)'),
+    screen.includes('alarmPhraseForState(state, items)'),
   'sequência, opções e frase do alarme precisam vir dos resolvedores compartilhados'
 );
 for (const source of ['affirmation', 'vision', 'anchor', 'dream', 'custom']) {

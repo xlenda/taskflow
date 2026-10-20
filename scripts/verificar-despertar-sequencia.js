@@ -32,10 +32,12 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 const {
   WAKE_SEQUENCE_MAX,
+  alarmPhraseForState,
   appendToWakeSequence,
   estimateListeningSeconds,
   firstPhraseForAlarm,
   normalizeWakeSequence,
+  pendingAlarmSound,
   restoreWakeSequence,
   ritualWithWakeSequence,
   wakeSequenceItemsForState,
@@ -187,12 +189,25 @@ assert.deepStrictEqual(firstPhraseForAlarm(wakeSequenceItemsForState(mixed, 'pt'
   text: 'Eu recebo a manhã.',
   lang: 'pt',
 });
+const anchorPhrase = { id: 'manifestation:m1', text: 'Eu sigo com presença.', lang: 'pt' };
 assert.deepStrictEqual(
   firstPhraseForAlarm([{ kind: 'anchor', id: 'anchor:m1' }, { kind: 'vision', id: 'm1:vision:Peace' }], baseState),
-  { id: 'manifestation:m1', text: 'Eu sigo com presença.', lang: 'pt' },
+  anchorPhrase,
   'sem afirmação, o alarme deve usar a afirmação da Cena-Âncora'
 );
-assert.strictEqual(firstPhraseForAlarm([], baseState), null, 'sequência vazia não tem frase de alarme');
+assert.deepStrictEqual(firstPhraseForAlarm([], baseState), anchorPhrase, 'sequência vazia usa a afirmação da Cena-Âncora');
+// Sem Cena-Âncora e sem afirmação na sequência não há frase: o alarme fica desligado.
+const noAnchorState = {
+  lang: 'pt',
+  anchorSceneId: null,
+  manifestations: [],
+  morningRitual: { ...baseState.morningRitual, wakeCustomText: '', wakeSequence: [] },
+};
+assert.strictEqual(firstPhraseForAlarm([], noAnchorState), null, 'sem nada, o alarme não tem frase');
+assert.deepStrictEqual(
+  firstPhraseForAlarm([{ kind: 'affirmation', id: 'ritual:x' }], noAnchorState),
+  { id: 'ritual:x', text: 'Eu recebo a manhã.', lang: 'pt' }
+);
 
 // 8. Acrescentar: 7º item recusado, duplicata e id desconhecido avisados, id apagado não ocupa vaga.
 let growing = withSequence([]);
@@ -257,12 +272,31 @@ assert.strictEqual(
 );
 assert.strictEqual(
   ritualWithWakeSequence(activeState, []).wakeAffirmationId,
-  'ritual:x',
-  'alarme ativo nunca pode ficar sem frase'
+  'manifestation:m1',
+  'sequência esvaziada com alarme ativo passa a usar a afirmação da Cena-Âncora'
 );
+const activeNoAnchor = {
+  ...noAnchorState,
+  morningRitual: {
+    ...noAnchorState.morningRitual,
+    reminderEnabled: true,
+    wakeAffirmationId: 'ritual:x',
+    wakeAffirmationText: 'Texto confirmado no aparelho',
+    wakeSequence: [{ kind: 'affirmation', id: 'ritual:x' }],
+  },
+};
+const emptiedNoAnchor = { ...activeNoAnchor, morningRitual: ritualWithWakeSequence(activeNoAnchor, []) };
+assert.strictEqual(emptiedNoAnchor.morningRitual.wakeAffirmationId, 'ritual:x', 'alarme ativo nunca pode ficar sem frase');
+assert.strictEqual(alarmPhraseForState(emptiedNoAnchor, [])?.id, 'ritual:x', 'tela não pode perder a frase do alarme ativo');
 const clearedOff = ritualWithWakeSequence(withSequence([{ kind: 'affirmation', id: 'ritual:x' }]), []);
-assert.strictEqual(clearedOff.wakeAffirmationId, null);
-assert.strictEqual(clearedOff.wakeAffirmationText, '');
+assert.strictEqual(clearedOff.wakeAffirmationId, 'manifestation:m1');
+assert.strictEqual(clearedOff.wakeAffirmationText, 'Eu sigo com presença.');
+const clearedNoAnchor = ritualWithWakeSequence(
+  { ...noAnchorState, morningRitual: { ...noAnchorState.morningRitual, wakeSequence: [{ kind: 'affirmation', id: 'ritual:x' }] } },
+  []
+);
+assert.strictEqual(clearedNoAnchor.wakeAffirmationId, null);
+assert.strictEqual(clearedNoAnchor.wakeAffirmationText, '');
 const customSecond = { ...baseState, morningRitual: ritualWithWakeSequence(baseState, ['ritual:x', 'custom']) };
 assert.deepStrictEqual(
   wakeSequenceItemsForState(customSecond, 'pt').map((item) => item.id),
@@ -270,6 +304,73 @@ assert.deepStrictEqual(
   'frase própria fora da 1ª posição não pode sumir'
 );
 assert.strictEqual(customSecond.morningRitual.wakeAffirmationId, 'ritual:x');
+
+// 9b. Regra fechada: alarme antigo apontando para Cena-Âncora ou visão mantém som e
+// ponteiro até a 1ª edição da sequência; carregar e abrir a tela não mudam nada.
+const { personalAlarmContentForState } = load('utils/personalAffirmations.js');
+for (const legacyId of ['anchor:m1', 'm1:vision:Peace']) {
+  const confirmed = personalAlarmContentForState(baseState).find((option) => option.id === legacyId);
+  const { wakeSequence: _none, ...legacyRitual } = {
+    ...baseState.morningRitual,
+    reminderEnabled: true,
+    wakeAffirmationId: legacyId,
+    wakeAffirmationText: confirmed.text,
+    wakeAffirmationLang: confirmed.lang,
+  };
+  // Carregar: mergeDefensivo só acrescenta a sequência migrada.
+  const loaded = {
+    ...baseState,
+    morningRitual: { ...legacyRitual, wakeSequence: restoreWakeSequence(legacyRitual, validIds) },
+  };
+  assert.deepStrictEqual(loaded.morningRitual.wakeSequence, [
+    { kind: legacyId.startsWith('anchor:') ? 'anchor' : 'vision', id: legacyId },
+  ]);
+  // Abrir a tela: o som continua o confirmado e nada é anunciado como pendente.
+  const playing = alarmPhraseForState(loaded, wakeSequenceItemsForState(loaded, 'pt'));
+  assert.deepStrictEqual(
+    playing,
+    { id: legacyId, text: confirmed.text, lang: confirmed.lang },
+    `${legacyId}: abrir a tela trocou o som do alarme`
+  );
+  assert.strictEqual(pendingAlarmSound(loaded, playing), null, `${legacyId}: abrir a tela anunciou troca de som`);
+  // 1ª edição: a frase passa a vir da sequência e a troca de som é anunciada.
+  const edited = {
+    ...loaded,
+    morningRitual: ritualWithWakeSequence(loaded, [
+      ...loaded.morningRitual.wakeSequence,
+      { kind: 'affirmation', id: 'm1:affirmation:Love' },
+    ]),
+  };
+  assert.strictEqual(edited.morningRitual.wakeAffirmationId, 'm1:affirmation:Love');
+  assert.strictEqual(edited.morningRitual.wakeAffirmationText, confirmed.text, 'texto nativo só muda depois da troca');
+  assert.deepStrictEqual(
+    pendingAlarmSound(edited, alarmPhraseForState(edited, wakeSequenceItemsForState(edited, 'pt'))),
+    { id: 'm1:affirmation:Love', text: 'Eu cultivo Love no próximo passo.', lang: 'pt' },
+    `${legacyId}: troca de som depois da edição não foi anunciada`
+  );
+}
+assert.strictEqual(
+  pendingAlarmSound(withSequence([], { reminderEnabled: false, wakeAffirmationText: 'antigo' }), anchorPhrase),
+  null,
+  'sem alarme ativo não existe som para trocar'
+);
+const legacyNoLang = withSequence([{ kind: 'anchor', id: 'anchor:m1' }], {
+  reminderEnabled: true,
+  wakeAffirmationId: 'anchor:m1',
+  wakeAffirmationText: personalAlarmContentForState(baseState).find((option) => option.id === 'anchor:m1').text,
+  wakeAffirmationLang: undefined,
+});
+assert.strictEqual(
+  pendingAlarmSound(legacyNoLang, alarmPhraseForState(legacyNoLang, wakeSequenceItemsForState(legacyNoLang, 'pt'))),
+  null,
+  'idioma salvo ausente vale pt, como no carregamento'
+);
+const withDream = withSequence([{ kind: 'affirmation', id: 'ritual:x' }]);
+assert.deepStrictEqual(
+  alarmPhraseForState(withDream, wakeSequenceItemsForState(withDream, 'pt')),
+  { id: 'ritual:x', text: 'Eu recebo a manhã.', lang: 'pt' },
+  'sem ponteiro salvo, a frase vem da sequência'
+);
 
 // 10. Ligações: provider, tela "Meu despertar", atalhos e botão do sonho.
 const context = read('context/AppContext.js');
@@ -311,8 +412,31 @@ for (const kind of ['anchor', 'vision', 'affirmation']) {
 assert.ok(
   alarmScreen.includes("title: { pt: 'Meu despertar', en: 'My wake-up' }") &&
     alarmScreen.includes('estimateListeningSeconds(items)') &&
-    alarmScreen.includes('firstPhraseForAlarm(items, state)'),
-  'tela precisa se chamar Meu despertar, mostrar o tempo estimado e derivar a frase do alarme'
+    alarmScreen.includes('alarmPhraseForState(state, items)') &&
+    alarmScreen.includes('pendingAlarmSound(state, selected)'),
+  'tela precisa se chamar Meu despertar, mostrar o tempo estimado e usar a frase do alarme compartilhada'
+);
+const dirtyStart = alarmScreen.indexOf('const dirty =');
+const dirtyExpr = alarmScreen.slice(dirtyStart, alarmScreen.indexOf(';', dirtyStart));
+assert.ok(
+  dirtyStart >= 0 &&
+    dirtyExpr.includes('time !==') &&
+    dirtyExpr.includes('sameDays(weekdays') &&
+    dirtyExpr.includes('narration.narratorId') &&
+    !/selected|wakeAffirmationText|soundUpdate/.test(dirtyExpr),
+  '"alterações não salvas" só pode vir de horário, dias e voz'
+);
+assert.ok(
+  alarmScreen.includes("pt: 'O som do alarme será atualizado para: “{phrase}”'") &&
+    alarmScreen.includes("en: 'The alarm sound will update to: “{phrase}”'") &&
+    alarmScreen.includes('Sem uma frase, o alarme fica desligado.'),
+  'troca de som pendente e falta de frase precisam de aviso próprio'
+);
+assert.ok(
+  alarmScreen.includes("moveUp: { pt: 'Subir “{title}”', en: 'Move “{title}” up' }") &&
+    alarmScreen.includes("remove: { pt: 'Tirar “{title}” da sequência', en: 'Remove “{title}” from the sequence' }") &&
+    alarmScreen.includes('t(control.label, { title: shortTitle })'),
+  'subir, descer e tirar precisam dizer qual item'
 );
 assert.ok(!alarmScreen.includes('preselectId'), 'pré-seleção antiga ainda ativa');
 assert.ok(

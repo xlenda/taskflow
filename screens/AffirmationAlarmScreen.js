@@ -36,8 +36,9 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useT } from '../utils/useT';
 import {
   WAKE_SEQUENCE_MAX,
+  alarmPhraseForState,
   estimateListeningSeconds,
-  firstPhraseForAlarm,
+  pendingAlarmSound,
   wakeSequenceItemsForState,
   wakeSequenceOptionsForState,
 } from '../utils/wakeSequence';
@@ -70,15 +71,23 @@ const COPY = {
   },
   add: { pt: 'Adicionar', en: 'Add' },
   listenNow: { pt: 'Ouvir agora', en: 'Listen now' },
-  moveUp: { pt: 'Subir o item {n}', en: 'Move item {n} up' },
-  moveDown: { pt: 'Descer o item {n}', en: 'Move item {n} down' },
-  remove: { pt: 'Tirar o item {n} da sequência', en: 'Remove item {n} from the sequence' },
+  moveUp: { pt: 'Subir “{title}”', en: 'Move “{title}” up' },
+  moveDown: { pt: 'Descer “{title}”', en: 'Move “{title}” down' },
+  remove: { pt: 'Tirar “{title}” da sequência', en: 'Remove “{title}” from the sequence' },
   count: { pt: '{n} de {max} itens', en: '{n} of {max} items' },
   estimateSeconds: { pt: 'cerca de {n} s para ouvir', en: 'about {n} s of listening' },
   estimateMinutes: { pt: 'cerca de {n} min para ouvir', en: 'about {n} min of listening' },
   full: {
     pt: 'Sequência completa: tire um item para incluir outro.',
     en: 'Sequence full: remove an item to add another.',
+  },
+  soundUpdate: {
+    pt: 'O som do alarme será atualizado para: “{phrase}”',
+    en: 'The alarm sound will update to: “{phrase}”',
+  },
+  noPhrase: {
+    pt: 'Sem uma frase, o alarme fica desligado. Adicione uma afirmação à sua sequência.',
+    en: 'Without a phrase, the alarm stays off. Add an affirmation to your sequence.',
   },
   time: { pt: 'Horário', en: 'Time' },
   timeHint: { pt: 'Use o formato 07:30.', en: 'Use the 07:30 format.' },
@@ -211,10 +220,13 @@ export default function AffirmationAlarmScreen() {
   const narration = usePersonalNarration();
   const ritual = state.morningRitual || {};
   // The sequence is saved as it is edited; time and days stay a draft until the
-  // main button. The AlarmKit sound is the sequence's first phrase.
+  // main button. The AlarmKit sound is the saved phrase, re-derived on each edit.
   const items = useMemo(() => wakeSequenceItemsForState(state, lang), [state, lang]);
   const options = useMemo(() => wakeSequenceOptionsForState(state, lang), [state, lang]);
-  const selected = useMemo(() => firstPhraseForAlarm(items, state), [items, state]);
+  const selected = useMemo(() => alarmPhraseForState(state, items), [items, state]);
+  // An active alarm switching to a new first phrase: the provider already saved
+  // it and the native sync replaces the sound, so this is a notice, not a draft.
+  const soundUpdate = pendingAlarmSound(state, selected);
   const sequenceIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const full = items.length >= WAKE_SEQUENCE_MAX;
   const listeningSeconds = estimateListeningSeconds(items);
@@ -234,9 +246,8 @@ export default function AffirmationAlarmScreen() {
   const dirty =
     time !== (isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00') ||
     !sameDays(weekdays, persistedDays) ||
-    (ritual.reminderEnabled &&
-      ((selected && selected.text) !== ritual.wakeAffirmationText ||
-        ritual.wakeNarratorId !== narration.narratorId));
+    (ritual.reminderEnabled && ritual.wakeNarratorId !== narration.narratorId);
+  const alarmSettled = ritual.reminderEnabled && !dirty && !soundUpdate;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -522,8 +533,12 @@ export default function AffirmationAlarmScreen() {
     ? t(COPY.failed)
     : ritual.reminderEnabled && dirty
     ? t(COPY.changed)
+    : soundUpdate
+    ? t(COPY.soundUpdate, { phrase: soundUpdate.text })
     : ritual.reminderEnabled
     ? t(COPY.active, { time: ritual.reminderTime || '07:00' })
+    : !selected
+    ? t(COPY.noPhrase)
     : !capability
     ? t(COPY.checking)
     : Platform.OS === 'web'
@@ -645,6 +660,8 @@ export default function AffirmationAlarmScreen() {
               ) : (
                 items.map((item, index) => {
                   const position = index + 1;
+                  const shortTitle =
+                    item.title.length > 60 ? `${item.title.slice(0, 57).trimEnd()}…` : item.title;
                   // An active native alarm keeps at least one item; turning it off stays explicit.
                   const lockedLast = ritual.reminderEnabled && items.length === 1;
                   const controls = [
@@ -691,7 +708,7 @@ export default function AffirmationAlarmScreen() {
                             key={control.testID}
                             testID={control.testID}
                             accessibilityRole="button"
-                            accessibilityLabel={t(control.label, { n: position })}
+                            accessibilityLabel={t(control.label, { title: shortTitle })}
                             accessibilityState={{ disabled: busy || control.disabled }}
                             disabled={busy || control.disabled}
                             onPress={control.onPress}
@@ -859,7 +876,7 @@ export default function AffirmationAlarmScreen() {
                   backgroundColor: alpha(
                     feedback === 'failed' || feedback === 'denied'
                       ? theme.danger
-                      : feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
+                      : feedback === 'saved_draft' || alarmSettled
                       ? theme.success
                       : theme.warning,
                     0.1
@@ -869,16 +886,12 @@ export default function AffirmationAlarmScreen() {
             >
               <Ionicons
                 name={
-                  feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
+                  feedback === 'saved_draft' || alarmSettled
                     ? 'checkmark-circle-outline'
                     : 'information-circle-outline'
                 }
                 size={19}
-                color={
-                  feedback === 'saved_draft' || (ritual.reminderEnabled && !dirty)
-                    ? theme.success
-                    : theme.warning
-                }
+                color={feedback === 'saved_draft' || alarmSettled ? theme.success : theme.warning}
               />
               <Text style={[styles.statusText, { color: theme.textMuted }]}>{status}</Text>
             </View>
