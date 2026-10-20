@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { SERIF } from '../../constants/brand';
 import { installCenaViva } from './renderer';
 
 // Site: <canvas> de verdade com o renderizador importado como módulo (o CSP script-src 'self' proíbe eval).
@@ -15,7 +16,7 @@ const reducedMotionQuery = () =>
 
 // mode e phrase valem na criação: trocar imagem, frase, formato, modo ou movimento recria a cena (a intro
 // recomeça). active=false = pôster parado (1º quadro, ou o quadro onde parou). caption, quando vier, substitui a
-// frase e não recria nada.
+// frase e não recria nada. Imagem que não carrega: onError('image_error') e a frase fica em texto sobre o fundo.
 export default function CenaViva({
   imageUri,
   phrase,
@@ -27,24 +28,32 @@ export default function CenaViva({
   style,
   testID = 'cena-viva',
   onReady,
+  onError,
 }) {
   const canvasRef = useRef(null);
-  const readyRef = useRef(onReady);
-  readyRef.current = onReady;
+  const captionOn = useRef(null); // renderizador que tem a legenda por cima da frase (cena nova nasce com a frase)
+  const handlers = useRef(null);
+  handlers.current = { onReady, onError };
   const [systemStill, setSystemStill] = useState(() => {
     const query = reducedMotionQuery();
     return !!(query && query.matches);
   });
   const [renderer, setRenderer] = useState(null);
+  const [failedUri, setFailedUri] = useState(null);
   const still = !!reducedMotion || systemStill;
+  const failed = !!imageUri && failedUri === imageUri;
   const [width, height] = SIZES[format] || SIZES['4:5'];
 
   useEffect(() => {
     const query = reducedMotionQuery();
-    if (!query || !query.addEventListener) return undefined; // Safari antigo: vale o valor inicial
+    if (!query) return undefined;
     const onChange = (event) => setSystemStill(!!event.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
+    if (query.addEventListener) {
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    }
+    query.addListener(onChange); // Safari ≤ 13
+    return () => query.removeListener(onChange);
   }, []);
 
   useEffect(() => {
@@ -56,11 +65,16 @@ export default function CenaViva({
       scene = installCenaViva(window).createRenderer(canvas, { image, phrase, format, mode, reducedMotion: still });
       scene.drawFrame(0);
       setRenderer(scene);
-      if (readyRef.current) readyRef.current();
+      if (handlers.current.onReady) handlers.current.onReady();
+    };
+    image.onerror = () => {
+      setFailedUri(imageUri);
+      if (handlers.current.onError) handlers.current.onError('image_error');
     };
     image.src = imageUri;
     return () => {
       image.onload = null;
+      image.onerror = null;
       if (scene) scene.destroy();
       setRenderer(null);
     };
@@ -73,10 +87,18 @@ export default function CenaViva({
     else renderer.stop();
   }, [renderer, playing]);
 
-  const captionText = caption ? caption.text : null;
-  const captionProgress = caption ? caption.progress : null;
+  // legenda com texto substitui a frase; vazia ou retirada depois de mostrada, a frase volta (tela = rótulo)
+  const captionText = caption && caption.text && String(caption.text).trim() ? String(caption.text) : null;
+  const captionProgress = captionText ? caption.progress : null;
   useEffect(() => {
-    if (renderer && captionText != null) renderer.setCaption({ text: captionText, progress: captionProgress });
+    if (!renderer) return;
+    if (captionText) {
+      renderer.setCaption({ text: captionText, progress: captionProgress });
+      captionOn.current = renderer;
+    } else if (captionOn.current === renderer) {
+      renderer.setCaption({ text: phrase || '', progress: 1 });
+      captionOn.current = null;
+    }
   }, [renderer, captionText, captionProgress]);
 
   // o texto está desenhado no canvas: o leitor de tela lê pelo rótulo
@@ -88,13 +110,29 @@ export default function CenaViva({
       accessible={!!label}
       accessibilityRole={label ? 'image' : undefined}
       accessibilityLabel={label}
-      style={[styles.frame, style]}
+      style={[styles.frame, format === '9:16' ? styles.tall : styles.portrait, style]}
     >
       <canvas ref={canvasRef} width={width} height={height} aria-hidden="true" style={CANVAS_STYLE} />
+      {failed && label ? <Text style={styles.fallback}>{label}</Text> : null}
     </View>
   );
 }
 
+// altura própria pelo formato (sem style o card não some); o style de quem chama vence
 const styles = StyleSheet.create({
   frame: { overflow: 'hidden', backgroundColor: '#1C2E4F' },
+  portrait: { aspectRatio: 4 / 5 },
+  tall: { aspectRatio: 9 / 16 },
+  fallback: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    color: '#FFF9F0',
+    fontFamily: SERIF,
+    fontStyle: 'italic',
+    fontSize: 18,
+    lineHeight: 25,
+    textAlign: 'center',
+  },
 });

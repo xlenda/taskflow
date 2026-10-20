@@ -65,8 +65,13 @@ export function collectVideo(job, message) {
   const parts = Array.from({ length: total }, (_, i) => job.parts[i]);
   if (!extension || !total || parts.some((part) => typeof part !== 'string')) throw recorderError('recorder_error');
   const file = new File(Paths.cache, `celeste-share-${Date.now()}.${extension}`);
-  file.create({ overwrite: true });
-  file.write(joinChunks(parts), { encoding: 'base64' });
+  try {
+    file.create({ overwrite: true });
+    file.write(joinChunks(parts), { encoding: 'base64' });
+  } catch (error) {
+    if (file.exists) file.delete(); // disco cheio no meio: nada de vídeo pela metade no cache
+    throw error;
+  }
   return { uri: file.uri, mimeType };
 }
 
@@ -118,6 +123,10 @@ const CenaVivaRecorder = forwardRef(function CenaVivaRecorder(_props, ref) {
       current.finish(error && error.code ? error : recorderError('recorder_error'));
     }
   };
+  // a página não carregou ou o processo da WebView morreu: rejeita na hora, sem esperar o prazo de 30 s
+  const fail = () => {
+    if (job.current) job.current.finish(recorderError('recorder_error'));
+  };
 
   if (!page) return null;
   return (
@@ -129,7 +138,9 @@ const CenaVivaRecorder = forwardRef(function CenaVivaRecorder(_props, ref) {
         javaScriptEnabled
         allowsInlineMediaPlayback
         onMessage={onMessage}
-        onError={() => job.current && job.current.finish(recorderError('recorder_error'))}
+        onError={fail}
+        onContentProcessDidTerminate={fail}
+        onRenderProcessGone={fail}
         style={styles.web}
       />
     </View>

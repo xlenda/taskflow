@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+import { SERIF } from '../../constants/brand';
 import { CENA_VIVA_RENDERER_SOURCE } from './rendererSource.generated';
 
 // App: o MESMO renderizador do site (fonte gerada, sem Babel) roda numa WebView com HTML inline; a imagem chega
-// como data URI (imageUriForCenaViva). Página → app: { type: 'ready' }; app → página: window.cenaVivaCommand(...)
+// como data URI (imageUriForCenaViva). Página → app: { type: 'ready'|'error', id }; app → página:
+// window.cenaVivaCommand(...)
 const SIZES = { '4:5': [720, 900], '9:16': [720, 1280] };
 
 // JSON dentro de <script>: "<" escapado, nenhuma frase fecha a tag
@@ -40,7 +42,7 @@ function sceneHtml({ id, image, phrase, format, mode, reducedMotion }) {
     renderer.drawFrame(0);
     send({ type: 'ready', id: ${id} });
   };
-  image.onerror = function () { send({ type: 'error', code: 'image_error' }); };
+  image.onerror = function () { send({ type: 'error', code: 'image_error', id: ${id} }); };
   window.cenaVivaCommand = function (command) {
     if (!renderer) return;
     if ('active' in command) {
@@ -55,7 +57,8 @@ function sceneHtml({ id, image, phrase, format, mode, reducedMotion }) {
 }
 
 // mode e phrase valem na criação: trocar imagem, frase, formato, modo ou movimento recarrega a página (a intro
-// recomeça). active e caption vão por comando, sem recarregar. active=false = pôster parado.
+// recomeça). active e caption vão por comando, sem recarregar. active=false = pôster parado. Imagem que não
+// carrega: onError('image_error') e a frase fica em texto sobre o fundo.
 export default function CenaViva({
   imageUri,
   phrase,
@@ -67,10 +70,18 @@ export default function CenaViva({
   style,
   testID = 'cena-viva',
   onReady,
+  onError,
 }) {
   const webRef = useRef(null);
   const [systemStill, setSystemStill] = useState(null); // null: o aparelho ainda não respondeu
   const [readyId, setReadyId] = useState(0);
+  const [failedId, setFailedId] = useState(0);
+  // o processo da WebView morreu (app em segundo plano): a WebView morta sai (key) e entra página nova (id),
+  // cujo 'ready' reenvia active e legenda — o react-native-webview só avisa, não recupera
+  // ponytail: sem teto de tentativas; se uma página matar o processo toda vez (falta de memória) recarrega em
+  // laço — pôr um limite por montagem se isso aparecer no aparelho
+  const [generation, setGeneration] = useState(0);
+  const reborn = () => setGeneration((value) => value + 1);
   const still = !!reducedMotion || !!systemStill;
   const known = !!reducedMotion || systemStill !== null;
 
@@ -91,8 +102,9 @@ export default function CenaViva({
     if (!imageUri || !known) return null;
     pages += 1;
     return { id: pages, html: sceneHtml({ id: pages, image: imageUri, phrase, format, mode, reducedMotion: still }) };
-  }, [imageUri, phrase, format, mode, still, known]);
+  }, [imageUri, phrase, format, mode, still, known, generation]);
   const ready = !!page && readyId === page.id;
+  const failed = !!page && failedId === page.id;
   const playing = ready && active && !still;
   const send = (command) => {
     if (webRef.current) webRef.current.injectJavaScript(`window.cenaVivaCommand(${JSON.stringify(command)});true;`);
@@ -102,10 +114,19 @@ export default function CenaViva({
     if (ready) send({ active: playing });
   }, [ready, playing]);
 
-  const captionText = caption ? caption.text : null;
-  const captionProgress = caption ? caption.progress : null;
+  // legenda com texto substitui a frase; vazia ou retirada depois de mostrada, a frase volta (tela = rótulo)
+  const captionText = caption && caption.text && String(caption.text).trim() ? String(caption.text) : null;
+  const captionProgress = captionText ? caption.progress : null;
+  const captionOn = useRef(0); // id da página que tem a legenda por cima da frase (página nova nasce com a frase)
   useEffect(() => {
-    if (ready && captionText != null) send({ caption: { text: captionText, progress: captionProgress } });
+    if (!ready) return;
+    if (captionText) {
+      send({ caption: { text: captionText, progress: captionProgress } });
+      captionOn.current = page.id;
+    } else if (captionOn.current === page.id) {
+      send({ caption: { text: phrase || '', progress: 1 } });
+      captionOn.current = 0;
+    }
   }, [ready, captionText, captionProgress]);
 
   const onMessage = (event) => {
@@ -115,7 +136,13 @@ export default function CenaViva({
     } catch (_error) {
       return;
     }
-    if (!message || message.type !== 'ready' || !page || message.id !== page.id) return;
+    if (!message || !page || message.id !== page.id) return;
+    if (message.type === 'error') {
+      setFailedId(page.id);
+      if (onError) onError(String(message.code || 'image_error'));
+      return;
+    }
+    if (message.type !== 'ready') return;
     setReadyId(page.id);
     if (onReady) onReady();
   };
@@ -129,10 +156,11 @@ export default function CenaViva({
       accessibilityRole={label ? 'image' : undefined}
       accessibilityLabel={label}
       pointerEvents="none"
-      style={[styles.frame, style]}
+      style={[styles.frame, format === '9:16' ? styles.tall : styles.portrait, style]}
     >
       {page ? (
         <WebView
+          key={generation}
           ref={webRef}
           source={{ html: page.html }}
           originWhitelist={['*']}
@@ -140,14 +168,32 @@ export default function CenaViva({
           allowsInlineMediaPlayback
           scrollEnabled={false}
           onMessage={onMessage}
+          onContentProcessDidTerminate={reborn}
+          onRenderProcessGone={reborn}
           style={styles.web}
         />
       ) : null}
+      {failed && label ? <Text style={styles.fallback}>{label}</Text> : null}
     </View>
   );
 }
 
+// altura própria pelo formato (sem style o card não some); o style de quem chama vence
 const styles = StyleSheet.create({
   frame: { overflow: 'hidden', backgroundColor: '#1C2E4F' },
+  portrait: { aspectRatio: 4 / 5 },
+  tall: { aspectRatio: 9 / 16 },
   web: { flex: 1, backgroundColor: 'transparent' },
+  fallback: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    color: '#FFF9F0',
+    fontFamily: SERIF,
+    fontStyle: 'italic',
+    fontSize: 18,
+    lineHeight: 25,
+    textAlign: 'center',
+  },
 });

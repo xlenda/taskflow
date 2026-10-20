@@ -201,7 +201,7 @@ function fakeReact(hosts) {
         ? [node, ...nodes(node.props.children)]
         : [];
   function mount(Component, props, ref = null) {
-    const instance = { slots: [], cursor: 0, queue: [], dirty: false, props, attached: new Set() };
+    const instance = { slots: [], cursor: 0, queue: [], dirty: false, props, attached: new Map() };
     const render = () => {
       for (let pass = 0; pass < 30; pass++) {
         instance.dirty = false;
@@ -212,18 +212,18 @@ function fakeReact(hosts) {
         } finally {
           current = null;
         }
-        // como o React: o elemento que aparece ganha a instância na ref; o que some a solta
+        // como o React: o elemento que aparece (ou troca de key) ganha instância nova na ref; o que some a solta
         const live = new Set();
         for (const node of nodes(instance.tree)) {
           const target = node.props.ref;
           if (!target || typeof target !== 'object') continue;
           live.add(target);
-          if (!instance.attached.has(target)) {
+          if (!instance.attached.has(target) || instance.attached.get(target) !== node.key) {
             target.current = hosts[node.type](node.props);
-            instance.attached.add(target);
+            instance.attached.set(target, node.key);
           }
         }
-        for (const target of instance.attached) {
+        for (const target of instance.attached.keys()) {
           if (live.has(target)) continue;
           target.current = null;
           instance.attached.delete(target);
@@ -246,13 +246,15 @@ function fakeReact(hosts) {
   return { React, jsxRuntime: { jsx: element, jsxs: element, Fragment: 'Fragment' }, mount };
 }
 
-// <img> de mentira: carrega no próximo giro do laço, como no navegador (antes disso não tem medidas); src vazio = erro
+// <img> de mentira: carrega no próximo giro do laço, como no navegador (antes disso não tem medidas);
+// src vazio ou com "broken" = erro
 class FakeImage {
   set src(value) {
     this.source = value;
     setImmediate(() => {
-      if (value) Object.assign(this, { width: 720, height: 900, naturalWidth: 720, naturalHeight: 900 });
-      const done = value ? this.onload : this.onerror;
+      const ok = !!value && !String(value).includes('broken');
+      if (ok) Object.assign(this, { width: 720, height: 900, naturalWidth: 720, naturalHeight: 900 });
+      const done = ok ? this.onload : this.onerror;
       if (done) done();
     });
   }
@@ -668,14 +670,18 @@ async function main() {
       },
     }),
   };
-  const device = { reduce: false };
+  const device = { reduce: false, listeners: new Set(), disk: new Map(), diskFull: false };
   const RN = {
     View: 'View',
+    Text: 'Text',
     StyleSheet: { create: (styles) => styles },
-    Platform: { OS: 'android' },
+    Platform: { OS: 'android', select: (choices) => choices.default },
     AccessibilityInfo: {
       isReduceMotionEnabled: () => Promise.resolve(device.reduce),
-      addEventListener: () => ({ remove() {} }),
+      addEventListener: (event, listener) => {
+        device.listeners.add(listener);
+        return { remove: () => device.listeners.delete(listener) };
+      },
     },
   };
   const written = [];
@@ -683,14 +689,27 @@ async function main() {
     constructor(...parts) {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
     }
-    create() {}
+    get exists() {
+      return device.disk.has(this.uri);
+    }
+    create() {
+      device.disk.set(this.uri, '');
+    }
     write(content, writeOptions) {
+      if (device.diskFull) throw new Error('ENOSPC: disco cheio');
+      device.disk.set(this.uri, content);
       written.push({ uri: this.uri, content, options: writeOptions });
+    }
+    delete() {
+      device.disk.delete(this.uri);
     }
     base64() {
       return Promise.resolve(`b64(${this.uri})`);
     }
   }
+  // estilo achatado como o StyleSheet.flatten: o último vence
+  const flat = (style) => Object.assign({}, ...[].concat(style).filter(Boolean));
+  const shareFiles = () => [...device.disk.keys()].filter((uri) => uri.includes('celeste-share-'));
   const assetRequests = [];
   const assetModule = {
     Asset: {
@@ -751,6 +770,8 @@ async function main() {
   assert.strictEqual(scene.tree.props.testID, 'cena-viva');
   assert.ok(scene.tree.props.accessibilityRole === 'image' && scene.tree.props.accessibilityLabel === sneaky, 'leitor de tela lê a frase');
   assert.strictEqual(scene.tree.props.pointerEvents, 'none', 'o toque passa para o card de fora (a WebView não engole)');
+  assert.strictEqual(flat(scene.tree.props.style).aspectRatio, 4 / 5, 'sem style, o card tem altura própria (4:5)');
+  assert.strictEqual(device.listeners.size, 1, 'ouve o reduzir movimento do aparelho');
   assert.strictEqual(scene.find('WebView'), null, 'antes de saber se o aparelho pede menos movimento, nada de WebView');
   await tick();
   scene.flush();
@@ -784,8 +805,17 @@ async function main() {
   assert.deepStrictEqual(words(shown.canvas.calls), ['cc', 'dd'], 'legenda chega sem recarregar e aparece parada');
   assert.strictEqual(scene.tree.props.accessibilityLabel, 'cc dd', 'leitor de tela lê a legenda');
   assert.strictEqual(scene.find('WebView').props.source.html, sceneHtml, 'active/legenda não recarregam a WebView');
+  // legenda vazia (ou retirada) depois de mostrada: a frase volta, na tela e no leitor de tela
+  shown.canvas.calls.length = 0;
+  scene.update({ caption: { text: '  ', progress: 1 } });
+  deliver();
+  assert.deepStrictEqual(words(shown.canvas.calls), ['aa', '</script><b>bb'], 'legenda vazia: a frase volta à tela');
+  assert.strictEqual(scene.tree.props.accessibilityLabel, sneaky, 'legenda vazia: o rótulo volta a ser a frase');
+  scene.update({ caption: { text: 'cc dd', progress: 1 } });
+  deliver();
   scene.update({ format: '9:16' });
   assert.notStrictEqual(scene.find('WebView').props.source.html, sceneHtml, 'formato novo = cena nova');
+  assert.strictEqual(flat(scene.tree.props.style).aspectRatio, 9 / 16, '9:16 tem altura própria de 9:16');
   const tallPage = runPage(scene.find('WebView').props.source.html);
   assert.ok(tallPage.canvas.height === 1280, '9:16 em 720×1280');
   // o 'ready' atrasado da página velha não vale para a nova (comandos iriam antes de o renderizador existir)
@@ -802,7 +832,50 @@ async function main() {
   scene.update({ active: true });
   webHost.injected.splice(0).forEach((code) => tallPage.run(code));
   assert.strictEqual(tallPage.page.frames.length, 1, 'e anima quando o app manda');
+  // a WebView perdeu o processo (app em segundo plano): a WebView morta sai (key nova), entra página nova e o
+  // 'ready' dela reenvia active e legenda — sem isso o card fica azul-marinho vazio
+  const lost = scene.find('WebView');
+  const lostHost = lost.props.ref.current;
+  lost.props.onRenderProcessGone({ nativeEvent: { didCrash: false } });
+  scene.flush();
+  const reborn = scene.find('WebView');
+  assert.ok(reborn.key !== lost.key && reborn.props.ref.current !== lostHost, 'Android: a WebView morta sai (key nova)');
+  assert.notStrictEqual(reborn.props.source.html, lost.props.source.html, 'página nova (id novo)');
+  const rebornPage = runPage(reborn.props.source.html);
+  await until(() => rebornPage.posted.length, 'cena renascida pronta');
+  reborn.props.onMessage(message(rebornPage.posted[0]));
+  scene.flush();
+  const rebornHost = scene.find('WebView').props.ref.current;
+  assert.deepStrictEqual(
+    rebornHost.injected,
+    ['window.cenaVivaCommand({"active":true});true;', 'window.cenaVivaCommand({"caption":{"text":"cc dd","progress":1}});true;'],
+    'o ready da página nova reenvia active e legenda'
+  );
+  rebornHost.injected.splice(0).forEach((code) => rebornPage.run(code));
+  assert.strictEqual(rebornPage.page.frames.length, 1, 'renasceu animando');
+  scene.find('WebView').props.onContentProcessDidTerminate({ nativeEvent: {} });
+  scene.flush();
+  assert.notStrictEqual(scene.find('WebView').key, reborn.key, 'iOS: processo encerrado = página nova também');
+  // legenda retirada enquanto a página nova carrega: ela já nasce com a frase (nada de legenda por cima)
+  scene.update({ caption: undefined });
+  const lastPage = runPage(scene.find('WebView').props.source.html);
+  await until(() => lastPage.posted.length, 'cena sem legenda pronta');
+  scene.find('WebView').props.onMessage(message(lastPage.posted[0]));
+  scene.flush();
+  assert.deepStrictEqual(
+    scene.find('WebView').props.ref.current.injected.splice(0),
+    ['window.cenaVivaCommand({"active":true});true;'],
+    'página nova sem legenda: só o active'
+  );
+  // ligou "reduzir movimento" no aparelho com a cena aberta: a página renasce parada
+  device.listeners.forEach((listener) => listener(true));
+  scene.flush();
+  assert.ok(scene.find('WebView').props.source.html.includes('"reducedMotion":true'), 'reduzir movimento ligado: página parada');
   scene.unmount();
+  assert.strictEqual(device.listeners.size, 0, 'saiu da tela: solta o ouvinte de reduzir movimento');
+  const square = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD', style: { aspectRatio: 1 } });
+  assert.strictEqual(flat(square.tree.props.style).aspectRatio, 1, 'o style de quem chama vence');
+  square.unmount();
   // reduzir movimento no aparelho: a página nasce parada e o app nunca manda animar
   device.reduce = true;
   const calmScene = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD' });
@@ -818,6 +891,24 @@ async function main() {
   calmScene.unmount();
   device.reduce = false;
   assert.strictEqual(app.mount(NativeScene, {}).find('WebView'), null, 'sem imagem ainda: só o fundo');
+  // imagem que não carrega: avisa quem chama (onError) e a frase continua visível, em texto sobre o fundo
+  const nativeFailures = [];
+  const brokenScene = app.mount(NativeScene, {
+    imageUri: 'data:image/jpeg;base64,broken',
+    phrase: 'aa bb',
+    onError: (code) => nativeFailures.push(code),
+  });
+  await tick();
+  brokenScene.flush();
+  assert.strictEqual(brokenScene.find('Text'), null, 'antes do erro, nada de texto por cima');
+  const brokenPage = runPage(brokenScene.find('WebView').props.source.html);
+  await until(() => brokenPage.posted.length, 'erro da imagem');
+  assert.deepStrictEqual(brokenPage.posted.map((sent) => [sent.type, sent.code]), [['error', 'image_error']]);
+  brokenScene.find('WebView').props.onMessage(message(brokenPage.posted[0]));
+  brokenScene.flush();
+  assert.deepStrictEqual(nativeFailures, ['image_error'], "onError('image_error')");
+  assert.strictEqual(brokenScene.find('Text').props.children, 'aa bb', 'a frase aparece em texto (não some)');
+  brokenScene.unmount();
 
   // 16) app: gravador numa WebView oculta; o vídeo volta em pedaços { type: 'chunk', index, total, data } e
   //     { type: 'done', mimeType }, é remontado igual e gravado em Paths.cache/celeste-share-<ts>.mp4|webm
@@ -891,6 +982,15 @@ async function main() {
   await assert.rejects(crashed, (error) => error.code === 'recorder_error', 'WebView com erro: rejeita');
   stuckRecorder.flush();
   assert.strictEqual(stuckRecorder.find('WebView'), null, 'WebView com erro: sai');
+  // o processo da WebView morreu no meio: rejeita na hora (sem esperar os 30 s) e solta a WebView
+  for (const gone of ['onRenderProcessGone', 'onContentProcessDidTerminate']) {
+    const dying = stuckRef.current.record(job);
+    stuckRecorder.flush();
+    stuckRecorder.find('WebView').props[gone]({ nativeEvent: {} });
+    await assert.rejects(dying, (error) => error.code === 'recorder_error', `${gone}: rejeita na hora`);
+    stuckRecorder.flush();
+    assert.strictEqual(stuckRecorder.find('WebView'), null, `${gone}: a WebView sai`);
+  }
   // pedaço faltando ou mime estranho = erro, nunca um arquivo corrompido
   for (const done of [{ type: 'done', mimeType: 'video/mp4' }, { type: 'done', mimeType: 'image/png' }]) {
     const broken = { parts: [], total: 0 };
@@ -898,10 +998,17 @@ async function main() {
     if (done.mimeType === 'image/png') collectVideo(broken, { type: 'chunk', index: 0, total: 2, data: 'QUJD' });
     assert.throws(() => collectVideo(broken, done), (error) => error.code === 'recorder_error', `rejeita ${done.mimeType}`);
   }
+  // disco cheio ao gravar: o celeste-share-* pela metade é apagado antes de o erro subir
+  const filesBefore = shareFiles().length;
+  device.diskFull = true;
+  assert.throws(() => collectVideo({ parts: ['QUJD'], total: 1 }, { type: 'done', mimeType: 'video/mp4' }), /ENOSPC/);
+  device.diskFull = false;
+  assert.strictEqual(shareFiles().length, filesBefore, 'disco cheio: nenhum arquivo pela metade no cache');
 
   // 17) site: <canvas> real (720×900 ou 720×1280, o CSS só escala); data-active marca a única cena animada
   const site = fakeReact(hosts);
-  const webMocks = { ...mocks, react: site.React, 'react/jsx-runtime': site.jsxRuntime, 'react-native': { ...RN, Platform: { OS: 'web' } } };
+  const webRN = { ...RN, Platform: { ...RN.Platform, OS: 'web' } };
+  const webMocks = { ...mocks, react: site.React, 'react/jsx-runtime': site.jsxRuntime, 'react-native': webRN };
   const { default: WebScene } = loadWith('components/cenaViva/CenaViva.web.js', webMocks);
   const media = new Set(); // ouvintes de prefers-reduced-motion
   const browser = fakeWindow({
@@ -920,6 +1027,7 @@ async function main() {
     assert.ok(canvasNode.props.width === 720 && canvasNode.props.height === 900, '4:5 em 720×900');
     assert.strictEqual(card.tree.props.testID, 'cena-viva');
     assert.ok(card.tree.props.accessibilityRole === 'image' && card.tree.props.accessibilityLabel === 'aa bb', 'leitor de tela lê a frase');
+    assert.strictEqual(flat(card.tree.props.style).aspectRatio, 4 / 5, 'sem style, o card tem altura própria (4:5)');
     assert.strictEqual(card.tree.props.dataSet.active, 'false', 'antes da imagem carregar, nada anima');
     await tick();
     card.flush();
@@ -935,6 +1043,27 @@ async function main() {
     card.update({ caption: { text: 'cc dd', progress: 1 } });
     assert.deepStrictEqual(words(paper.calls), ['cc', 'dd'], 'legenda nova aparece já, parada');
     assert.strictEqual(card.tree.props.accessibilityLabel, 'cc dd', 'leitor de tela lê a legenda');
+    paper.calls.length = 0;
+    card.update({ caption: undefined });
+    assert.deepStrictEqual(words(paper.calls), ['aa', 'bb'], 'legenda retirada: a frase volta à tela');
+    assert.strictEqual(card.tree.props.accessibilityLabel, 'aa bb', 'legenda retirada: o rótulo volta a ser a frase');
+    paper.calls.length = 0;
+    card.update({ caption: { text: '  ', progress: 1 } });
+    assert.ok(words(paper.calls).length === 0 && card.tree.props.accessibilityLabel === 'aa bb', 'legenda só de espaços não apaga a frase');
+    // legenda retirada enquanto a cena nova carrega: a cena nova nasce com a frase dela (na intro, a frase espera
+    // o sol; uma legenda por cima a mostraria antes)
+    const intro = site.mount(WebScene, { imageUri: blobUri, phrase: 'aa bb', mode: 'intro', active: false, caption: { text: 'cc dd', progress: 1 } });
+    await tick();
+    intro.flush();
+    intro.update({ phrase: 'ee ff' }); // cena nova carregando
+    intro.update({ caption: undefined });
+    const introPaper = intro.find('canvas').props.ref.current;
+    introPaper.calls.length = 0;
+    await tick();
+    intro.flush();
+    assert.ok(drewImage(introPaper.calls), 'cena nova desenhada');
+    assert.deepStrictEqual(words(introPaper.calls), [], 'intro em t=0: a frase nova ainda espera o sol');
+    intro.unmount();
     card.update({ active: true });
     assert.strictEqual(browser.frames.length, 2, 'volta a animar');
     // ligou "reduzir movimento" no sistema com a cena tocando: para na hora e volta como imagem parada
@@ -953,6 +1082,7 @@ async function main() {
     // saiu da tela tocando: o laço para e quadro atrasado não pinta
     const tallCard = site.mount(WebScene, { imageUri: blobUri, format: '9:16' });
     assert.ok(tallCard.find('canvas').props.height === 1280, '9:16 em 720×1280');
+    assert.strictEqual(flat(tallCard.tree.props.style).aspectRatio, 9 / 16, '9:16 tem altura própria de 9:16');
     await tick();
     tallCard.flush();
     const tallPaper = tallCard.find('canvas').props.ref.current;
@@ -971,6 +1101,44 @@ async function main() {
     assert.strictEqual(browser.frames.length, 3, 'reduzir movimento: não anima');
     assert.strictEqual(ops(calmCard.find('canvas').props.ref.current.calls, 'drawImage').length, 1, 'um único drawImage');
     browser.reduce = false;
+    calmCard.unmount();
+    const squareCard = site.mount(WebScene, { imageUri: blobUri, style: { aspectRatio: 1 } });
+    assert.strictEqual(flat(squareCard.tree.props.style).aspectRatio, 1, 'o style de quem chama vence');
+    squareCard.unmount();
+    // imagem que não carrega: avisa quem chama (onError) e a frase continua visível, em texto sobre o fundo
+    const webFailures = [];
+    const brokenCard = site.mount(WebScene, {
+      imageUri: 'blob:http://localhost/broken',
+      phrase: 'aa bb',
+      onError: (code) => webFailures.push(code),
+    });
+    assert.strictEqual(brokenCard.find('Text'), null, 'antes do erro, nada de texto por cima');
+    await tick();
+    brokenCard.flush();
+    assert.deepStrictEqual(webFailures, ['image_error'], "onError('image_error')");
+    assert.strictEqual(brokenCard.find('Text').props.children, 'aa bb', 'a frase aparece em texto (não some)');
+    assert.strictEqual(brokenCard.tree.props.dataSet.active, 'false', 'imagem com erro: nada anima');
+    brokenCard.unmount();
+    // Safari ≤ 13: MediaQueryList só com addListener/removeListener
+    const legacy = new Set();
+    global.window = fakeWindow({
+      Image: FakeImage,
+      matchMedia: () => ({
+        matches: false,
+        addListener: (listener) => legacy.add(listener),
+        removeListener: (listener) => legacy.delete(listener),
+      }),
+    });
+    const oldSafari = site.mount(WebScene, { imageUri: blobUri });
+    assert.strictEqual(legacy.size, 1, 'Safari antigo: ouve pelo addListener');
+    await tick();
+    oldSafari.flush();
+    assert.strictEqual(oldSafari.tree.props.dataSet.active, 'true');
+    legacy.forEach((listener) => listener({ matches: true }));
+    oldSafari.flush();
+    assert.strictEqual(oldSafari.tree.props.dataSet.active, 'false', 'Safari antigo: reduzir movimento ligado para');
+    oldSafari.unmount();
+    assert.strictEqual(legacy.size, 0, 'Safari antigo: solta pelo removeListener');
 
     // 18) site: gravador no próprio navegador devolve um File (mime sem codecs) para o navigator.share
     const { default: WebRecorder } = loadWith('components/cenaViva/CenaVivaRecorder.web.js', webMocks);
@@ -999,6 +1167,33 @@ async function main() {
       (error) => error.code === 'image_error',
       'imagem que não carrega: image_error'
     );
+    // como no app: uma gravação por vez, e erro sem código de texto (DOMException do MediaRecorder) = recorder_error
+    const studioWindow = (MediaRecorder) => fakeWindow({ Image: FakeImage, File: BrowserFile, Blob, MediaRecorder, ...fastClock() });
+    global.window = studioWindow(recorderClass((mime) => mime.startsWith('video/mp4')));
+    const firstShare = studioRef.current.record({ imageUri: blobUri, phrase: 'aa' });
+    await assert.rejects(studioRef.current.record({ imageUri: blobUri, phrase: 'aa' }), (error) => error.code === 'recorder_busy');
+    await firstShare;
+    class BrokenRecorder {
+      static isTypeSupported() {
+        return true;
+      }
+      constructor() {
+        throw Object.assign(new Error('NotSupportedError'), { code: 9 });
+      }
+    }
+    global.window = studioWindow(BrokenRecorder);
+    await assert.rejects(
+      studioRef.current.record({ imageUri: blobUri, phrase: 'aa' }),
+      (error) => error.code === 'recorder_error',
+      'erro sem código de texto vira recorder_error'
+    );
+    // fechou a tela no meio da gravação: a promessa não fica pendurada
+    const leavingRef = { current: null };
+    const leaving = site.mount(WebRecorder, {}, leavingRef);
+    global.window = studioWindow(recorderClass(() => true));
+    const abandoned = leavingRef.current.record({ imageUri: blobUri, phrase: 'aa' });
+    leaving.unmount();
+    await assert.rejects(abandoned, (error) => error.code === 'recorder_cancelled', 'site: fechou a tela, recorder_cancelled');
   } finally {
     delete global.window;
   }
