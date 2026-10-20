@@ -19,17 +19,12 @@ const S = {
   },
   access: { en: 'Open access in this version', pt: 'Acesso aberto nesta versão' },
   accessNote: { en: 'No trial starts and no charge is made.', pt: 'Nenhum teste começa e nenhuma cobrança é feita.' },
-  restoreNote: {
-    en: 'Subscriptions are coming soon — there is nothing to restore yet.',
-    pt: 'Assinatura entra em breve — ainda não há nada para restaurar.',
-  },
 };
 
 export default function PaywallScreen() {
   const { state, completeOnboarding } = useApp();
   const { t } = useT();
   const T = UI[(state && state.lang) || 'en'];
-  const [restoreMsg, setRestoreMsg] = useState(false);
   const [entering, setEntering] = useState(false);
   const enteringRef = useRef(false);
 
@@ -89,24 +84,8 @@ export default function PaywallScreen() {
 
           <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk, marginBottom: 16 }}>{p(T.pwP1)}</Text>
           <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk, marginBottom: 16 }}>{p(T.pwP2)}</Text>
-          <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk, marginBottom: 24 }}>{p(T.pwP3)}</Text>
-
-          <View style={{ alignItems: 'center' }}>
-            <Pressable
-              onPress={() => setRestoreMsg(true)}
-              accessibilityRole="button"
-              // hitSlop não aumenta área de toque no RN-web — dimensão real
-              style={{ minHeight: 32, justifyContent: 'center' }}
-            >
-              <Text style={{ fontSize: 15, color: ONB.surfaceFaint }}>{T.pwRestore}</Text>
-            </Pressable>
-          </View>
-
-          {restoreMsg ? (
-            <Text style={{ fontSize: 14, lineHeight: 20, color: ONB.surfaceSoft, textAlign: 'center', marginTop: 14 }}>
-              {t(S.restoreNote)}
-            </Text>
-          ) : null}
+          {/* Sem cobrança nesta versão não há compra para restaurar; "Restaurar" volta junto com o billing. */}
+          <Text style={{ fontSize: 16.5, lineHeight: 25, color: ONB.surfaceInk }}>{p(T.pwP3)}</Text>
         </View>
       </ScrollView>
 

@@ -21,7 +21,7 @@ import { useTheme, useSetTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
 import { confirmAsync } from '../utils/confirm';
-import { APP_NAME } from '../constants/brand';
+import { APP_NAME, APP_URL } from '../constants/brand';
 import {
   CLOUD_CONSENT_VERSION,
   hasCurrentAdultCloudConsent,
@@ -128,6 +128,8 @@ const S = {
   supportHint: { en: SUPPORT_EMAIL, pt: SUPPORT_EMAIL },
   privacy: { en: 'Privacy policy', pt: 'Política de privacidade' },
   privacyHint: { en: 'What is stored and when data leaves the device', pt: 'O que é guardado e quando dados saem do aparelho' },
+  publicPrivacy: { en: 'Public version of this policy', pt: 'Versão pública desta política' },
+  publicPrivacyUrl: { en: `${APP_URL}/privacy`, pt: `${APP_URL}/privacidade` },
   terms: { en: 'Terms of use', pt: 'Termos de uso' },
   termsHint: { en: 'Rules and limits of the current experience', pt: 'Regras e limites da experiência atual' },
   privacyIntro: {
@@ -291,6 +293,28 @@ function LegalDocument({ type, onBack }) {
             />
             <Text style={[styles.legalIntroText, { color: theme.text }]}>{intro}</Text>
           </View>
+
+          {isPrivacy ? (
+            <View
+              style={[
+                styles.group,
+                { backgroundColor: theme.surface, borderColor: theme.border, ...surfaceShadow(theme) },
+              ]}
+            >
+              <LegalLink
+                testID="legal-public-privacy-link"
+                icon="open-outline"
+                iconColor={accentAt(theme, 2)}
+                title={t(S.publicPrivacy)}
+                note={t(S.publicPrivacyUrl)}
+                onPress={() => {
+                  Linking.openURL(t(S.publicPrivacyUrl)).catch(() => {});
+                  tap();
+                }}
+                theme={theme}
+              />
+            </View>
+          ) : null}
 
           {sections.map((section, sectionIndex) => (
             <View

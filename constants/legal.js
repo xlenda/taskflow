@@ -4,8 +4,8 @@
 export const SUPPORT_EMAIL = 'suporte@celestegroup.biz';
 
 export const LEGAL_UPDATED = {
-  en: 'Updated September 4, 2026',
-  pt: 'Atualizado em 4 de setembro de 2026',
+  en: 'Updated October 20, 2026',
+  pt: 'Atualizado em 20 de outubro de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -91,6 +91,10 @@ export const PRIVACY_SECTIONS = [
       {
         en: 'If you enable the daily ritual reminder in the installed app, Celeste asks for notification permission and schedules it on that device. The lock-screen text is deliberately generic and never includes your desire, dream, vision, Anchor Scene or affirmation. The website cannot schedule this system reminder.',
         pt: 'Se você ativar o lembrete do ritual diário no app instalado, o Celeste pede permissão para notificações e o agenda naquele aparelho. O texto na tela bloqueada é propositalmente genérico e nunca inclui seu desejo, sonho, visão, Cena-Âncora ou afirmação. O site não consegue agendar esse lembrete do sistema.',
+      },
+      {
+        en: 'When you share a card or short video, Celeste creates the image or video on this device as a temporary cache file, removed after sharing, and hands it to the system share sheet; on the website, the browser shares or downloads the file. You choose the destination. The included link carries only campaign tags (utm_source, utm_medium and utm_campaign) and no personal data, and Celeste receives nothing from that share. On Android, your My wake-up sequence and reminder times stay on this device; the reminder is an ordinary local notification with generic text and no exact alarm, and nothing is sent to servers. The installed app may show the store\'s own review dialog once per installation; the rating is handled by Google or Apple under their own policies, and Celeste does not learn who rated.',
+        pt: 'Ao compartilhar um cartão ou vídeo curto, o Celeste cria a imagem ou o vídeo neste aparelho, num arquivo temporário de cache removido depois do compartilhamento, e o entrega à folha de compartilhamento do sistema; no site, o navegador compartilha ou baixa o arquivo. Você escolhe o destino. O link incluído leva apenas marcadores de campanha (utm_source, utm_medium e utm_campaign), sem dados pessoais, e o Celeste não recebe nada desse compartilhamento. No Android, a sequência do Meu despertar e os horários do lembrete ficam neste aparelho; o lembrete é uma notificação local comum, com texto genérico e sem alarme exato, e nada é enviado a servidores. O app instalado pode mostrar uma vez por instalação a janela de avaliação da própria loja; a avaliação é tratada pelo Google ou pela Apple conforme as regras de cada um, e o Celeste não fica sabendo quem avaliou.',
       },
     ],
   },

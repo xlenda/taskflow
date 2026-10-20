@@ -490,10 +490,6 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Acesso aberto nesta versão');
   await waitForText(page, 'Nenhum teste começa');
   await page.screenshot({ path: path.join(SHOT_DIR, 'paywall.png') });
-  // Restaurar não destrava nem cobra: só explica que ainda não há assinatura.
-  await waitAndClick(page, 'Restaurar');
-  await waitForText(page, 'entra em breve');
-  await waitForText(page, 'Um começo transparente');
   await waitAndClick(page, 'Entrar no Celeste');
   await waitForHome(page, 20000);
   await waitForText(page, 'Ter mais paz e equilíbrio', 20000); // Home abre COM a manifestação criada, não vazia

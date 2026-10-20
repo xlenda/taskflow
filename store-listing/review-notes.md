@@ -69,7 +69,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
    nuvem desligada e sem pergunta de consentimento no onboarding.
 3. Abrir a Cena-Âncora, a Ponte de Hoje e o Ritual de Um Minuto.
 4. Em Sonhos, registrar um relato curto e gerar a afirmacao local.
-5. Em Perfil, conferir os controles de voz, privacidade e reset.
+5. Em Perfil, conferir privacidade e reset. O Android não gera conteúdo com IA e
+   não mostra controles de voz nem de nuvem; a voz é a do aparelho.
 6. Abrir o Plano Celeste pela Inicio, escolher uma visao ou Cena-Âncora e uma afirmacao e
    testar um lembrete comum.
 7. Conferir a imagem e o texto, tocar em `Ouvir visão completa` e esperar a
@@ -80,7 +81,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 
 ## Caminhos de teste
 
-- Voz: `Perfil > Voz das suas cenas`; escolher um narrador e tocar a previa.
+- Voz (somente no site; no Android a voz é a do aparelho): `Perfil > Voz da narração`;
+  escolher um narrador e tocar a prévia.
 - Cena: `Manifestar > abrir manifestacao > Sua narrativa em audio`.
 - Sonhos: `Inicio > Conte seu sonho`; escrever, escolher sentimento e tema e
   tocar `Transformar em afirmacao`.
@@ -92,9 +94,17 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   acessível, antes das duas repetições. O áudio e a transcrição do microfone não
   são retidos nem enviados. O sintetizador do sistema ou navegador pode seguir
   as regras do respectivo fornecedor e deve ser validado no binário final.
-- Despertador: `Inicio > Meu despertador`; permite escolher afirmação, visão,
-  Cena-Âncora, frase de sonho ou frase própria e requer app instalado em iPhone
-  compativel com permissao de Alarmes. Nao testar como recurso Android.
+- Meu despertar: `Inicio > Meu despertar`; adicionar a Cena-Âncora, uma visão ou
+  afirmação, escolher o horário e ligar o lembrete. No Android é uma notificação
+  comum com som, sem alarme exato, que abre a sequência; a voz do aparelho toca
+  depois de um toque. No iPhone compatível, o despertador do sistema usa AlarmKit,
+  aceita afirmação, visão, Cena-Âncora, frase de sonho ou frase própria e pede
+  permissão de Alarmes.
+- Compartilhar: abrir uma afirmação, visão ou a Cena-Âncora, tocar em Compartilhar,
+  conferir a prévia da imagem ou do vídeo de 8 segundos e enviar pela folha de
+  compartilhamento do sistema.
+- Avaliação: depois da revelação da Cena-Âncora, a janela padrão de avaliação da
+  Google Play pode aparecer uma vez; não há pergunta antes nem botão próprio.
 - Privacidade: `Perfil > Privacidade e dados`.
 - Denúncias: `Perfil > Excluir denúncias de conteúdo de IA enviadas`.
 - Backup: `Jornada > Cópia de segurança`; no app, conferir a share sheet.

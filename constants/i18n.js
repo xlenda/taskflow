@@ -49,7 +49,6 @@ export const UI = {
     pwCta: 'Enter {app}',
     pwPrivacy: 'Privacy',
     pwTerms: 'Terms',
-    pwRestore: 'Restore',
   },
   pt: {
     continue: 'Continuar',
@@ -69,6 +68,5 @@ export const UI = {
     pwCta: 'Entrar no {app}',
     pwPrivacy: 'Privacidade',
     pwTerms: 'Termos',
-    pwRestore: 'Restaurar',
   },
 };
