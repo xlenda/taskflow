@@ -593,6 +593,18 @@ assert.ok(
     playItemBlock.indexOf("Speech.speak(' '") < playItemBlock.indexOf('.playPersonal('),
   'reserva da voz do aparelho precisa ser destravada no mesmo toque da voz da Celeste'
 );
+// Polimento: o expo-speech fala de forma assíncrona na web (um try/catch não pega a falha), então
+// a fala do aparelho só é chamada quando o navegador tem síntese de voz; sem ela, aviso honesto.
+assert.ok(
+  wakeCode.includes(
+    "Platform.OS !== 'web' || typeof globalThis.SpeechSynthesisUtterance === 'function' && !!globalThis.speechSynthesis"
+  ) &&
+    /if \(webSpeechAvailable\(\)\) Speech\.speak\(' '/.test(playItemBlock) &&
+    !/try \{\s*Speech\.speak\(' '/.test(playItemBlock) &&
+    speakBlock.indexOf('if (!webSpeechAvailable())') >= 0 &&
+    speakBlock.indexOf('if (!webSpeechAvailable())') < speakBlock.indexOf('Speech.speak(item.text'),
+  'sem síntese de voz no navegador, a fala do aparelho não pode virar promessa rejeitada sem dono'
+);
 // (6) Android: apagar o conteúdo da frase reaponta e mantém o lembrete; só a sequência vazia desliga.
 const dreamAndCustomOn = withSequence(
   [{ kind: 'affirmation', id: 'ritual:x' }, { kind: 'affirmation', id: 'custom' }],
@@ -858,20 +870,41 @@ async function verifyWakeReminders() {
   }
   assert.strictEqual(mock.calls.scheduled.length, 0);
 
-  // Desligar: só os lembretes do despertar saem.
-  mock = useMock(
+  // Desligar: só os lembretes do despertar saem, um a um. Um id que falha uma vez não segura
+  // os outros e sai na nova tentativa; o lembrete do plano fica.
+  const liveOff = new Set(['old-wake', 'plan-manha', 'old-wake-2', 'old-wake-3']);
+  let refusedOnce = false;
+  useMock(
     notificationsMock({
       async getAllScheduledNotificationsAsync() {
-        return [scheduledWake('old-wake'), scheduledPlan, scheduledWake('old-wake-2')];
+        return [...liveOff].map((identifier) => (identifier === 'plan-manha' ? scheduledPlan : scheduledWake(identifier)));
+      },
+      async cancelScheduledNotificationAsync(identifier) {
+        if (identifier === 'old-wake-2' && !refusedOnce) {
+          refusedOnce = true;
+          throw new Error('native_failure');
+        }
+        liveOff.delete(identifier);
       },
     })
   );
   assert.deepStrictEqual(await service.cancelWakeReminders(), { ok: true });
-  assert.deepStrictEqual(mock.calls.cancelled, ['old-wake', 'old-wake-2']);
-  mock.cancelScheduledNotificationAsync = async () => {
-    throw new Error('native_failure');
-  };
+  assert.deepStrictEqual([...liveOff], ['plan-manha'], 'desligar deixou lembrete do despertar ou apagou o do plano');
+  // Um id que sempre falha: todos os outros saem e o resultado admite a falha.
+  const liveStuck = new Set(['old-wake', 'stuck-wake', 'old-wake-3']);
+  useMock(
+    notificationsMock({
+      async getAllScheduledNotificationsAsync() {
+        return [...liveStuck].map(scheduledWake);
+      },
+      async cancelScheduledNotificationAsync(identifier) {
+        if (identifier === 'stuck-wake') throw new Error('native_failure');
+        liveStuck.delete(identifier);
+      },
+    })
+  );
   assert.deepStrictEqual(await service.cancelWakeReminders(), { ok: false, error: 'cancel_failed' });
+  assert.deepStrictEqual([...liveStuck], ['stuck-wake'], 'um id travado segurou os outros lembretes');
 
   // Tocar no lembrete abre despertar/ouvir; o toque de outro lembrete fica para o dono dele.
   mock = useMock(notificationsMock({ getLastNotificationResponse: () => responseFor(WAKE_DATA) }));

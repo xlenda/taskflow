@@ -77,6 +77,12 @@ const S = {
 const KIND_LABEL = { anchor: S.anchor, vision: S.vision, affirmation: S.affirmation };
 const KIND_ACCENT = { anchor: 0, vision: 2, affirmation: 3 };
 
+// expo-speech speaks asynchronously on the web, so a missing speech engine would
+// surface as an unhandled rejection that no try/catch here can see: check first.
+const webSpeechAvailable = () =>
+  Platform.OS !== 'web' ||
+  (typeof globalThis.SpeechSynthesisUtterance === 'function' && !!globalThis.speechSynthesis);
+
 export default function WakeSequenceScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
@@ -148,6 +154,11 @@ export default function WakeSequenceScreen() {
   }
 
   function speakWithDevice(item, epoch) {
+    // A browser without a speech engine: say so now instead of an unseen rejection.
+    if (!webSpeechAvailable()) {
+      voiceDidNotPlay(epoch);
+      return;
+    }
     deviceActiveRef.current = true;
     if (Platform.OS === 'web') {
       // O Safari do iPhone descarta calado a fala pedida fora do toque: sem início, oferece tocar de novo.
@@ -202,9 +213,7 @@ export default function WakeSequenceScreen() {
     if (latest.current.cloudVoice && !cloudBrokenRef.current) {
       // Silent utterance in this same tap: unlocks the device voice so a later
       // fallback can speak on the iPhone without asking for another tap.
-      try {
-        Speech.speak(' ', { volume: 0 });
-      } catch (_error) {}
+      if (webSpeechAvailable()) Speech.speak(' ', { volume: 0 });
       const playbackId = `wake:${sessionRef.current}:${epoch}`;
       cloudIdRef.current = playbackId;
       latest.current.narration

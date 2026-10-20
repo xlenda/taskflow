@@ -40,10 +40,6 @@ async function scheduledWakeIdentifiers(client) {
     .filter((identifier) => typeof identifier === 'string' && identifier);
 }
 
-async function cancelEach(client, identifiers) {
-  for (const identifier of identifiers) await client.cancelScheduledNotificationAsync(identifier);
-}
-
 // One failing id never keeps the others alive.
 async function cancelEachQuietly(client, identifiers) {
   for (const identifier of identifiers) {
@@ -190,8 +186,16 @@ export async function cancelWakeReminders() {
     return { ok: false, error: 'unsupported' };
   }
   try {
-    await cancelEach(client, await scheduledWakeIdentifiers(client));
-    return { ok: true };
+    // Per id, then a second look: an id that refused once gets another try, and
+    // only a wake reminder still scheduled after that makes it a failure.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const left = await scheduledWakeIdentifiers(client);
+      if (left.length === 0) return { ok: true };
+      await cancelEachQuietly(client, left);
+    }
+    return (await scheduledWakeIdentifiers(client)).length === 0
+      ? { ok: true }
+      : { ok: false, error: 'cancel_failed' };
   } catch (_error) {
     return { ok: false, error: 'cancel_failed' };
   }
