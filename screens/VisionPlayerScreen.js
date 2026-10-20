@@ -24,10 +24,9 @@ import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { accentAt, alpha } from '../utils/colors';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 import { captionProgressFromNarration } from '../utils/captionProgress';
-import { useCenaVivaImage } from '../utils/useCenaVivaImage';
 
+import CoverScene from '../components/CoverScene';
 import GradientCover from '../components/GradientCover';
-import NarratedScene from '../components/NarratedScene';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
 
@@ -269,6 +268,7 @@ function PersonalVisionPlayer({
     playPersonal,
     pause,
     resume,
+    spokenText,
     stop,
   } = usePersonalNarration();
   const { height: winH, width: winW } = useWindowDimensions();
@@ -328,13 +328,6 @@ function PersonalVisionPlayer({
   const showsSecondaryVisual = wantsSecondaryVisual && secondaryReady;
   const activeVisualKey = showsSecondaryVisual ? secondaryLayerKey : primaryVisualKey;
   const activeVisualStatus = secondaryStatusRelevant ? secondaryVisualStatus : visualStatus;
-  const narrationImage = useCenaVivaImage({
-    visualKey: primaryVisualKey,
-    category: vision.category,
-    enabled: narrating,
-  });
-  // a cena com as palavras está na tela: só então a frase, as ondas e o roteiro em texto saem
-  const narrated = narrating && !!narrationImage;
 
   const requestEpochRef = useRef(0);
   const playbackStartedRef = useRef(false);
@@ -794,14 +787,17 @@ function PersonalVisionPlayer({
               />
             </Animated.View>
           ) : null}
-          {/* voz tocando: a cena viva com as palavras surgindo no ritmo dela (a frase e as ondas saem de cima) */}
-          {narrated ? (
-            <NarratedScene
-              imageUri={narrationImage}
-              text={lines.slice(spokenFrom).join(' ')}
-              progress={captionProgressFromNarration({ progress: narrationProgress })}
-              active={narrationPlaying}
-              style={StyleSheet.absoluteFillObject}
+          {/* voz tocando: a cena viva com as palavras (as que a voz diz) surgindo no ritmo dela, por cima da 2ª
+              imagem — e ela mesma troca para a 2ª no ponto do cruzamento; sem cena, as palavras em texto */}
+          {narrating ? (
+            <CoverScene
+              visualKey={activeVisualKey}
+              sceneCategory={vision.category}
+              narration={{
+                text: spokenText(lines.slice(spokenFrom).join(' '), vision.lang),
+                progress: captionProgressFromNarration({ progress: narrationProgress }),
+                active: narrationPlaying,
+              }}
             />
           ) : null}
           <View style={[styles.stageContent, compact && styles.stageContentCompact]}>
@@ -809,7 +805,7 @@ function PersonalVisionPlayer({
               <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
               <Text style={styles.pillText}>{catLabel}</Text>
             </View>
-            {narrated ? null : (
+            {narrating ? null : (
               <Animated.Text
                 testID="vision-player-caption"
                 accessibilityLiveRegion="polite"
@@ -827,7 +823,7 @@ function PersonalVisionPlayer({
                 {caption}
               </Animated.Text>
             )}
-            {canNarrate && !narrated ? (
+            {canNarrate && !narrating ? (
               <View style={styles.waveRow}>
                 {Array.from({ length: 22 }).map((_, barIndex) => {
                   const active = (barIndex / 22) * 100 <= progress;
@@ -947,8 +943,8 @@ function PersonalVisionPlayer({
           </View>
         ) : null}
 
-        {/* enquanto a voz conta a história, as palavras dela estão na cena: o roteiro em texto volta depois */}
-        {narrated ? null : (
+        {/* enquanto a voz conta a história, as palavras dela estão na cena (ou nela em texto): o roteiro volta depois */}
+        {narrating ? null : (
           <View
             style={[
               styles.scriptWrap,

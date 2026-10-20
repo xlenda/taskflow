@@ -30,16 +30,17 @@ export default function AffirmationCard({
   onShare,
   onRetryVisual,
   live = false,
+  cover = false,
   sceneCategory,
   narration,
 }) {
   const theme = useTheme();
   const { t } = useT();
   const color = accentAt(theme, accent);
-  // em foco (live) o card vira capa com a cena viva mesmo sem imagem pessoal: a cena pronta das respostas
-  const visual = !!visualKey || live || !!narration;
+  // em foco o card é capa (texto claro), mesmo sem imagem pessoal: a cena viva (live) entra quando a troca assenta
+  const visual = !!visualKey || cover || live || !!narration;
   // a voz tocando: a cena diz a frase palavra por palavra; o texto do card sai da tela e do leitor de tela
-  // (o layout fica, os botões do topo continuam)
+  // (o layout fica, os botões do topo continuam e o toque atravessa até a cena)
   const quiet = narration ? QUIET : null;
   const foreground = visual ? '#FFFFFF' : theme.text;
   const mutedForeground = visual ? 'rgba(255,255,255,0.82)' : theme.textMuted;
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
-  quiet: { opacity: 0 },
+  quiet: { opacity: 0, pointerEvents: 'none' },
   visualStatusRow: {
     minHeight: 32,
     flexDirection: 'row',

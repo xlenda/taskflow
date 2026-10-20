@@ -26,6 +26,14 @@ export function usePersonalNarration() {
     return ensureCloudMediaConsent();
   }, [ensureCloudMediaConsent]);
 
+  // O texto que a voz da Celeste fala: sem os nomes guardados (privacidade). A legenda da narração usa este mesmo
+  // texto, para as palavras na tela serem as que a voz diz.
+  const spokenText = useCallback(
+    (text, contentLang, profile = state?.profile || {}) =>
+      textWithoutSavedNames(text, profile, contentLang === 'en' ? 'en' : contentLang === 'pt' ? 'pt' : lang),
+    [lang, state?.profile]
+  );
+
   const playPersonal = useCallback(
     async ({ text, lang: contentLang, narratorId: requestedNarrator, playbackId }) => {
       narration.prime();
@@ -38,7 +46,7 @@ export function usePersonalNarration() {
       const resolvedLang = contentLang === 'en' ? 'en' : contentLang === 'pt' ? 'pt' : lang;
       const consentProfile = consent.profile || state?.profile || {};
       return narration.playPersonal({
-        text: textWithoutSavedNames(text, consentProfile, resolvedLang),
+        text: spokenText(text, resolvedLang, consentProfile),
         narratorId: requestedNarrator || narratorId,
         lang: resolvedLang,
         cloudConsent: true,
@@ -47,7 +55,7 @@ export function usePersonalNarration() {
         playbackId,
       });
     },
-    [ensureConsent, lang, narration, narratorId, state?.profile]
+    [ensureConsent, lang, narration, narratorId, spokenText, state?.profile]
   );
 
   const preparePersonal = useCallback(
@@ -74,5 +82,6 @@ export function usePersonalNarration() {
     personalNarrationAvailable: RELEASE_FEATURES.paidCloudProcessing,
     playPersonal,
     preparePersonal,
+    spokenText,
   };
 }

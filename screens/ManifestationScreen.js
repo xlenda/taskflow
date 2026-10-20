@@ -246,6 +246,7 @@ export default function ManifestationScreen() {
     prime,
     pause,
     resume,
+    spokenText,
     stop,
   } = usePersonalNarration();
   const { withCloudMediaConsent } = useCloudMediaConsent();
@@ -914,7 +915,8 @@ export default function ManifestationScreen() {
             narration={
               narrating
                 ? {
-                    text: lines.slice(spokenFrom).join(' '),
+                    // o trecho que a voz está dizendo, como ela diz (sem os nomes guardados)
+                    text: spokenText(lines.slice(spokenFrom).join(' '), lang),
                     progress: captionProgressFromNarration({ progress: narrationProgress }),
                     active: narrationPlaying,
                   }

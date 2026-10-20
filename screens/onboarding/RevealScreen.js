@@ -23,7 +23,6 @@ import { useCloudMediaConsent } from '../../utils/useCloudMediaConsent';
 import CelestialTrace from '../../components/CelestialTrace';
 import CenaViva from '../../components/cenaViva/CenaViva';
 import { imageUriForCenaViva } from '../../components/cenaViva/imageSource';
-import NarratedScene from '../../components/NarratedScene';
 import NarratorSelector from '../../components/NarratorSelector';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 import { captionProgressFromNarration } from '../../utils/captionProgress';
@@ -319,28 +318,27 @@ export default function RevealScreen({ navigation, route }) {
             >
               {scene ? (
                 <>
-                  {narrating ? (
-                    // webview_gone: o próprio CenaViva deixa as palavras à vista; só a imagem que falhou é trocada
-                    <NarratedScene
-                      imageUri={scene.uri}
-                      text={m.story}
-                      progress={captionProgressFromNarration({ progress: narration.progress })}
-                      active={playingAudio}
-                      onReady={(uri) => setShown(uri)}
-                      onError={(code) => code === 'image_error' && dropScene(scene.source)}
-                      style={styles.cenaViva}
-                    />
-                  ) : (
-                    <CenaViva
-                      testID="reveal-cena-viva"
-                      mode="intro"
-                      imageUri={scene.uri}
-                      phrase={m.affirmation}
-                      onReady={(uri) => setShown(uri)}
-                      onError={() => dropScene(scene.source)}
-                      style={styles.cenaViva}
-                    />
-                  )}
+                  {/* Uma cena só. Ouvindo, a história (o texto que a voz diz) entra como legenda na mesma CenaViva —
+                      comando, sem recarregar: a intro das estrelas não recomeça —; parou, a afirmação volta. Imagem
+                      que falha: a pessoal cai para a pronta e, sem nenhuma, a história fica em texto logo abaixo. */}
+                  <CenaViva
+                    testID="reveal-cena-viva"
+                    mode="intro"
+                    imageUri={scene.uri}
+                    phrase={m.affirmation}
+                    caption={
+                      narrating
+                        ? {
+                            text: narration.spokenText(m.story, lang),
+                            progress: captionProgressFromNarration({ progress: narration.progress }),
+                          }
+                        : undefined
+                    }
+                    active={!narrating || playingAudio}
+                    onReady={(uri) => setShown(uri)}
+                    onError={() => dropScene(scene.source)}
+                    style={styles.cenaViva}
+                  />
                   <Text style={styles.sceneSource}>
                     {shown === scene.uri ? t(scene.source ? S.personalScene : S.readyScene) : null}
                   </Text>

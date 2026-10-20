@@ -109,8 +109,10 @@ export default function WakeSequenceScreen() {
   const [voiceFailed, setVoiceFailed] = useState(false);
   // Paused mid-item with a voice that cannot resume: Continue replays the item, so it says so.
   const [restartOnResume, setRestartOnResume] = useState(false);
-  // How much of the item the voice has said (0..1): the words of the scene follow it.
+  // How much of the item the voice has said (0..1), and the text it is saying (the Celeste voice leaves saved
+  // names out): the words of the scene follow it.
   const [spoken, setSpoken] = useState(0);
+  const [voiceText, setVoiceText] = useState(null);
 
   const latest = useRef(null);
   latest.current = { items, narration, cloudVoice };
@@ -143,7 +145,8 @@ export default function WakeSequenceScreen() {
 
   function itemFinished(epoch) {
     if (epochRef.current !== epoch) return;
-    setSpoken(1); // the whole text stays on the scene during the breath
+    // Every word stays on the scene during the breath; 1 would switch the renderer to the fitted still phrase.
+    setSpoken(0.999);
     const next = positionRef.current + 1;
     if (next >= latest.current.items.length) {
       silence();
@@ -172,6 +175,7 @@ export default function WakeSequenceScreen() {
     }
     deviceActiveRef.current = true;
     setSpoken(0); // the device voice always starts the item from its first word
+    setVoiceText(item.text);
     if (Platform.OS === 'web') {
       // O Safari do iPhone descarta calado a fala pedida fora do toque: sem início, oferece tocar de novo.
       watchdogRef.current = setTimeout(() => {
@@ -244,6 +248,7 @@ export default function WakeSequenceScreen() {
       if (webSpeechAvailable()) Speech.speak(' ', { volume: 0 });
       const playbackId = `wake:${sessionRef.current}:${epoch}`;
       cloudIdRef.current = playbackId;
+      setVoiceText(latest.current.narration.spokenText(item.text, item.lang));
       latest.current.narration
         .playPersonal({ text: item.text, lang: item.lang, playbackId })
         .then((result) => {
@@ -471,10 +476,10 @@ export default function WakeSequenceScreen() {
             <Text style={[styles.itemTitle, { color: theme.text }]}>{current.title}</Text>
             {currentScene ? (
               // The scene tells the story word by word with the voice. If the device cannot keep the live
-              // scene (webview_gone), CenaViva leaves the words as text; only a broken image is swapped.
+              // scene (webview_gone), NarratedScene shows the whole text instead; only a broken image is swapped.
               <NarratedScene
                 imageUri={currentScene.uri}
-                text={current.text}
+                text={voiceText || current.text}
                 progress={spoken}
                 active={phase === 'playing'}
                 onReady={(uri) => setShown(uri)}

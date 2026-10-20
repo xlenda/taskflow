@@ -803,6 +803,12 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     });
   }
   await sleep(900);
+  // o sonho ganhou a cena viva: sem imagem do sonho, a cena pronta, com o rótulo honesto
+  await page.waitForSelector('[data-testid="dream-cena-viva"]', { visible: true, timeout: 15000 });
+  await waitForText(page, 'Cena inspirada nas suas respostas', 15000).catch(() => {
+    throw new Error('Cena pronta do sonho sem o rótulo "Cena inspirada nas suas respostas"');
+  });
+  console.log('  [cena viva ok] sonho: cena pronta com o rótulo honesto');
   const matchingDreams = await page.evaluate((report) => {
     const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
     return entries.filter((entry) => entry.dream === report).length;
@@ -943,7 +949,11 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     if (live.length !== 1 || !live[0].painted) {
       throw new Error(`${where}: esperava 1 card com a cena pronta animando, veio ${JSON.stringify(scenes)}`);
     }
-    console.log(`  [cena viva ok] ${where}: 1 card animado de ${scenes.length} cena(s), com a cena pronta pintada`);
+    // cena pronta (não a imagem dela) sempre com o rótulo honesto
+    await waitForText(page, 'Cena inspirada nas suas respostas', 10000).catch(() => {
+      throw new Error(`${where}: cena pronta no card sem o rótulo "Cena inspirada nas suas respostas"`);
+    });
+    console.log(`  [cena viva ok] ${where}: 1 card animado de ${scenes.length} cena(s), cena pronta pintada e rotulada`);
   };
   await assertOneLiveCard('Afirmações');
   await waitAndClick(page, 'Dos seus sonhos');

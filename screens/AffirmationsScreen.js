@@ -136,6 +136,7 @@ export default function AffirmationsScreen() {
     personalNarrationAvailable,
     playPersonal,
     resume: resumeNarration,
+    spokenText,
     stop: stopNarration,
   } = usePersonalNarration();
   const { withCloudMediaConsent } = useCloudMediaConsent();
@@ -278,6 +279,13 @@ export default function AffirmationsScreen() {
   const currentVisualStatus = current?.visualStatusKey
     ? personalVisualStatus[current.visualStatusKey]
     : null;
+  // Como em Visões: a cena viva entra quando a troca de afirmação assenta — no app cada cena é uma WebView, e
+  // abrir uma por toque rápido nas setas pesa. Enquanto isso o card já é capa (cover), sem piscar card claro.
+  const [liveCardId, setLiveCardId] = useState(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setLiveCardId(currentId || null), 300);
+    return () => clearTimeout(timer);
+  }, [currentId]);
   const shareCardSignature = [
     currentId || '',
     current?.visualKey || '',
@@ -605,13 +613,14 @@ export default function AffirmationsScreen() {
             <AffirmationCard
               affirmation={currentLoc}
               // só o card da vez existe: ele leva a cena viva enquanto a aba está aberta
-              live={isFocused}
+              live={isFocused && current.id === liveCardId}
+              cover={isFocused}
               sceneCategory={current.category}
-              // "Ouvir": a cena com a frase surgindo palavra por palavra no ritmo da voz
+              // "Ouvir": a cena com a frase (o texto que a voz fala) surgindo palavra por palavra no ritmo dela
               narration={
                 ownsPlayback
                   ? {
-                      text: currentLoc.text,
+                      text: spokenText(currentLoc.text, current.speechLang || lang),
                       progress: captionProgressFromNarration({ progress: narrationProgress }),
                       active: playingAudio,
                     }

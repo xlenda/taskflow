@@ -178,6 +178,7 @@ function fakeReact(hosts) {
       if (!('value' in memo) || changed(memo.deps, deps)) Object.assign(memo, { value: make(), deps });
       return memo.value;
     },
+    useCallback: (fn, deps) => React.useMemo(() => fn, deps),
     useEffect(effect, deps) {
       const instance = current;
       const hook = slot(() => ({ effect: true }));
@@ -1396,9 +1397,10 @@ async function main() {
     delete global.window;
   }
 
-  // 19) cena viva nos cards (GradientCover live): sem imagem pessoal, a cena pronta das respostas (lugar dos sonhos ×
-  //     categoria); com ela, a pessoal. A frase não vai para a cena (o texto do card é o único) e o véu fica por cima
-  //     da cena; qualquer erro da cena → a imagem parada até o card sair. Sem live, nada muda.
+  // 19) cena viva nos cards. GradientCover só monta a camada viva (CoverScene) quando a cena é querida: capa parada
+  //     nem assina o estado do app. CoverScene: sem imagem pessoal, a cena pronta das respostas — com o rótulo honesto
+  //     depois de pintar, no pé do card; com a imagem dela, a pessoal (sem rótulo). A frase não vai para a cena, o véu
+  //     fica por cima dela, e qualquer erro (ou falha ao preparar a imagem) avisa a capa: imagem parada até o card sair.
   const sceneFiles = Object.fromEntries(
     ['home', 'city', 'beach', 'countryside', 'abroad', 'traveling', 'neutral'].flatMap((place) =>
       ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'].map((area) => [
@@ -1425,8 +1427,8 @@ async function main() {
       return uri;
     },
   };
-  // a cena pega a própria imagem pessoal (acquire por chave) e a libera quando sai; as chaves 'k-lenta*' só abrem
-  // quando o teste mandar (openVisual)
+  // a cena pega a própria imagem pessoal (acquire por chave) e a libera quando outra entra ou a cena sai; as chaves
+  // 'k-lenta*' só abrem quando o teste mandar (openVisual)
   const releasedVisuals = [];
   const slowVisuals = {};
   const openVisual = (key) => slowVisuals[key]({ uri: `file:///document/${key}.jpg`, release: () => releasedVisuals.push(key) });
@@ -1440,6 +1442,8 @@ async function main() {
         ? { uri: personalFiles[key], release: () => releasedVisuals.push(key) }
         : null,
   };
+  let appReads = 0; // quantas vezes alguém assinou o estado do app
+  const READY_LABEL = 'Cena inspirada nas suas respostas';
   const coverMocks = {
     ...mocks,
     ...sceneFiles,
@@ -1447,30 +1451,39 @@ async function main() {
     'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
     '@expo/vector-icons': { Ionicons: 'Ionicons' },
     '../ui/theme': { useTheme: () => ({ accents: ['#B85FC8', '#5F8BC8', '#C8A25F'], text: '#111', textMuted: '#555' }) },
-    '../context/AppContext': { useApp: () => ({ state: appState }) },
+    '../context/AppContext': {
+      useApp: () => {
+        appReads += 1;
+        return { state: appState };
+      },
+    },
     '../utils/usePersonalVisual': personalVisualMock,
     '../services/personalVisualStorage': visualStorageMock,
+    '../utils/useT': { useT: () => ({ t: (entry) => entry.pt, lang: 'pt' }) },
     './cenaViva/CenaViva': esDefault('CenaViva'),
     './NarratedScene': esDefault('NarratedScene'),
+    './CoverScene': esDefault('CoverScene'),
   };
   const { default: GradientCover } = loadWith('components/GradientCover.js', coverMocks);
+  const { default: CoverScene } = loadWith('components/CoverScene.js', coverMocks);
   const coverOf = (props) => app.mount(GradientCover, { accent: 0, ...props });
-  const typed = (type) => (cover) => cover.where((node) => node.type === type);
+  const typed = (type) => (tree) => tree.where((node) => node.type === type);
+  const layerOf = typed('CoverScene');
   const liveOf = typed('CenaViva');
-  const settle = async (cover, check, label) =>
+  const labelOf = (tree) => tree.where((node) => node.type === 'Text' && node.props.children === READY_LABEL);
+  const settle = async (tree, check, label) =>
     until(() => {
-      cover.flush();
-      return check(cover);
+      tree.flush();
+      return check(tree);
     }, label);
-  // camadas do card na ordem de pintura (a de baixo primeiro)
-  const layers = (cover) => [].concat(cover.tree.props.children).flat(Infinity).filter(Boolean);
-  const veilAt = (cover) =>
-    layers(cover).findIndex((layer) =>
-      [].concat(layer.props && layer.props.children).flat(Infinity).some((child) => {
-        const style = child && child.props ? flat(child.props.style) : {};
-        return style.backgroundColor === 'rgba(5,12,22,0.34)';
-      })
-    );
+  // camadas na ordem de pintura (a de baixo primeiro)
+  const layers = (tree) => [].concat(tree.tree.props.children).flat(Infinity).filter(Boolean);
+  const isVeil = (layer) =>
+    [].concat(layer && layer.props && layer.props.children).flat(Infinity).some((child) => {
+      const style = child && child.props ? flat(child.props.style) : {};
+      return style.backgroundColor === 'rgba(5,12,22,0.34)';
+    });
+  const veilAt = (tree) => layers(tree).findIndex(isVeil);
 
   // leituras da imagem para a WebView (no aparelho cada uma é um base64 de até ~3,4 MB)
   const sceneReads = [];
@@ -1478,6 +1491,7 @@ async function main() {
   let finishSlowRead = null; // a leitura de 'leitura-lenta' só termina quando o teste mandar
   DeviceFile.prototype.base64 = function spiedBase64() {
     sceneReads.push(this.uri);
+    if (this.uri.includes('quebrada')) return Promise.reject(new Error('arquivo ilegível'));
     if (this.uri.includes('leitura-lenta')) {
       return new Promise((resolve) => {
         finishSlowRead = () => resolve(`b64(${this.uri})`);
@@ -1485,112 +1499,183 @@ async function main() {
     }
     return realBase64.call(this);
   };
+
+  // a capa: parada não monta camada viva nem assina o estado do app; em foco, a camada viva por cima do véu da
+  // imagem parada e por baixo do texto do card; erro da cena = imagem parada até o card sair (a voz ainda mostra)
   personalFiles['k-still'] = 'file:///document/still.jpg';
   const requestsBefore = assetRequests.length;
+  appReads = 0;
   const staticCover = coverOf({ visualKey: 'k-still', sceneCategory: 'Love' });
   await tick();
   staticCover.flush();
-  assert.strictEqual(liveOf(staticCover), null, 'sem live: sem cena viva');
+  assert.strictEqual(layerOf(staticCover), null, 'sem live: sem camada viva');
   assert.strictEqual(typed('Image')(staticCover).props.source.uri, 'file:///document/still.jpg', 'sem live: a imagem parada');
   assert.ok(assetRequests.length === requestsBefore && sceneReads.length === 0, 'sem live: a imagem da cena nem é preparada');
+  assert.strictEqual(appReads, 0, 'capa parada não assina o estado do app');
   staticCover.unmount();
+  const liveCover = coverOf({ live: true, visualKey: 'k-still', sceneCategory: 'Love', children: 'texto do card' });
+  const coverLayer = layerOf(liveCover);
+  assert.ok(
+    coverLayer && coverLayer.props.visualKey === 'k-still' && coverLayer.props.sceneCategory === 'Love' && !coverLayer.props.narration,
+    'em foco: a camada viva com a chave e a categoria do card'
+  );
+  const coverOrder = layers(liveCover);
+  assert.ok(
+    coverOrder.indexOf(coverLayer) > veilAt(liveCover) && coverOrder.indexOf(coverLayer) < coverOrder.indexOf('texto do card'),
+    'a camada viva por cima do véu da imagem parada e por baixo do texto do card'
+  );
+  assert.ok(isVeil(coverLayer.props.veil), 'a camada leva o véu para pôr sobre a cena');
+  const sceneVeil = coverLayer.props.veil;
+  coverLayer.props.onFailed();
+  liveCover.flush();
+  assert.strictEqual(layerOf(liveCover), null, 'erro da cena: volta à imagem parada');
+  liveCover.update({ live: false });
+  liveCover.update({ live: true });
+  assert.strictEqual(layerOf(liveCover), null, 'depois do erro, o card não tenta de novo enquanto existir');
+  liveCover.update({ narration: { text: 'aa', progress: 0, active: true } });
+  assert.strictEqual(layerOf(liveCover).props.narration.text, 'aa', 'mas a voz tocando ainda mostra as palavras');
+  liveCover.unmount();
 
-  const readyCover = coverOf({ live: true, sceneCategory: 'Love', children: 'texto do card' });
-  await settle(readyCover, liveOf, 'cena pronta no card');
-  const readyLive = liveOf(readyCover);
+  // a camada viva (CoverScene) de verdade, com o hook da imagem
+  const sceneFailures = [];
+  const sceneOf = (props) =>
+    app.mount(CoverScene, { veil: sceneVeil, onFailed: () => sceneFailures.push(props.visualKey || 'pronta'), ...props });
+  const readySceneLayer = sceneOf({ sceneCategory: 'Love' });
+  await settle(readySceneLayer, liveOf, 'cena pronta no card');
+  const readyLive = liveOf(readySceneLayer);
   assert.strictEqual(
     readyLive.props.imageUri,
     'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)',
     'sem imagem pessoal: a cena pronta das respostas (praia × Amor), em data URI para a WebView'
   );
   assert.ok(readyLive.props.phrase == null && readyLive.props.caption == null, 'a frase não vai para a cena: o texto do card é o único');
-  assert.ok(veilAt(readyCover) > layers(readyCover).indexOf(readyLive), 'o véu do card fica por cima da cena viva');
   const liveStyle = flat(readyLive.props.style);
   assert.ok(
     liveStyle.position === 'absolute' && liveStyle.width === '100%' && liveStyle.height === '100%',
     'a cena cobre o card inteiro (largura e altura explícitas: o 4:5 do CenaViva não vale aqui)'
   );
   assert.strictEqual(liveStyle.backgroundColor, 'transparent', 'até pintar, o card mostra o fundo de sempre');
+  assert.ok(veilAt(readySceneLayer) < 0 && !labelOf(readySceneLayer), 'antes de pintar: nem véu dobrado nem rótulo');
+  readyLive.props.onReady(readyLive.props.imageUri);
+  readySceneLayer.flush();
+  assert.ok(veilAt(readySceneLayer) > layers(readySceneLayer).indexOf(liveOf(readySceneLayer)), 'pintou: o véu por cima da cena');
+  const readyLabel = labelOf(readySceneLayer);
+  assert.ok(readyLabel, 'cena pronta: o rótulo honesto "Cena inspirada nas suas respostas"');
+  const labelStyle = flat(readyLabel.props.style);
+  assert.ok(
+    labelStyle.position === 'absolute' && labelStyle.bottom <= 8 && labelStyle.right <= 12 && labelStyle.fontSize <= 11,
+    'rótulo pequeno no pé do card, no respiro abaixo do texto (nunca por cima dele)'
+  );
   readyLive.props.onError('webview_gone');
-  readyCover.flush();
-  assert.strictEqual(liveOf(readyCover), null, 'erro da cena: volta à imagem parada');
-  readyCover.update({ live: false });
-  readyCover.update({ live: true });
-  await tick();
-  readyCover.flush();
-  assert.strictEqual(liveOf(readyCover), null, 'depois do erro, o card não tenta de novo enquanto existir');
-  readyCover.unmount();
+  assert.deepStrictEqual(sceneFailures, ['pronta'], 'erro da cena: a capa fica sabendo');
+  readySceneLayer.unmount();
 
   personalFiles['k-live'] = 'file:///document/live.jpg';
-  const personalCover = coverOf({ live: true, visualKey: 'k-live', sceneCategory: 'Love' });
-  await settle(personalCover, liveOf, 'cena pessoal no card');
+  const personalScene = sceneOf({ visualKey: 'k-live', sceneCategory: 'Love' });
+  await settle(personalScene, liveOf, 'cena pessoal no card');
   assert.strictEqual(
-    liveOf(personalCover).props.imageUri,
+    liveOf(personalScene).props.imageUri,
     'data:image/jpeg;base64,b64(file:///document/live.jpg)',
     'com imagem pessoal: a cena viva usa a dela'
   );
-  personalCover.update({ live: false });
-  assert.strictEqual(liveOf(personalCover), null, 'o card perdeu o foco: a cena sai');
-  assert.strictEqual(typed('Image')(personalCover).props.source.uri, 'file:///document/live.jpg', 'e fica a imagem parada');
-  personalCover.unmount();
-  // imagem pessoal ainda abrindo: espera por ela (sem piscar a cena pronta); quando abre, é ela
-  const slowCover = coverOf({ live: true, visualKey: 'k-lenta', sceneCategory: 'Love' });
+  liveOf(personalScene).props.onReady(liveOf(personalScene).props.imageUri);
+  personalScene.flush();
+  assert.ok(veilAt(personalScene) >= 0 && !labelOf(personalScene), 'imagem dela: véu, sem o rótulo da cena pronta');
+  personalScene.unmount();
+  assert.ok(releasedVisuals.includes('k-live'), 'a cena saiu: a imagem que ela pegou é liberada');
+  // imagem pessoal ainda abrindo: espera por ela (sem piscar a cena pronta); narrando, as palavras em texto até lá
+  const slowScene = sceneOf({ visualKey: 'k-lenta', sceneCategory: 'Love' });
   for (let i = 0; i < 5; i++) await tick();
-  slowCover.flush();
-  assert.strictEqual(liveOf(slowCover), null, 'imagem pessoal abrindo: sem cena pronta por cima');
+  slowScene.flush();
+  assert.strictEqual(liveOf(slowScene), null, 'imagem pessoal abrindo: sem cena pronta por cima');
+  slowScene.update({ narration: { text: 'Eu escolho a paz', progress: 0.2, active: true } });
+  const waitingVoice = typed('NarratedScene')(slowScene);
+  assert.ok(waitingVoice && !waitingVoice.props.imageUri, 'narrando sem cena ainda: as palavras em texto (a NarratedScene sem imagem)');
+  slowScene.update({ narration: null });
   openVisual('k-lenta');
-  await settle(slowCover, liveOf, 'cena da imagem que abriu devagar');
-  assert.strictEqual(liveOf(slowCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/k-lenta.jpg)');
-  slowCover.unmount();
-  assert.ok(releasedVisuals.includes('k-lenta'), 'o card saiu: a imagem que a cena pegou é liberada');
+  await settle(slowScene, liveOf, 'cena da imagem que abriu devagar');
+  assert.strictEqual(liveOf(slowScene).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/k-lenta.jpg)');
+  slowScene.unmount();
   // a imagem da chave anterior chegou atrasada (o card já trocou): não toma o lugar da atual e é liberada
   personalFiles['k-nova'] = 'file:///document/nova.jpg';
-  const lateCover = coverOf({ live: true, visualKey: 'k-lenta-velha', sceneCategory: 'Love' });
+  const lateScene = sceneOf({ visualKey: 'k-lenta-velha', sceneCategory: 'Love' });
   await tick();
-  lateCover.flush();
-  lateCover.update({ visualKey: 'k-nova' });
-  await settle(lateCover, liveOf, 'cena da chave nova');
+  lateScene.flush();
+  lateScene.update({ visualKey: 'k-nova' });
+  await settle(lateScene, liveOf, 'cena da chave nova');
   openVisual('k-lenta-velha');
   for (let i = 0; i < 5; i++) await tick();
-  lateCover.flush();
-  assert.strictEqual(liveOf(lateCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'a atrasada não volta');
+  lateScene.flush();
+  assert.strictEqual(liveOf(lateScene).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'a atrasada não volta');
   assert.ok(releasedVisuals.includes('k-lenta-velha'), 'a imagem atrasada é liberada na hora');
+  assert.ok(!sceneReads.includes('file:///document/k-lenta-velha.jpg'), 'e nem é lida (no aparelho, um base64 de até ~3,4 MB)');
   // a leitura da imagem anterior terminou depois da troca: também não volta
   personalFiles['k-leitura'] = 'file:///document/leitura-lenta.jpg';
-  lateCover.update({ visualKey: 'k-leitura' });
+  lateScene.update({ visualKey: 'k-leitura' });
   await until(() => !!finishSlowRead, 'leitura lenta começou');
-  lateCover.update({ visualKey: 'k-nova' });
-  await settle(lateCover, liveOf, 'cena da chave nova de novo');
+  lateScene.update({ visualKey: 'k-nova' });
+  await settle(lateScene, liveOf, 'cena da chave nova de novo');
   finishSlowRead();
   for (let i = 0; i < 5; i++) await tick();
-  lateCover.flush();
-  assert.strictEqual(liveOf(lateCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'leitura atrasada não volta');
-  lateCover.unmount();
+  lateScene.flush();
+  assert.strictEqual(liveOf(lateScene).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'leitura atrasada não volta');
+  lateScene.unmount();
   // a chave existe mas o arquivo sumiu (o navegador limpou o armazenamento): também é "sem imagem pessoal"
-  const missingCover = coverOf({ live: true, visualKey: 'k-sumiu', sceneCategory: 'Love' });
-  await settle(missingCover, liveOf, 'cena pronta no lugar da imagem que sumiu');
-  assert.strictEqual(liveOf(missingCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)');
-  missingCover.unmount();
-  // o card da vez trocou (chave e categoria juntas): só a imagem da chave atual vira cena; a anterior é liberada
+  const missingScene = sceneOf({ visualKey: 'k-sumiu', sceneCategory: 'Love' });
+  await settle(missingScene, liveOf, 'cena pronta no lugar da imagem que sumiu');
+  assert.strictEqual(liveOf(missingScene).props.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)');
+  liveOf(missingScene).props.onReady(liveOf(missingScene).props.imageUri);
+  missingScene.flush();
+  assert.ok(labelOf(missingScene), 'imagem que sumiu: cena pronta, com o rótulo');
+  missingScene.unmount();
+  // o card da vez trocou (chave e categoria juntas): a cena anterior fica até a nova entrar (sem buraco); só a imagem
+  // da chave atual vira cena; a anterior é liberada quando a nova entra, não antes (ela ainda está na tela)
   personalFiles['k-a'] = 'file:///document/a.jpg';
   personalFiles['k-b'] = 'file:///document/b.jpg';
-  const swapCover = coverOf({ live: true, visualKey: 'k-a', sceneCategory: 'Love' });
-  const showing = (name) => (cover) => liveOf(cover) && liveOf(cover).props.imageUri.includes(name);
-  await settle(swapCover, showing('a.jpg'), 'cena da 1ª afirmação');
+  const swapLayer = sceneOf({ visualKey: 'k-a', sceneCategory: 'Love' });
+  const showing = (name) => (tree) => liveOf(tree) && liveOf(tree).props.imageUri.includes(name);
+  await settle(swapLayer, showing('a.jpg'), 'cena da 1ª afirmação');
   sceneReads.length = 0;
-  swapCover.update({ visualKey: 'k-b', sceneCategory: 'Wealth' });
-  await settle(swapCover, showing('b.jpg'), 'cena da 2ª afirmação');
+  swapLayer.update({ visualKey: 'k-b', sceneCategory: 'Wealth' });
+  assert.ok(showing('a.jpg')(swapLayer) && !releasedVisuals.includes('k-a'), 'trocando: a cena anterior fica na tela até a nova');
+  await settle(swapLayer, showing('b.jpg'), 'cena da 2ª afirmação');
   assert.deepStrictEqual(sceneReads, ['file:///document/b.jpg'], 'só a imagem da afirmação atual vira cena');
   assert.ok(releasedVisuals.includes('k-a') && !releasedVisuals.includes('k-b'), 'a imagem anterior é liberada, a atual não');
-  swapCover.unmount();
+  swapLayer.unmount();
+  // preparar a imagem falhou (arquivo ilegível): a capa fica sabendo (nada calado); narrando, as palavras em texto
+  personalFiles['k-quebrada'] = 'file:///document/quebrada.jpg';
+  sceneFailures.length = 0;
+  const brokenLayer = sceneOf({ visualKey: 'k-quebrada', sceneCategory: 'Love' });
+  await settle(brokenLayer, () => sceneFailures.length > 0, 'falha ao preparar a imagem');
+  assert.deepStrictEqual(sceneFailures, ['k-quebrada'], 'falha ao preparar a cena: a capa volta à imagem parada');
+  brokenLayer.update({ narration: { text: 'aa', progress: 0, active: true } });
+  assert.ok(!typed('NarratedScene')(brokenLayer).props.imageUri, 'sem cena possível: a voz mostra as palavras em texto');
+  brokenLayer.unmount();
+  // narrando: a NarratedScene com a imagem, as palavras e o play/pausa; cena pronta = rótulo; erro dela avisa a capa
+  // e o rótulo sai (a NarratedScene passa a mostrar o texto)
+  sceneFailures.length = 0;
+  const voiceScene = sceneOf({ sceneCategory: 'Love', narration: { text: 'Eu escolho a paz', progress: 0.5, active: true } });
+  await settle(voiceScene, (tree) => typed('NarratedScene')(tree) && typed('NarratedScene')(tree).props.imageUri, 'narração no card');
+  const voiceLayer = typed('NarratedScene')(voiceScene);
+  assert.ok(!liveOf(voiceScene), 'narrando: uma cena só, a da narração');
+  assert.ok(
+    voiceLayer.props.imageUri === 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)' &&
+      voiceLayer.props.text === 'Eu escolho a paz' &&
+      voiceLayer.props.progress === 0.5 &&
+      voiceLayer.props.active === true,
+    'imagem, texto, progresso e play/pausa chegam à cena narrada'
+  );
+  assert.ok(labelOf(voiceScene), 'cena pronta narrando: o rótulo também');
+  voiceLayer.props.onError('webview_gone');
+  voiceScene.flush();
+  assert.ok(sceneFailures.length === 1 && !labelOf(voiceScene), 'erro da cena narrada: a capa fica sabendo e o rótulo sai');
+  voiceScene.unmount();
   DeviceFile.prototype.base64 = realBase64;
 
-  // o card da afirmação: live sem imagem pessoal também vira capa (texto claro sobre a cena)
+  // o card da afirmação: em foco vira capa (texto claro), mesmo sem imagem pessoal e antes de a cena entrar
   const cardMocks = {
     ...coverMocks,
     'react-native': { ...RN, ActivityIndicator: 'ActivityIndicator', TouchableOpacity: 'TouchableOpacity' },
-    '../ui/theme': coverMocks['../ui/theme'],
-    '../utils/useT': { useT: () => ({ t: (entry) => entry.pt }) },
     './GradientCover': esDefault('GradientCover'),
   };
   const { default: AffirmationCard } = loadWith('components/AffirmationCard.js', cardMocks);
@@ -1602,13 +1687,18 @@ async function main() {
   const cardCover = affirmationCard.find('GradientCover');
   assert.ok(cardCover && cardCover.props.live === true, 'afirmação em foco: capa com cena viva mesmo sem imagem pessoal');
   assert.strictEqual(cardCover.props.sceneCategory, 'Peace', 'a categoria escolhe a cena pronta');
-  assert.strictEqual(app.mount(AffirmationCard, { affirmation: { text: 'aa' } }).find('GradientCover'), null, 'sem live e sem imagem: card liso de sempre');
+  const settlingCard = app.mount(AffirmationCard, { affirmation: { text: 'aa' }, cover: true });
+  assert.ok(
+    settlingCard.find('GradientCover') && !settlingCard.find('GradientCover').props.live,
+    'trocou de afirmação: já é capa (sem piscar card claro) enquanto a cena espera assentar'
+  );
+  assert.strictEqual(app.mount(AffirmationCard, { affirmation: { text: 'aa' } }).find('GradientCover'), null, 'fora de foco e sem imagem: card liso de sempre');
 
   // um card animado por vez: só o card em foco recebe live (no app cada cena é uma WebView de até ~3,4 MB)
   const screen = (name) => fs.readFileSync(path.join(root, 'screens', name), 'utf8');
   const liveProps = (source) => source.match(/\slive=\{[^}]*\}/g) || [];
   const cardScreens = {
-    'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused\}/,
+    'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused && current\.id === liveCardId\}/,
     'VisionsScreen.js': /<GradientCover[^>]*?\slive=\{isFocused && vision\.id === liveVisionId\}/,
     'HomeScreen.js': /testID="open-anchor-scene"[\s\S]{0,700}<GradientCover[^>]*?\slive=\{isFocused\}/,
     'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused\}/,
@@ -1620,11 +1710,20 @@ async function main() {
     assert.match(source, pattern, `${name}: só o card em foco recebe live`);
     assert.strictEqual(liveProps(source).length, 1, `${name}: um único card com live`);
   }
-  const visionsSource = screen('VisionsScreen.js');
   assert.match(
-    visionsSource,
-    /setTimeout\(\(\) => setLiveVisionId\(visibleVision\?\.id \|\| null\), \d+\)/,
+    screen('VisionsScreen.js'),
+    /setTimeout\(\(\) => setLiveVisionId\(visibleVision\?\.id \|\| null\), 300\)/,
     'Visões: a cena segue o card em foco só depois que o deslize assenta (sem abrir uma WebView por card que passa)'
+  );
+  assert.match(
+    screen('AffirmationsScreen.js'),
+    /setTimeout\(\(\) => setLiveCardId\(currentId \|\| null\), 300\)/,
+    'Afirmações: a cena entra depois que a troca assenta, como em Visões'
+  );
+  assert.match(
+    screen('AffirmationsScreen.js'),
+    /<AffirmationCard[^>]*?\scover=\{isFocused\}/,
+    'Afirmações: o card já é capa enquanto a cena espera assentar'
   );
   const affirmationCardSource = fs.readFileSync(path.join(root, 'components', 'AffirmationCard.js'), 'utf8');
   assert.match(affirmationCardSource, /<GradientCover[^>]*?\slive=\{live\}/, 'AffirmationCard repassa live para a capa');
@@ -1663,9 +1762,14 @@ async function main() {
   assert.deepStrictEqual(words(render({}, 4000, [320, 400], { text: 'aa bb cc dd', progress: spoken })), ['aa', 'bb']);
 
   // NarratedScene: o CenaViva com a legenda; a cena 4:5 entra INTEIRA no espaço que receber (a legenda mora no pé
-  // do quadro — cortar o quadro cortaria as palavras); toques passam; erro da cena não esconde nada (o texto de
-  // reserva do CenaViva fica à vista) e quem chama fica sabendo
-  const { default: NarratedScene } = loadWith('components/NarratedScene.js', { ...mocks, './cenaViva/CenaViva': esDefault('CenaViva') });
+  // do quadro — cortar o quadro cortaria as palavras); toques passam. Sem imagem ainda, ou se a cena falhar (imagem
+  // quebrada, WebView que desistiu), ela mesma mostra o texto INTEIRO, com rolagem e contraste — nunca as 5 linhas
+  // com "…" do CenaViva — e quem chama fica sabendo do erro.
+  const { default: NarratedScene } = loadWith('components/NarratedScene.js', {
+    ...mocks,
+    'react-native': { ...RN, ScrollView: 'ScrollView' },
+    './cenaViva/CenaViva': esDefault('CenaViva'),
+  });
   const narrated = app.mount(NarratedScene, { imageUri: 'data:image/jpeg;base64,QUJD', text: 'Eu escolho a paz', progress: 0.25 });
   assert.strictEqual(narrated.tree.props.testID, 'narrated-scene');
   assert.strictEqual(narrated.tree.props.dataSet.progress, '0.25', 'o site expõe o progresso da legenda');
@@ -1687,36 +1791,33 @@ async function main() {
   narrated.update({ progress: 0.75, active: false });
   assert.deepStrictEqual(narratedScene().props.caption, { text: 'Eu escolho a paz', progress: 0.75 }, 'a legenda acompanha a voz');
   assert.strictEqual(narratedScene().props.active, false, 'pausada: pôster parado com as palavras');
+  // história longa (bem mais que 5 linhas) e a WebView desistiu: o texto inteiro, rolando, legível
+  const longStory = Array.from({ length: 14 }, (_, i) => `Frase ${i + 1} da minha cena, vivida com calma e propósito.`).join(' ');
   const narratedErrors = [];
-  narrated.update({ onError: (code) => narratedErrors.push(code) });
+  narrated.update({ text: longStory, onError: (code) => narratedErrors.push(code) });
   narratedScene().props.onError('webview_gone');
   narrated.flush();
-  assert.ok(narratedScene(), 'webview_gone: a cena continua montada e o texto de reserva dela fica à vista');
   assert.deepStrictEqual(narratedErrors, ['webview_gone'], 'quem chama fica sabendo do erro');
+  const fallbackScroll = narrated.find('ScrollView');
+  const fullText = narrated.where((node) => node.type === 'Text');
+  assert.ok(fallbackScroll && !narratedScene(), 'cena falhou: o texto no lugar dela, com rolagem');
+  assert.ok(
+    fullText.props.children === longStory && !fullText.props.numberOfLines && !fullText.props.adjustsFontSizeToFit,
+    'o texto INTEIRO da história longa, sem cortar nem encolher'
+  );
+  assert.ok(
+    /^rgba\(8,16,28,0\.(8|9)/.test(flat(fallbackScroll.props.style).backgroundColor) && flat(fullText.props.style).color === '#FFF9F0',
+    'texto claro sobre fundo escuro (legível sobre qualquer cena)'
+  );
+  assert.notStrictEqual(flat(narrated.tree.props.style).pointerEvents, 'none', 'com o texto, o toque fica (para rolar)');
+  narrated.update({ imageUri: 'data:image/jpeg;base64,REVG' }); // outra imagem: a pronta no lugar da quebrada
+  assert.ok(narratedScene() && !narrated.find('ScrollView'), 'imagem nova: a cena volta');
+  narrated.update({ imageUri: null });
+  assert.ok(narrated.find('ScrollView') && !narratedScene(), 'sem imagem (abrindo, ou nenhuma possível): o texto inteiro');
   narrated.unmount();
 
-  // a narração no card: a cena com as palavras POR CIMA do véu (o véu escureceria a legenda); uma cena só
-  const narratingCover = coverOf({
-    live: true,
-    sceneCategory: 'Love',
-    narration: { text: 'Eu escolho a paz', progress: 0.5, active: true },
-  });
-  const narratedOf = typed('NarratedScene');
-  await settle(narratingCover, narratedOf, 'narração no card');
-  const narratedLayer = narratedOf(narratingCover);
-  assert.strictEqual(liveOf(narratingCover), null, 'narrando: uma cena só, a da narração');
-  assert.strictEqual(narratedLayer.props.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)');
-  assert.ok(
-    narratedLayer.props.text === 'Eu escolho a paz' && narratedLayer.props.progress === 0.5 && narratedLayer.props.active === true,
-    'texto, progresso e play/pausa chegam à cena'
-  );
-  assert.ok(layers(narratingCover).indexOf(narratedLayer) > veilAt(narratingCover), 'as palavras por cima do véu');
-  narratingCover.update({ narration: null });
-  assert.ok(liveOf(narratingCover) && !narratedOf(narratingCover), 'a voz parou: volta a cena do card');
-  narratingCover.update({ live: false, narration: { text: 'aa', progress: 0, active: true } });
-  await settle(narratingCover, narratedOf, 'narração com o card fora de foco');
-  narratingCover.unmount();
-  // o card da afirmação narrando: a frase sai da tela e do leitor de tela (a cena diz a frase), o layout fica
+  // o card da afirmação narrando: a frase sai da tela e do leitor de tela (a cena diz a frase), o layout fica e o
+  // toque atravessa (o texto da cena, se ela falhar, precisa rolar)
   const narratingCard = app.mount(AffirmationCard, {
     affirmation: { text: 'Eu escolho a paz.' },
     live: true,
@@ -1728,9 +1829,10 @@ async function main() {
     'a narração chega à capa'
   );
   const cardPhrase = narratingCard.where((node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
+  const cardPhraseStyle = flat(cardPhrase.props.style);
   assert.ok(
-    flat(cardPhrase.props.style).opacity === 0 && cardPhrase.props['aria-hidden'] === true,
-    'narrando: a frase do card some da tela e do leitor (layout mantido)'
+    cardPhraseStyle.opacity === 0 && cardPhraseStyle.pointerEvents === 'none' && cardPhrase.props['aria-hidden'] === true,
+    'narrando: a frase do card some da tela e do leitor, o layout fica e o toque passa'
   );
   const quietCard = app.mount(AffirmationCard, { affirmation: { text: 'Eu escolho a paz.' }, live: true });
   const quietPhrase = quietCard.where((node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
@@ -1741,36 +1843,77 @@ async function main() {
   });
   assert.ok(unfocusedNarration.find('GradientCover'), 'narrando sem live: também vira capa (a cena precisa de onde aparecer)');
 
-  // nas 5 telas a narração aparece como cena com palavras, e o texto parado da mesma fala sai enquanto ela toca
+  // a legenda da voz da Celeste é o MESMO texto que ela fala: o nome de quem ela ama sai da voz (privacidade) e da
+  // legenda junto
+  const spokenRequests = [];
+  const voiceProfile = { name: 'Teste', manifestingName: 'Alex' };
+  const { usePersonalNarration } = loadWith('utils/usePersonalNarration.js', {
+    ...mocks,
+    '../context/AppContext': { useApp: () => ({ state: { lang: 'pt', profile: voiceProfile } }) },
+    '../context/NarrationContext': {
+      useNarration: () => ({
+        prime() {},
+        stop() {},
+        playPersonal: async (request) => {
+          spokenRequests.push(request.text);
+          return { ok: true };
+        },
+      }),
+    },
+    '../constants/narrators': { DEFAULT_NARRATOR_ID: 'aurora' },
+    '../constants/releaseFeatures': { RELEASE_FEATURES: { paidCloudProcessing: true } },
+    './useCloudMediaConsent': {
+      useCloudMediaConsent: () => ({ ensureCloudMediaConsent: async () => ({ ok: true, profile: voiceProfile }) }),
+    },
+  });
+  let voice = null;
+  app.mount(() => {
+    voice = usePersonalNarration();
+    return null;
+  }, {});
+  const lovedStory = 'Eu e Alex caminhamos na praia.';
+  assert.strictEqual(voice.spokenText(lovedStory, 'pt'), 'Eu e uma pessoa próxima caminhamos na praia.', 'o nome sai da legenda');
+  await voice.playPersonal({ text: lovedStory, lang: 'pt', playbackId: 'amor' });
+  assert.deepStrictEqual(spokenRequests, [voice.spokenText(lovedStory, 'pt')], 'a legenda é exatamente o texto que a voz diz');
+  assert.strictEqual(voice.spokenText('Alex and I walk.', 'en'), 'someone close to me and I walk.', 'em inglês também');
+
+  // nas telas a narração aparece como cena com palavras (a legenda é o texto falado), e o texto parado da mesma fala
+  // sai enquanto ela toca
   const narrationScreens = {
-    'VisionPlayerScreen.js': [/<NarratedScene\b/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
-    'ManifestationScreen.js': [/narration=\{\s*narrating\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
-    'onboarding/RevealScreen.js': [/<NarratedScene\b/, /captionProgressFromNarration\(\{ progress: narration\.progress \}\)/],
-    'AffirmationsScreen.js': [/narration=\{\s*ownsPlayback\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
+    'VisionPlayerScreen.js': [/<CoverScene\b/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(lines\.slice\(spokenFrom\)\.join\(' '\), vision\.lang\)/],
+    'ManifestationScreen.js': [/narration=\{\s*narrating\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(lines\.slice\(spokenFrom\)\.join\(' '\), lang\)/],
+    'onboarding/RevealScreen.js': [/captionProgressFromNarration\(\{ progress: narration\.progress \}\)/, /narration\.spokenText\(m\.story, lang\)/],
+    'AffirmationsScreen.js': [/narration=\{\s*ownsPlayback\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(currentLoc\.text, current\.speechLang \|\| lang\)/],
     'WakeSequenceScreen.js': [/<NarratedScene\b/, /captionProgressFromBoundary\(/, /captionProgressFromTime\(/, /captionProgressFromNarration\(/],
   };
   for (const [name, patterns] of Object.entries(narrationScreens)) {
     const source = screen(name);
     patterns.forEach((pattern) => assert.match(source, pattern, `${name}: a narração com cena viva e palavras (${pattern})`));
   }
+  // Revelação: UMA cena só — a legenda entra por comando na mesma CenaViva (sem recarregar, sem repetir a intro)
   const reveal = screen('onboarding/RevealScreen.js');
+  assert.ok(!/NarratedScene/.test(reveal), 'Revelação: sem trocar de componente ao ouvir (a intro não recomeça)');
+  assert.match(
+    reveal,
+    /<CenaViva\s+testID="reveal-cena-viva"[\s\S]{0,400}\scaption=\{\s*narrating\s*\?\s*\{\s*text: narration\.spokenText\(m\.story, lang\)/,
+    'Revelação: a mesma CenaViva recebe a legenda da história enquanto a voz conta'
+  );
+  assert.equal((reveal.match(/<CenaViva\b/g) || []).length, 1, 'Revelação: uma CenaViva só');
   assert.match(reveal, /narrating && scene \? null : <Text style=\{styles\.sceneText\}>\{m\.story\}<\/Text>/, 'Revelação: a história em texto sai enquanto a voz a conta');
-  assert.match(reveal, /phrase=\{m\.affirmation\}\s+onReady=\{\(uri\) => setShown\(uri\)\}/, 'Revelação: rótulo pela imagem que pintou');
+  assert.match(reveal, /onReady=\{\(uri\) => setShown\(uri\)\}/, 'Revelação: rótulo pela imagem que pintou');
   const player = screen('VisionPlayerScreen.js');
-  assert.match(player, /const narrated = narrating && !!narrationImage;/, 'Player: o texto parado só sai com a cena na tela');
-  assert.match(player, /narrated \? null : \(\s*<Animated\.Text\s+testID="vision-player-caption"/, 'Player: a frase parada sai enquanto a voz toca');
-  assert.match(player, /\{narrated \? null : \(\s*<View\s+style=\{\[\s*styles\.scriptWrap/, 'Player: o roteiro em texto sai enquanto a voz toca');
+  assert.match(player, /<CoverScene\s+visualKey=\{activeVisualKey\}/, 'Player: a cena narrada troca para a 2ª imagem no ponto do cruzamento');
+  assert.match(player, /narrating \? null : \(\s*<Animated\.Text\s+testID="vision-player-caption"/, 'Player: a frase parada sai enquanto a voz toca');
+  assert.match(player, /\{narrating \? null : \(\s*<View\s+style=\{\[\s*styles\.scriptWrap/, 'Player: o roteiro em texto sai enquanto a voz toca');
   assert.match(player, /live=\{isFocused && !narrating && !showsSecondaryVisual\}/, 'Player: a visão aberta anima parada; tocando, só a cena da voz');
   const manifestation = screen('ManifestationScreen.js');
   assert.match(manifestation, /\{narrating \? null : \(\s*<>\s*<SectionHeading title=\{t\(S\.storyTitle\)\}/, 'Manifestação: a história em texto sai enquanto a voz a conta');
   assert.match(manifestation, /style=\{\[styles\.heroInner, narrating && styles\.quiet\]\}\s+aria-hidden=\{narrating \|\| undefined\}/, 'Manifestação: o texto da capa sai da tela e do leitor enquanto a voz toca');
-  assert.match(reveal, /onError=\{\(code\) => code === 'image_error' && dropScene\(scene\.source\)\}/, 'Revelação: webview_gone deixa as palavras do CenaViva');
   // a legenda é o trecho que a voz está dizendo (o player e a manifestação podem começar de uma frase do meio)
-  for (const [name, source, pattern] of [
-    ['Player', player, /text=\{lines\.slice\(spokenFrom\)\.join\(' '\)\}/],
-    ['Manifestação', manifestation, /text: lines\.slice\(spokenFrom\)\.join\(' '\),/],
+  for (const [name, source] of [
+    ['Player', player],
+    ['Manifestação', manifestation],
   ]) {
-    assert.match(source, pattern, `${name}: a legenda é o trecho falado`);
     assert.match(source, /setSpokenFrom\(at\);[\s\S]{0,400}await playPersonal\(\{\s*text: lines\.slice\(at\)\.join\(' '\)/, `${name}: o trecho começa onde a voz começa`);
   }
 
@@ -1798,6 +1941,8 @@ async function main() {
     stop() {},
     pause: () => false,
     resume: () => Promise.resolve(),
+    // a voz da Celeste fala o texto sem os nomes guardados; o dublê troca uma palavra para o teste ver a diferença
+    spokenText: (text) => text.replace('calma', 'leveza'),
   };
   let cloudVoice = false;
   let wakeClock = 1000;
@@ -1871,13 +2016,17 @@ async function main() {
     tickIntervals();
     wakeScreen.flush();
     assert.strictEqual(narratedNow().props.progress, 16 / 48, 'com avisos de palavra, o relógio não empurra a legenda');
-    // a cena não aguenta (webview_gone): continua montada com as palavras do CenaViva; só imagem quebrada troca
+    // a cena não aguenta (webview_gone): continua montada (a NarratedScene mostra o texto inteiro); só imagem quebrada troca
     narratedNow().props.onError('webview_gone');
     wakeScreen.flush();
-    assert.ok(narratedNow(), 'webview_gone: a cena fica (o texto de reserva do CenaViva mostra as palavras)');
+    assert.ok(narratedNow(), 'webview_gone: a cena fica (ela mesma mostra o texto inteiro)');
     first.onDone();
     wakeScreen.flush();
-    assert.strictEqual(narratedNow().props.progress, 1, 'fim do item: o texto inteiro durante o respiro');
+    assert.strictEqual(
+      narratedNow().props.progress,
+      0.999,
+      'fim do item: todas as palavras no respiro, sem virar a frase parada encolhida (progress 1)'
+    );
     // 2º item: começa do zero; a voz que nunca avisa palavra anda pelo tempo (14 letras/s)
     wakeScreen.where((node) => node.props.testID === 'wake-next').props.onPress();
     await settle(wakeScreen, () => speeches.length === 2 && narratedNow() && narratedNow().props.progress === 0, 'item 2');
@@ -1902,6 +2051,11 @@ async function main() {
     wakeScreen.where((node) => node.props.testID === 'wake-resume').props.onPress();
     wakeScreen.flush();
     assert.strictEqual(narratedNow().props.progress, 0, 'voz da Celeste começando: nenhuma palavra antes dela');
+    assert.strictEqual(
+      narratedNow().props.text,
+      'Eu escolho viver com leveza. Cada dia é um passo.',
+      'voz da Celeste: a legenda é o texto que ela fala (sem os nomes guardados)'
+    );
     const cloudRequest = narrationDouble.played[narrationDouble.played.length - 1];
     Object.assign(narrationDouble, { activePlaybackId: cloudRequest.playbackId, phase: 'playing', progress: 0.5 });
     wakeScreen.update({});
@@ -1915,6 +2069,7 @@ async function main() {
     wakeScreen.update({});
     assert.ok(speeches.length === speechesBeforeFallback + 1, 'a voz do aparelho assumiu');
     assert.strictEqual(narratedNow().props.progress, 0, 'a reserva recomeça o item: a legenda também');
+    assert.strictEqual(narratedNow().props.text, wakeStory, 'a voz do aparelho fala o texto dela: a legenda volta a ele');
     // a cena pronta quebrou e não há outra imagem: sem cena, a história volta em texto com a voz tocando
     assert.ok(!storyShown(), 'tocando com a cena: a história fica na cena');
     narratedNow().props.onError('image_error');
