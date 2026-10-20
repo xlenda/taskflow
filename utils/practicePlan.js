@@ -451,6 +451,45 @@ export const DEFAULT_PRACTICE_PLAN = Object.freeze({
   receipts: Object.freeze([]),
 });
 
+const MINUTES_PER_DAY = 24 * 60;
+
+const localDay = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const dayOrder = (minutes, wakeMinutes) => (minutes - wakeMinutes + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+
+// Ordem do dia a partir do horário de acordar: um momento às 00:30 fecha o dia, não o abre.
+export function practiceSlotsInDayOrder(plan) {
+  const wake = timeToMinutes(plan?.wakeTime) ?? timeToMinutes(DEFAULT_WAKE_TIME);
+  return (Array.isArray(plan?.slots) ? plan.slots : [])
+    .filter((slot) => slot && slot.enabled !== false && timeToMinutes(slot.time) !== null)
+    .sort((a, b) => dayOrder(timeToMinutes(a.time), wake) - dayOrder(timeToMinutes(b.time), wake));
+}
+
+// Prática da vez, no dia do calendário (o mesmo dos recibos): o momento pendente que começou
+// mais recentemente; depois de acordar, os da madrugada já passaram. Sem nenhum, o próximo.
+export function currentPracticeSlot(plan, now = new Date()) {
+  if (plan?.enabled !== true) return null;
+  const weekdays = Array.isArray(plan.weekdays) ? plan.weekdays : ALL_WEEKDAYS;
+  if (!weekdays.includes(jsDayToIsoWeekday(now.getDay()))) return null;
+  const today = localDay(now);
+  const done = new Set(
+    (Array.isArray(plan.receipts) ? plan.receipts : [])
+      .filter((receipt) => receipt?.day === today)
+      .map((receipt) => receipt.slotId)
+  );
+  const wake = timeToMinutes(plan.wakeTime) ?? timeToMinutes(DEFAULT_WAKE_TIME);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const at = (slot) => timeToMinutes(slot.time);
+  const pending = practiceSlotsInDayOrder(plan).filter((slot) => !done.has(slot.id));
+  const started = pending.filter(
+    (slot) => at(slot) <= nowMinutes && !(nowMinutes >= wake && at(slot) < wake)
+  );
+  if (started.length) return started.reduce((a, b) => (at(b) > at(a) ? b : a));
+  const upcoming = pending.filter((slot) => at(slot) > nowMinutes);
+  return upcoming.length ? upcoming.reduce((a, b) => (at(b) < at(a) ? b : a)) : null;
+}
+
 /**
  * Accepts the current model plus small legacy aliases. Unknown properties are
  * deliberately dropped, so raw microphone text can never leak into storage.

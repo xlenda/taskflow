@@ -239,8 +239,13 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   // A abertura completa preserva os intersticiais documentados antes do chat.
   // Nada aqui asserta URL: o linking do navegador muda o path por tela.
   await waitAndClick(page, 'Continuar', 30000);
-  await waitForText(page, 'código de indicação', 30000);
-  await waitAndClick(page, 'Pular');
+  await page.waitForFunction(
+    () => /funciona melhor com Notificações|código de indicação/.test(document.body.innerText),
+    { timeout: 30000, polling: 300 }
+  );
+  if (await page.evaluate(() => document.body.innerText.includes('código de indicação'))) {
+    throw new Error('A pergunta de código de indicação voltou ao funil');
+  }
   await waitForText(page, 'funciona melhor com Notificações', 30000);
   await waitAndClick(page, 'Continuar');
   await waitForText(page, 'Ajude a gente a crescer', 30000);
@@ -477,6 +482,38 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitForText(page, 'Ter mais paz e equilíbrio', 20000);
   await sleep(2000);
   await page.screenshot({ path: path.join(SHOT_DIR, 'app.png') });
+
+  // Plano Celeste no site (bug real de 20/10/2026): "Ativar" precisa ativar e a
+  // prática da vez precisa abrir pela Home e ficar registrada como concluída.
+  await clickTestId(page, 'open-practice-plan');
+  await page.waitForSelector('[data-testid="practice-plan-screen"]', { visible: true, timeout: 20000 });
+  await clickTestId(page, 'activate-practice-plan');
+  await waitForText(page, 'Plano ativo', 15000);
+  await page.waitForSelector('[data-testid="practice-plan-now"]', { visible: true, timeout: 15000 });
+  await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
+  await waitForHome(page, 30000);
+  await clickTestId(page, 'home-practice-now');
+  await page.waitForSelector('[data-testid="practice-ritual-screen"]', { visible: true, timeout: 20000 });
+  if (await page.evaluate(() => document.body.innerText.includes('Adiar 10 min'))) {
+    throw new Error('Adiar 10 min apareceu no site, onde nao existe lembrete para adiar');
+  }
+  await clickTestId(page, 'practice-confirm-vision-read');
+  for (let repetition = 1; repetition <= 2; repetition += 1) {
+    await clickTestId(page, 'practice-accessible-confirm');
+    await sleep(700);
+  }
+  await page.waitForSelector('[data-testid="practice-ritual-complete"]', { visible: true, timeout: 15000 });
+  await page
+    .waitForFunction(
+      () => ((JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').practicePlan || {}).receipts || []).length === 1,
+      { timeout: 15000, polling: 300 }
+    )
+    .catch(() => {
+      throw new Error('Pratica do Plano no site nao foi registrada como concluida');
+    });
+  console.log('  [plano ok] ativou no site, abriu pela Home e registrou a pratica');
+  await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
+  await waitForHome(page, 30000);
 
   // O ritual diário deve nascer da resposta real do onboarding e abrir em um
   // toque, sem substituir nem duplicar os 3S que já fazem parte da jornada.

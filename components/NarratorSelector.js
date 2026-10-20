@@ -31,7 +31,7 @@ function previewPlaybackId(narratorId, locale) {
 const COPY = {
   pt: {
     group: 'Voz da narração',
-    select: 'Selecionar',
+    select: 'Escolher e ouvir',
     preview: 'Ouvir amostra de',
     stop: 'Parar amostra de',
     loading: 'Carregando amostra de',
@@ -40,7 +40,7 @@ const COPY = {
   },
   en: {
     group: 'Narration voice',
-    select: 'Select',
+    select: 'Choose and listen to',
     preview: 'Listen to a sample from',
     stop: 'Stop sample from',
     loading: 'Loading sample from',
@@ -95,14 +95,15 @@ export default function NarratorSelector({
     [disabled, locale, narration, onChange, selectedId]
   );
 
-  const handleSelect = useCallback(
+  // Tocar no nome escolhe e toca a amostra; nunca interrompe a amostra dessa voz que já está tocando.
+  const handleChoose = useCallback(
     (narratorId) => {
-      if (disabled || narratorId === selectedId) return;
-      narration.stop();
-      setErrorId(null);
-      if (typeof onChange === 'function') onChange(narratorId);
+      const playing =
+        narration.activePlaybackId === previewPlaybackId(narratorId, locale) &&
+        (narration.isLoading || narration.isPlaying);
+      if (!playing) handlePreview(narratorId);
     },
-    [disabled, narration, onChange, selectedId]
+    [handlePreview, locale, narration]
   );
 
   useEffect(() => {
@@ -159,7 +160,7 @@ export default function NarratorSelector({
                 accessibilityState={{ checked: selected, disabled }}
                 aria-checked={selected}
                 disabled={disabled}
-                onPress={() => handleSelect(narrator.id)}
+                onPress={() => handleChoose(narrator.id)}
                 style={({ pressed }) => [
                   styles.choice,
                   compact ? styles.compactChoice : null,

@@ -70,6 +70,26 @@ assert.ok(
     planScreen.includes('audio and transcript are not stored'),
   'tela do plano perdeu configuracao, teste imediato ou aviso de privacidade'
 );
+// Bugs reais (20/10/2026): no site o plano nunca ativava e a prática que conta
+// só abria por notificação; no iPhone a voz da Visão não começava.
+// O comportamento completo (ativar no site → Home → Praticar agora → recibo) é
+// provado pelo e2e-prod.js; aqui só fica a ligação das peças.
+assert.ok(
+  planScreen.includes('testID="practice-plan-now"') &&
+    planScreen.includes('currentPracticeSlot(stored)') &&
+    home.includes('testID="home-practice-now"') &&
+    home.includes('currentPracticeSlot(practicePlan)'),
+  'o plano precisa oferecer Praticar agora na tela do plano e na Home'
+);
+{
+  const start = ritualScreen.indexOf('const epoch = narrationEpochRef.current + 1;');
+  const end = ritualScreen.indexOf('const result = await narration.playPersonal({', start);
+  assert.ok(start > 0 && end > start, 'trecho que inicia a voz da Visao nao encontrado');
+  assert.ok(
+    !/\bawait\b/.test(ritualScreen.slice(start, end).replace(/\/\/.*$/gm, '')),
+    'nenhum await antes de tocar a Visao: o Safari do iPhone bloqueia audio fora do toque'
+  );
+}
 assert.ok(
   planScreen.includes('personalVisionOptionsForState(state, lang)') &&
     ritualScreen.includes('personalVisionOptionsForState(state, lang)') &&

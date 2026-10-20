@@ -136,7 +136,7 @@ export default function WelcomeScreen({ navigation }) {
           </Text>
         </View>
         <View style={{ paddingHorizontal: 20, paddingBottom: compactHeight ? 10 : 28 }}>
-          <ContinueButton label={T.continue} onPress={() => navigation.navigate('Referral')} />
+          <ContinueButton label={T.continue} onPress={() => navigation.navigate('Notifications')} />
           <Text
             style={{
               fontSize: compactHeight ? 10 : 12,

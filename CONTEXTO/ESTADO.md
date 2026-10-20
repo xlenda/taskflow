@@ -83,7 +83,7 @@ Roda só o bloco `productionChecks` (`scripts/deploy-celeste.js:463-467`).
 
 `screens/`: `HomeScreen`, `JourneyScreen`, `ManifestationScreen`, `AffirmationsScreen`, `AffirmationAlarmScreen`, `MorningRitualScreen`, `VisionsScreen`, `VisionPlayerScreen`, `CommunityScreen`, `ProfileScreen`.
 
-`screens/onboarding/`: `WelcomeScreen`, `ChatOnboardingScreen`, `RevealScreen`, `PaywallScreen`, `GrowScreen`, `NotificationsScreen`, `ReferralScreen`, além de `flow.js` e `onboardingUI.js`.
+`screens/onboarding/`: `WelcomeScreen`, `ChatOnboardingScreen`, `RevealScreen`, `PaywallScreen`, `GrowScreen`, `NotificationsScreen`, além de `flow.js` e `onboardingUI.js`.
 
 ### Componentes (11 arquivos em `components/`)
 

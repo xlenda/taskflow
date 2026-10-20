@@ -167,6 +167,7 @@ export default function PracticeRitualScreen() {
   const cloudPlaybackStartedRef = useRef(false);
   const cloudPlaybackIdRef = useRef(null);
   const localNarratingRef = useRef(false);
+  const localStartTimerRef = useRef(null);
   const snoozeGuardRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -430,11 +431,23 @@ export default function PracticeRitualScreen() {
       setVisionRequesting(false);
       localNarratingRef.current = true;
       setLocalNarrating(true);
+      clearTimeout(localStartTimerRef.current);
+      if (Platform.OS === 'web') {
+        // O Safari do iPhone descarta calado a fala pedida fora do toque: sem início, oferece a alternativa.
+        localStartTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current || narrationEpochRef.current !== epoch || !localNarratingRef.current) return;
+          localNarratingRef.current = false;
+          Speech.stop().catch(() => {});
+          setLocalNarrating(false);
+          setVisionAudioFailed(true);
+        }, 4000);
+      }
       Speech.speak(visionText, {
         language: visionLocale,
         rate: 0.9,
         pitch: 1,
         useApplicationAudioSession: false,
+        onStart: () => clearTimeout(localStartTimerRef.current),
         onDone: () => {
           if (!mountedRef.current || narrationEpochRef.current !== epoch) return;
           localNarratingRef.current = false;
@@ -482,12 +495,9 @@ export default function PracticeRitualScreen() {
     narrationEpochRef.current = epoch;
     setVisionAudioFailed(false);
     setVisionRequesting(true);
-    await Speech.stop().catch(() => {});
+    // Sem esperar: o Safari do iPhone só toca áudio iniciado no mesmo toque.
+    Speech.stop().catch(() => {});
     localNarratingRef.current = false;
-    if (!mountedRef.current || !isFocused || narrationEpochRef.current !== epoch) {
-      if (mountedRef.current && narrationEpochRef.current === epoch) setVisionRequesting(false);
-      return;
-    }
 
     // A prévia precisa tocar sem interromper a pessoa com um novo pedido de
     // consentimento. A voz neural continua sendo usada quando ela já ativou
@@ -622,7 +632,7 @@ export default function PracticeRitualScreen() {
       else navigation.replace('PracticePlan');
       return;
     }
-    navigation.navigate('Main');
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   }, [isPreviewSession, navigation]);
 
   const snooze = useCallback(async () => {
@@ -886,7 +896,7 @@ export default function PracticeRitualScreen() {
       ) : null}
 
       <View style={styles.exitRow}>
-        {!isPreviewSession ? (
+        {!isPreviewSession && Platform.OS !== 'web' ? (
           <Button
             variant="ghost"
             icon="time-outline"

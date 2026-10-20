@@ -65,7 +65,6 @@ import PracticeRitualScreen from './screens/PracticeRitualScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 import WelcomeScreen from './screens/onboarding/WelcomeScreen';
-import ReferralScreen from './screens/onboarding/ReferralScreen';
 import NotificationsScreen from './screens/onboarding/NotificationsScreen';
 import GrowScreen from './screens/onboarding/GrowScreen';
 import ChatOnboardingScreen from './screens/onboarding/ChatOnboardingScreen';
@@ -839,7 +838,6 @@ function RootNav() {
       ) : (
         <>
           <Root.Screen name="Welcome" component={WelcomeScreen} />
-          <Root.Screen name="Referral" component={ReferralScreen} />
           <Root.Screen name="Notifications" component={NotificationsScreen} />
           <Root.Screen name="Grow" component={GrowScreen} />
           <Root.Screen name="ChatOnboarding" component={ChatOnboardingScreen} />
@@ -914,7 +912,6 @@ const linking = {
         : {}),
       Profile: 'perfil',
       Welcome: 'bem-vindo',
-      Referral: 'convite',
       Notifications: 'notificacoes',
       Grow: 'crescer',
       ChatOnboarding: 'conversa',

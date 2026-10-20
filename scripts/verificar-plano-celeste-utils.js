@@ -303,4 +303,37 @@ const short = speech.evaluateSpeechMatch('Eu consigo', 'eu consigo mesmo', { lan
 assert.strictEqual(short.matched, true, 'frase curta exata pode aparecer com contexto');
 assert.strictEqual(speech.evaluateSpeechMatch('Eu consigo', 'eu posso', { lang: 'pt' }).matched, false);
 
-process.stdout.write('Plano Celeste utils: horarios, legado, privacidade e voz aprovados\n');
+{
+  // Prática da vez (bug real de 20/10/2026: oferecia horário já feito e dia fora do plano).
+  const at = (iso) => new Date(`${iso}:00`); // horário local
+  const day = '2026-10-20'; // terça-feira (ISO 2)
+  const slotsBase = [
+    { id: 'slot-1', enabled: true, time: '07:30' },
+    { id: 'slot-2', enabled: true, time: '13:00' },
+    { id: 'slot-3', enabled: true, time: '21:30' },
+  ];
+  const active = { enabled: true, wakeTime: '07:00', weekdays: [1, 2, 3, 4, 5, 6, 7], slots: slotsBase, receipts: [] };
+  const pick = (planValue, when) => plan.currentPracticeSlot(planValue, at(when))?.id ?? null;
+  assert.strictEqual(pick(active, `${day}T06:40`), 'slot-1', 'antes do 1o horario: oferece o 1o');
+  assert.strictEqual(pick(active, `${day}T12:30`), 'slot-1', 'entre horarios: o ultimo que ja comecou');
+  assert.strictEqual(pick(active, `${day}T13:20`), 'slot-2', 'depois do 2o horario: o 2o');
+  const doneMorning = { ...active, receipts: [{ slotId: 'slot-1', day }] };
+  assert.strictEqual(pick(doneMorning, `${day}T12:30`), 'slot-2', 'horario ja feito hoje nao e oferecido de novo');
+  const yesterday = { ...active, receipts: [{ slotId: 'slot-1', day: '2026-10-19' }] };
+  assert.strictEqual(pick(yesterday, `${day}T08:00`), 'slot-1', 'recibo de ontem nao bloqueia hoje');
+  const allDone = { ...active, receipts: slotsBase.map((slot) => ({ slotId: slot.id, day })) };
+  assert.strictEqual(pick(allDone, `${day}T22:00`), null, 'tudo feito hoje: nada a oferecer');
+  assert.strictEqual(pick({ ...active, weekdays: [1, 3, 4, 5] }, `${day}T13:20`), null, 'dia fora do plano: nada');
+  assert.strictEqual(pick({ ...active, enabled: false }, `${day}T13:20`), null, 'plano desligado: nada');
+  const lateNight = { ...active, slots: [{ id: 'slot-n', enabled: true, time: '00:00' }, ...slotsBase] };
+  assert.strictEqual(pick(lateNight, `${day}T07:10`), 'slot-1', '00:00 fecha o dia, nao vira a pratica da manha');
+  assert.strictEqual(pick(lateNight, `${day}T00:10`), 'slot-n', 'na madrugada, o momento da madrugada e o da vez');
+  assert.strictEqual(pick(lateNight, `${day}T13:20`), 'slot-2', 'depois de acordar, a madrugada ja passou');
+  assert.deepStrictEqual(
+    plan.practiceSlotsInDayOrder(lateNight).map((slot) => slot.time),
+    ['07:30', '13:00', '21:30', '00:00'],
+    'ordem do dia comeca no horario de acordar'
+  );
+}
+
+process.stdout.write('Plano Celeste utils: horarios, pratica da vez, legado, privacidade e voz aprovados\n');

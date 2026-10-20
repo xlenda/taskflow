@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   View,
   Text,
   StyleSheet,
@@ -33,6 +34,7 @@ import { useT } from '../utils/useT';
 import { txt, tr, detectLang } from '../constants/i18n';
 import { isUnder18Age } from './onboarding/flow';
 import { selectDailyRitual } from '../utils/dailyRitual';
+import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
 
 import GradientCover from '../components/GradientCover';
 import CelesteMascot from '../components/CelesteMascot';
@@ -108,6 +110,8 @@ const S = {
     en: 'Choose your vision or Anchor Scene, affirmation, and moments of the day',
     pt: 'Escolha sua visão ou Cena-Âncora, afirmação e momentos do dia',
   },
+  practicePlanActiveWeb: { en: 'Practices at {times}', pt: 'Práticas às {times}' },
+  practiceNow: { en: 'Practice now · {time}', pt: 'Praticar agora · {time}' },
   practicePlanActive: {
     en: 'Reminders at {times}',
     pt: 'Lembretes às {times}',
@@ -341,12 +345,9 @@ export default function HomeScreen() {
   const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const practicePlan = state.practicePlan || {};
-  const practicePlanTimes = Array.isArray(practicePlan.slots)
-    ? practicePlan.slots
-        .filter((slot) => slot && slot.enabled !== false && typeof slot.time === 'string')
-        .map((slot) => slot.time)
-    : [];
+  const practicePlanTimes = practiceSlotsInDayOrder(practicePlan).map((slot) => slot.time);
   const practicePlanActive = practicePlan.enabled === true && practicePlanTimes.length > 0;
+  const practiceSlotNow = RELEASE_FEATURES.practicePlan ? currentPracticeSlot(practicePlan) : null;
   const hasItems = state.manifestations.length > 0;
   const anchorScene =
     state.manifestations.find((item) => item.id === state.anchorSceneId) ||
@@ -718,12 +719,23 @@ export default function HomeScreen() {
                 style={[th.typography.bodySm, styles.morningSub, { color: th.textMuted }]}
               >
                 {practicePlanActive
-                  ? t(S.practicePlanActive, { times: practicePlanTimes.join(' · ') })
+                  ? t(Platform.OS === 'web' ? S.practicePlanActiveWeb : S.practicePlanActive, {
+                      times: practicePlanTimes.join(' · '),
+                    })
                   : t(S.practicePlanEmpty)}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
           </Card>
+        ) : null}
+        {practiceSlotNow ? (
+          <Button
+            testID="home-practice-now"
+            icon="play"
+            label={t(S.practiceNow, { time: practiceSlotNow.time })}
+            onPress={() => navigation.navigate('PracticeRitual', { slotId: practiceSlotNow.id })}
+            style={styles.practiceNowButton}
+          />
         ) : null}
 
         {RELEASE_FEATURES.affirmationAlarm ? (
@@ -923,6 +935,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   morningIcon: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  practiceNowButton: { minHeight: 48, marginTop: -4, marginBottom: 12 },
   morningCopy: { flex: 1, minWidth: 0, marginHorizontal: 14 },
   morningTitle: { fontWeight: '800', letterSpacing: -0.15 },
   morningSub: { marginTop: 3, letterSpacing: 0 },

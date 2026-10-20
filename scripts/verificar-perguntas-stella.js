@@ -35,7 +35,6 @@ const sceneServiceFile = path.join(root, 'services', 'generatePersonalizedScene.
 const chatFile = path.join(root, 'screens', 'onboarding', 'ChatOnboardingScreen.js');
 const onboardingUiFile = path.join(root, 'screens', 'onboarding', 'onboardingUI.js');
 const welcomeFile = path.join(root, 'screens', 'onboarding', 'WelcomeScreen.js');
-const referralFile = path.join(root, 'screens', 'onboarding', 'ReferralScreen.js');
 const notificationsFile = path.join(root, 'screens', 'onboarding', 'NotificationsScreen.js');
 const growFile = path.join(root, 'screens', 'onboarding', 'GrowScreen.js');
 const { FLOW } = requireProjectModule(flowFile);
@@ -382,7 +381,6 @@ assert.strictEqual(
 const chatSource = fs.readFileSync(chatFile, 'utf8');
 const onboardingUiSource = fs.readFileSync(onboardingUiFile, 'utf8');
 const welcomeSource = fs.readFileSync(welcomeFile, 'utf8');
-const referralSource = fs.readFileSync(referralFile, 'utf8');
 const notificationsSource = fs.readFileSync(notificationsFile, 'utf8');
 const growSource = fs.readFileSync(growFile, 'utf8');
 
@@ -419,13 +417,15 @@ assert.ok(
   'icone visual de check nao deve ser lido como texto separado'
 );
 
+// Decisão do Lenda (20/10/2026): a pergunta de código de indicação saiu do
+// funil e não pode voltar sem pedido dele.
 assert.ok(
-  welcomeSource.includes("navigation.navigate('Referral')"),
-  'Continuar da Celeste precisa abrir a pergunta de codigo de indicacao'
+  welcomeSource.includes("navigation.navigate('Notifications')"),
+  'Continuar da Celeste precisa abrir Notificacoes direto, sem a pergunta de indicacao'
 );
 assert.ok(
-  referralSource.includes("navigation.navigate('Notifications')"),
-  'a pergunta de indicacao precisa continuar para Notificacoes ao responder ou pular'
+  !fs.existsSync(path.join(root, 'screens', 'onboarding', 'ReferralScreen.js')),
+  'a tela de codigo de indicacao foi removida do funil e nao pode voltar'
 );
 assert.ok(
   notificationsSource.includes("navigation.navigate('Grow')"),
@@ -435,7 +435,6 @@ assert.ok(
   growSource.includes("navigation.navigate('ChatOnboarding')"),
   'Crescer precisa abrir a conversa completa'
 );
-assert.ok(referralSource.includes('T.referralTitle'), 'pergunta de codigo de indicacao ausente do caminho');
 
 const draftVersion = chatSource.match(/const\s+DRAFT_V\s*=\s*(\d+)\s*;/);
 assert.ok(draftVersion, 'DRAFT_V nao encontrado');
@@ -455,5 +454,5 @@ assert.ok(
 );
 
 process.stdout.write(
-  'Perguntas Stella: indicacao + 27 etapas, 21 historicas, nuvem local por padrao e draft aprovados\n'
+  'Perguntas Stella: sem indicacao + 27 etapas, 21 historicas, nuvem local por padrao e draft aprovados\n'
 );

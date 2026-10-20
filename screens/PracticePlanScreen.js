@@ -23,6 +23,7 @@ import {
   mergePracticeSlotsWithTimes,
   normalizePracticePlan,
   suggestPracticeSlots,
+  currentPracticeSlot,
 } from '../utils/practicePlan';
 import {
   cancelPracticePlanReminders,
@@ -80,12 +81,18 @@ const S = {
   activate: { pt: 'Ativar meu plano', en: 'Activate my plan' },
   update: { pt: 'Salvar novos horários', en: 'Save new times' },
   deactivate: { pt: 'Desativar lembretes', en: 'Turn reminders off' },
+  deactivatePlan: { pt: 'Desativar plano', en: 'Turn plan off' },
+  practiceNow: { pt: 'Praticar agora', en: 'Practice now' },
   tryNow: { pt: 'Testar a prática agora', en: 'Try the practice now' },
   active: { pt: 'Plano ativo', en: 'Plan active' },
   inactive: { pt: 'Plano ainda não ativado', en: 'Plan not active yet' },
   web: {
-    pt: 'Você pode montar o plano aqui. Os lembretes do sistema são ativados no app instalado.',
-    en: 'You can build the plan here. System reminders are activated in the installed app.',
+    pt: 'No site o plano funciona sem lembrete automático: abra a Celeste nos seus horários e toque em Praticar agora. Os lembretes aparecem sozinhos só no app instalado.',
+    en: 'On the website the plan works without automatic reminders: open Celeste at your times and tap Practice now. Reminders appear by themselves only in the installed app.',
+  },
+  webSaved: {
+    pt: 'Plano ativo neste aparelho. Nos seus horários, o botão Praticar agora aparece no início.',
+    en: 'Plan active on this device. At your times, the Practice now button appears on Home.',
   },
   permissionDenied: {
     pt: 'A permissão de notificações não foi concedida. O plano ficou salvo, mas não foi ativado.',
@@ -380,16 +387,18 @@ export default function PracticePlanScreen() {
       lang,
       requestPermission: true,
     });
-    if (result.ok) {
+    // O site não tem lembrete do sistema, mas o plano e a prática valem do mesmo jeito.
+    const webWithoutReminders = Platform.OS === 'web' && result.error === 'unsupported';
+    if (result.ok || webWithoutReminders) {
       savePracticePlan({
         ...candidate,
         enabled: true,
         permission: result.permission,
         syncError: false,
-        notificationIdsBySlot: result.identifiersBySlot,
+        notificationIdsBySlot: result.identifiersBySlot || {},
       });
       setDraftPreserved(false);
-      setFeedback('saved');
+      setFeedback(webWithoutReminders ? 'webSaved' : 'saved');
     } else if (!stored.enabled) {
       savePracticePlan({
         ...candidate,
@@ -398,7 +407,7 @@ export default function PracticePlanScreen() {
         syncError: false,
         notificationIdsBySlot: {},
       });
-      setFeedback(result.error === 'permission_denied' ? 'permission' : Platform.OS === 'web' ? 'web' : 'failed');
+      setFeedback(result.error === 'permission_denied' ? 'permission' : 'failed');
     } else {
       savePracticePlan({ ...stored, syncError: true });
       setFeedback('failed');
@@ -431,6 +440,14 @@ export default function PracticePlanScreen() {
   const firstEnabledSlot = draft.slots.find((slot) => slot.enabled) || null;
   const previewSlot = normalizePracticePlan(draft, options).slots.find((slot) => slot.enabled) || null;
   const selectionSlot = firstEnabledSlot || draft.slots[0] || null;
+  const practiceNowSlot = currentPracticeSlot(stored);
+  const practiceNow = () => {
+    const due = currentPracticeSlot(stored);
+    if (!due || busy) return;
+    preserveDraftOnNextFocusRef.current = true;
+    setDraftPreserved(false);
+    navigation.navigate('PracticeRitual', { slotId: due.id });
+  };
   const tryPracticeNow = () => {
     if (!firstEnabledSlot || busy) return;
     preserveDraftOnNextFocusRef.current = true;
@@ -655,6 +672,16 @@ export default function PracticePlanScreen() {
         {Platform.OS === 'web' ? (
           <Text style={[styles.helper, { color: theme.textMuted }]}>{t(S.web)}</Text>
         ) : null}
+        {practiceNowSlot ? (
+          <Button
+            testID="practice-plan-now"
+            icon="play"
+            label={`${t(S.practiceNow)} · ${practiceNowSlot.time}`}
+            onPress={practiceNow}
+            disabled={busy}
+            style={styles.actionButton}
+          />
+        ) : null}
         <Button
           testID="activate-practice-plan"
           icon="notifications-outline"
@@ -668,7 +695,7 @@ export default function PracticePlanScreen() {
           <Button
             variant="ghost"
             icon="notifications-off-outline"
-            label={t(S.deactivate)}
+            label={Platform.OS === 'web' ? t(S.deactivatePlan) : t(S.deactivate)}
             onPress={deactivate}
             disabled={busy}
             style={styles.actionButton}
@@ -687,18 +714,18 @@ export default function PracticePlanScreen() {
         ) : null}
         {feedback ? (
           <Text
-            accessibilityRole={feedback === 'saved' ? undefined : 'alert'}
+            accessibilityRole={feedback === 'saved' || feedback === 'webSaved' ? undefined : 'alert'}
             style={[
               styles.feedback,
-              { color: feedback === 'saved' ? theme.success : theme.warning },
+              { color: feedback === 'saved' || feedback === 'webSaved' ? theme.success : theme.warning },
             ]}
           >
             {feedback === 'saved'
               ? t(S.saved)
+              : feedback === 'webSaved'
+              ? t(S.webSaved)
               : feedback === 'permission'
               ? t(S.permissionDenied)
-              : feedback === 'web'
-              ? t(S.web)
               : feedback === 'cancelFailed'
               ? t(S.cancelFailed)
               : t(S.saveFailed)}

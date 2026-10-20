@@ -131,6 +131,12 @@ assert.ok(
       selector.indexOf('narration.playPreview(narratorId, locale, playbackId)'),
   'ouvir uma amostra deve selecionar a mesma voz antes da reproducao'
 );
+// Bug real (20/10/2026): escolher a voz pelo nome não tocava nada.
+assert.ok(
+  selector.includes('onPress={() => handleChoose(narrator.id)}') &&
+    /const handleChoose = useCallback\([\s\S]*?if \(!playing\) handlePreview\(narratorId\);/.test(selector),
+  'tocar no nome da voz precisa escolher E tocar a amostra, igual ao botao de play'
+);
 assert.match(
   selector,
   /activePlaybackId\s*===\s*previewPlaybackId\(narrator\.id, locale\)/,

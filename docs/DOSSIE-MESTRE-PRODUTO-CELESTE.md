@@ -492,8 +492,9 @@ Princípios de RLS:
 - o chat voltou a ter as **21 perguntas originais**, distribuídas em **27 etapas**;
   o onboarding cria a primeira prática localmente e não inclui pergunta de
   autorização de nuvem;
-- a pergunta **Tem um código de indicação?** voltou ao caminho anterior ao chat,
-  e a pergunta de nova manifestação continua na tela principal após o onboarding;
+- a pergunta **Tem um código de indicação?** foi removida do funil em 20/10/2026
+  a pedido do Lenda (o código nunca era usado); a pergunta de nova manifestação
+  continua na tela principal após o onboarding;
 - perguntas íntimas como idade, gênero, sexualidade, passado e relacionamento
   podem ser puladas;
 - trabalho, sentimento sobre o trabalho, relacionamento, autodescrição, desejo de
