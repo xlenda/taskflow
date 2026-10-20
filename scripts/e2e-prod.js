@@ -421,15 +421,22 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   // testado em vez de transformar resiliência em uma falsa falha de produto.
   console.log(`  [scene] origem=${generationSource}`);
   await waitForText(page, 'SEU TRAÇO CELESTE');
-  const leakedBeforeTrace = await page.$('[data-testid="anchor-scene-content"]');
+  const leakedBeforeTrace = await page.$('[data-testid="anchor-scene-content"], [data-testid="reveal-cena-viva"]');
   if (leakedBeforeTrace) throw new Error('Cena-Âncora apareceu antes de completar o Traço Celeste');
   await page.screenshot({ path: path.join(SHOT_DIR, 'trace-before.png') });
   await pressTestId(page, 'trace-star-1');
   await waitForText(page, '1 de 3 estrelas acesas');
   await clickTestId(page, 'trace-star-2');
   await waitForText(page, '2 de 3 estrelas acesas');
+  if (await page.$('[data-testid="reveal-cena-viva"]')) throw new Error('Cena viva apareceu antes da 3ª estrela');
   await clickTestId(page, 'trace-star-3');
   await waitForText(page, 'Sua Cena-Âncora está aberta');
+  // Cena viva: a imagem carregou e está tocando (estrelas → sol). O onboarding não liga a nuvem, então é a cena
+  // pronta escolhida pelas respostas, com o rótulo honesto.
+  await page.waitForSelector('[data-testid="reveal-cena-viva"][data-active="true"]', { visible: true, timeout: 20000 });
+  await waitForText(page, 'Cena inspirada nas suas respostas');
+  await sleep(3500); // a frase entra depois do sol (2,4 s a 3,3 s da intro)
+  await (await page.$('[data-testid="reveal-cena-viva"]')).screenshot({ path: path.join(SHOT_DIR, 'reveal-cena-viva.png') });
   await waitForText(page, 'Ter mais paz e equilíbrio');
   await waitForText(page, 'Sua ponte para hoje');
   // A URL carrega o id e anchorOpenedAt persiste: F5 retoma a cena aberta sem

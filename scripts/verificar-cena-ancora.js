@@ -379,5 +379,29 @@ assert.ok(
     revealSource.includes('height: bridgeInputHeight'),
   'ponte para hoje precisa crescer com o texto sem rolagem interna no iPhone'
 );
+// Rótulo honesto: diz de onde veio a imagem que está NA TELA (a pessoal só depois de carregada)
+assert.ok(
+  revealSource.includes("{ en: 'Created for you', pt: 'Criada para você' }") &&
+    revealSource.includes("{ en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' }") &&
+    revealSource.includes('t(scene.source ? S.personalScene : S.readyScene)'),
+  'cena viva da revelacao precisa do rotulo honesto da imagem mostrada'
+);
 
-process.stdout.write(`Cena-Ancora: ${categories.length + 25} casos aprovados\n`);
+// iPhone/Safari: a voz só pode começar dentro do toque. A 3ª estrela chama onFinalStar no próprio toque, sem
+// await nem timer antes, e só depois vem o onComplete (440 ms, fora do gesto).
+const traceSource = fs.readFileSync(path.join(__dirname, '..', 'components', 'CelestialTrace.js'), 'utf8');
+const lightStarStart = traceSource.indexOf('const lightStar = (index) => {');
+const lightStar = traceSource.slice(lightStarStart, traceSource.indexOf('\n  };', lightStarStart));
+const finalStarCall = lightStar.indexOf('onFinalStar()');
+assert.ok(
+  /function CelestialTrace\(\{[^}]*\bonFinalStar\b[^}]*\}\)/.test(traceSource) &&
+    lightStarStart >= 0 &&
+    finalStarCall > 0 &&
+    /next === 3[^\n]*onFinalStar\(\)/.test(lightStar) &&
+    finalStarCall < lightStar.indexOf('finish()') &&
+    finalStarCall < lightStar.indexOf('setTimeout(finish, 440)') &&
+    !/await|\.then\(|setTimeout/.test(lightStar.slice(0, finalStarCall)),
+  'a 3a estrela precisa chamar onFinalStar dentro do toque, antes do onComplete de 440 ms'
+);
+
+process.stdout.write(`Cena-Ancora: ${categories.length + 27} casos aprovados\n`);

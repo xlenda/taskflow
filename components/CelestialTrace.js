@@ -31,7 +31,7 @@ function lineGeometry(a, b) {
   };
 }
 
-export default function CelestialTrace({ initialComplete = false, onComplete }) {
+export default function CelestialTrace({ initialComplete = false, onComplete, onFinalStar }) {
   const { t } = useT();
   const [progress, setProgress] = useState(initialComplete ? 3 : 0);
   const [width, setWidth] = useState(320);
@@ -84,6 +84,8 @@ export default function CelestialTrace({ initialComplete = false, onComplete }) 
     progressRef.current = next;
     setProgress(next);
     if (next < 3) Haptics.selectionAsync().catch(() => {});
+    // ainda dentro do toque: no iPhone a voz só começa no gesto, e o onComplete chega 440 ms depois, fora dele
+    if (next === 3 && onFinalStar) onFinalStar();
 
     if (reducedMotion.current) {
       stars[index].setValue(1);

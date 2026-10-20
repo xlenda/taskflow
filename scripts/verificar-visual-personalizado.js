@@ -576,8 +576,8 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(visionPlayer, /secondaryVisualKey/);
     assert.match(visionPlayer, /testID="vision-player-personal-visual-pending"/);
     assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
-    assert.match(reveal, /testID="reveal-personal-visual"/);
-    assert.match(reveal, /visualKey=\{m\.visual\.cacheKey\}/);
+    assert.match(reveal, /testID="reveal-cena-viva"/);
+    assert.match(reveal, /usePersonalVisual\(m\?\.visual\?\.cacheKey\)/);
     assert.match(
       reveal,
       /void ensurePersonalVisual\(m\.id\);[\s\S]{0,300}state\?\.profile\?\.cloudConsentVersion[\s\S]{0,180}state\?\.profile\?\.cloudPersonalization/,

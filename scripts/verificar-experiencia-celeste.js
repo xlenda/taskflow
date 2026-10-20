@@ -375,8 +375,8 @@ assert.ok(
     affirmations.includes('visualKey={current.visualKey}') &&
     affirmations.includes('ensureJourneyVisual(current.manifestationId, current.key') &&
     affirmations.includes('ensureDreamVisual(current.ritualEntryId') &&
-    reveal.includes('testID="reveal-personal-visual"') &&
-    reveal.includes('visualKey={m.visual.cacheKey}'),
+    reveal.includes('testID="reveal-cena-viva"') &&
+    reveal.includes('usePersonalVisual(m?.visual?.cacheKey)'),
   'visual pessoal precisa aparecer, explicar carregamento/falha e permitir reparo em afirmacoes, visoes e Reveal'
 );
 assert.ok(

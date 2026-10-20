@@ -21,10 +21,13 @@ import { useApp } from '../../context/AppContext';
 import { usePersonalNarration } from '../../utils/usePersonalNarration';
 import { useCloudMediaConsent } from '../../utils/useCloudMediaConsent';
 import CelestialTrace from '../../components/CelestialTrace';
-import GradientCover from '../../components/GradientCover';
+import CenaViva from '../../components/cenaViva/CenaViva';
+import { imageUriForCenaViva } from '../../components/cenaViva/imageSource';
 import NarratorSelector from '../../components/NarratorSelector';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 import { maybeRequestStoreReview } from '../../utils/storeReview';
+import { pickReadyScene } from '../../utils/readyScene';
+import { usePersonalVisual } from '../../utils/usePersonalVisual';
 
 const BRIDGE_MIN_HEIGHT = 118;
 
@@ -56,6 +59,8 @@ const S = {
   visualPreparing: { en: 'Preparing your personal image', pt: 'Preparando sua imagem pessoal' },
   visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
+  personalScene: { en: 'Created for you', pt: 'Criada para você' },
+  readyScene: { en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' },
   identity: { en: 'The identity you practise', pt: 'A identidade que você pratica' },
   bridge: { en: 'Your bridge to today', pt: 'Sua ponte para hoje' },
   bridgeNote: {
@@ -115,6 +120,29 @@ export default function RevealScreen({ navigation, route }) {
   // história íntima de outra manifestação.
   const m = id ? list.find((x) => x.id === id) : null;
   const visualPhase = m?.id ? personalVisualStatus[m.id]?.phase : null;
+
+  // Cena viva: a imagem pessoal quando existe e carrega; senão a cena pronta escolhida pelas respostas.
+  // scene.source = a uri pessoal que está na tela (null = cena pronta): o rótulo segue a imagem mostrada.
+  const personalUri = usePersonalVisual(m?.visual?.cacheKey);
+  const [brokenUri, setBrokenUri] = useState(null);
+  const [scene, setScene] = useState(null);
+  const personalSource = personalUri !== brokenUri ? personalUri : null;
+  const dreamLocation = state?.profile?.dreamLocation;
+  // imagem que não carrega: a pessoal cai para a pronta; sem a pronta, fica só o texto da cena
+  const dropScene = (source) => (source ? setBrokenUri(source) : setScene(null));
+
+  useEffect(() => {
+    if (!m) return undefined;
+    let alive = true;
+    const readyScene = pickReadyScene({ dreamLocation, category: m.category });
+    imageUriForCenaViva({ personalUri: personalSource, readyScene })
+      .then((uri) => alive && setScene({ uri, source: personalSource }))
+      .catch(() => alive && dropScene(personalSource));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m?.id, m?.category, personalSource, dreamLocation]);
 
   useEffect(() => {
     if (!m?.id) return;
@@ -283,6 +311,54 @@ export default function RevealScreen({ navigation, route }) {
                 ],
               }}
             >
+              {scene ? (
+                <>
+                  <CenaViva
+                    testID="reveal-cena-viva"
+                    mode="intro"
+                    imageUri={scene.uri}
+                    phrase={m.affirmation}
+                    onError={() => dropScene(scene.source)}
+                    style={styles.cenaViva}
+                  />
+                  <Text style={styles.sceneSource}>{t(scene.source ? S.personalScene : S.readyScene)}</Text>
+                </>
+              ) : null}
+              {m.visual?.cacheKey ? null : visualPhase === 'pending' ? (
+                <View
+                  testID="reveal-personal-visual-pending"
+                  accessibilityLiveRegion="polite"
+                  style={styles.visualStatus}
+                >
+                  <ActivityIndicator size="small" color={ONB.heart} />
+                  <Text style={styles.visualStatusText}>{t(S.visualPreparing)}</Text>
+                </View>
+              ) : visualPhase === 'consent_required' || visualPhase === 'error' ? (
+                <Pressable
+                  testID="reveal-personal-visual-action"
+                  accessibilityRole="button"
+                  accessibilityLabel={t(
+                    visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
+                  )}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    void withCloudMediaConsent((profile) =>
+                      ensurePersonalVisual(m.id, { force: true, profile })
+                    );
+                  }}
+                  style={({ pressed }) => [styles.visualAction, pressed && styles.pressed]}
+                >
+                  <Ionicons
+                    name={visualPhase === 'consent_required' ? 'image-outline' : 'refresh'}
+                    size={19}
+                    color={ONB.badgeText}
+                  />
+                  <Text style={styles.visualActionText}>
+                    {t(visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
+                  </Text>
+                </Pressable>
+              ) : null}
+
               {narration.personalNarrationAvailable ? (
                 <View style={styles.voiceBlock}>
                   <Text style={styles.sectionLabel}>{t(S.voiceTitle)}</Text>
@@ -351,59 +427,11 @@ export default function RevealScreen({ navigation, route }) {
                 <Text style={styles.audioFail}>{t(S.audioFail)}</Text>
               ) : null}
 
-              {m.visual?.cacheKey ? (
-                <GradientCover
-                  testID="reveal-personal-visual"
-                  visualKey={m.visual.cacheKey}
-                  accent={m.accent}
-                  radius={22}
-                  style={styles.personalVisual}
-                >
-                  <View style={styles.personalVisualCopy}>
-                    <Text style={styles.personalVisualAffirmation}>“{m.affirmation}”</Text>
-                  </View>
-                </GradientCover>
-              ) : visualPhase === 'pending' ? (
-                <View
-                  testID="reveal-personal-visual-pending"
-                  accessibilityLiveRegion="polite"
-                  style={styles.visualStatus}
-                >
-                  <ActivityIndicator size="small" color={ONB.heart} />
-                  <Text style={styles.visualStatusText}>{t(S.visualPreparing)}</Text>
-                </View>
-              ) : visualPhase === 'consent_required' || visualPhase === 'error' ? (
-                <Pressable
-                  testID="reveal-personal-visual-action"
-                  accessibilityRole="button"
-                  accessibilityLabel={t(
-                    visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry
-                  )}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                    void withCloudMediaConsent((profile) =>
-                      ensurePersonalVisual(m.id, { force: true, profile })
-                    );
-                  }}
-                  style={({ pressed }) => [styles.visualAction, pressed && styles.pressed]}
-                >
-                  <Ionicons
-                    name={visualPhase === 'consent_required' ? 'image-outline' : 'refresh'}
-                    size={19}
-                    color={ONB.badgeText}
-                  />
-                  <Text style={styles.visualActionText}>
-                    {t(visualPhase === 'consent_required' ? S.visualActivate : S.visualRetry)}
-                  </Text>
-                </Pressable>
-              ) : null}
-
               <View style={styles.scene}>
                 <View style={styles.sceneRule} />
                 <Text style={styles.sceneText}>{m.story}</Text>
-                {!m.visual?.cacheKey ? (
-                  <Text style={styles.affirmation}>“{m.affirmation}”</Text>
-                ) : null}
+                {/* sempre em texto: no canvas uma afirmação longa mostra só as últimas 3 linhas */}
+                <Text style={styles.affirmation}>“{m.affirmation}”</Text>
               </View>
 
               <View style={styles.processBlock}>
@@ -540,24 +568,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   visualActionText: { color: ONB.badgeText, fontSize: 14, fontWeight: '700', marginLeft: 8 },
-  personalVisual: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-    marginTop: 18,
-    padding: 24,
-  },
-  personalVisualCopy: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  personalVisualAffirmation: {
-    color: '#FFFFFF',
-    fontFamily: SERIF,
-    fontStyle: 'italic',
-    fontSize: 24,
-    lineHeight: 34,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.48)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 7,
-  },
+  cenaViva: { width: '100%', aspectRatio: 4 / 5, marginTop: 18, borderRadius: 22 },
+  sceneSource: { color: ONB.badgeText, fontSize: 12.5, lineHeight: 18, fontWeight: '600', marginTop: 8 },
   scene: {
     backgroundColor: ONB.card,
     borderRadius: 22,
