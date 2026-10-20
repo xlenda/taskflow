@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, AppState, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import { SERIF } from '../../constants/brand';
@@ -57,8 +57,9 @@ function sceneHtml({ id, image, phrase, format, mode, reducedMotion }) {
 }
 
 // mode e phrase valem na criação: trocar imagem, frase, formato, modo ou movimento recarrega a página (a intro
-// recomeça). active e caption vão por comando, sem recarregar. active=false = pôster parado. Imagem que não
-// carrega: onError('image_error') e a frase fica em texto sobre o fundo.
+// recomeça). active e caption vão por comando, sem recarregar. active=false = pôster parado.
+// onReady(uri): a imagem que a página pintou. onError(code), e a frase fica em texto sobre o fundo:
+// 'image_error' (a imagem não carregou) ou 'webview_gone' (a WebView morreu 3 vezes seguidas sem ficar pronta).
 export default function CenaViva({
   imageUri,
   phrase,
@@ -76,12 +77,14 @@ export default function CenaViva({
   const [systemStill, setSystemStill] = useState(null); // null: o aparelho ainda não respondeu
   const [readyId, setReadyId] = useState(0);
   const [failedId, setFailedId] = useState(0);
-  // o processo da WebView morreu (app em segundo plano): a WebView morta sai (key) e entra página nova (id),
-  // cujo 'ready' reenvia active e legenda — o react-native-webview só avisa, não recupera
-  // ponytail: sem teto de tentativas; se uma página matar o processo toda vez (falta de memória) recarrega em
-  // laço — pôr um limite por montagem se isso aparecer no aparelho
+  // o processo da WebView morreu: a morta sai (key nova) e entra página nova (id), cujo 'ready' reenvia active e
+  // legenda — o react-native-webview só avisa, não recupera. Teto: 3 mortes seguidas sem 'ready' = desiste (texto
+  // de reserva + onError('webview_gone')). Morte com o app em segundo plano não conta: renasce quando ele voltar.
   const [generation, setGeneration] = useState(0);
-  const reborn = () => setGeneration((value) => value + 1);
+  const [asleep, setAsleep] = useState(false);
+  const [goneId, setGoneId] = useState(0);
+  const life = useRef({ deaths: 0, generation: 0, goneId: 0 }); // lido pelos avisos, que podem chegar atrasados
+  life.current.generation = generation;
   const still = !!reducedMotion || !!systemStill;
   const known = !!reducedMotion || systemStill !== null;
 
@@ -105,7 +108,38 @@ export default function CenaViva({
   }, [imageUri, phrase, format, mode, still, known, generation]);
   const ready = !!page && readyId === page.id;
   const failed = !!page && failedId === page.id;
+  const gone = !!page && goneId === page.id;
   const playing = ready && active && !still;
+
+  const lost = (key) => {
+    const state = life.current;
+    // aviso de WebView que já saiu (o iOS avisa de novo ao destruí-la) ou de página já dada por perdida
+    if (key !== state.generation || !page || state.goneId === page.id) return;
+    if (AppState.currentState !== 'active') {
+      setGeneration((value) => value + 1); // a morta perde a vez já; a nova só monta quando o app voltar
+      setAsleep(true);
+      return;
+    }
+    state.deaths += 1;
+    if (state.deaths < 3) {
+      setGeneration((value) => value + 1);
+      return;
+    }
+    state.deaths = 0; // props novas (outra página) começam do zero
+    state.goneId = page.id;
+    setGoneId(page.id);
+    if (onError) onError('webview_gone');
+  };
+
+  useEffect(() => {
+    if (!asleep) return undefined;
+    const wake = (next) => {
+      if (next === 'active') setAsleep(false);
+    };
+    const subscription = AppState.addEventListener('change', wake);
+    wake(AppState.currentState); // pode ter voltado antes de o efeito rodar
+    return () => subscription.remove();
+  }, [asleep]);
   const send = (command) => {
     if (webRef.current) webRef.current.injectJavaScript(`window.cenaVivaCommand(${JSON.stringify(command)});true;`);
   };
@@ -143,8 +177,9 @@ export default function CenaViva({
       return;
     }
     if (message.type !== 'ready') return;
+    life.current.deaths = 0;
     setReadyId(page.id);
-    if (onReady) onReady();
+    if (onReady) onReady(imageUri); // só a página atual chega aqui, e ela foi montada com esta imagem
   };
 
   // o texto está desenhado no canvas: o leitor de tela lê pelo rótulo; toques passam para o card de fora
@@ -158,7 +193,7 @@ export default function CenaViva({
       pointerEvents="none"
       style={[styles.frame, format === '9:16' ? styles.tall : styles.portrait, style]}
     >
-      {page ? (
+      {page && !gone && !asleep ? (
         <WebView
           key={generation}
           ref={webRef}
@@ -168,12 +203,18 @@ export default function CenaViva({
           allowsInlineMediaPlayback
           scrollEnabled={false}
           onMessage={onMessage}
-          onContentProcessDidTerminate={reborn}
-          onRenderProcessGone={reborn}
+          onContentProcessDidTerminate={() => lost(generation)}
+          onRenderProcessGone={() => lost(generation)}
           style={styles.web}
         />
       ) : null}
-      {failed && label ? <Text style={styles.fallback}>{label}</Text> : null}
+      {(failed || gone) && label ? (
+        <View testID={`${testID}-reserva`} pointerEvents="none" style={styles.fallbackBox}>
+          <Text numberOfLines={5} adjustsFontSizeToFit minimumFontScale={0.6} style={styles.fallback}>
+            {label}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -184,16 +225,7 @@ const styles = StyleSheet.create({
   portrait: { aspectRatio: 4 / 5 },
   tall: { aspectRatio: 9 / 16 },
   web: { flex: 1, backgroundColor: 'transparent' },
-  fallback: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 24,
-    color: '#FFF9F0',
-    fontFamily: SERIF,
-    fontStyle: 'italic',
-    fontSize: 18,
-    lineHeight: 25,
-    textAlign: 'center',
-  },
+  // texto de reserva ancorado embaixo, com respiro; até 5 linhas e a fonte encolhe até 60% em vez de cortar
+  fallbackBox: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 20, justifyContent: 'flex-end' },
+  fallback: { color: '#FFF9F0', fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, textAlign: 'center' },
 });

@@ -236,6 +236,7 @@ function fakeReact(hosts) {
       throw new Error('renderização em laço');
     };
     instance.find = (type) => nodes(instance.tree).find((node) => node.type === type) || null;
+    instance.where = (test) => nodes(instance.tree).find(test) || null;
     instance.update = (next) => {
       instance.props = { ...instance.props, ...next };
       return render();
@@ -249,12 +250,17 @@ function fakeReact(hosts) {
 }
 
 // <img> de mentira: carrega no próximo giro do laço, como no navegador (antes disso não tem medidas);
-// src vazio ou com "broken" = erro
+// src vazio ou com "broken" = erro; com "flaky" falha só na 1ª vez (rede que voltou)
+const flakyFailed = new Set();
 class FakeImage {
   set src(value) {
     this.source = value;
     setImmediate(() => {
-      const ok = !!value && !String(value).includes('broken');
+      let ok = !!value && !String(value).includes('broken');
+      if (ok && String(value).includes('flaky') && !flakyFailed.has(value)) {
+        flakyFailed.add(value);
+        ok = false;
+      }
       if (ok) Object.assign(this, { width: 720, height: 900, naturalWidth: 720, naturalHeight: 900 });
       const done = ok ? this.onload : this.onerror;
       if (done) done();
@@ -731,7 +737,7 @@ async function main() {
       },
     }),
   };
-  const device = { reduce: false, listeners: new Set(), disk: new Map(), diskFull: false };
+  const device = { reduce: false, listeners: new Set(), appListeners: new Set(), disk: new Map(), diskFull: false };
   const RN = {
     View: 'View',
     Text: 'Text',
@@ -742,6 +748,13 @@ async function main() {
       addEventListener: (event, listener) => {
         device.listeners.add(listener);
         return { remove: () => device.listeners.delete(listener) };
+      },
+    },
+    AppState: {
+      currentState: 'active',
+      addEventListener: (event, listener) => {
+        device.appListeners.add(listener);
+        return { remove: () => device.appListeners.delete(listener) };
       },
     },
   };
@@ -822,11 +835,11 @@ async function main() {
   // 15) app: WebView com HTML inline (MESMA fonte), pôster parado até ficar ativa, comandos sem recarregar
   const { default: NativeScene } = loadWith('components/cenaViva/CenaViva.js', mocks);
   const sneaky = 'aa </script><b>bb';
-  let readyCalls = 0;
+  const readyUris = [];
   const scene = app.mount(NativeScene, {
     imageUri: 'data:image/jpeg;base64,QUJD',
     phrase: sneaky,
-    onReady: () => (readyCalls += 1),
+    onReady: (uri) => readyUris.push(uri),
   });
   assert.strictEqual(scene.tree.props.testID, 'cena-viva');
   assert.ok(scene.tree.props.accessibilityRole === 'image' && scene.tree.props.accessibilityLabel === sneaky, 'leitor de tela lê a frase');
@@ -852,7 +865,7 @@ async function main() {
   assert.strictEqual(shown.page.frames.length, 0, 'sem o app mandar, não anima');
   shownView.props.onMessage(message(shown.posted[0]));
   scene.flush();
-  assert.strictEqual(readyCalls, 1, 'onReady quando a página desenhou');
+  assert.deepStrictEqual(readyUris, ['data:image/jpeg;base64,QUJD'], 'onReady(uri) quando a página desenhou');
   const webHost = scene.find('WebView').props.ref.current;
   const deliver = () => webHost.injected.splice(0).forEach((code) => shown.run(code));
   deliver();
@@ -889,7 +902,7 @@ async function main() {
   webHost.injected.splice(0).forEach((code) => tallPage.run(code));
   assert.deepStrictEqual(words(tallPage.canvas.calls).slice(-2), ['cc', 'dd'], 'página nova recebe a legenda atual');
   assert.strictEqual(tallPage.page.frames.length, 0, 'página nova recebe o estado atual (parada)');
-  assert.strictEqual(readyCalls, 2, 'onReady a cada cena nova pronta');
+  assert.strictEqual(readyUris.length, 2, 'onReady a cada cena nova pronta');
   scene.update({ active: true });
   webHost.injected.splice(0).forEach((code) => tallPage.run(code));
   assert.strictEqual(tallPage.page.frames.length, 1, 'e anima quando o app manda');
@@ -952,6 +965,23 @@ async function main() {
   calmScene.unmount();
   device.reduce = false;
   assert.strictEqual(app.mount(NativeScene, {}).find('WebView'), null, 'sem imagem ainda: só o fundo');
+  // trocou a imagem antes de a página velha ficar pronta: o 'ready' atrasado dela não chama onReady; o da nova
+  // chama com a imagem que a página pintou
+  const nativeSwaps = [];
+  const swapScene = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD', onReady: (uri) => nativeSwaps.push(uri) });
+  await tick();
+  swapScene.flush();
+  const oldPage = runPage(swapScene.find('WebView').props.source.html);
+  swapScene.update({ imageUri: 'data:image/jpeg;base64,REVG' });
+  await until(() => oldPage.posted.length, 'página velha pronta');
+  swapScene.find('WebView').props.onMessage(message(oldPage.posted[0]));
+  swapScene.flush();
+  const newPage = runPage(swapScene.find('WebView').props.source.html);
+  await until(() => newPage.posted.length, 'página nova pronta');
+  swapScene.find('WebView').props.onMessage(message(newPage.posted[0]));
+  swapScene.flush();
+  assert.deepStrictEqual(nativeSwaps, ['data:image/jpeg;base64,REVG'], 'onReady só com a imagem que a página pintou');
+  swapScene.unmount();
   // imagem que não carrega: avisa quem chama (onError) e a frase continua visível, em texto sobre o fundo
   const nativeFailures = [];
   const brokenScene = app.mount(NativeScene, {
@@ -969,7 +999,76 @@ async function main() {
   brokenScene.flush();
   assert.deepStrictEqual(nativeFailures, ['image_error'], "onError('image_error')");
   assert.strictEqual(brokenScene.find('Text').props.children, 'aa bb', 'a frase aparece em texto (não some)');
+  // texto de reserva sem cortar: até 5 linhas, a fonte encolhe até 60%, ancorado dentro do card com respiro
+  const fallbackText = brokenScene.find('Text').props;
+  assert.ok(
+    fallbackText.numberOfLines === 5 && fallbackText.adjustsFontSizeToFit === true && fallbackText.minimumFontScale === 0.6,
+    'texto de reserva: 5 linhas, encolhe até 60%'
+  );
+  const fallbackBox = flat(brokenScene.where((node) => node.props.testID === 'cena-viva-reserva').props.style);
+  assert.ok(
+    fallbackBox.position === 'absolute' && fallbackBox.top === 0 && fallbackBox.bottom === 0 && fallbackBox.padding > 0,
+    'texto de reserva ancorado no card inteiro, com respiro'
+  );
   brokenScene.unmount();
+
+  // A) teto de renascimentos: 3 mortes seguidas sem 'ready' = desiste (texto de reserva + onError('webview_gone')),
+  //    sem 4ª WebView; um 'ready' no meio zera a conta; aviso atrasado de WebView que já saiu é ignorado
+  const goneErrors = [];
+  const fragile = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa bb', onError: (code) => goneErrors.push(code) });
+  await tick();
+  fragile.flush();
+  const fragileView = () => fragile.find('WebView');
+  const kill = (props = fragileView().props, event = 'onRenderProcessGone') => {
+    props[event]({ nativeEvent: {} });
+    fragile.flush();
+  };
+  kill(); // 1ª morte sem ready
+  const readyPage = runPage(fragileView().props.source.html);
+  await until(() => readyPage.posted.length, 'renascida pronta');
+  fragileView().props.onMessage(message(readyPage.posted[0]));
+  fragile.flush(); // o ready zera a conta
+  const beforeKill = fragileView().props;
+  kill(); // conta 1
+  kill(beforeKill, 'onContentProcessDidTerminate'); // iOS: a WebView que já saiu avisa ao ser destruída — ignorar
+  kill(); // conta 2
+  assert.ok(fragileView() && goneErrors.length === 0, 'um ready no meio zera a conta; aviso atrasado não conta');
+  const lastAlive = fragileView().props;
+  kill(); // 3ª morte seguida sem ready
+  assert.strictEqual(fragileView(), null, 'desistiu: sem 4ª WebView (a morta sai)');
+  assert.deepStrictEqual(goneErrors, ['webview_gone'], "onError('webview_gone') para o pai cair no fallback");
+  assert.strictEqual(fragile.find('Text').props.children, 'aa bb', 'desistiu: a frase em texto');
+  kill(lastAlive, 'onContentProcessDidTerminate'); // a morta ainda avisa ao ser destruída
+  assert.ok(fragileView() === null && goneErrors.length === 1, 'depois de desistir, aviso atrasado não faz nada');
+  fragile.unmount();
+  // morte com o app em segundo plano (o Android mata o processo): a WebView morta sai, espera o app voltar e não
+  // conta para o teto
+  const sleeperErrors = [];
+  const sleeper = app.mount(NativeScene, { imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa bb', onError: (code) => sleeperErrors.push(code) });
+  await tick();
+  sleeper.flush();
+  const sleeperKey = sleeper.find('WebView').key;
+  RN.AppState.currentState = 'background';
+  sleeper.find('WebView').props.onRenderProcessGone({ nativeEvent: {} });
+  sleeper.flush();
+  assert.strictEqual(sleeper.find('WebView'), null, 'segundo plano: a WebView morta sai e a cena espera');
+  RN.AppState.currentState = 'active';
+  device.appListeners.forEach((listener) => listener('active'));
+  sleeper.flush();
+  assert.ok(sleeper.find('WebView') && sleeper.find('WebView').key !== sleeperKey, 'o app voltou: página nova');
+  assert.strictEqual(device.appListeners.size, 0, 'acordou: solta o ouvinte do AppState');
+  // corrida: o app voltou antes de o efeito se inscrever (nenhum 'change' virá) — acorda mesmo assim
+  RN.AppState.currentState = 'background';
+  sleeper.find('WebView').props.onRenderProcessGone({ nativeEvent: {} });
+  RN.AppState.currentState = 'active';
+  sleeper.flush();
+  assert.ok(sleeper.find('WebView'), 'voltou antes do efeito: acorda sem esperar evento');
+  for (let i = 0; i < 2; i++) {
+    sleeper.find('WebView').props.onRenderProcessGone({ nativeEvent: {} });
+    sleeper.flush();
+  }
+  assert.ok(sleeper.find('WebView') && sleeperErrors.length === 0, 'a morte em segundo plano não contou');
+  sleeper.unmount();
 
   // 16) app: gravador numa WebView oculta; o vídeo volta em pedaços { type: 'chunk', index, total, data } e
   //     { type: 'done', mimeType }, é remontado igual e gravado em Paths.cache/celeste-share-<ts>.mp4|webm
@@ -1082,8 +1181,8 @@ async function main() {
   });
   global.window = browser;
   try {
-    let webReady = 0;
-    const card = site.mount(WebScene, { imageUri: blobUri, phrase: 'aa bb', onReady: () => (webReady += 1) });
+    const webReady = [];
+    const card = site.mount(WebScene, { imageUri: blobUri, phrase: 'aa bb', onReady: (uri) => webReady.push(uri) });
     const canvasNode = card.find('canvas');
     assert.ok(canvasNode.props.width === 720 && canvasNode.props.height === 900, '4:5 em 720×900');
     assert.strictEqual(card.tree.props.testID, 'cena-viva');
@@ -1093,7 +1192,15 @@ async function main() {
     await tick();
     card.flush();
     const paper = canvasNode.props.ref.current;
-    assert.strictEqual(webReady, 1, 'onReady quando o primeiro quadro saiu');
+    assert.deepStrictEqual(webReady, [blobUri], 'onReady(uri) quando o primeiro quadro saiu');
+    // troca de cena antes de a imagem velha carregar: o load atrasado da velha não chama onReady nem pinta
+    const swaps = [];
+    const swapping = site.mount(WebScene, { imageUri: 'blob:http://localhost/old', phrase: 'aa', active: false, onReady: (uri) => swaps.push(uri) });
+    swapping.update({ imageUri: 'blob:http://localhost/new' });
+    await tick();
+    swapping.flush();
+    assert.deepStrictEqual(swaps, ['blob:http://localhost/new'], 'onReady só com a imagem que pintou');
+    swapping.unmount();
     assert.ok(drewImage(paper.calls), 'desenha a imagem carregada no canvas');
     assert.strictEqual(card.tree.props.dataSet.active, 'true', 'ativa (padrão): data-active=true');
     assert.strictEqual(browser.frames.length, 1, 'ativa: laço de requestAnimationFrame');
@@ -1179,7 +1286,37 @@ async function main() {
     assert.deepStrictEqual(webFailures, ['image_error'], "onError('image_error')");
     assert.strictEqual(brokenCard.find('Text').props.children, 'aa bb', 'a frase aparece em texto (não some)');
     assert.strictEqual(brokenCard.tree.props.dataSet.active, 'false', 'imagem com erro: nada anima');
+    // C) texto de reserva sem cortar: até 5 linhas, ancorado no card com respiro; frase longa encolhe como a da cena
+    //    (5% por vez, até 60%) na largura do card; texto enorme fica em 60% e o numberOfLines corta com "…"
+    assert.strictEqual(brokenCard.find('Text').props.numberOfLines, 5, 'texto de reserva: até 5 linhas');
+    const webBox = flat(brokenCard.where((node) => node.props.testID === 'cena-viva-reserva').props.style);
+    assert.ok(webBox.position === 'absolute' && webBox.top === 0 && webBox.bottom === 0 && webBox.padding > 0, 'ancorado com respiro');
+    assert.strictEqual(flat(brokenCard.find('Text').props.style).fontSize, 18, 'frase curta: tamanho cheio');
     brokenCard.unmount();
+    const fallbackSizeFor = async (text, uri) => {
+      const broken = site.mount(WebScene, { imageUri: uri, phrase: text });
+      broken.tree.props.onLayout({ nativeEvent: { layout: { width: 360, height: 450 } } });
+      await tick();
+      broken.flush();
+      const size = flat(broken.find('Text').props.style).fontSize;
+      broken.unmount();
+      return size;
+    };
+    assert.strictEqual(await fallbackSizeFor('aa bb', 'blob:http://localhost/broken-short'), 18, 'frase curta medida: tamanho cheio');
+    const longFallback = await fallbackSizeFor(longPhrase, 'blob:http://localhost/broken-long');
+    assert.ok(longFallback < 18 && longFallback > 18 * 0.6, `frase longa: a fonte encolhe só até caber (${longFallback}px)`);
+    assert.strictEqual(await fallbackSizeFor(endless, 'blob:http://localhost/broken-huge'), 10.8, 'texto enorme: para em 60%');
+    // B) falhou uma vez e a mesma imagem carregou depois (a rede voltou): o texto de reserva sai de cima da cena
+    const flaky = site.mount(WebScene, { imageUri: 'blob:http://localhost/flaky', phrase: 'aa bb' });
+    await tick();
+    flaky.flush();
+    assert.ok(flaky.find('Text'), '1ª tentativa falhou: texto de reserva');
+    flaky.update({ phrase: 'cc dd' }); // cena recriada com a mesma imagem
+    await tick();
+    flaky.flush();
+    assert.strictEqual(flaky.find('Text'), null, 'carregou: sem texto de reserva por cima da cena viva');
+    assert.strictEqual(flaky.tree.props.dataSet.active, 'true', 'carregou: a cena anima');
+    flaky.unmount();
     // Safari ≤ 13: MediaQueryList só com addListener/removeListener
     const legacy = new Set();
     global.window = fakeWindow({

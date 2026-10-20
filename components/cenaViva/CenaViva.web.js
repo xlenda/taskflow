@@ -14,9 +14,38 @@ const CANVAS_STYLE = { position: 'absolute', left: 0, top: 0, width: '100%', hei
 const reducedMotionQuery = () =>
   typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
+// texto de reserva (a imagem não carregou): como a frase parada da cena, a fonte desce 5% por vez até caber em 5
+// linhas na largura do card (no mínimo 60%); o numberOfLines corta com "…" se nem assim. O react-native-web não
+// tem adjustsFontSizeToFit: mede com o próprio canvas da cena.
+const FALLBACK_SIZE = 18;
+const FALLBACK_PADDING = 20;
+function fallbackFontSize(canvas, text, width) {
+  const ctx = canvas && width > 0 ? canvas.getContext('2d') : null;
+  if (!ctx) return FALLBACK_SIZE;
+  const words = String(text).split(/\s+/).filter(Boolean);
+  let size = FALLBACK_SIZE;
+  for (let step = 0; step <= 8; step++) {
+    size = Math.round(FALLBACK_SIZE * (1 - 0.05 * step) * 10) / 10;
+    ctx.font = `italic ${size}px ${SERIF}`;
+    const space = ctx.measureText(' ').width;
+    let lines = 1;
+    let used = 0;
+    words.forEach((word) => {
+      const wordWidth = ctx.measureText(word).width;
+      if (used && used + space + wordWidth > width) {
+        lines += 1;
+        used = wordWidth;
+      } else used += (used ? space : 0) + wordWidth;
+    });
+    if (lines <= 5) break;
+  }
+  return size;
+}
+
 // mode e phrase valem na criação: trocar imagem, frase, formato, modo ou movimento recria a cena (a intro
 // recomeça). active=false = pôster parado (1º quadro, ou o quadro onde parou). caption, quando vier, substitui a
-// frase e não recria nada. Imagem que não carrega: onError('image_error') e a frase fica em texto sobre o fundo.
+// frase e não recria nada. onReady(uri): a imagem que pintou. Imagem que não carrega: onError('image_error') e a
+// frase fica em texto sobre o fundo.
 export default function CenaViva({
   imageUri,
   phrase,
@@ -40,6 +69,7 @@ export default function CenaViva({
   });
   const [renderer, setRenderer] = useState(null);
   const [failedUri, setFailedUri] = useState(null);
+  const [boxWidth, setBoxWidth] = useState(0);
   const still = !!reducedMotion || systemStill;
   const failed = !!imageUri && failedUri === imageUri;
   const [width, height] = SIZES[format] || SIZES['4:5'];
@@ -62,10 +92,11 @@ export default function CenaViva({
     let scene = null;
     const image = new window.Image();
     image.onload = () => {
+      setFailedUri(null); // falha passageira: a mesma imagem carregou, o texto de reserva sai de cima da cena
       scene = installCenaViva(window).createRenderer(canvas, { image, phrase, format, mode, reducedMotion: still });
       scene.drawFrame(0);
       setRenderer(scene);
-      if (handlers.current.onReady) handlers.current.onReady();
+      if (handlers.current.onReady) handlers.current.onReady(imageUri); // a imagem deste efeito (a velha não chega aqui)
     };
     image.onerror = () => {
       setFailedUri(imageUri);
@@ -103,6 +134,7 @@ export default function CenaViva({
 
   // o texto está desenhado no canvas: o leitor de tela lê pelo rótulo
   const label = captionText || phrase || undefined;
+  const fallbackSize = failed && label ? fallbackFontSize(canvasRef.current, label, boxWidth - 2 * FALLBACK_PADDING) : FALLBACK_SIZE;
   return (
     <View
       testID={testID}
@@ -110,10 +142,17 @@ export default function CenaViva({
       accessible={!!label}
       accessibilityRole={label ? 'image' : undefined}
       accessibilityLabel={label}
+      onLayout={(event) => setBoxWidth(event.nativeEvent.layout.width)}
       style={[styles.frame, format === '9:16' ? styles.tall : styles.portrait, style]}
     >
       <canvas ref={canvasRef} width={width} height={height} aria-hidden="true" style={CANVAS_STYLE} />
-      {failed && label ? <Text style={styles.fallback}>{label}</Text> : null}
+      {failed && label ? (
+        <View testID={`${testID}-reserva`} style={styles.fallbackBox}>
+          <Text numberOfLines={5} style={[styles.fallback, { fontSize: fallbackSize }]}>
+            {label}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -123,16 +162,16 @@ const styles = StyleSheet.create({
   frame: { overflow: 'hidden', backgroundColor: '#1C2E4F' },
   portrait: { aspectRatio: 4 / 5 },
   tall: { aspectRatio: 9 / 16 },
-  fallback: {
+  // texto de reserva ancorado embaixo, com respiro, sem cortar (até 5 linhas, fonte ajustada)
+  fallbackBox: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 24,
-    color: '#FFF9F0',
-    fontFamily: SERIF,
-    fontStyle: 'italic',
-    fontSize: 18,
-    lineHeight: 25,
-    textAlign: 'center',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    padding: FALLBACK_PADDING,
+    justifyContent: 'flex-end',
+    pointerEvents: 'none', // no react-native-web o prop pointerEvents é obsoleto: vai no style
   },
+  fallback: { color: '#FFF9F0', fontFamily: SERIF, fontStyle: 'italic', textAlign: 'center' },
 });
