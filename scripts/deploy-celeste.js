@@ -73,6 +73,10 @@ const STATIC_GATES = [
   ['scripts/verificar-rota-sugestao.js', 'Rota/reload das sugestoes falhou'],
   ['scripts/verificar-denuncia-ia.js', 'Gateway e minimizacao da denuncia de IA falharam'],
   ['scripts/verificar-deep-links-seguros.js', 'Protecao dos deep links falhou'],
+  ['scripts/verificar-cenas-prontas.js', 'Cenas prontas da revelacao falharam'],
+  ['scripts/verificar-cena-viva.js', 'Cena viva (renderizador, video e cards) falhou'],
+  ['scripts/verificar-compartilhar.js', 'Compartilhar imagem e video falhou'],
+  ['scripts/verificar-despertar-sequencia.js', 'Despertar em sequencia falhou'],
 ];
 
 function assert(condition, message) {

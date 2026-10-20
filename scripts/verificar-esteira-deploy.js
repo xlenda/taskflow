@@ -418,6 +418,10 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'verificar-denuncia-ia.js',
     'verificar-deep-links-seguros.js',
     'verificar-esteira-deploy.js',
+    'verificar-cenas-prontas.js',
+    'verificar-cena-viva.js',
+    'verificar-compartilhar.js',
+    'verificar-despertar-sequencia.js',
   ]) {
     assert.ok(deploySource.includes(script), `gate obrigatorio ausente: ${script}`);
   }
