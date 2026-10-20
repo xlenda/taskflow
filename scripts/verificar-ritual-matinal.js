@@ -305,10 +305,10 @@ for (const [name, block] of [
 }
 assert.ok(
   resultWakeBlock.includes("navigation.navigate('AffirmationAlarm'") &&
-    resultWakeBlock.includes('preselectId: `ritual:${entryId}`') &&
+    resultWakeBlock.includes("addToWakeSequence({ kind: 'affirmation', id: `ritual:${entryId}` })") &&
     !resultWakeBlock.includes('scheduleRealAlarm') &&
     !resultWakeBlock.includes('saveMorningRitualPreferences'),
-  'a frase do sonho deve abrir a tela própria; permissão e persistência ficam no CTA do despertador'
+  'a frase do sonho entra no fim do despertar e abre a tela própria; permissão e alarme real ficam no CTA do despertador'
 );
 
 const context = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');

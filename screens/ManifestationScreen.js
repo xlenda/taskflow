@@ -32,6 +32,7 @@ import {
 } from '../services/affirmationAlarm';
 import { cancelPracticePlanReminders } from '../services/practicePlanReminders';
 
+import AddToWakeButton from '../components/AddToWakeButton';
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
 import SectionHeading from '../components/SectionHeading';
@@ -491,6 +492,11 @@ export default function ManifestationScreen() {
 
   const meta = categoryMeta(item.category);
   const color = accentAt(th, item.accent);
+  // The Anchor Scene plays its whole story in the wake-up; other manifestations, their affirmation.
+  const wakeTarget =
+    saved.id === state.anchorSceneId
+      ? { kind: 'anchor', id: `anchor:${saved.id}`, campaign: 'ancora' }
+      : { kind: 'affirmation', id: `manifestation:${saved.id}`, campaign: 'afirmacao' };
   const done = saved ? saved.sessions.length : 0;
   const goal = item.goalDays || 21;
   const percent = pct(done, goal);
@@ -1041,6 +1047,8 @@ export default function ManifestationScreen() {
           )}
         </Card>
 
+        <AddToWakeButton {...wakeTarget} accent={item.accent} style={styles.wakeButton} />
+
         {completed ? (
           // Ciclo fechado: celebração no lugar do botão — sem cobrar check-in
           // de quem já chegou lá. Desfazer um dia segue pelas bolinhas abaixo.
@@ -1340,6 +1348,7 @@ const styles = StyleSheet.create({
   },
   doneBannerText: { fontSize: 15.5, fontWeight: '700', marginLeft: 8 },
   practiceButton: { marginTop: 10 },
+  wakeButton: { marginTop: 10 },
   inputLabel: { fontSize: 12, fontWeight: '800', marginTop: 14, textTransform: 'uppercase', letterSpacing: 0.7 },
   input: {
     minHeight: 50,

@@ -107,6 +107,9 @@ export const initialState = () => ({
     wakeAffirmationLang: 'pt',
     wakeNarratorId: null,
     wakeSoundSource: null,
+    wakeCustomText: '',
+    wakeCustomLang: 'pt',
+    wakeSequence: [],
     entries: [],
   },
 });

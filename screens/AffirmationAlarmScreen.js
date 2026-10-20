@@ -19,6 +19,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import PrimaryButton from '../components/PrimaryButton';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { useApp } from '../context/AppContext';
 import {
   cancelAffirmationAlarm,
@@ -31,12 +32,15 @@ import { alarmWeekdaysOrDefault } from '../utils/alarmSchedule';
 import { wavBytesToBase64 } from '../utils/audioBase64';
 import { alpha, accentAt } from '../utils/colors';
 import { confirmAsync } from '../utils/confirm';
-import {
-  personalAlarmContentForState,
-  resolvePersonalAlarmContent,
-} from '../utils/personalAffirmations';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useT } from '../utils/useT';
+import {
+  WAKE_SEQUENCE_MAX,
+  estimateListeningSeconds,
+  firstPhraseForAlarm,
+  wakeSequenceItemsForState,
+  wakeSequenceOptionsForState,
+} from '../utils/wakeSequence';
 
 const COPY = {
   saveChoice: { pt: 'Salvar minha escolha', en: 'Save my choice' },
@@ -50,21 +54,32 @@ const COPY = {
     pt: 'Escolha salva neste aparelho. O alarme ainda não está ativo; ative-o no aplicativo instalado.',
     en: 'Choice saved on this device. The alarm is not active yet; turn it on in the installed app.',
   },
-  title: { pt: 'Meu despertador', en: 'My alarm' },
+  title: { pt: 'Meu despertar', en: 'My wake-up' },
   subtitle: {
-    pt: 'Acorde com um conteúdo pessoal escolhido por você.',
-    en: 'Wake up with personal content you choose.',
+    pt: 'Monte o que você quer ouvir ao acordar.',
+    en: 'Build what you want to hear when you wake up.',
   },
-  phraseTitle: { pt: 'Conteúdo do despertar', en: 'Wake-up content' },
-  phraseBody: {
-    pt: 'Escolha uma afirmação, uma visão, sua Cena-Âncora, uma frase de sonho ou escreva a sua. Ao despertar, basta ouvir: não há leitura nem microfone.',
-    en: 'Choose an affirmation, a vision, your Anchor Scene, a dream phrase, or write your own. When you wake, just listen: there is no reading or microphone task.',
+  sequenceTitle: { pt: 'Sua sequência', en: 'Your sequence' },
+  sequenceBody: {
+    pt: 'Escolha até 6 itens entre sua Cena-Âncora, visões e afirmações, na ordem que quiser. Ao despertar, basta ouvir: não há leitura nem microfone.',
+    en: 'Choose up to 6 items from your Anchor Scene, visions, and affirmations, in any order. When you wake, just listen: there is no reading or microphone task.',
   },
-  choose: { pt: 'Escolher conteúdo', en: 'Choose content' },
-  change: { pt: 'Trocar', en: 'Change' },
-  preview: { pt: 'Ouvir prévia', en: 'Hear preview' },
-  stop: { pt: 'Parar', en: 'Stop' },
-  noPhrase: { pt: 'Escolha um conteúdo para continuar.', en: 'Choose content to continue.' },
+  emptySequence: {
+    pt: 'Sua sequência ainda está vazia. Adicione o primeiro item.',
+    en: 'Your sequence is still empty. Add the first item.',
+  },
+  add: { pt: 'Adicionar', en: 'Add' },
+  listenNow: { pt: 'Ouvir agora', en: 'Listen now' },
+  moveUp: { pt: 'Subir o item {n}', en: 'Move item {n} up' },
+  moveDown: { pt: 'Descer o item {n}', en: 'Move item {n} down' },
+  remove: { pt: 'Tirar o item {n} da sequência', en: 'Remove item {n} from the sequence' },
+  count: { pt: '{n} de {max} itens', en: '{n} of {max} items' },
+  estimateSeconds: { pt: 'cerca de {n} s para ouvir', en: 'about {n} s of listening' },
+  estimateMinutes: { pt: 'cerca de {n} min para ouvir', en: 'about {n} min of listening' },
+  full: {
+    pt: 'Sequência completa: tire um item para incluir outro.',
+    en: 'Sequence full: remove an item to add another.',
+  },
   time: { pt: 'Horário', en: 'Time' },
   timeHint: { pt: 'Use o formato 07:30.', en: 'Use the 07:30 format.' },
   days: { pt: 'Dias da semana', en: 'Days of the week' },
@@ -117,8 +132,8 @@ const COPY = {
     en: 'Your device did not confirm cancellation. The alarm remains marked as active.',
   },
   webUnsupported: {
-    pt: 'No site você pode preparar e ouvir a frase. Para acordar com um alarme real, use o app instalado em um iPhone compatível.',
-    en: 'On the website you can prepare and preview the phrase. For a real wake-up alarm, use the installed app on a compatible iPhone.',
+    pt: 'No site você pode preparar e ouvir sua sequência. Para acordar com um alarme real, use o app instalado em um iPhone compatível.',
+    en: 'On the website you can prepare and hear your sequence. For a real wake-up alarm, use the installed app on a compatible iPhone.',
   },
   nativeMissing: {
     pt: 'Este app ainda não tem o módulo nativo necessário para criar um despertador real.',
@@ -128,15 +143,14 @@ const COPY = {
     pt: 'O despertador com conteúdo pessoal não está disponível neste aparelho.',
     en: 'The personal-content alarm is unavailable on this device.',
   },
-  audioUnavailable: {
-    pt: 'A prévia privada não está disponível neste aparelho.',
-    en: 'A private preview is unavailable on this device.',
-  },
-  pickerTitle: { pt: 'Escolha o que ouvir', en: 'Choose what to hear' },
+  pickerTitle: { pt: 'Adicionar ao despertar', en: 'Add to your wake-up' },
   pickerBody: {
-    pt: 'As frases abaixo vieram apenas do que você criou no Celeste.',
-    en: 'The phrases below come only from what you created in Celeste.',
+    pt: 'As opções abaixo vieram apenas do que você criou no Celeste.',
+    en: 'The options below come only from what you created in Celeste.',
   },
+  visionsTab: { pt: 'Visões', en: 'Visions' },
+  affirmationsTab: { pt: 'Afirmações', en: 'Affirmations' },
+  inSequence: { pt: 'Na sequência', en: 'In the sequence' },
   custom: { pt: 'Minha própria afirmação', en: 'My own affirmation' },
   customPlaceholder: {
     pt: 'Eu acordo presente e pronta para o meu dia.',
@@ -167,6 +181,12 @@ const WEEKDAYS = [
   { value: 7, label: { pt: 'Dom', en: 'Sun' }, full: { pt: 'domingo', en: 'Sunday' } },
 ];
 
+const PICKER_TABS = [
+  { kind: 'anchor', label: COPY.anchor },
+  { kind: 'vision', label: COPY.visionsTab },
+  { kind: 'affirmation', label: COPY.affirmationsTab },
+];
+
 const clean = (value, max = 800) =>
   typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
@@ -182,39 +202,41 @@ const editTime = (value) => {
 
 const sameDays = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-export default function AffirmationAlarmScreen({ route }) {
+export default function AffirmationAlarmScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const focused = useIsFocused();
   const { t, lang } = useT();
-  const { state, saveMorningRitualPreferences } = useApp();
+  const { state, saveMorningRitualPreferences, addToWakeSequence } = useApp();
   const narration = usePersonalNarration();
   const ritual = state.morningRitual || {};
-  const options = useMemo(() => personalAlarmContentForState(state), [state]);
-  const persistedSelection = useMemo(() => resolvePersonalAlarmContent(state), [state]);
+  // The sequence is saved as it is edited; time and days stay a draft until the
+  // main button. The AlarmKit sound is the sequence's first phrase.
+  const items = useMemo(() => wakeSequenceItemsForState(state, lang), [state, lang]);
+  const options = useMemo(() => wakeSequenceOptionsForState(state, lang), [state, lang]);
+  const selected = useMemo(() => firstPhraseForAlarm(items, state), [items, state]);
+  const sequenceIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
+  const full = items.length >= WAKE_SEQUENCE_MAX;
+  const listeningSeconds = estimateListeningSeconds(items);
 
-  const [selected, setSelected] = useState(() => persistedSelection || options[0] || null);
   const [time, setTime] = useState(() => isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00');
   const [weekdays, setWeekdays] = useState(() => alarmWeekdaysOrDefault(ritual.weekdays));
-  const [customText, setCustomText] = useState(() =>
-    ritual.wakeAffirmationId === 'custom' ? clean(ritual.wakeAffirmationText, 280) : ''
-  );
+  const [customText, setCustomText] = useState(() => clean(ritual.wakeCustomText, 280));
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState('anchor');
   const [capability, setCapability] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [audioFailed, setAudioFailed] = useState(false);
   const operationRef = useRef(false);
   const mountedRef = useRef(true);
-  const preselectionRef = useRef(null);
 
   const persistedDays = alarmWeekdaysOrDefault(ritual.weekdays);
   const dirty =
-    (selected && selected.id) !== (persistedSelection && persistedSelection.id) ||
-    (selected && selected.text) !== (persistedSelection && persistedSelection.text) ||
     time !== (isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00') ||
     !sameDays(weekdays, persistedDays) ||
-    (ritual.reminderEnabled && ritual.wakeNarratorId !== narration.narratorId);
+    (ritual.reminderEnabled &&
+      ((selected && selected.text) !== ritual.wakeAffirmationText ||
+        ritual.wakeNarratorId !== narration.narratorId));
 
   useEffect(() => {
     mountedRef.current = true;
@@ -250,17 +272,6 @@ export default function AffirmationAlarmScreen({ route }) {
     return () => subscription.remove();
   }, [focused, refreshCapability]);
 
-  useEffect(() => {
-    const preselectId = clean(route?.params?.preselectId, 160);
-    if (!preselectId || preselectionRef.current === preselectId) return;
-    const item = options.find((option) => option.id === preselectId);
-    if (!item) return;
-    preselectionRef.current = preselectId;
-    setSelected(item);
-    setFeedback(null);
-    navigation.setParams?.({ preselectId: undefined });
-  }, [navigation, options, route?.params?.preselectId]);
-
   const haptic = useCallback((success = false) => {
     if (Platform.OS === 'web') return;
     const action = success
@@ -269,20 +280,45 @@ export default function AffirmationAlarmScreen({ route }) {
     action.catch(() => {});
   }, []);
 
-  const choose = useCallback((item) => {
+  // Editing the sequence never asks for permission nor touches the native
+  // alarm: the provider keeps the device-confirmed phrase until it is replaced.
+  const saveSequence = useCallback((patch) => {
     if (operationRef.current) return;
-    narration.stop();
-    setSelected(item);
-    setPickerOpen(false);
+    saveMorningRitualPreferences(patch);
     setFeedback(null);
     haptic();
-  }, [haptic, narration.stop]);
+  }, [haptic, saveMorningRitualPreferences]);
 
-  const chooseCustom = useCallback(() => {
-    const text = clean(customText, 280);
-    if (text.length < 4) return;
-    choose({ id: 'custom', text, lang, source: 'custom' });
-  }, [choose, customText, lang]);
+  const addItem = useCallback((item) => {
+    if (operationRef.current) return;
+    if (addToWakeSequence({ kind: item.kind, id: item.id }).ok) {
+      setFeedback(null);
+      haptic();
+    }
+  }, [addToWakeSequence, haptic]);
+
+  const moveItem = useCallback((index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= items.length) return;
+    const next = items.slice();
+    [next[index], next[target]] = [next[target], next[index]];
+    saveSequence({ wakeSequence: next });
+  }, [items, saveSequence]);
+
+  const removeItem = useCallback((index) => {
+    saveSequence({ wakeSequence: items.filter((_, position) => position !== index) });
+  }, [items, saveSequence]);
+
+  const customInSequence = sequenceIds.has('custom');
+  const canSaveCustom = clean(customText).length >= 4 && (customInSequence || !full);
+  const saveCustom = useCallback(() => {
+    if (!canSaveCustom) return;
+    saveSequence({
+      wakeCustomText: clean(customText, 280),
+      wakeCustomLang: lang,
+      wakeSequence: customInSequence ? items : [...items, { kind: 'affirmation', id: 'custom' }],
+    });
+  }, [canSaveCustom, customInSequence, customText, items, lang, saveSequence]);
 
   const toggleDay = useCallback((day) => {
     if (operationRef.current) return;
@@ -296,30 +332,6 @@ export default function AffirmationAlarmScreen({ route }) {
     });
     haptic();
   }, [haptic]);
-
-  const previewPlaybackId = selected
-    ? `alarm-preview:${selected.id || clean(selected.text, 72)}`
-    : null;
-  const speaking =
-    narration.activePlaybackId === previewPlaybackId &&
-    (narration.isLoading || narration.isPlaying || narration.isPaused);
-
-  const preview = useCallback(async () => {
-    if (!selected) return;
-    if (speaking) {
-      narration.stop();
-      return;
-    }
-    setAudioFailed(false);
-    const result = await narration.playPersonal({
-      text: selected.text,
-      lang: selected.lang || lang,
-      playbackId: previewPlaybackId,
-    });
-    if (!result.ok && result.error !== 'audio_cancelled' && mountedRef.current) {
-      setAudioFailed(true);
-    }
-  }, [lang, narration, previewPlaybackId, selected, speaking]);
 
   const activate = useCallback(async () => {
     if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
@@ -538,19 +550,23 @@ export default function AffirmationAlarmScreen({ route }) {
     source === 'dream' ? 1 : source === 'vision' ? 2 : source === 'anchor' ? 0 : 3;
 
   const renderOption = useCallback(({ item }) => {
-    const checked = selected?.id === item.id;
+    const added = sequenceIds.has(item.id);
+    const disabled = added || full || busy;
     return (
       <Pressable
-        testID={`alarm-affirmation-${item.id}`}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: checked }}
-        onPress={() => choose(item)}
+        testID={`wake-picker-item-${item.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${sourceLabel(item.source)}: ${item.title}`}
+        accessibilityState={{ selected: added, disabled }}
+        disabled={disabled}
+        onPress={() => addItem(item)}
         style={({ pressed }) => [
           styles.option,
           {
-            backgroundColor: checked ? alpha(theme.accent, 0.09) : theme.surface,
-            borderColor: checked ? theme.accent : theme.border,
+            backgroundColor: added ? alpha(theme.accent, 0.09) : theme.surface,
+            borderColor: added ? theme.accent : theme.border,
           },
+          disabled && !added && styles.disabled,
           pressed && styles.pressed,
         ]}
       >
@@ -559,15 +575,21 @@ export default function AffirmationAlarmScreen({ route }) {
             {sourceLabel(item.source)}
           </Text>
         </View>
-        <Text style={[styles.optionText, { color: theme.text }]}>{item.text}</Text>
+        <View style={styles.optionCopy}>
+          <Text numberOfLines={3} style={[styles.optionText, { color: theme.text }]}>{item.title}</Text>
+          {item.kind !== 'affirmation' ? (
+            <Text numberOfLines={2} style={[styles.optionPreview, { color: theme.textMuted }]}>{item.text}</Text>
+          ) : null}
+          {added ? <Text style={[styles.optionAdded, { color: theme.accent }]}>{t(COPY.inSequence)}</Text> : null}
+        </View>
         <Ionicons
-          name={checked ? 'checkmark-circle' : 'ellipse-outline'}
+          name={added ? 'checkmark-circle' : 'add-circle-outline'}
           size={22}
-          color={checked ? theme.accent : theme.textMuted}
+          color={added ? theme.accent : theme.textMuted}
         />
       </Pressable>
     );
-  }, [choose, selected?.id, sourceLabel, theme]);
+  }, [addItem, busy, full, sequenceIds, sourceLabel, t, theme]);
 
   return (
     <SafeAreaView
@@ -606,48 +628,136 @@ export default function AffirmationAlarmScreen({ route }) {
                 <Ionicons name="alarm-outline" size={23} color={accentAt(theme, 3)} />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(COPY.phraseTitle)}</Text>
-                <Text style={[styles.body, { color: theme.textMuted }]}>{t(COPY.phraseBody)}</Text>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(COPY.sequenceTitle)}</Text>
+                <Text style={[styles.body, { color: theme.textMuted }]}>{t(COPY.sequenceBody)}</Text>
               </View>
             </View>
 
-            <View style={[styles.phraseCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              {selected ? (
-                <>
-                  <Text style={[styles.sourceLine, { color: accentAt(theme, 1) }]}>{sourceLabel(selected.source)}</Text>
-                  <Text style={[styles.phrase, { color: theme.text }]}>{selected.text}</Text>
-                </>
-              ) : (
+            <View
+              testID="wake-sequence-list"
+              style={[styles.phraseCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            >
+              {items.length === 0 ? (
                 <View style={styles.emptyPhrase}>
-                  <Ionicons name="volume-mute-outline" size={24} color={theme.textMuted} />
-                  <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t(COPY.noPhrase)}</Text>
+                  <Ionicons name="moon-outline" size={24} color={theme.textMuted} />
+                  <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t(COPY.emptySequence)}</Text>
                 </View>
+              ) : (
+                items.map((item, index) => {
+                  const position = index + 1;
+                  // An active native alarm keeps at least one item; turning it off stays explicit.
+                  const lockedLast = ritual.reminderEnabled && items.length === 1;
+                  const controls = [
+                    {
+                      testID: `wake-sequence-up-${index}`,
+                      icon: 'arrow-up',
+                      label: COPY.moveUp,
+                      disabled: index === 0,
+                      onPress: () => moveItem(index, -1),
+                    },
+                    {
+                      testID: `wake-sequence-down-${index}`,
+                      icon: 'arrow-down',
+                      label: COPY.moveDown,
+                      disabled: index === items.length - 1,
+                      onPress: () => moveItem(index, 1),
+                    },
+                    {
+                      testID: `wake-sequence-remove-${index}`,
+                      icon: 'close',
+                      label: COPY.remove,
+                      disabled: lockedLast,
+                      onPress: () => removeItem(index),
+                    },
+                  ];
+                  return (
+                    <View
+                      key={item.id}
+                      testID={`wake-sequence-item-${index}`}
+                      style={[styles.sequenceRow, index > 0 && { borderTopColor: theme.border }, index > 0 && styles.sequenceDivider]}
+                    >
+                      <View style={styles.sequenceTop}>
+                        <View style={[styles.position, { backgroundColor: alpha(accentAt(theme, sourceAccent(item.source)), 0.14) }]}>
+                          <Text style={[styles.positionText, { color: accentAt(theme, sourceAccent(item.source)) }]}>{position}</Text>
+                        </View>
+                        <Text numberOfLines={3} style={[styles.sequenceTitle, { color: theme.text }]}>{item.title}</Text>
+                      </View>
+                      <View style={styles.sequenceBottom}>
+                        <Text style={[styles.sourceLine, styles.flex, { color: accentAt(theme, sourceAccent(item.source)) }]}>
+                          {sourceLabel(item.source)}
+                        </Text>
+                        {controls.map((control) => (
+                          <Pressable
+                            key={control.testID}
+                            testID={control.testID}
+                            accessibilityRole="button"
+                            accessibilityLabel={t(control.label, { n: position })}
+                            accessibilityState={{ disabled: busy || control.disabled }}
+                            disabled={busy || control.disabled}
+                            onPress={control.onPress}
+                            style={({ pressed }) => [
+                              styles.rowButton,
+                              { backgroundColor: theme.surfaceAlt },
+                              (busy || control.disabled) && styles.disabled,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Ionicons name={control.icon} size={18} color={theme.text} />
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })
               )}
+              {items.length > 0 ? (
+                <Text style={[styles.sequenceMeta, { color: theme.textMuted }]}>
+                  {t(COPY.count, { n: items.length, max: WAKE_SEQUENCE_MAX })} ·{' '}
+                  {listeningSeconds < 60
+                    ? t(COPY.estimateSeconds, { n: listeningSeconds })
+                    : t(COPY.estimateMinutes, { n: Math.round(listeningSeconds / 60) })}
+                </Text>
+              ) : null}
               <View style={styles.actionRow}>
                 <Pressable
-                  testID="open-alarm-affirmation-picker"
+                  testID="wake-sequence-add"
+                  accessibilityRole="button"
+                  accessibilityLabel={t(COPY.add)}
+                  accessibilityState={{ disabled: busy || full }}
+                  disabled={busy || full}
                   onPress={() => setPickerOpen(true)}
-                  style={({ pressed }) => [styles.smallButton, { backgroundColor: theme.surfaceAlt }, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    styles.smallButton,
+                    { backgroundColor: theme.surfaceAlt },
+                    (busy || full) && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
                 >
-                  <Ionicons name="list-outline" size={17} color={theme.accent} />
-                  <Text style={[styles.smallButtonText, { color: theme.accent }]}>
-                    {selected ? t(COPY.change) : t(COPY.choose)}
-                  </Text>
+                  <Ionicons name="add" size={18} color={theme.accent} />
+                  <Text style={[styles.smallButtonText, { color: theme.accent }]}>{t(COPY.add)}</Text>
                 </Pressable>
-                {selected ? (
+                {/* Appears once the listening screen (WakeSequence route) is turned on. */}
+                {RELEASE_FEATURES.wakeSequence ? (
                   <Pressable
-                    testID="preview-alarm-affirmation"
-                    onPress={preview}
-                    style={({ pressed }) => [styles.smallButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
+                    testID="wake-listen-now"
+                    accessibilityRole="button"
+                    accessibilityLabel={t(COPY.listenNow)}
+                    accessibilityState={{ disabled: items.length === 0 }}
+                    disabled={items.length === 0}
+                    onPress={() => navigation.navigate('WakeSequence')}
+                    style={({ pressed }) => [
+                      styles.smallButton,
+                      { backgroundColor: alpha(theme.accent, 0.1) },
+                      items.length === 0 && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
                   >
-                    <Ionicons name={speaking ? 'stop' : 'play'} size={17} color={theme.accent} />
-                    <Text style={[styles.smallButtonText, { color: theme.accent }]}>
-                      {speaking ? t(COPY.stop) : t(COPY.preview)}
-                    </Text>
+                    <Ionicons name="play" size={17} color={theme.accent} />
+                    <Text style={[styles.smallButtonText, { color: theme.accent }]}>{t(COPY.listenNow)}</Text>
                   </Pressable>
                 ) : null}
               </View>
-              {audioFailed ? <Text style={[styles.warning, { color: theme.warning }]}>{t(COPY.audioUnavailable)}</Text> : null}
+              {full ? <Text style={[styles.warning, { color: theme.textMuted }]}>{t(COPY.full)}</Text> : null}
             </View>
 
             <View style={styles.scheduleRow}>
@@ -799,6 +909,7 @@ export default function AffirmationAlarmScreen({ route }) {
                 <Text style={[styles.modalBody, { color: theme.textMuted }]}>{t(COPY.pickerBody)}</Text>
               </View>
               <Pressable
+                testID="wake-picker-close"
                 accessibilityRole="button"
                 accessibilityLabel={t(COPY.close)}
                 onPress={() => setPickerOpen(false)}
@@ -807,14 +918,42 @@ export default function AffirmationAlarmScreen({ route }) {
                 <Ionicons name="close" size={24} color={theme.text} />
               </Pressable>
             </View>
+            <View accessibilityRole="tablist" style={styles.tabs}>
+              {PICKER_TABS.map((tab) => {
+                const active = tab.kind === pickerTab;
+                return (
+                  <Pressable
+                    key={tab.kind}
+                    testID={`wake-picker-tab-${tab.kind}`}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setPickerTab(tab.kind)}
+                    style={({ pressed }) => [
+                      styles.tab,
+                      {
+                        backgroundColor: active ? theme.accent : theme.surface,
+                        borderColor: active ? theme.accent : theme.border,
+                      },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text numberOfLines={1} style={[styles.tabText, { color: active ? '#FFFFFF' : theme.text }]}>
+                      {t(tab.label)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {full ? <Text style={[styles.pickerNote, { color: theme.textMuted }]}>{t(COPY.full)}</Text> : null}
             <FlatList
-              data={options.filter((item) => item.source !== 'custom')}
+              data={options.filter((item) => item.kind === pickerTab && item.source !== 'custom')}
+              extraData={sequenceIds}
               renderItem={renderOption}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.optionList}
-              ListHeaderComponent={(
+              ListHeaderComponent={pickerTab === 'affirmation' ? (
                 <View style={[styles.customCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                   <Text style={[styles.customLabel, { color: theme.text }]}>{t(COPY.custom)}</Text>
                   <View style={styles.customRow}>
@@ -823,7 +962,7 @@ export default function AffirmationAlarmScreen({ route }) {
                       accessibilityLabel={t(COPY.custom)}
                       value={customText}
                       onChangeText={(value) => setCustomText(value.slice(0, 280))}
-                      onSubmitEditing={chooseCustom}
+                      onSubmitEditing={saveCustom}
                       placeholder={t(COPY.customPlaceholder)}
                       placeholderTextColor={theme.textMuted}
                       maxLength={280}
@@ -837,20 +976,23 @@ export default function AffirmationAlarmScreen({ route }) {
                       testID="save-custom-alarm-affirmation"
                       accessibilityRole="button"
                       accessibilityLabel={t(COPY.useCustom)}
-                      accessibilityState={{ disabled: clean(customText).length < 4 }}
-                      disabled={clean(customText).length < 4}
-                      onPress={chooseCustom}
+                      accessibilityState={{ disabled: !canSaveCustom }}
+                      disabled={!canSaveCustom}
+                      onPress={saveCustom}
                       style={({ pressed }) => [
                         styles.customButton,
-                        { backgroundColor: theme.accent, opacity: clean(customText).length < 4 ? 0.4 : 1 },
+                        { backgroundColor: theme.accent, opacity: canSaveCustom ? 1 : 0.4 },
                         pressed && styles.pressed,
                       ]}
                     >
                       <Ionicons name="checkmark" size={20} color="#FFFFFF" />
                     </Pressable>
                   </View>
+                  {customInSequence ? (
+                    <Text style={[styles.optionAdded, { color: theme.accent }]}>{t(COPY.inSequence)}</Text>
+                  ) : null}
                 </View>
-              )}
+              ) : null}
               ListEmptyComponent={(
                 <Text style={[styles.emptyOptions, { color: theme.textMuted }]}>{t(COPY.noOptions)}</Text>
               )}
@@ -888,7 +1030,15 @@ const styles = StyleSheet.create({
   body: { fontSize: 15, lineHeight: 23, marginTop: 5, letterSpacing: 0 },
   phraseCard: { borderWidth: 1, borderRadius: 22, padding: 20, marginTop: 22 },
   sourceLine: { fontSize: 10, lineHeight: 15, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
-  phrase: { fontSize: 24, lineHeight: 34, fontWeight: '700', marginTop: 9, letterSpacing: -0.2 },
+  sequenceRow: { paddingVertical: 12 },
+  sequenceDivider: { borderTopWidth: StyleSheet.hairlineWidth },
+  sequenceTop: { flexDirection: 'row', alignItems: 'flex-start' },
+  position: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  positionText: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+  sequenceTitle: { flex: 1, fontSize: 15.5, lineHeight: 22, fontWeight: '700', letterSpacing: -0.1 },
+  sequenceBottom: { flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingLeft: 38 },
+  rowButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
+  sequenceMeta: { fontSize: 12.5, lineHeight: 18, marginTop: 10, letterSpacing: 0 },
   emptyPhrase: { minHeight: 88, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center', marginTop: 7, letterSpacing: 0 },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginTop: 15 },
@@ -915,6 +1065,10 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14 },
   modalTitle: { fontSize: 23, lineHeight: 29, fontWeight: '800', letterSpacing: -0.25 },
   modalBody: { fontSize: 13, lineHeight: 19, marginTop: 2, letterSpacing: 0 },
+  tabs: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 12 },
+  tab: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginHorizontal: 3 },
+  tabText: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+  pickerNote: { fontSize: 12.5, lineHeight: 18, paddingHorizontal: 20, paddingBottom: 10, letterSpacing: 0 },
   optionList: { paddingHorizontal: 16, paddingBottom: 28 },
   customCard: { borderWidth: 1, borderRadius: 18, padding: 15, marginBottom: 14 },
   customLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', letterSpacing: 0 },
@@ -925,5 +1079,8 @@ const styles = StyleSheet.create({
   option: { minHeight: 92, borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
   sourceTag: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5, marginRight: 11 },
   sourceText: { fontSize: 9, lineHeight: 13, fontWeight: '800', letterSpacing: 0 },
-  optionText: { flex: 1, fontSize: 14, lineHeight: 21, fontWeight: '600', paddingRight: 10, letterSpacing: 0 },
+  optionCopy: { flex: 1, minWidth: 0, paddingRight: 10 },
+  optionText: { fontSize: 14, lineHeight: 21, fontWeight: '600', letterSpacing: 0 },
+  optionPreview: { fontSize: 12.5, lineHeight: 18, marginTop: 3, letterSpacing: 0 },
+  optionAdded: { fontSize: 11.5, lineHeight: 16, fontWeight: '800', marginTop: 5, letterSpacing: 0 },
 });

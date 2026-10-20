@@ -54,13 +54,17 @@ const dreamAlarmItems = (state) => {
 };
 
 const customAlarmItems = (state) => {
-  const ritual = state && state.morningRitual;
-  const text = alarmAffirmationText(ritual && ritual.wakeAffirmationText);
-  return ritual && ritual.wakeAffirmationId === 'custom' && text
+  const ritual = (state && state.morningRitual) || {};
+  // The person's own phrase lives in wakeCustomText so it survives anywhere in
+  // the wake-up sequence. Older states kept it only as the alarm phrase itself.
+  const own = alarmAffirmationText(ritual.wakeCustomText);
+  const text =
+    own || (ritual.wakeAffirmationId === 'custom' ? alarmAffirmationText(ritual.wakeAffirmationText) : '');
+  return text
     ? [{
         id: 'custom',
         text,
-        lang: contentLang(ritual.wakeAffirmationLang),
+        lang: contentLang(own ? ritual.wakeCustomLang : ritual.wakeAffirmationLang),
         source: 'custom',
       }]
     : [];

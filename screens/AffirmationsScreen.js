@@ -27,6 +27,7 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
+import AddToWakeButton from '../components/AddToWakeButton';
 import AffirmationCard from '../components/AffirmationCard';
 import SectionHeading from '../components/SectionHeading';
 import PrimaryButton from '../components/PrimaryButton';
@@ -751,6 +752,14 @@ export default function AffirmationsScreen() {
               accent={meta.accent}
               variant="ghost"
               onPress={openSharePreview}
+              style={{ marginTop: 12 }}
+            />
+
+            <AddToWakeButton
+              kind="affirmation"
+              id={current.id}
+              campaign="afirmacao"
+              accent={meta.accent}
               style={{ marginTop: 12 }}
             />
 

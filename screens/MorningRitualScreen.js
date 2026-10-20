@@ -138,8 +138,12 @@ const S = {
   breathingIn: { pt: 'Inspire devagar', en: 'Breathe in slowly' },
   breathingOut: { pt: 'Expire sem pressa', en: 'Breathe out slowly' },
   completed: { pt: 'Prática concluída', en: 'Practice complete' },
-  useTomorrow: { pt: 'Usar no próximo despertar', en: 'Use for my next wake-up' },
-  usedTomorrow: { pt: 'Este será seu próximo despertar', en: 'This will be your next wake-up' },
+  useTomorrow: { pt: 'Pôr no meu despertar', en: 'Add to my wake-up' },
+  usedTomorrow: { pt: 'No seu despertar', en: 'In your wake-up' },
+  wakeFull: {
+    pt: 'Seu despertar já tem 6 itens. Tire um em Meu despertar para incluir esta frase.',
+    en: 'Your wake-up already has 6 items. Remove one in My wake-up to include this phrase.',
+  },
   mirrorConsentTitle: { pt: 'Levar para o Espelho Vivo', en: 'Carry into Living Mirror' },
   mirrorConsentBody: {
     pt: 'Usa somente o tema e como você acordou nos próximos capítulos. O relato completo não é reutilizado.',
@@ -230,6 +234,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const {
     state,
     saveMorningRitualPreferences,
+    addToWakeSequence,
     saveDreamRitual,
     markDreamRitualPracticed,
     setDreamLivingMirrorConsent,
@@ -272,6 +277,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const [alarmCapability, setAlarmCapability] = useState(null);
   const [alarmFeedback, setAlarmFeedback] = useState(null);
   const [alarmBusy, setAlarmBusy] = useState(false);
+  const [wakeFullFor, setWakeFullFor] = useState(null);
   const recognitionRef = useRef(null);
   const mainScrollRef = useRef(null);
   const mainScrollYRef = useRef(0);
@@ -298,7 +304,9 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
   const selectedWake = useMemo(() => resolvePersonalAlarmContent(state), [state]);
 
   const dreamEntries = Array.isArray(ritual.entries) ? ritual.entries : [];
-  const usingResultForWake = !!result && ritual.wakeAffirmationId === `ritual:${entryId}`;
+  const usingResultForWake =
+    !!result &&
+    (ritual.wakeSequence || []).some((item) => item && item.id === `ritual:${entryId}`);
   const currentDreamEntry = entryId
     ? (ritual.entries || []).find((entry) => entry.id === entryId) || null
     : null;
@@ -876,11 +884,19 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     ];
   }, [entryId, practiceState, clearPractice, practiceProgress, reduceMotion, markDreamRitualPracticed, haptic]);
 
+  // Appends the dream phrase to the wake-up sequence, then opens it. Permission
+  // and the real alarm stay on the alarm screen's own button.
   const useResultAsWake = useCallback(() => {
     if (!result || !entryId) return;
+    const added = addToWakeSequence({ kind: 'affirmation', id: `ritual:${entryId}` });
+    if (!added.ok && added.reason !== 'duplicate') {
+      if (added.reason === 'full') setWakeFullFor(entryId);
+      return;
+    }
+    setWakeFullFor(null);
     haptic();
-    navigation.navigate('AffirmationAlarm', { preselectId: `ritual:${entryId}` });
-  }, [entryId, haptic, navigation, result]);
+    navigation.navigate('AffirmationAlarm');
+  }, [addToWakeSequence, entryId, haptic, navigation, result]);
 
   const toggleLivingMirrorDream = useCallback((enabled) => {
     if (!entryId) return;
@@ -1447,6 +1463,8 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                       ) : null}
                       {RELEASE_FEATURES.affirmationAlarm ? (
                         <Pressable
+                          testID="add-to-wake-sonho"
+                          accessibilityRole="button"
                           onPress={useResultAsWake}
                           style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(accentAt(theme, 2), 0.12) }, pressed && styles.pressed]}
                         >
@@ -1455,6 +1473,11 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                         </Pressable>
                       ) : null}
                     </View>
+                    {wakeFullFor && wakeFullFor === entryId ? (
+                      <Text accessibilityLiveRegion="polite" style={[styles.warningText, { color: theme.warning }]}>
+                        {t(S.wakeFull)}
+                      </Text>
+                    ) : null}
                     <AiContentReportAction
                       contentType="dream"
                       contentRef={`dream:${entryId || 'current'}:${result.lang || lang}`}

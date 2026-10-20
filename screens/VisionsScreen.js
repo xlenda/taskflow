@@ -22,6 +22,7 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
+import AddToWakeButton from '../components/AddToWakeButton';
 import GradientCover from '../components/GradientCover';
 import SectionHeading from '../components/SectionHeading';
 
@@ -537,6 +538,14 @@ export default function VisionsScreen() {
               </TouchableOpacity>
             ) : null}
 
+            <AddToWakeButton
+              kind="vision"
+              id={visibleVision.id}
+              campaign="visao"
+              accent={visibleVision.accent}
+              style={styles.wakeButton}
+            />
+
             <View style={styles.dots}>
               {visions.map((vision, dotIndex) => (
                 <View
@@ -729,6 +738,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
+  wakeButton: { marginTop: 16 },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
   dot: { height: 7, borderRadius: 4, marginHorizontal: 3 },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 84, padding: 12, borderRadius: 20, marginBottom: 12 },

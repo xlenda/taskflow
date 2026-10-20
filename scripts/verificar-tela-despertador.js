@@ -126,16 +126,17 @@ const screen = read('screens/AffirmationAlarmScreen.js');
 const activation = screen.slice(screen.indexOf('const activate = useCallback'), screen.indexOf('const deactivate = useCallback'));
 const webSave = screen.slice(screen.indexOf('const saveWebChoice = useCallback'), screen.indexOf('const deactivate = useCallback'));
 const cancellation = screen.slice(screen.indexOf('const deactivate = useCallback'), screen.indexOf('const goBack = useCallback'));
-const selection = screen.slice(screen.indexOf('const choose = useCallback'), screen.indexOf('const chooseCustom = useCallback'));
+const selection = screen.slice(screen.indexOf('const saveSequence = useCallback'), screen.indexOf('const toggleDay = useCallback'));
 
 for (const label of ['Afirmação', 'Visão', 'Cena-Âncora', 'Sonho', 'Sua frase']) {
   assert.ok(screen.includes(label), `seletor do despertador perdeu o rótulo ${label}`);
 }
 
 assert.ok(
-  screen.includes('personalAlarmContentForState(state)') &&
-    screen.includes('resolvePersonalAlarmContent(state)'),
-  'lista e resolução compartilhadas de conteúdo pessoal estão ausentes'
+  screen.includes('wakeSequenceItemsForState(state, lang)') &&
+    screen.includes('wakeSequenceOptionsForState(state, lang)') &&
+    screen.includes('firstPhraseForAlarm(items, state)'),
+  'sequência, opções e frase do alarme precisam vir dos resolvedores compartilhados'
 );
 for (const source of ['affirmation', 'vision', 'anchor', 'dream', 'custom']) {
   assert.ok(screen.includes(`source === '${source}'`), `rótulo do conteúdo ${source} ausente`);
@@ -166,8 +167,15 @@ assert.ok(
     activation.includes('wakeSoundSource: response.soundSource'),
   'sucesso deve persistir exatamente frase, voz, horário e dias confirmados'
 );
-assert.ok(!selection.includes('saveMorningRitualPreferences'), 'escolher frase inativa deve alterar só o rascunho');
-assert.ok(!selection.includes('scheduleAffirmationAlarm'), 'escolher frase não pode pedir permissão');
+assert.ok(
+  selection.includes('saveMorningRitualPreferences(patch)') && selection.includes('addToWakeSequence('),
+  'montar a sequência salva pelo provider, que preserva a frase confirmada de um alarme ativo'
+);
+assert.ok(
+  !selection.includes('scheduleAffirmationAlarm') &&
+    !selection.includes('requestAffirmationAlarmAuthorization'),
+  'montar a sequência não pode pedir permissão nem mexer no alarme nativo'
+);
 assert.ok(
   cancellation.indexOf('await cancelAffirmationAlarm') < cancellation.indexOf('reminderEnabled: false'),
   'cancelamento também precisa ser confirmado antes de esconder o alarme'
@@ -245,8 +253,9 @@ assert.ok(morning.includes("mode = 'dreams'"), 'ritual deve abrir em modo soment
 assert.ok(morning.includes("const alarmVisible = mode === 'combined'"), 'modo legado precisa ficar explicitamente isolado');
 assert.ok(morning.includes('{alarmVisible ? ('), 'configuração antiga do alarme não foi escondida');
 assert.ok(
-  morning.includes("navigation.navigate('AffirmationAlarm', { preselectId: `ritual:${entryId}` })"),
-  'frase do sonho deve abrir o despertador sem agendar silenciosamente'
+  morning.includes("addToWakeSequence({ kind: 'affirmation', id: `ritual:${entryId}` })") &&
+    morning.includes("navigation.navigate('AffirmationAlarm')"),
+  'frase do sonho deve entrar no despertar e abri-lo sem agendar silenciosamente'
 );
 assert.ok(
   morning.includes('hasCurrentAdultCloudConsent(state.profile)') &&

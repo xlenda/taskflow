@@ -468,9 +468,9 @@ function auditNarrationSurfaces() {
     }
   }
 
+  // "Meu despertar" monta a sequência; ouvir acontece em "Ouvir agora" (tela WakeSequence).
   const requiredSurfaces = [
     'components/NarratorSelector.js',
-    'screens/AffirmationAlarmScreen.js',
     'screens/AffirmationsScreen.js',
     'screens/DailyRitualScreen.js',
     'screens/ManifestationScreen.js',

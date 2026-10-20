@@ -53,6 +53,11 @@ import {
 import { createSerialStorageWriter } from '../utils/serialStorageWriter';
 import { alarmWeekdaysOrDefault, normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 import {
+  appendToWakeSequence,
+  restoreWakeSequence,
+  ritualWithWakeSequence,
+} from '../utils/wakeSequence';
+import {
   bridgeDoneOn,
   buildEvolutionContinuity,
   emptyLivingMirror,
@@ -671,6 +676,9 @@ function mergeDefensivo(parsed) {
   }
   const savedRitual = st.morningRitual && typeof st.morningRitual === 'object' ? st.morningRitual : {};
   const defaultRitual = base.morningRitual;
+  // Older builds kept the person's own phrase only as the alarm phrase itself.
+  const legacyCustomWake =
+    savedRitual.wakeAffirmationId === 'custom' && !shortText(savedRitual.wakeCustomText, 280);
   st.morningRitual = {
     alarmStatus: 'native_integration_required',
     reminderEnabled: savedRitual.reminderEnabled === true,
@@ -687,6 +695,16 @@ function mergeDefensivo(parsed) {
       savedRitual.wakeSoundSource === 'neural_wav' || savedRitual.wakeSoundSource === 'local_speech'
         ? savedRitual.wakeSoundSource
         : null,
+    wakeCustomText: shortText(
+      legacyCustomWake ? savedRitual.wakeAffirmationText : savedRitual.wakeCustomText,
+      280
+    ),
+    wakeCustomLang:
+      (legacyCustomWake ? savedRitual.wakeAffirmationLang : savedRitual.wakeCustomLang) === 'en'
+        ? 'en'
+        : 'pt',
+    // Normalized below, once every content source of the alarm is known.
+    wakeSequence: savedRitual.wakeSequence,
     entries: (Array.isArray(savedRitual.entries) ? savedRitual.entries : [])
       .filter(
         (entry) =>
@@ -792,6 +810,11 @@ function mergeDefensivo(parsed) {
       st.morningRitual.wakeAffirmationLang = resolvedWake.lang;
     }
   }
+  // A single-item alarm becomes a one-item sequence; deleted content drops out.
+  st.morningRitual.wakeSequence = restoreWakeSequence(
+    st.morningRitual,
+    new Set(personalAlarmContentForState(st).map((item) => item.id))
+  );
   return st;
 }
 
@@ -3016,8 +3039,30 @@ export function AppProvider({ children }) {
             ? patch.wakeSoundSource
             : null;
       }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeCustomText')) {
+        next.wakeCustomText = shortText(patch.wakeCustomText, 280);
+        next.wakeCustomLang = patch.wakeCustomLang === 'en' ? 'en' : 'pt';
+      }
+      // The sequence decides the AlarmKit phrase, so it is applied last.
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeSequence')) {
+        return {
+          ...s,
+          morningRitual: ritualWithWakeSequence({ ...s, morningRitual: next }, patch.wakeSequence),
+        };
+      }
       return { ...s, morningRitual: next };
     });
+  }, []);
+
+  const addToWakeSequence = useCallback((entry) => {
+    // Synchronous answer for the screen; the updater checks again before writing.
+    const accepted = appendToWakeSequence(stateRef.current, entry);
+    if (!accepted.ok) return accepted;
+    setState((s) => {
+      const next = appendToWakeSequence(s, entry);
+      return next.ok ? { ...s, morningRitual: ritualWithWakeSequence(s, next.sequence) } : s;
+    });
+    return { ok: true };
   }, []);
 
   const saveDreamRitual = useCallback((data) => {
@@ -3585,6 +3630,7 @@ export function AppProvider({ children }) {
       savePracticePlan,
       completePracticePlanSlot,
       saveMorningRitualPreferences,
+      addToWakeSequence,
       saveDreamRitual,
       markDreamRitualPracticed,
       setDreamLivingMirrorConsent,
@@ -3635,6 +3681,7 @@ export function AppProvider({ children }) {
       savePracticePlan,
       completePracticePlanSlot,
       saveMorningRitualPreferences,
+      addToWakeSequence,
       saveDreamRitual,
       markDreamRitualPracticed,
       setDreamLivingMirrorConsent,

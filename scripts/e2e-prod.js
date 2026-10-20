@@ -532,18 +532,20 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
   await waitForText(page, 'Manifestar', 30000);
 
-  // A afirmação é o próprio despertador, não uma rotina depois de acordar.
-  // No web a pessoa salva a escolha e ouve a prévia, sem fingir que o
-  // navegador criou um alarme do sistema.
+  // O despertar é uma sequência montada pela pessoa. No web ela salva a
+  // escolha sem fingir que o navegador criou um alarme do sistema.
   await clickTestId(page, 'open-affirmation-alarm');
-  await waitForText(page, 'Meu despertador', 20000);
+  await waitForText(page, 'Meu despertar', 20000);
   await waitForText(page, 'No site você pode preparar e ouvir', 20000);
-  await clickTestId(page, 'open-alarm-affirmation-picker');
+  await clickTestId(page, 'wake-sequence-add');
+  await clickTestId(page, 'wake-picker-tab-affirmation');
   const customWake = 'Eu acordo confiante e pronta para viver um dia extraordinário.';
   await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { visible: true });
   await page.type('[data-testid="custom-alarm-affirmation"]', customWake, { delay: 12 });
   await clickTestId(page, 'save-custom-alarm-affirmation');
+  await clickTestId(page, 'wake-picker-close');
   await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { hidden: true, timeout: 15000 });
+  await page.waitForSelector('[data-testid="wake-sequence-item-0"]', { visible: true, timeout: 15000 });
   await page.waitForFunction((text) => document.body.innerText.includes(text), { timeout: 15000 }, customWake);
   await page.$eval('[data-testid="alarm-time-input"]', (input) => {
     input.focus();
