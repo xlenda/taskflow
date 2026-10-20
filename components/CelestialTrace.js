@@ -85,7 +85,7 @@ export default function CelestialTrace({ initialComplete = false, onComplete, on
     setProgress(next);
     if (next < 3) Haptics.selectionAsync().catch(() => {});
     // ainda dentro do toque: no iPhone a voz só começa no gesto, e o onComplete chega 440 ms depois, fora dele
-    if (next === 3 && onFinalStar) onFinalStar();
+    if (next === 3 && onFinalStar) { try { onFinalStar(); } catch (_error) { /* erro na voz não trava o ritual */ } }
 
     if (reducedMotion.current) {
       stars[index].setValue(1);

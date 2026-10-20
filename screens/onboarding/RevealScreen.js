@@ -122,10 +122,12 @@ export default function RevealScreen({ navigation, route }) {
   const visualPhase = m?.id ? personalVisualStatus[m.id]?.phase : null;
 
   // Cena viva: a imagem pessoal quando existe e carrega; senão a cena pronta escolhida pelas respostas.
-  // scene.source = a uri pessoal que está na tela (null = cena pronta): o rótulo segue a imagem mostrada.
+  // scene.source = a uri pessoal que está na tela (null = cena pronta): o rótulo segue a imagem mostrada, e só
+  // depois que ela foi pintada (shown) — na troca, o quadro antigo ainda fica na tela até a nova carregar.
   const personalUri = usePersonalVisual(m?.visual?.cacheKey);
   const [brokenUri, setBrokenUri] = useState(null);
   const [scene, setScene] = useState(null);
+  const [shown, setShown] = useState(null);
   const personalSource = personalUri !== brokenUri ? personalUri : null;
   const dreamLocation = state?.profile?.dreamLocation;
   // imagem que não carrega: a pessoal cai para a pronta; sem a pronta, fica só o texto da cena
@@ -318,10 +320,13 @@ export default function RevealScreen({ navigation, route }) {
                     mode="intro"
                     imageUri={scene.uri}
                     phrase={m.affirmation}
+                    onReady={() => setShown(scene.uri)}
                     onError={() => dropScene(scene.source)}
                     style={styles.cenaViva}
                   />
-                  <Text style={styles.sceneSource}>{t(scene.source ? S.personalScene : S.readyScene)}</Text>
+                  <Text style={styles.sceneSource}>
+                    {shown === scene.uri ? t(scene.source ? S.personalScene : S.readyScene) : null}
+                  </Text>
                 </>
               ) : null}
               {m.visual?.cacheKey ? null : visualPhase === 'pending' ? (
@@ -569,7 +574,8 @@ const styles = StyleSheet.create({
   },
   visualActionText: { color: ONB.badgeText, fontSize: 14, fontWeight: '700', marginLeft: 8 },
   cenaViva: { width: '100%', aspectRatio: 4 / 5, marginTop: 18, borderRadius: 22 },
-  sceneSource: { color: ONB.badgeText, fontSize: 12.5, lineHeight: 18, fontWeight: '600', marginTop: 8 },
+  // minHeight: a linha fica reservada enquanto o rótulo espera a imagem pintar (sem pulo de layout)
+  sceneSource: { color: ONB.badgeText, fontSize: 12.5, lineHeight: 18, minHeight: 18, fontWeight: '600', marginTop: 8 },
   scene: {
     backgroundColor: ONB.card,
     borderRadius: 22,

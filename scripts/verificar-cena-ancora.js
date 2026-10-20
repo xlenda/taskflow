@@ -379,16 +379,18 @@ assert.ok(
     revealSource.includes('height: bridgeInputHeight'),
   'ponte para hoje precisa crescer com o texto sem rolagem interna no iPhone'
 );
-// Rótulo honesto: diz de onde veio a imagem que está NA TELA (a pessoal só depois de carregada)
+// Rótulo honesto: só aparece depois que a imagem atual foi pintada (onReady da CenaViva) e diz de onde ela veio;
+// na troca pronta → pessoal (ou o contrário) ele não vale para o quadro antigo que ainda está na tela
 assert.ok(
   revealSource.includes("{ en: 'Created for you', pt: 'Criada para você' }") &&
     revealSource.includes("{ en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' }") &&
-    revealSource.includes('t(scene.source ? S.personalScene : S.readyScene)'),
+    revealSource.includes('onReady={() => setShown(scene.uri)}') &&
+    revealSource.includes('shown === scene.uri ? t(scene.source ? S.personalScene : S.readyScene) : null'),
   'cena viva da revelacao precisa do rotulo honesto da imagem mostrada'
 );
 
 // iPhone/Safari: a voz só pode começar dentro do toque. A 3ª estrela chama onFinalStar no próprio toque, sem
-// await nem timer antes, e só depois vem o onComplete (440 ms, fora do gesto).
+// await nem timer antes, e só depois vem o onComplete (440 ms, fora do gesto). Um erro nele não trava o ritual.
 const traceSource = fs.readFileSync(path.join(__dirname, '..', 'components', 'CelestialTrace.js'), 'utf8');
 const lightStarStart = traceSource.indexOf('const lightStar = (index) => {');
 const lightStar = traceSource.slice(lightStarStart, traceSource.indexOf('\n  };', lightStarStart));
@@ -397,7 +399,7 @@ assert.ok(
   /function CelestialTrace\(\{[^}]*\bonFinalStar\b[^}]*\}\)/.test(traceSource) &&
     lightStarStart >= 0 &&
     finalStarCall > 0 &&
-    /next === 3[^\n]*onFinalStar\(\)/.test(lightStar) &&
+    /next === 3 && onFinalStar\) \{ try \{ onFinalStar\(\); \} catch/.test(lightStar) &&
     finalStarCall < lightStar.indexOf('finish()') &&
     finalStarCall < lightStar.indexOf('setTimeout(finish, 440)') &&
     !/await|\.then\(|setTimeout/.test(lightStar.slice(0, finalStarCall)),

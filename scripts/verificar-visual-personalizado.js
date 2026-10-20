@@ -578,6 +578,18 @@ test('personalized visual is private, bounded, paid, and non-blocking', async (t
     assert.match(visionPlayer, /testID="vision-player-personal-visual-retry"/);
     assert.match(reveal, /testID="reveal-cena-viva"/);
     assert.match(reveal, /usePersonalVisual\(m\?\.visual\?\.cacheKey\)/);
+    // a uri pessoal que carregou é a mesma que vira a imagem da cena e a que decide o rótulo
+    assert.match(reveal, /const personalSource = personalUri !== brokenUri \? personalUri : null;/);
+    assert.match(
+      reveal,
+      /imageUriForCenaViva\(\{ personalUri: personalSource, readyScene \}\)\s*\.then\(\(uri\) => alive && setScene\(\{ uri, source: personalSource \}\)\)/,
+      'a imagem pessoal precisa chegar a cena com a mesma origem que o rotulo declara'
+    );
+    assert.match(
+      reveal,
+      /<CenaViva\s+testID="reveal-cena-viva"[\s\S]{0,120}imageUri=\{scene\.uri\}/,
+      'a cena viva da revelacao precisa mostrar a imagem resolvida'
+    );
     assert.match(
       reveal,
       /void ensurePersonalVisual\(m\.id\);[\s\S]{0,300}state\?\.profile\?\.cloudConsentVersion[\s\S]{0,180}state\?\.profile\?\.cloudPersonalization/,
