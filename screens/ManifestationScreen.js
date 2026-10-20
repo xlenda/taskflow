@@ -903,6 +903,8 @@ export default function ManifestationScreen() {
           <GradientCover
             testID="manifestation-personal-visual"
             visualKey={item.visual?.cacheKey}
+            live={isFocused}
+            sceneCategory={item.category}
             accent={item.accent}
             radius={28}
             style={styles.hero}

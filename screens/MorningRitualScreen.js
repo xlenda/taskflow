@@ -25,6 +25,7 @@ import { hasCurrentAdultCloudConsent } from '../constants/cloudConsent';
 import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
+import GradientCover from '../components/GradientCover';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -1419,6 +1420,17 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                       }, 60);
                     }}
                   >
+                    {/* O sonho ganha a cena viva: a imagem do sonho quando já existe, senão a cena pronta das
+                        respostas. Decorativa: o texto do sonho segue logo abaixo. */}
+                    <GradientCover
+                      testID="dream-cena-viva"
+                      live={focused}
+                      visualKey={currentDreamEntry?.visual?.cacheKey}
+                      accent={1}
+                      radius={18}
+                      decorative
+                      style={styles.dreamScene}
+                    />
                     <Text style={[styles.resultLabel, { color: theme.textMuted }]}>{t(S.meaningResult)}</Text>
                     <Text style={[styles.reflection, { color: theme.text }]}>{result.reflection}</Text>
                     {dreamCloudFallback ? (
@@ -1695,6 +1707,7 @@ const styles = StyleSheet.create({
   choiceText: { fontSize: 12, fontWeight: '700', letterSpacing: 0 },
   transformButton: { marginTop: 20 },
   resultPanel: { borderWidth: 1, borderRadius: 24, padding: 20, marginTop: 22 },
+  dreamScene: { aspectRatio: 16 / 9, marginBottom: 16 },
   resultLabel: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0 },
   reflection: { fontSize: 14, lineHeight: 21, fontWeight: '600', marginTop: 5, letterSpacing: 0 },
   cloudFallback: { borderRadius: 16, padding: 14, marginTop: 14 },

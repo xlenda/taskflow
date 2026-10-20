@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 import { Screen, Header, Card, EmptyState, Button } from '../ui/kit';
@@ -144,6 +144,7 @@ const INVITE_KEY = '@celeste_home_invite_dismissed_v1';
 export default function HomeScreen() {
   const th = useTheme();
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const compactHome = viewportWidth <= 340 && viewportHeight <= 520;
   const { state, loading, derived, addManifestation, togglePractice, saveProfile } = useApp();
@@ -548,31 +549,42 @@ export default function HomeScreen() {
               styles.anchorSceneCard,
               {
                 backgroundColor: th.surface,
-                borderColor: alpha(th.accent, 0.28),
+                borderColor: alpha('#FFFFFF', 0.28),
                 borderRadius: th.radius.card,
               },
             ]}
           >
+            {/* A Cena-Âncora viva atrás do cartão: a imagem dela ou a cena pronta das respostas, com o véu
+                que mantém o texto claro legível. Só anima com a Home na frente. */}
+            <GradientCover
+              live={isFocused}
+              visualKey={anchorScene.visual?.cacheKey}
+              sceneCategory={anchorScene.category}
+              accent={typeof anchorScene.accent === 'number' ? anchorScene.accent : 0}
+              radius={th.radius.card}
+              decorative
+              style={StyleSheet.absoluteFillObject}
+            />
             <View
               style={[
                 styles.anchorSceneIcon,
-                { backgroundColor: alpha(th.accent, 0.13), borderRadius: th.radius.md },
+                { backgroundColor: alpha('#FFFFFF', 0.22), borderRadius: th.radius.md },
               ]}
             >
-              <Ionicons name="sparkles" size={22} color={th.accent} />
+              <Ionicons name="sparkles" size={22} color="#FFFFFF" />
             </View>
             <View style={styles.anchorSceneCopy}>
-              <Text style={[th.typography.subhead, styles.anchorSceneTitle, { color: th.text }]}>
+              <Text style={[th.typography.subhead, styles.anchorSceneTitle, styles.onScene]}>
                 {t(S.anchorScene)}
               </Text>
               <Text
                 numberOfLines={1}
-                style={[th.typography.bodySm, styles.anchorSceneName, { color: th.textMuted }]}
+                style={[th.typography.bodySm, styles.anchorSceneName, styles.onSceneSoft]}
               >
                 {txt(anchorScene.title, lang) || t(S.anchorSceneHint)}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={th.textMuted} />
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
           </Card>
         ) : null}
 
@@ -930,6 +942,18 @@ const styles = StyleSheet.create({
   anchorSceneCopy: { flex: 1, minWidth: 0, marginHorizontal: 14 },
   anchorSceneTitle: { fontWeight: '800', letterSpacing: -0.2 },
   anchorSceneName: { marginTop: 3, letterSpacing: 0 },
+  onScene: {
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.38)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  onSceneSoft: {
+    color: 'rgba(255,255,255,0.86)',
+    textShadowColor: 'rgba(0,0,0,0.38)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   morningCard: {
     minHeight: 80,
     flexDirection: 'row',

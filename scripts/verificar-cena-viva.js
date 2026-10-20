@@ -1396,9 +1396,242 @@ async function main() {
     delete global.window;
   }
 
+  // 19) cena viva nos cards (GradientCover live): sem imagem pessoal, a cena pronta das respostas (lugar dos sonhos ×
+  //     categoria); com ela, a pessoal. A frase não vai para a cena (o texto do card é o único) e o véu fica por cima
+  //     da cena; qualquer erro da cena → a imagem parada até o card sair. Sem live, nada muda.
+  const sceneFiles = Object.fromEntries(
+    ['home', 'city', 'beach', 'countryside', 'abroad', 'traveling', 'neutral'].flatMap((place) =>
+      ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'].map((area) => [
+        `../assets/scenes/${place}-${area}.jpg`,
+        `${place}-${area}`,
+      ])
+    )
+  );
+  const appState = { profile: { dreamLocation: 'Na praia ou no litoral' } };
+  const personalFiles = {}; // visualKey → arquivo da imagem pessoal no aparelho
+  const esDefault = (value) => ({ __esModule: true, default: value });
+  // como o de verdade: no render em que a chave muda ainda devolve a imagem anterior; depois null; depois a nova
+  const personalVisualMock = {
+    usePersonalVisual(key) {
+      const [uri, setUri] = app.React.useState(null);
+      app.React.useEffect(() => {
+        let active = true;
+        setUri(null);
+        if (key && personalFiles[key]) Promise.resolve().then(() => active && setUri(personalFiles[key]));
+        return () => {
+          active = false;
+        };
+      }, [key]);
+      return uri;
+    },
+  };
+  // a cena pega a própria imagem pessoal (acquire por chave) e a libera quando sai; as chaves 'k-lenta*' só abrem
+  // quando o teste mandar (openVisual)
+  const releasedVisuals = [];
+  const slowVisuals = {};
+  const openVisual = (key) => slowVisuals[key]({ uri: `file:///document/${key}.jpg`, release: () => releasedVisuals.push(key) });
+  const visualStorageMock = {
+    acquirePersonalVisual: async (key) =>
+      key.startsWith('k-lenta')
+        ? new Promise((resolve) => {
+            slowVisuals[key] = resolve;
+          })
+        : personalFiles[key]
+        ? { uri: personalFiles[key], release: () => releasedVisuals.push(key) }
+        : null,
+  };
+  const coverMocks = {
+    ...mocks,
+    ...sceneFiles,
+    'expo-image': { Image: 'Image' },
+    'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
+    '@expo/vector-icons': { Ionicons: 'Ionicons' },
+    '../ui/theme': { useTheme: () => ({ accents: ['#B85FC8', '#5F8BC8', '#C8A25F'], text: '#111', textMuted: '#555' }) },
+    '../context/AppContext': { useApp: () => ({ state: appState }) },
+    '../utils/usePersonalVisual': personalVisualMock,
+    '../services/personalVisualStorage': visualStorageMock,
+    './cenaViva/CenaViva': esDefault('CenaViva'),
+    './NarratedScene': esDefault('NarratedScene'),
+  };
+  const { default: GradientCover } = loadWith('components/GradientCover.js', coverMocks);
+  const coverOf = (props) => app.mount(GradientCover, { accent: 0, ...props });
+  const typed = (type) => (cover) => cover.where((node) => node.type === type);
+  const liveOf = typed('CenaViva');
+  const settle = async (cover, check, label) =>
+    until(() => {
+      cover.flush();
+      return check(cover);
+    }, label);
+  // camadas do card na ordem de pintura (a de baixo primeiro)
+  const layers = (cover) => [].concat(cover.tree.props.children).flat(Infinity).filter(Boolean);
+  const veilAt = (cover) =>
+    layers(cover).findIndex((layer) =>
+      [].concat(layer.props && layer.props.children).flat(Infinity).some((child) => {
+        const style = child && child.props ? flat(child.props.style) : {};
+        return style.backgroundColor === 'rgba(5,12,22,0.34)';
+      })
+    );
+
+  // leituras da imagem para a WebView (no aparelho cada uma é um base64 de até ~3,4 MB)
+  const sceneReads = [];
+  const realBase64 = DeviceFile.prototype.base64;
+  let finishSlowRead = null; // a leitura de 'leitura-lenta' só termina quando o teste mandar
+  DeviceFile.prototype.base64 = function spiedBase64() {
+    sceneReads.push(this.uri);
+    if (this.uri.includes('leitura-lenta')) {
+      return new Promise((resolve) => {
+        finishSlowRead = () => resolve(`b64(${this.uri})`);
+      });
+    }
+    return realBase64.call(this);
+  };
+  personalFiles['k-still'] = 'file:///document/still.jpg';
+  const requestsBefore = assetRequests.length;
+  const staticCover = coverOf({ visualKey: 'k-still', sceneCategory: 'Love' });
+  await tick();
+  staticCover.flush();
+  assert.strictEqual(liveOf(staticCover), null, 'sem live: sem cena viva');
+  assert.strictEqual(typed('Image')(staticCover).props.source.uri, 'file:///document/still.jpg', 'sem live: a imagem parada');
+  assert.ok(assetRequests.length === requestsBefore && sceneReads.length === 0, 'sem live: a imagem da cena nem é preparada');
+  staticCover.unmount();
+
+  const readyCover = coverOf({ live: true, sceneCategory: 'Love', children: 'texto do card' });
+  await settle(readyCover, liveOf, 'cena pronta no card');
+  const readyLive = liveOf(readyCover);
+  assert.strictEqual(
+    readyLive.props.imageUri,
+    'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)',
+    'sem imagem pessoal: a cena pronta das respostas (praia × Amor), em data URI para a WebView'
+  );
+  assert.ok(readyLive.props.phrase == null && readyLive.props.caption == null, 'a frase não vai para a cena: o texto do card é o único');
+  assert.ok(veilAt(readyCover) > layers(readyCover).indexOf(readyLive), 'o véu do card fica por cima da cena viva');
+  const liveStyle = flat(readyLive.props.style);
+  assert.ok(
+    liveStyle.position === 'absolute' && liveStyle.width === '100%' && liveStyle.height === '100%',
+    'a cena cobre o card inteiro (largura e altura explícitas: o 4:5 do CenaViva não vale aqui)'
+  );
+  assert.strictEqual(liveStyle.backgroundColor, 'transparent', 'até pintar, o card mostra o fundo de sempre');
+  readyLive.props.onError('webview_gone');
+  readyCover.flush();
+  assert.strictEqual(liveOf(readyCover), null, 'erro da cena: volta à imagem parada');
+  readyCover.update({ live: false });
+  readyCover.update({ live: true });
+  await tick();
+  readyCover.flush();
+  assert.strictEqual(liveOf(readyCover), null, 'depois do erro, o card não tenta de novo enquanto existir');
+  readyCover.unmount();
+
+  personalFiles['k-live'] = 'file:///document/live.jpg';
+  const personalCover = coverOf({ live: true, visualKey: 'k-live', sceneCategory: 'Love' });
+  await settle(personalCover, liveOf, 'cena pessoal no card');
+  assert.strictEqual(
+    liveOf(personalCover).props.imageUri,
+    'data:image/jpeg;base64,b64(file:///document/live.jpg)',
+    'com imagem pessoal: a cena viva usa a dela'
+  );
+  personalCover.update({ live: false });
+  assert.strictEqual(liveOf(personalCover), null, 'o card perdeu o foco: a cena sai');
+  assert.strictEqual(typed('Image')(personalCover).props.source.uri, 'file:///document/live.jpg', 'e fica a imagem parada');
+  personalCover.unmount();
+  // imagem pessoal ainda abrindo: espera por ela (sem piscar a cena pronta); quando abre, é ela
+  const slowCover = coverOf({ live: true, visualKey: 'k-lenta', sceneCategory: 'Love' });
+  for (let i = 0; i < 5; i++) await tick();
+  slowCover.flush();
+  assert.strictEqual(liveOf(slowCover), null, 'imagem pessoal abrindo: sem cena pronta por cima');
+  openVisual('k-lenta');
+  await settle(slowCover, liveOf, 'cena da imagem que abriu devagar');
+  assert.strictEqual(liveOf(slowCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/k-lenta.jpg)');
+  slowCover.unmount();
+  assert.ok(releasedVisuals.includes('k-lenta'), 'o card saiu: a imagem que a cena pegou é liberada');
+  // a imagem da chave anterior chegou atrasada (o card já trocou): não toma o lugar da atual e é liberada
+  personalFiles['k-nova'] = 'file:///document/nova.jpg';
+  const lateCover = coverOf({ live: true, visualKey: 'k-lenta-velha', sceneCategory: 'Love' });
+  await tick();
+  lateCover.flush();
+  lateCover.update({ visualKey: 'k-nova' });
+  await settle(lateCover, liveOf, 'cena da chave nova');
+  openVisual('k-lenta-velha');
+  for (let i = 0; i < 5; i++) await tick();
+  lateCover.flush();
+  assert.strictEqual(liveOf(lateCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'a atrasada não volta');
+  assert.ok(releasedVisuals.includes('k-lenta-velha'), 'a imagem atrasada é liberada na hora');
+  // a leitura da imagem anterior terminou depois da troca: também não volta
+  personalFiles['k-leitura'] = 'file:///document/leitura-lenta.jpg';
+  lateCover.update({ visualKey: 'k-leitura' });
+  await until(() => !!finishSlowRead, 'leitura lenta começou');
+  lateCover.update({ visualKey: 'k-nova' });
+  await settle(lateCover, liveOf, 'cena da chave nova de novo');
+  finishSlowRead();
+  for (let i = 0; i < 5; i++) await tick();
+  lateCover.flush();
+  assert.strictEqual(liveOf(lateCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///document/nova.jpg)', 'leitura atrasada não volta');
+  lateCover.unmount();
+  // a chave existe mas o arquivo sumiu (o navegador limpou o armazenamento): também é "sem imagem pessoal"
+  const missingCover = coverOf({ live: true, visualKey: 'k-sumiu', sceneCategory: 'Love' });
+  await settle(missingCover, liveOf, 'cena pronta no lugar da imagem que sumiu');
+  assert.strictEqual(liveOf(missingCover).props.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)');
+  missingCover.unmount();
+  // o card da vez trocou (chave e categoria juntas): só a imagem da chave atual vira cena; a anterior é liberada
+  personalFiles['k-a'] = 'file:///document/a.jpg';
+  personalFiles['k-b'] = 'file:///document/b.jpg';
+  const swapCover = coverOf({ live: true, visualKey: 'k-a', sceneCategory: 'Love' });
+  const showing = (name) => (cover) => liveOf(cover) && liveOf(cover).props.imageUri.includes(name);
+  await settle(swapCover, showing('a.jpg'), 'cena da 1ª afirmação');
+  sceneReads.length = 0;
+  swapCover.update({ visualKey: 'k-b', sceneCategory: 'Wealth' });
+  await settle(swapCover, showing('b.jpg'), 'cena da 2ª afirmação');
+  assert.deepStrictEqual(sceneReads, ['file:///document/b.jpg'], 'só a imagem da afirmação atual vira cena');
+  assert.ok(releasedVisuals.includes('k-a') && !releasedVisuals.includes('k-b'), 'a imagem anterior é liberada, a atual não');
+  swapCover.unmount();
+  DeviceFile.prototype.base64 = realBase64;
+
+  // o card da afirmação: live sem imagem pessoal também vira capa (texto claro sobre a cena)
+  const cardMocks = {
+    ...coverMocks,
+    'react-native': { ...RN, ActivityIndicator: 'ActivityIndicator', TouchableOpacity: 'TouchableOpacity' },
+    '../ui/theme': coverMocks['../ui/theme'],
+    '../utils/useT': { useT: () => ({ t: (entry) => entry.pt }) },
+    './GradientCover': esDefault('GradientCover'),
+  };
+  const { default: AffirmationCard } = loadWith('components/AffirmationCard.js', cardMocks);
+  const affirmationCard = app.mount(AffirmationCard, {
+    affirmation: { text: 'Eu escolho a paz.' },
+    live: true,
+    sceneCategory: 'Peace',
+  });
+  const cardCover = affirmationCard.find('GradientCover');
+  assert.ok(cardCover && cardCover.props.live === true, 'afirmação em foco: capa com cena viva mesmo sem imagem pessoal');
+  assert.strictEqual(cardCover.props.sceneCategory, 'Peace', 'a categoria escolhe a cena pronta');
+  assert.strictEqual(app.mount(AffirmationCard, { affirmation: { text: 'aa' } }).find('GradientCover'), null, 'sem live e sem imagem: card liso de sempre');
+
+  // um card animado por vez: só o card em foco recebe live (no app cada cena é uma WebView de até ~3,4 MB)
+  const screen = (name) => fs.readFileSync(path.join(root, 'screens', name), 'utf8');
+  const liveProps = (source) => source.match(/\slive=\{[^}]*\}/g) || [];
+  const cardScreens = {
+    'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused\}/,
+    'VisionsScreen.js': /<GradientCover[^>]*?\slive=\{isFocused && vision\.id === liveVisionId\}/,
+    'HomeScreen.js': /testID="open-anchor-scene"[\s\S]{0,700}<GradientCover[^>]*?\slive=\{isFocused\}/,
+    'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused\}/,
+    'PracticeRitualScreen.js': /<GradientCover\s+testID="practice-vision-visual"[^>]*?\slive=\{isFocused\}/,
+    'MorningRitualScreen.js': /<GradientCover\s+testID="dream-cena-viva"[^>]*?\slive=\{focused\}/,
+  };
+  for (const [name, pattern] of Object.entries(cardScreens)) {
+    const source = screen(name);
+    assert.match(source, pattern, `${name}: só o card em foco recebe live`);
+    assert.strictEqual(liveProps(source).length, 1, `${name}: um único card com live`);
+  }
+  const visionsSource = screen('VisionsScreen.js');
+  assert.match(
+    visionsSource,
+    /setTimeout\(\(\) => setLiveVisionId\(visibleVision\?\.id \|\| null\), \d+\)/,
+    'Visões: a cena segue o card em foco só depois que o deslize assenta (sem abrir uma WebView por card que passa)'
+  );
+  const affirmationCardSource = fs.readFileSync(path.join(root, 'components', 'AffirmationCard.js'), 'utf8');
+  assert.match(affirmationCardSource, /<GradientCover[^>]*?\slive=\{live\}/, 'AffirmationCard repassa live para a capa');
+
   console.log(
     'Cena viva aprovada: mime, pedaços, intro estrelas → sol, partículas semeadas, legenda, 9:16, fonte da WebView, ' +
-      'componentes do site e do app, gravador e imagem da cena'
+      'componentes do site e do app, gravador, imagem da cena e cena viva nos cards'
   );
 }
 

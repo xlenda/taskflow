@@ -743,6 +743,8 @@ export default function PracticeRitualScreen() {
       <Text style={[styles.stepLabel, { color: theme.accent }]}>{t(S.visionLabel)}</Text>
       <GradientCover
         testID="practice-vision-visual"
+        live={isFocused}
+        sceneCategory={vision?.category}
         accent={vision?.accent || 0}
         visualKey={vision?.visualKey}
         icon="images-outline"

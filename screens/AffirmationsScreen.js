@@ -602,6 +602,9 @@ export default function AffirmationsScreen() {
           <>
             <AffirmationCard
               affirmation={currentLoc}
+              // só o card da vez existe: ele leva a cena viva enquanto a aba está aberta
+              live={isFocused}
+              sceneCategory={current.category}
               categoryLabel={currentCategoryLabel}
               accent={meta.accent}
               visualKey={current.visualKey}

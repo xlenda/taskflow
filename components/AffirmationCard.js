@@ -29,11 +29,14 @@ export default function AffirmationCard({
   onToggleSpeak,
   onShare,
   onRetryVisual,
+  live = false,
+  sceneCategory,
 }) {
   const theme = useTheme();
   const { t } = useT();
   const color = accentAt(theme, accent);
-  const visual = !!visualKey;
+  // em foco (live) o card vira capa com a cena viva mesmo sem imagem pessoal: a cena pronta das respostas
+  const visual = !!visualKey || live;
   const foreground = visual ? '#FFFFFF' : theme.text;
   const mutedForeground = visual ? 'rgba(255,255,255,0.82)' : theme.textMuted;
   const visualPhase = visualStatus && visualStatus.phase;
@@ -149,7 +152,14 @@ export default function AffirmationCard({
 
   if (visual) {
     return (
-      <GradientCover visualKey={visualKey} accent={accent} radius={22} style={surfaceStyle}>
+      <GradientCover
+        visualKey={visualKey}
+        accent={accent}
+        radius={22}
+        style={surfaceStyle}
+        live={live}
+        sceneCategory={sceneCategory}
+      >
         {content}
       </GradientCover>
     );

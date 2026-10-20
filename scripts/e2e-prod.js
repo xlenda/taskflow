@@ -880,8 +880,59 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await waitAndClick(page, 'Afirmações');
   await waitForText(page, 'Dos seus sonhos');
   await waitForAffirmationInDeck(page, personalDeck.affirmations[0].text);
+
+  // Cena viva nos cards, um animado por vez: o card da vez (e a visão em foco) anima; os outros ficam parados.
+  // Sem nuvem não existe imagem pessoal, então a cena pintada é a cena pronta das respostas (praia).
+  const personalVisuals = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    return (saved.manifestations || []).reduce(
+      (total, item) => total + Object.keys(item.journeyVisuals || {}).length + (item.visual ? 1 : 0),
+      0
+    );
+  });
+  if (personalVisuals !== 0) throw new Error(`E2E sem nuvem gerou imagem pessoal: ${personalVisuals}`);
+  const cardScenes = () =>
+    page.$$eval('[data-testid="cena-viva"]', (nodes) =>
+      nodes.map((node) => {
+        const canvas = node.querySelector('canvas');
+        const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+        const colors = new Set();
+        for (let i = 0; i < pixels.length && colors.size < 40; i += 4 * 997) {
+          colors.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]}`);
+        }
+        return { active: node.getAttribute('data-active') === 'true', painted: colors.size >= 20 };
+      })
+    );
+  const assertOneLiveCard = async (where) => {
+    await page.waitForSelector('[data-testid="cena-viva"][data-active="true"]', { visible: true, timeout: 20000 });
+    const scenes = await cardScenes();
+    const live = scenes.filter((scene) => scene.active);
+    if (live.length !== 1 || !live[0].painted) {
+      throw new Error(`${where}: esperava 1 card com a cena pronta animando, veio ${JSON.stringify(scenes)}`);
+    }
+    console.log(`  [cena viva ok] ${where}: 1 card animado de ${scenes.length} cena(s), com a cena pronta pintada`);
+  };
+  await assertOneLiveCard('Afirmações');
   await waitAndClick(page, 'Dos seus sonhos');
   await waitForText(page, personalDeck.dreamAffirmation, 20000);
+  await assertOneLiveCard('Afirmações (sonho)');
+  await waitAndClick(page, 'Visões');
+  await waitForText(page, 'Deslize até a visão', 20000);
+  await assertOneLiveCard('Visões');
+  // "Reduzir movimento": imagem parada, nenhuma cena animando
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="cena-viva"][data-active="true"]'),
+    { timeout: 10000, polling: 100 }
+  );
+  await sleep(600);
+  const stillScenes = await cardScenes();
+  if (!stillScenes.length || stillScenes.some((scene) => scene.active)) {
+    throw new Error(`Reduzir movimento deixou cena animando: ${JSON.stringify(stillScenes)}`);
+  }
+  console.log(`  [cena viva ok] reduzir movimento: ${stillScenes.length} cena(s) parada(s), nenhuma animando`);
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+  await assertOneLiveCard('Visões (movimento de volta)');
   await waitAndClick(page, 'Manifestar');
   await waitForHome(page, 20000);
 

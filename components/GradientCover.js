@@ -1,15 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme';
 import { gradientPair, alpha } from '../utils/colors';
+import { useCenaVivaImage } from '../utils/useCenaVivaImage';
 import { usePersonalVisual } from '../utils/usePersonalVisual';
+import CenaViva from './cenaViva/CenaViva';
 
 /**
  * Soft dream-like gradient block used as the visual "photo" for visions
  * and manifestations. Fully theme aware.
+ *
+ * live: a cena viva no lugar da imagem parada — a pessoal, ou a cena pronta de
+ * `sceneCategory` para quem ainda não tem. Só o card em foco recebe live (no app
+ * cada cena é uma WebView). Sem frase na cena: o texto do card continua sendo o
+ * único texto, com o véu por cima. Qualquer erro da cena = a imagem parada até o
+ * card sair.
  */
 export default function GradientCover({
   accent = 0,
@@ -24,10 +32,17 @@ export default function GradientCover({
   onVisualReady,
   onVisualError,
   decorative = false,
+  live = false,
+  sceneCategory,
 }) {
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
   const personalVisualUri = usePersonalVisual(visualKey);
+  const [liveFailed, setLiveFailed] = useState(false);
+  const wantsScene = live && !liveFailed;
+  const sceneUri = useCenaVivaImage({ visualKey, category: sceneCategory, enabled: wantsScene });
+  const scene = wantsScene ? sceneUri : null;
+  const imaged = !!personalVisualUri || !!scene;
   // O 3º stop era branco a 28% e derrubava o contraste do texto branco por cima
   // para 1,06:1 — o título e a duração da visão sumiam no sol (auditoria WCAG,
   // 10/08). Agora o gradiente fecha na própria cor de destaque, mantendo o ar
@@ -55,18 +70,19 @@ export default function GradientCover({
           style={StyleSheet.absoluteFillObject}
         />
       ) : null}
+      {scene ? <CenaViva imageUri={scene} style={styles.scene} onError={() => setLiveFailed(true)} /> : null}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
         <View
           style={[
             StyleSheet.absoluteFillObject,
             {
-              backgroundColor: personalVisualUri
+              backgroundColor: imaged
                 ? 'rgba(5,12,22,0.34)'
                 : 'rgba(20,30,50,0.22)',
             },
           ]}
         />
-        {personalVisualUri ? (
+        {imaged ? (
           <LinearGradient
             colors={[
               'rgba(4,10,18,0.10)',
@@ -97,6 +113,9 @@ export default function GradientCover({
 }
 
 const styles = StyleSheet.create({
+  // cobre o card inteiro: largura e altura explícitas vencem o 4:5 próprio do CenaViva; transparente até pintar
+  // (por baixo continua a imagem parada ou o gradiente)
+  scene: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'transparent' },
   iconWrap: {
     position: 'absolute',
     top: 10,

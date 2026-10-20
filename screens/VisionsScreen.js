@@ -204,6 +204,14 @@ export default function VisionsScreen() {
     visibleVision?.visualBrief,
   ]);
 
+  // Um card animado por vez: a cena viva segue o card em foco depois que o deslize assenta — no app cada cena é
+  // uma WebView, e abrir uma por card que passa no meio do gesto pesa.
+  const [liveVisionId, setLiveVisionId] = useState(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setLiveVisionId(visibleVision?.id || null), 300);
+    return () => clearTimeout(timer);
+  }, [visibleVision?.id]);
+
   useEffect(() => {
     if (!isFocused && activeVisionId) {
       stopOwnedNarration();
@@ -382,6 +390,8 @@ export default function VisionsScreen() {
                     <GradientCover
                       accent={vision.accent}
                       visualKey={vision.visualKey}
+                      live={isFocused && vision.id === liveVisionId}
+                      sceneCategory={vision.category}
                       radius={28}
                       style={[styles.slide, { height: CARD_H }]}
                     >
