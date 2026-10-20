@@ -8,6 +8,7 @@ import { gradientPair, alpha } from '../utils/colors';
 import { useCenaVivaImage } from '../utils/useCenaVivaImage';
 import { usePersonalVisual } from '../utils/usePersonalVisual';
 import CenaViva from './cenaViva/CenaViva';
+import NarratedScene from './NarratedScene';
 
 /**
  * Soft dream-like gradient block used as the visual "photo" for visions
@@ -18,6 +19,10 @@ import CenaViva from './cenaViva/CenaViva';
  * cada cena é uma WebView). Sem frase na cena: o texto do card continua sendo o
  * único texto, com o véu por cima. Qualquer erro da cena = a imagem parada até o
  * card sair.
+ *
+ * narration { text, progress, active }: a voz tocando — a cena com as palavras
+ * surgindo, por cima do véu (ele escureceria a legenda), no lugar da cena do
+ * card. Quem chama esconde o próprio texto dessa fala enquanto ela toca.
  */
 export default function GradientCover({
   accent = 0,
@@ -34,12 +39,14 @@ export default function GradientCover({
   decorative = false,
   live = false,
   sceneCategory,
+  narration,
 }) {
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
   const personalVisualUri = usePersonalVisual(visualKey);
   const [liveFailed, setLiveFailed] = useState(false);
-  const wantsScene = live && !liveFailed;
+  // a narração sempre mostra a cena: se ela falhar, o próprio CenaViva deixa as palavras em texto
+  const wantsScene = (live && !liveFailed) || !!narration;
   const sceneUri = useCenaVivaImage({ visualKey, category: sceneCategory, enabled: wantsScene });
   const scene = wantsScene ? sceneUri : null;
   const imaged = !!personalVisualUri || !!scene;
@@ -70,7 +77,9 @@ export default function GradientCover({
           style={StyleSheet.absoluteFillObject}
         />
       ) : null}
-      {scene ? <CenaViva imageUri={scene} style={styles.scene} onError={() => setLiveFailed(true)} /> : null}
+      {scene && !narration ? (
+        <CenaViva imageUri={scene} style={styles.scene} onError={() => setLiveFailed(true)} />
+      ) : null}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
         <View
           style={[
@@ -96,6 +105,15 @@ export default function GradientCover({
           />
         ) : null}
       </View>
+      {scene && narration ? (
+        <NarratedScene
+          imageUri={scene}
+          text={narration.text}
+          progress={narration.progress}
+          active={narration.active}
+          style={StyleSheet.absoluteFillObject}
+        />
+      ) : null}
       {icon ? (
         // Selo puramente decorativo: fica fora do leitor de tela para não ler o glifo.
         <View

@@ -16,11 +16,17 @@ import * as Speech from 'expo-speech';
 
 import CelestialTrace from '../components/CelestialTrace';
 import PrimaryButton from '../components/PrimaryButton';
-import CenaViva from '../components/cenaViva/CenaViva';
+import NarratedScene from '../components/NarratedScene';
 import { imageUriForCenaViva } from '../components/cenaViva/imageSource';
 import { SERIF } from '../constants/brand';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../ui/theme';
+import {
+  captionProgressFromBoundary,
+  captionProgressFromNarration,
+  captionProgressFromTime,
+  wordLengthAt,
+} from '../utils/captionProgress';
 import { accentAt, alpha } from '../utils/colors';
 import { pickReadyScene } from '../utils/readyScene';
 import { hasUnifiedCloudMediaConsent } from '../utils/useCloudMediaConsent';
@@ -103,6 +109,8 @@ export default function WakeSequenceScreen() {
   const [voiceFailed, setVoiceFailed] = useState(false);
   // Paused mid-item with a voice that cannot resume: Continue replays the item, so it says so.
   const [restartOnResume, setRestartOnResume] = useState(false);
+  // How much of the item the voice has said (0..1): the words of the scene follow it.
+  const [spoken, setSpoken] = useState(0);
 
   const latest = useRef(null);
   latest.current = { items, narration, cloudVoice };
@@ -116,6 +124,8 @@ export default function WakeSequenceScreen() {
   const deviceActiveRef = useRef(false);
   const gapRef = useRef(null);
   const watchdogRef = useRef(null);
+  const deviceStartRef = useRef(null); // { epoch, at, text }: when the device voice began this item
+  const deviceWordsRef = useRef(null); // the epoch whose device voice reports each word (onBoundary)
 
   // Stops whatever this screen started; every pending callback becomes stale.
   function silence() {
@@ -133,6 +143,7 @@ export default function WakeSequenceScreen() {
 
   function itemFinished(epoch) {
     if (epochRef.current !== epoch) return;
+    setSpoken(1); // the whole text stays on the scene during the breath
     const next = positionRef.current + 1;
     if (next >= latest.current.items.length) {
       silence();
@@ -160,6 +171,7 @@ export default function WakeSequenceScreen() {
       return;
     }
     deviceActiveRef.current = true;
+    setSpoken(0); // the device voice always starts the item from its first word
     if (Platform.OS === 'web') {
       // O Safari do iPhone descarta calado a fala pedida fora do toque: sem início, oferece tocar de novo.
       watchdogRef.current = setTimeout(() => {
@@ -172,7 +184,11 @@ export default function WakeSequenceScreen() {
       Speech.speak(item.text, {
         language: item.lang === 'en' ? 'en-US' : 'pt-BR',
         rate: 0.9,
-        onStart: () => clearTimeout(watchdogRef.current),
+        onStart: () => {
+          clearTimeout(watchdogRef.current);
+          deviceStartRef.current = { epoch, at: Date.now(), text: item.text };
+        },
+        onBoundary: (event) => wordSpoken(epoch, item.text, event),
         onDone: () => {
           if (epochRef.current !== epoch) return;
           deviceActiveRef.current = false;
@@ -183,6 +199,17 @@ export default function WakeSequenceScreen() {
     } catch (_error) {
       voiceDidNotPlay(epoch);
     }
+  }
+
+  // The device voice is about to say the word at charIndex: the scene shows up to the END of that word (the
+  // renderer reveals a word once the progress passes its first letter). Without charLength (Safari) the word runs
+  // to the next space; a browser 'sentence' boundary names no word and would run ahead of the voice.
+  function wordSpoken(epoch, text, event) {
+    if (epochRef.current !== epoch || !event || event.name === 'sentence') return;
+    const charIndex = Number(event.charIndex) || 0;
+    const charLength = Number(event.charLength) || wordLengthAt(text, charIndex);
+    deviceWordsRef.current = epoch;
+    setSpoken(captionProgressFromBoundary({ charIndex, charLength, textLength: text.length }));
   }
 
   // The Celeste voice did not start, or broke midway: the device voice takes the rest.
@@ -210,6 +237,7 @@ export default function WakeSequenceScreen() {
     setIndex(position);
     setPhase('playing');
     setVoiceFailed(false);
+    setSpoken(0);
     if (latest.current.cloudVoice && !cloudBrokenRef.current) {
       // Silent utterance in this same tap: unlocks the device voice so a later
       // fallback can speak on the iPhone without asking for another tap.
@@ -295,6 +323,26 @@ export default function WakeSequenceScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [narration.lastCompletedPlaybackId, narration.phase, narration.activePlaybackId]);
+
+  // The words on the scene follow the voice: the Celeste voice by its narration progress; the device voice by
+  // its words (wordSpoken) or, on a device that never reports them, by time since it began (14 letters/s).
+  useEffect(() => {
+    const playbackId = cloudIdRef.current;
+    if (playbackId && narration.activePlaybackId === playbackId) {
+      setSpoken(captionProgressFromNarration({ progress: narration.progress }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narration.progress, narration.activePlaybackId]);
+  useEffect(() => {
+    if (phase !== 'playing') return undefined;
+    const timer = setInterval(() => {
+      const start = deviceStartRef.current;
+      const epoch = epochRef.current;
+      if (!start || start.epoch !== epoch || deviceWordsRef.current === epoch) return;
+      setSpoken(captionProgressFromTime({ elapsedMs: Date.now() - start.at, text: start.text }));
+    }, 250);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   // Leaving the screen or the app stops the voice (no background audio in this version).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,12 +470,15 @@ export default function WakeSequenceScreen() {
           <>
             <Text style={[styles.itemTitle, { color: theme.text }]}>{current.title}</Text>
             {currentScene ? (
-              <CenaViva
-                testID="wake-cena-viva"
+              // The scene tells the story word by word with the voice. If the device cannot keep the live
+              // scene (webview_gone), CenaViva leaves the words as text; only a broken image is swapped.
+              <NarratedScene
                 imageUri={currentScene.uri}
+                text={current.text}
+                progress={spoken}
                 active={phase === 'playing'}
-                onReady={() => setShown(currentScene.uri)}
-                onError={() => dropScene(currentScene.source)}
+                onReady={(uri) => setShown(uri)}
+                onError={(code) => code === 'image_error' && dropScene(currentScene.source)}
                 style={[styles.scene, sceneSize]}
               />
             ) : (
@@ -468,7 +519,8 @@ export default function WakeSequenceScreen() {
             </Pressable>
           ))}
         </View>
-        {current.kind === 'affirmation' ? null : (
+        {/* While the voice tells the story on the scene, the words are there; the text returns when it pauses. */}
+        {current.kind === 'affirmation' || (currentScene && phase === 'playing') ? null : (
           <Text selectable style={[styles.story, { color: theme.text }]}>{current.text}</Text>
         )}
       </View>

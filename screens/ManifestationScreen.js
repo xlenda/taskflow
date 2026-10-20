@@ -26,6 +26,7 @@ import { accentAt, alpha } from '../utils/colors';
 import { todayISO, lastNDays } from '../utils/date';
 import { bridgeDoneOn, normalizeLivingMirror } from '../utils/livingMirror';
 import { alarmContentBelongsToManifestation } from '../utils/personalAffirmations';
+import { captionProgressFromNarration } from '../utils/captionProgress';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
@@ -290,11 +291,15 @@ export default function ManifestationScreen() {
   const playing = ownsPlayback && (narrationLoading || narrationPlaying);
   const narrationActive =
     ownsPlayback && (narrationLoading || narrationPlaying || narrationPaused);
+  // a voz desta manifestação (carregando, tocando, pausada ou pronta): a capa vira a cena com as palavras
+  const narrating = ownsPlayback;
   const audioOn = personalNarrationAvailable && lines.length > 0;
 
   const [audioFailed, setAudioFailed] = useState(false);
   const [position, setPosition] = useState(0);
   const [lineIndex, setLineIndex] = useState(0);
+  // de qual frase a narração atual começou: a legenda é o texto que a voz está dizendo
+  const [spokenFrom, setSpokenFrom] = useState(0);
   const lineRef = useRef(0);
   const duration = estimated;
   // Id lido no momento de finalizar, sem depender do closure de uma rota antiga.
@@ -522,6 +527,7 @@ export default function ManifestationScreen() {
     manualStopRef.current = false;
     playbackStartedRef.current = false;
     ownsAttemptRef.current = true;
+    setSpokenFrom(at);
     lineRef.current = at;
     setLineIndex(at);
     setPosition(playbackOffsetRatioRef.current * duration);
@@ -905,11 +911,27 @@ export default function ManifestationScreen() {
             visualKey={item.visual?.cacheKey}
             live={isFocused}
             sceneCategory={item.category}
+            narration={
+              narrating
+                ? {
+                    text: lines.slice(spokenFrom).join(' '),
+                    progress: captionProgressFromNarration({ progress: narrationProgress }),
+                    active: narrationPlaying,
+                  }
+                : null
+            }
             accent={item.accent}
             radius={28}
             style={styles.hero}
           >
-            <View style={styles.heroInner}>
+            {/* a voz tocando: a cena conta a história; o que está escrito na capa sai da tela e do leitor
+                de tela (o tamanho fica, nada pula) */}
+            <View
+              style={[styles.heroInner, narrating && styles.quiet]}
+              aria-hidden={narrating || undefined}
+              accessibilityElementsHidden={narrating}
+              importantForAccessibility={narrating ? 'no-hide-descendants' : 'auto'}
+            >
               <View style={[styles.badge, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
                 <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
                 <Text style={styles.badgeText}>{categoryLabel(item.category, lang)}</Text>
@@ -1177,10 +1199,15 @@ export default function ManifestationScreen() {
           ))}
         </Card>
 
-        <SectionHeading title={t(S.storyTitle)} />
-        <Card style={[styles.card, { backgroundColor: th.surface }]}>
-          <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
-        </Card>
+        {/* enquanto a voz conta a história, as palavras dela estão na capa: o texto volta quando ela para */}
+        {narrating ? null : (
+          <>
+            <SectionHeading title={t(S.storyTitle)} />
+            <Card style={[styles.card, { backgroundColor: th.surface }]}>
+              <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
+            </Card>
+          </>
+        )}
 
         <AiContentReportAction
           contentType="scene"
@@ -1239,6 +1266,8 @@ const styles = StyleSheet.create({
   navBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   hero: { minHeight: 320, padding: 24, marginTop: 8 },
   heroInner: { flex: 1, minHeight: 272, alignItems: 'flex-start', justifyContent: 'flex-end' },
+  // escondido sem mudar o tamanho; o botão de imagem que mora ali também não recebe toque
+  quiet: { opacity: 0, pointerEvents: 'none' },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

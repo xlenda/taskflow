@@ -23,8 +23,11 @@ import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { accentAt, alpha } from '../utils/colors';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
+import { captionProgressFromNarration } from '../utils/captionProgress';
+import { useCenaVivaImage } from '../utils/useCenaVivaImage';
 
 import GradientCover from '../components/GradientCover';
+import NarratedScene from '../components/NarratedScene';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
 
@@ -297,8 +300,12 @@ function PersonalVisionPlayer({
   const playbackId = `vision:${vision.id}`;
   const ownsPlayback = activePlaybackId === playbackId;
   const playing = ownsPlayback && (narrationLoading || narrationPlaying);
+  // a voz desta visão (carregando, tocando, pausada ou pronta): o palco vira a cena viva com as palavras
+  const narrating = ownsPlayback;
 
   const [idx, setIdx] = useState(0);
+  // de qual frase a narração atual começou: a legenda é o texto que a voz está dizendo
+  const [spokenFrom, setSpokenFrom] = useState(0);
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -321,6 +328,13 @@ function PersonalVisionPlayer({
   const showsSecondaryVisual = wantsSecondaryVisual && secondaryReady;
   const activeVisualKey = showsSecondaryVisual ? secondaryLayerKey : primaryVisualKey;
   const activeVisualStatus = secondaryStatusRelevant ? secondaryVisualStatus : visualStatus;
+  const narrationImage = useCenaVivaImage({
+    visualKey: primaryVisualKey,
+    category: vision.category,
+    enabled: narrating,
+  });
+  // a cena com as palavras está na tela: só então a frase, as ondas e o roteiro em texto saem
+  const narrated = narrating && !!narrationImage;
 
   const requestEpochRef = useRef(0);
   const playbackStartedRef = useRef(false);
@@ -534,6 +548,7 @@ function PersonalVisionPlayer({
     manualStopRef.current = false;
     playbackStartedRef.current = false;
     ownsAttemptRef.current = true;
+    setSpokenFrom(at);
     setIdx(at);
     setStarted(true);
     setCompleted(false);
@@ -754,9 +769,12 @@ function PersonalVisionPlayer({
             th.elevation?.e2,
           ]}
         >
+          {/* a visão aberta anima parada (sem a 2ª imagem por cima); tocando, a cena com as palavras assume */}
           <GradientCover
             accent={vision.accent}
             visualKey={primaryVisualKey}
+            live={isFocused && !narrating && !showsSecondaryVisual}
+            sceneCategory={vision.category}
             radius={0}
             style={StyleSheet.absoluteFillObject}
           />
@@ -776,28 +794,40 @@ function PersonalVisionPlayer({
               />
             </Animated.View>
           ) : null}
+          {/* voz tocando: a cena viva com as palavras surgindo no ritmo dela (a frase e as ondas saem de cima) */}
+          {narrated ? (
+            <NarratedScene
+              imageUri={narrationImage}
+              text={lines.slice(spokenFrom).join(' ')}
+              progress={captionProgressFromNarration({ progress: narrationProgress })}
+              active={narrationPlaying}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : null}
           <View style={[styles.stageContent, compact && styles.stageContentCompact]}>
             <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
               <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
               <Text style={styles.pillText}>{catLabel}</Text>
             </View>
-            <Animated.Text
-              testID="vision-player-caption"
-              accessibilityLiveRegion="polite"
-              numberOfLines={compact ? 5 : 7}
-              style={[
-                styles.caption,
-                compact && styles.captionCompact,
-                {
-                  fontFamily: th.typeFamilies?.serif,
-                  opacity: captionOpacity,
-                  transform: [{ translateY: captionTranslateY }],
-                },
-              ]}
-            >
-              {caption}
-            </Animated.Text>
-            {canNarrate ? (
+            {narrated ? null : (
+              <Animated.Text
+                testID="vision-player-caption"
+                accessibilityLiveRegion="polite"
+                numberOfLines={compact ? 5 : 7}
+                style={[
+                  styles.caption,
+                  compact && styles.captionCompact,
+                  {
+                    fontFamily: th.typeFamilies?.serif,
+                    opacity: captionOpacity,
+                    transform: [{ translateY: captionTranslateY }],
+                  },
+                ]}
+              >
+                {caption}
+              </Animated.Text>
+            )}
+            {canNarrate && !narrated ? (
               <View style={styles.waveRow}>
                 {Array.from({ length: 22 }).map((_, barIndex) => {
                   const active = (barIndex / 22) * 100 <= progress;
@@ -917,31 +947,34 @@ function PersonalVisionPlayer({
           </View>
         ) : null}
 
-        <View
-          style={[
-            styles.scriptWrap,
-            { backgroundColor: th.surface, borderColor: th.border },
-            th.elevation?.e1,
-          ]}
-        >
-          {lines.map((line, lineIndex) => {
-            const active = started && lineIndex === idx && !completed;
-            return (
-              <Text
-                key={`${vision.id}-${lineIndex}`}
-                style={[
-                  styles.scriptLine,
-                  {
-                    color: active ? th.text : th.textMuted,
-                    fontWeight: active ? '600' : '400',
-                  },
-                ]}
-              >
-                {line}
-              </Text>
-            );
-          })}
-        </View>
+        {/* enquanto a voz conta a história, as palavras dela estão na cena: o roteiro em texto volta depois */}
+        {narrated ? null : (
+          <View
+            style={[
+              styles.scriptWrap,
+              { backgroundColor: th.surface, borderColor: th.border },
+              th.elevation?.e1,
+            ]}
+          >
+            {lines.map((line, lineIndex) => {
+              const active = started && lineIndex === idx && !completed;
+              return (
+                <Text
+                  key={`${vision.id}-${lineIndex}`}
+                  style={[
+                    styles.scriptLine,
+                    {
+                      color: active ? th.text : th.textMuted,
+                      fontWeight: active ? '600' : '400',
+                    },
+                  ]}
+                >
+                  {line}
+                </Text>
+              );
+            })}
+          </View>
+        )}
 
         <AiContentReportAction
           contentType="vision"

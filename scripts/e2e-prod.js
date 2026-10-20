@@ -651,7 +651,40 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   console.log(`  [despertar ok] voz (${firstVoice.kind}) começou ${voiceDelay} ms após a 3ª estrela`);
   await page.waitForSelector('[data-testid="wake-player"]', { visible: true, timeout: 15000 });
   await wakePosition('1 de 3');
-  await page.waitForSelector('[data-testid="wake-cena-viva"]', { visible: true, timeout: 20000 });
+  // Narração com vídeo e palavras: a cena viva toca e a legenda avança com a voz (palavra por palavra, pelos
+  // avisos da voz do aparelho); a história em texto sai de baixo enquanto ela conta; uma cena animando só.
+  await page.waitForSelector('[data-testid="narrated-scene"] [data-testid="cena-viva"][data-active="true"]', {
+    visible: true,
+    timeout: 20000,
+  });
+  const captionNow = () =>
+    page.$eval('[data-testid="narrated-scene"]', (node) => Number(node.getAttribute('data-progress')));
+  const captionStart = await captionNow();
+  await page.waitForFunction(
+    (from) => Number(document.querySelector('[data-testid="narrated-scene"]')?.getAttribute('data-progress')) > from,
+    { timeout: 10000, polling: 100 },
+    captionStart
+  );
+  await sleep(1500);
+  const captionLater = await captionNow();
+  const narratedState = await page.evaluate(() => ({
+    playing: !!document.querySelector('[data-testid="wake-pause"]'),
+    activeScenes: document.querySelectorAll('[data-testid="cena-viva"][data-active="true"]').length,
+    label: document.querySelector('[data-testid="narrated-scene"] [data-testid="cena-viva"]')?.getAttribute('aria-label') || '',
+    storyText: [...document.querySelectorAll('[data-testid="wake-player"] div')].some(
+      (node) => node.children.length === 0 && node.textContent.length > 120
+    ),
+  }));
+  if (
+    !(captionLater > captionStart) ||
+    !narratedState.playing ||
+    narratedState.activeScenes !== 1 ||
+    narratedState.label.length < 40 ||
+    narratedState.storyText
+  ) {
+    throw new Error(`Narração sem palavras acompanhando a voz: ${JSON.stringify({ captionStart, captionLater, ...narratedState, label: narratedState.label.length })}`);
+  }
+  console.log(`  [narração ok] legenda ${captionStart} → ${captionLater} com a voz tocando; texto inteiro no rótulo`);
   const voicesBeforeNext = await page.evaluate(() => window.__celesteVoiceStarts.length);
   await clickTestId(page, 'wake-next');
   await wakePosition('2 de 3');
@@ -660,7 +693,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     { timeout: 3000, polling: 50 },
     voicesBeforeNext
   );
-  await page.waitForSelector('[data-testid="wake-cena-viva"]', { visible: true, timeout: 20000 });
+  await page.waitForSelector('[data-testid="narrated-scene"]', { visible: true, timeout: 20000 });
   await clickTestId(page, 'wake-next');
   await wakePosition('3 de 3');
   await page.waitForSelector('[data-testid="wake-phrase-card"]', { visible: true, timeout: 15000 });

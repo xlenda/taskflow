@@ -26,6 +26,7 @@ import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
+import { captionProgressFromNarration } from '../utils/captionProgress';
 
 import AddToWakeButton from '../components/AddToWakeButton';
 import AffirmationCard from '../components/AffirmationCard';
@@ -131,6 +132,7 @@ export default function AffirmationsScreen() {
     activePlaybackId,
     lastCompletedPlaybackId,
     phase: narrationPhase,
+    progress: narrationProgress,
     personalNarrationAvailable,
     playPersonal,
     resume: resumeNarration,
@@ -605,6 +607,16 @@ export default function AffirmationsScreen() {
               // só o card da vez existe: ele leva a cena viva enquanto a aba está aberta
               live={isFocused}
               sceneCategory={current.category}
+              // "Ouvir": a cena com a frase surgindo palavra por palavra no ritmo da voz
+              narration={
+                ownsPlayback
+                  ? {
+                      text: currentLoc.text,
+                      progress: captionProgressFromNarration({ progress: narrationProgress }),
+                      active: playingAudio,
+                    }
+                  : null
+              }
               categoryLabel={currentCategoryLabel}
               accent={meta.accent}
               visualKey={current.visualKey}

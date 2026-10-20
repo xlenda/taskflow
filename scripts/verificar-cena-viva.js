@@ -1629,9 +1629,307 @@ async function main() {
   const affirmationCardSource = fs.readFileSync(path.join(root, 'components', 'AffirmationCard.js'), 'utf8');
   assert.match(affirmationCardSource, /<GradientCover[^>]*?\slive=\{live\}/, 'AffirmationCard repassa live para a capa');
 
+  // 20) narração com cena viva e palavras: a legenda segue a voz — nuvem: o progress da narração; aparelho: o
+  //     onBoundary pelo FIM da palavra falada (o renderizador mostra a palavra assim que o progresso passa da 1ª
+  //     letra dela); sem aviso do aparelho, 14 letras/s. Nunca à frente da voz.
+  const {
+    captionProgressFromNarration,
+    captionProgressFromBoundary,
+    captionProgressFromTime,
+    wordLengthAt,
+  } = load('utils/captionProgress.js');
+  assert.strictEqual(captionProgressFromTime({ elapsedMs: 5000, text: 'a'.repeat(140) }), 0.5, '14 letras por segundo');
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: 70, textLength: 140 }), 0.5);
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: 70, charLength: 7, textLength: 140 }), 0.55, 'o fim da palavra');
+  assert.strictEqual(captionProgressFromTime({ elapsedMs: 60000, text: 'aa' }), 1, 'tempo além do texto: 1');
+  assert.strictEqual(captionProgressFromTime({ elapsedMs: -5, text: 'aa' }), 0, 'tempo negativo: 0');
+  assert.strictEqual(captionProgressFromTime({ elapsedMs: 1000, text: '' }), 0, 'sem texto: 0');
+  assert.strictEqual(captionProgressFromTime({ elapsedMs: Number.NaN, text: 'aa' }), 0, 'tempo inválido: 0');
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: 300, charLength: 5, textLength: 140 }), 1, 'além do fim: 1');
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: -9, textLength: 140 }), 0, 'antes do começo: 0');
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: 3, textLength: 0 }), 0, 'texto vazio: 0');
+  assert.strictEqual(captionProgressFromBoundary({ charIndex: Number.NaN, textLength: 10 }), 0, 'aviso inválido: 0');
+  assert.strictEqual(captionProgressFromNarration({ progress: 0.42 }), 0.42);
+  assert.strictEqual(captionProgressFromNarration({ progress: 1.7 }), 1);
+  assert.strictEqual(captionProgressFromNarration({ progress: -0.2 }), 0);
+  assert.strictEqual(captionProgressFromNarration({ progress: Number.NaN }), 0);
+  assert.strictEqual(captionProgressFromNarration({}), 0);
+  // sem charLength (o Safari só diz onde a palavra começa): a palavra vai até o próximo espaço
+  assert.strictEqual(wordLengthAt('Eu escolho a paz', 3), 7);
+  assert.strictEqual(wordLengthAt('Eu escolho a paz', 13), 3);
+  assert.strictEqual(wordLengthAt('Eu escolho', 99), 0);
+  // no renderizador: o fim da palavra falada mostra ela inteira e ainda não a próxima
+  const spoken = captionProgressFromBoundary({ charIndex: 3, charLength: 2, textLength: 11 });
+  assert.deepStrictEqual(words(render({}, 4000, [320, 400], { text: 'aa bb cc dd', progress: spoken })), ['aa', 'bb']);
+
+  // NarratedScene: o CenaViva com a legenda; a cena 4:5 entra INTEIRA no espaço que receber (a legenda mora no pé
+  // do quadro — cortar o quadro cortaria as palavras); toques passam; erro da cena não esconde nada (o texto de
+  // reserva do CenaViva fica à vista) e quem chama fica sabendo
+  const { default: NarratedScene } = loadWith('components/NarratedScene.js', { ...mocks, './cenaViva/CenaViva': esDefault('CenaViva') });
+  const narrated = app.mount(NarratedScene, { imageUri: 'data:image/jpeg;base64,QUJD', text: 'Eu escolho a paz', progress: 0.25 });
+  assert.strictEqual(narrated.tree.props.testID, 'narrated-scene');
+  assert.strictEqual(narrated.tree.props.dataSet.progress, '0.25', 'o site expõe o progresso da legenda');
+  assert.strictEqual(flat(narrated.tree.props.style).pointerEvents, 'none', 'toques passam para o card de fora');
+  assert.strictEqual(narrated.find('CenaViva'), null, 'antes de medir o espaço, nada');
+  const layout = (width, height) => {
+    narrated.tree.props.onLayout({ nativeEvent: { layout: { width, height } } });
+    narrated.flush();
+    return flat(narrated.find('CenaViva').props.style);
+  };
+  const wideBox = layout(400, 300);
+  assert.ok(near(wideBox.width, 240) && near(wideBox.height, 300), 'espaço largo: a cena 4:5 inteira na altura, centrada');
+  const tallBox = layout(300, 600);
+  assert.ok(near(tallBox.width, 300) && near(tallBox.height, 375), 'espaço alto: a cena 4:5 inteira na largura');
+  const narratedScene = () => narrated.find('CenaViva');
+  assert.deepStrictEqual(narratedScene().props.caption, { text: 'Eu escolho a paz', progress: 0.25 }, 'a legenda vai para a cena');
+  assert.ok(narratedScene().props.phrase == null, 'só a legenda: nada de frase parada por baixo');
+  assert.ok(narratedScene().props.active === true, 'tocando: a cena anima');
+  narrated.update({ progress: 0.75, active: false });
+  assert.deepStrictEqual(narratedScene().props.caption, { text: 'Eu escolho a paz', progress: 0.75 }, 'a legenda acompanha a voz');
+  assert.strictEqual(narratedScene().props.active, false, 'pausada: pôster parado com as palavras');
+  const narratedErrors = [];
+  narrated.update({ onError: (code) => narratedErrors.push(code) });
+  narratedScene().props.onError('webview_gone');
+  narrated.flush();
+  assert.ok(narratedScene(), 'webview_gone: a cena continua montada e o texto de reserva dela fica à vista');
+  assert.deepStrictEqual(narratedErrors, ['webview_gone'], 'quem chama fica sabendo do erro');
+  narrated.unmount();
+
+  // a narração no card: a cena com as palavras POR CIMA do véu (o véu escureceria a legenda); uma cena só
+  const narratingCover = coverOf({
+    live: true,
+    sceneCategory: 'Love',
+    narration: { text: 'Eu escolho a paz', progress: 0.5, active: true },
+  });
+  const narratedOf = typed('NarratedScene');
+  await settle(narratingCover, narratedOf, 'narração no card');
+  const narratedLayer = narratedOf(narratingCover);
+  assert.strictEqual(liveOf(narratingCover), null, 'narrando: uma cena só, a da narração');
+  assert.strictEqual(narratedLayer.props.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-beach-Love.jpg)');
+  assert.ok(
+    narratedLayer.props.text === 'Eu escolho a paz' && narratedLayer.props.progress === 0.5 && narratedLayer.props.active === true,
+    'texto, progresso e play/pausa chegam à cena'
+  );
+  assert.ok(layers(narratingCover).indexOf(narratedLayer) > veilAt(narratingCover), 'as palavras por cima do véu');
+  narratingCover.update({ narration: null });
+  assert.ok(liveOf(narratingCover) && !narratedOf(narratingCover), 'a voz parou: volta a cena do card');
+  narratingCover.update({ live: false, narration: { text: 'aa', progress: 0, active: true } });
+  await settle(narratingCover, narratedOf, 'narração com o card fora de foco');
+  narratingCover.unmount();
+  // o card da afirmação narrando: a frase sai da tela e do leitor de tela (a cena diz a frase), o layout fica
+  const narratingCard = app.mount(AffirmationCard, {
+    affirmation: { text: 'Eu escolho a paz.' },
+    live: true,
+    narration: { text: 'Eu escolho a paz.', progress: 0.3, active: true },
+  });
+  assert.deepStrictEqual(
+    narratingCard.find('GradientCover').props.narration,
+    { text: 'Eu escolho a paz.', progress: 0.3, active: true },
+    'a narração chega à capa'
+  );
+  const cardPhrase = narratingCard.where((node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
+  assert.ok(
+    flat(cardPhrase.props.style).opacity === 0 && cardPhrase.props['aria-hidden'] === true,
+    'narrando: a frase do card some da tela e do leitor (layout mantido)'
+  );
+  const quietCard = app.mount(AffirmationCard, { affirmation: { text: 'Eu escolho a paz.' }, live: true });
+  const quietPhrase = quietCard.where((node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
+  assert.ok(flat(quietPhrase.props.style).opacity !== 0 && !quietPhrase.props['aria-hidden'], 'sem voz: a frase à vista');
+  const unfocusedNarration = app.mount(AffirmationCard, {
+    affirmation: { text: 'aa' },
+    narration: { text: 'aa', progress: 0, active: false },
+  });
+  assert.ok(unfocusedNarration.find('GradientCover'), 'narrando sem live: também vira capa (a cena precisa de onde aparecer)');
+
+  // nas 5 telas a narração aparece como cena com palavras, e o texto parado da mesma fala sai enquanto ela toca
+  const narrationScreens = {
+    'VisionPlayerScreen.js': [/<NarratedScene\b/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
+    'ManifestationScreen.js': [/narration=\{\s*narrating\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
+    'onboarding/RevealScreen.js': [/<NarratedScene\b/, /captionProgressFromNarration\(\{ progress: narration\.progress \}\)/],
+    'AffirmationsScreen.js': [/narration=\{\s*ownsPlayback\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/],
+    'WakeSequenceScreen.js': [/<NarratedScene\b/, /captionProgressFromBoundary\(/, /captionProgressFromTime\(/, /captionProgressFromNarration\(/],
+  };
+  for (const [name, patterns] of Object.entries(narrationScreens)) {
+    const source = screen(name);
+    patterns.forEach((pattern) => assert.match(source, pattern, `${name}: a narração com cena viva e palavras (${pattern})`));
+  }
+  const reveal = screen('onboarding/RevealScreen.js');
+  assert.match(reveal, /narrating && scene \? null : <Text style=\{styles\.sceneText\}>\{m\.story\}<\/Text>/, 'Revelação: a história em texto sai enquanto a voz a conta');
+  assert.match(reveal, /phrase=\{m\.affirmation\}\s+onReady=\{\(uri\) => setShown\(uri\)\}/, 'Revelação: rótulo pela imagem que pintou');
+  const player = screen('VisionPlayerScreen.js');
+  assert.match(player, /const narrated = narrating && !!narrationImage;/, 'Player: o texto parado só sai com a cena na tela');
+  assert.match(player, /narrated \? null : \(\s*<Animated\.Text\s+testID="vision-player-caption"/, 'Player: a frase parada sai enquanto a voz toca');
+  assert.match(player, /\{narrated \? null : \(\s*<View\s+style=\{\[\s*styles\.scriptWrap/, 'Player: o roteiro em texto sai enquanto a voz toca');
+  assert.match(player, /live=\{isFocused && !narrating && !showsSecondaryVisual\}/, 'Player: a visão aberta anima parada; tocando, só a cena da voz');
+  const manifestation = screen('ManifestationScreen.js');
+  assert.match(manifestation, /\{narrating \? null : \(\s*<>\s*<SectionHeading title=\{t\(S\.storyTitle\)\}/, 'Manifestação: a história em texto sai enquanto a voz a conta');
+  assert.match(manifestation, /style=\{\[styles\.heroInner, narrating && styles\.quiet\]\}\s+aria-hidden=\{narrating \|\| undefined\}/, 'Manifestação: o texto da capa sai da tela e do leitor enquanto a voz toca');
+  assert.match(reveal, /onError=\{\(code\) => code === 'image_error' && dropScene\(scene\.source\)\}/, 'Revelação: webview_gone deixa as palavras do CenaViva');
+  // a legenda é o trecho que a voz está dizendo (o player e a manifestação podem começar de uma frase do meio)
+  for (const [name, source, pattern] of [
+    ['Player', player, /text=\{lines\.slice\(spokenFrom\)\.join\(' '\)\}/],
+    ['Manifestação', manifestation, /text: lines\.slice\(spokenFrom\)\.join\(' '\),/],
+  ]) {
+    assert.match(source, pattern, `${name}: a legenda é o trecho falado`);
+    assert.match(source, /setSpokenFrom\(at\);[\s\S]{0,400}await playPersonal\(\{\s*text: lines\.slice\(at\)\.join\(' '\)/, `${name}: o trecho começa onde a voz começa`);
+  }
+
+  // 21) despertar: a voz do aparelho leva as palavras da cena. O tela de verdade com dublês: a 3ª estrela começa a
+  //     voz; cada aviso de palavra mostra até o FIM dela; aviso de frase ('sentence') não adianta; sem charLength (Safari)
+  //     a palavra vai até o espaço; sem aviso nenhum, 14 letras/s; fim do item = texto inteiro; a voz da Celeste usa o
+  //     progresso da narração. Tocando, a história em texto sai; webview_gone não derruba a cena.
+  const wakeStory = 'Eu escolho viver com calma. Cada dia é um passo.'; // 48 letras
+  const wakeItems = [
+    { kind: 'anchor', id: 'anchor:m1', title: 'Cena-Âncora', text: wakeStory, lang: 'pt', category: 'Peace', visualKey: null },
+    { kind: 'vision', id: 'm1:vision:Love', title: 'Visão', text: wakeStory, lang: 'pt', category: 'Love', visualKey: null },
+  ];
+  const speeches = [];
+  const narrationDouble = {
+    personalNarrationAvailable: false,
+    activePlaybackId: null,
+    lastCompletedPlaybackId: null,
+    phase: 'idle',
+    progress: 0,
+    played: [],
+    playPersonal(request) {
+      this.played.push(request);
+      return new Promise(() => {}); // tocando: o fim chega pelo lastCompletedPlaybackId
+    },
+    stop() {},
+    pause: () => false,
+    resume: () => Promise.resolve(),
+  };
+  let cloudVoice = false;
+  let wakeClock = 1000;
+  const intervals = [];
+  const wakeMocks = {
+    ...mocks,
+    ...sceneFiles,
+    'react-native': {
+      ...RN,
+      Pressable: 'Pressable',
+      ScrollView: 'ScrollView',
+      useWindowDimensions: () => ({ width: 400, height: 800 }),
+    },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '@expo/vector-icons': { Ionicons: 'Ionicons' },
+    '@react-navigation/native': {
+      useIsFocused: () => true,
+      useNavigation: () => ({ canGoBack: () => true, goBack() {}, navigate() {} }),
+    },
+    'expo-speech': {
+      speak: (text, options) => speeches.push({ text, options }),
+      stop: () => Promise.resolve(),
+    },
+    '../components/CelestialTrace': esDefault('CelestialTrace'),
+    '../components/PrimaryButton': esDefault('PrimaryButton'),
+    '../components/NarratedScene': esDefault('NarratedScene'),
+    '../context/AppContext': { useApp: () => ({ state: appState }) },
+    '../ui/theme': coverMocks['../ui/theme'],
+    '../utils/useCloudMediaConsent': { hasUnifiedCloudMediaConsent: () => cloudVoice },
+    '../utils/usePersonalNarration': { usePersonalNarration: () => narrationDouble },
+    '../utils/usePersonalVisual': { usePersonalVisual: () => null },
+    '../utils/useT': { useT: () => ({ t: (entry) => (entry && entry.pt) || '', lang: 'pt' }) },
+    '../utils/wakeSequence': { wakeSequenceItemsForState: () => wakeItems },
+  };
+  const { default: WakeSequenceScreen } = loadWith('screens/WakeSequenceScreen.js', wakeMocks);
+  hosts.ScrollView = () => ({ scrollTo() {} }); // a tela volta ao topo a cada item
+  const realNow = Date.now;
+  const realSetInterval = global.setInterval;
+  const realClearInterval = global.clearInterval;
+  Date.now = () => wakeClock;
+  global.setInterval = (fn, ms) => intervals.push({ fn, ms, live: true }) && intervals.length;
+  global.clearInterval = (id) => {
+    if (intervals[id - 1]) intervals[id - 1].live = false;
+  };
+  try {
+    const wakeScreen = app.mount(WakeSequenceScreen, {});
+    const narratedNow = () => wakeScreen.where((node) => node.type === 'NarratedScene');
+    const storyShown = () => !!wakeScreen.where((node) => node.type === 'Text' && node.props.children === wakeStory);
+    const tickIntervals = () => intervals.filter((entry) => entry.live).forEach((entry) => entry.fn());
+    const trace = wakeScreen.find('CelestialTrace');
+    trace.props.onFinalStar();
+    trace.props.onComplete();
+    wakeScreen.flush();
+    await settle(wakeScreen, narratedNow, 'cena narrada do 1º item');
+    assert.strictEqual(speeches.length, 1, 'a 3ª estrela começa a voz do aparelho');
+    const first = speeches[0].options;
+    assert.strictEqual(narratedNow().props.progress, 0, 'antes da 1ª palavra, nenhuma palavra');
+    assert.strictEqual(narratedNow().props.text, wakeStory, 'a legenda é o texto que a voz diz');
+    assert.ok(narratedNow().props.active === true && !storyShown(), 'tocando: a cena anima e a história em texto sai');
+    first.onStart();
+    first.onBoundary({ charIndex: 3, charLength: 7, name: 'word' }); // "escolho"
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 10 / 48, 'a palavra falada aparece até o fim dela');
+    first.onBoundary({ charIndex: 28, charLength: 0, name: 'sentence' }); // aviso de frase: não diz a palavra
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 10 / 48, 'aviso de frase inteira não adianta a legenda');
+    first.onBoundary({ charIndex: 11 }); // Safari: sem charLength
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 16 / 48, 'sem charLength: a palavra vai até o próximo espaço');
+    wakeClock += 60000;
+    tickIntervals();
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 16 / 48, 'com avisos de palavra, o relógio não empurra a legenda');
+    // a cena não aguenta (webview_gone): continua montada com as palavras do CenaViva; só imagem quebrada troca
+    narratedNow().props.onError('webview_gone');
+    wakeScreen.flush();
+    assert.ok(narratedNow(), 'webview_gone: a cena fica (o texto de reserva do CenaViva mostra as palavras)');
+    first.onDone();
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 1, 'fim do item: o texto inteiro durante o respiro');
+    // 2º item: começa do zero; a voz que nunca avisa palavra anda pelo tempo (14 letras/s)
+    wakeScreen.where((node) => node.props.testID === 'wake-next').props.onPress();
+    await settle(wakeScreen, () => speeches.length === 2 && narratedNow() && narratedNow().props.progress === 0, 'item 2');
+    const second = speeches[1].options;
+    second.onStart();
+    wakeClock += 2000;
+    tickIntervals();
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, (2 * 14) / 48, 'sem aviso de palavra: 14 letras por segundo');
+    // pausa (a voz do aparelho para): a legenda congela e a história volta a ficar em texto
+    wakeScreen.where((node) => node.props.testID === 'wake-pause').props.onPress();
+    wakeScreen.flush();
+    wakeClock += 5000;
+    tickIntervals();
+    wakeScreen.flush();
+    assert.ok(narratedNow().props.progress === (2 * 14) / 48 && narratedNow().props.active === false, 'pausado: congela');
+    assert.ok(storyShown(), 'pausado: a história volta em texto');
+    // voz da Celeste (nuvem): as palavras seguem o progresso da narração
+    cloudVoice = true;
+    narrationDouble.personalNarrationAvailable = true;
+    wakeScreen.update({});
+    wakeScreen.where((node) => node.props.testID === 'wake-resume').props.onPress();
+    wakeScreen.flush();
+    assert.strictEqual(narratedNow().props.progress, 0, 'voz da Celeste começando: nenhuma palavra antes dela');
+    const cloudRequest = narrationDouble.played[narrationDouble.played.length - 1];
+    Object.assign(narrationDouble, { activePlaybackId: cloudRequest.playbackId, phase: 'playing', progress: 0.5 });
+    wakeScreen.update({});
+    assert.strictEqual(narratedNow().props.progress, 0.5, 'voz da Celeste: o progresso da narração');
+    Object.assign(narrationDouble, { progress: 1.4 });
+    wakeScreen.update({});
+    assert.strictEqual(narratedNow().props.progress, 1, 'progresso da narração limitado a 1');
+    // a voz da Celeste quebrou no meio: a do aparelho assume o item do começo, e a legenda recomeça junto
+    const speechesBeforeFallback = speeches.length;
+    Object.assign(narrationDouble, { activePlaybackId: null, phase: 'error' });
+    wakeScreen.update({});
+    assert.ok(speeches.length === speechesBeforeFallback + 1, 'a voz do aparelho assumiu');
+    assert.strictEqual(narratedNow().props.progress, 0, 'a reserva recomeça o item: a legenda também');
+    // a cena pronta quebrou e não há outra imagem: sem cena, a história volta em texto com a voz tocando
+    assert.ok(!storyShown(), 'tocando com a cena: a história fica na cena');
+    narratedNow().props.onError('image_error');
+    wakeScreen.flush();
+    assert.ok(!narratedNow() && storyShown(), 'sem imagem nenhuma: as palavras ficam em texto');
+    wakeScreen.unmount();
+  } finally {
+    Date.now = realNow;
+    global.setInterval = realSetInterval;
+    global.clearInterval = realClearInterval;
+  }
+
   console.log(
     'Cena viva aprovada: mime, pedaços, intro estrelas → sol, partículas semeadas, legenda, 9:16, fonte da WebView, ' +
-      'componentes do site e do app, gravador, imagem da cena e cena viva nos cards'
+      'componentes do site e do app, gravador, imagem da cena, cena viva nos cards e narração com palavras'
   );
 }
 

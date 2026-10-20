@@ -31,12 +31,16 @@ export default function AffirmationCard({
   onRetryVisual,
   live = false,
   sceneCategory,
+  narration,
 }) {
   const theme = useTheme();
   const { t } = useT();
   const color = accentAt(theme, accent);
   // em foco (live) o card vira capa com a cena viva mesmo sem imagem pessoal: a cena pronta das respostas
-  const visual = !!visualKey || live;
+  const visual = !!visualKey || live || !!narration;
+  // a voz tocando: a cena diz a frase palavra por palavra; o texto do card sai da tela e do leitor de tela
+  // (o layout fica, os botões do topo continuam)
+  const quiet = narration ? QUIET : null;
   const foreground = visual ? '#FFFFFF' : theme.text;
   const mutedForeground = visual ? 'rgba(255,255,255,0.82)' : theme.textMuted;
   const visualPhase = visualStatus && visualStatus.phase;
@@ -90,11 +94,11 @@ export default function AffirmationCard({
         </View>
       </View>
 
-      <Text style={[styles.text, visual && styles.visualText, { color: foreground }]}>
+      <Text {...quiet} style={[styles.text, visual && styles.visualText, { color: foreground }, quiet && styles.quiet]}>
         {affirmation.text}
       </Text>
 
-      {visualPhase === 'pending' ? (
+      {narration ? null : visualPhase === 'pending' ? (
         <View
           testID="personal-visual-pending"
           accessibilityLiveRegion="polite"
@@ -129,7 +133,7 @@ export default function AffirmationCard({
         </TouchableOpacity>
       ) : null}
 
-      <View style={styles.footer}>
+      <View {...quiet} style={[styles.footer, quiet && styles.quiet]}>
         <View style={[styles.dot, { backgroundColor: color }]} />
         <Text style={[styles.cat, visual && styles.visualCat, { color: mutedForeground }]}>
           {String(categoryLabel || affirmation.category || '').toUpperCase()}
@@ -159,6 +163,7 @@ export default function AffirmationCard({
         style={surfaceStyle}
         live={live}
         sceneCategory={sceneCategory}
+        narration={narration}
       >
         {content}
       </GradientCover>
@@ -167,6 +172,8 @@ export default function AffirmationCard({
 
   return <View style={[surfaceStyle, { backgroundColor: theme.surface }]}>{content}</View>;
 }
+
+const QUIET = { 'aria-hidden': true, accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' };
 
 const styles = StyleSheet.create({
   card: {
@@ -204,6 +211,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
+  quiet: { opacity: 0 },
   visualStatusRow: {
     minHeight: 32,
     flexDirection: 'row',

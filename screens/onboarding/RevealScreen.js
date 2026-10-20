@@ -23,8 +23,10 @@ import { useCloudMediaConsent } from '../../utils/useCloudMediaConsent';
 import CelestialTrace from '../../components/CelestialTrace';
 import CenaViva from '../../components/cenaViva/CenaViva';
 import { imageUriForCenaViva } from '../../components/cenaViva/imageSource';
+import NarratedScene from '../../components/NarratedScene';
 import NarratorSelector from '../../components/NarratorSelector';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
+import { captionProgressFromNarration } from '../../utils/captionProgress';
 import { maybeRequestStoreReview } from '../../utils/storeReview';
 import { pickReadyScene } from '../../utils/readyScene';
 import { usePersonalVisual } from '../../utils/usePersonalVisual';
@@ -228,6 +230,8 @@ export default function RevealScreen({ navigation, route }) {
   const playingAudio = ownsPlayback && narration.isPlaying;
   const pausedAudio = ownsPlayback && narration.isPaused;
   const readyAudio = ownsPlayback && narration.isReady;
+  // "Ouvir minha cena" (carregando, tocando, pausada ou pronta): a cena viva conta a história palavra por palavra
+  const narrating = ownsPlayback;
 
   const toggleAudio = async () => {
     if (loadingAudio || playingAudio) {
@@ -315,15 +319,28 @@ export default function RevealScreen({ navigation, route }) {
             >
               {scene ? (
                 <>
-                  <CenaViva
-                    testID="reveal-cena-viva"
-                    mode="intro"
-                    imageUri={scene.uri}
-                    phrase={m.affirmation}
-                    onReady={() => setShown(scene.uri)}
-                    onError={() => dropScene(scene.source)}
-                    style={styles.cenaViva}
-                  />
+                  {narrating ? (
+                    // webview_gone: o próprio CenaViva deixa as palavras à vista; só a imagem que falhou é trocada
+                    <NarratedScene
+                      imageUri={scene.uri}
+                      text={m.story}
+                      progress={captionProgressFromNarration({ progress: narration.progress })}
+                      active={playingAudio}
+                      onReady={(uri) => setShown(uri)}
+                      onError={(code) => code === 'image_error' && dropScene(scene.source)}
+                      style={styles.cenaViva}
+                    />
+                  ) : (
+                    <CenaViva
+                      testID="reveal-cena-viva"
+                      mode="intro"
+                      imageUri={scene.uri}
+                      phrase={m.affirmation}
+                      onReady={(uri) => setShown(uri)}
+                      onError={() => dropScene(scene.source)}
+                      style={styles.cenaViva}
+                    />
+                  )}
                   <Text style={styles.sceneSource}>
                     {shown === scene.uri ? t(scene.source ? S.personalScene : S.readyScene) : null}
                   </Text>
@@ -434,7 +451,8 @@ export default function RevealScreen({ navigation, route }) {
 
               <View style={styles.scene}>
                 <View style={styles.sceneRule} />
-                <Text style={styles.sceneText}>{m.story}</Text>
+                {/* a voz contando a história com a cena: as palavras estão lá; o texto volta quando ela para */}
+                {narrating && scene ? null : <Text style={styles.sceneText}>{m.story}</Text>}
                 {/* sempre em texto: no canvas uma afirmação longa mostra só as últimas 3 linhas */}
                 <Text style={styles.affirmation}>“{m.affirmation}”</Text>
               </View>

@@ -384,7 +384,7 @@ assert.ok(
 assert.ok(
   revealSource.includes("{ en: 'Created for you', pt: 'Criada para você' }") &&
     revealSource.includes("{ en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' }") &&
-    revealSource.includes('onReady={() => setShown(scene.uri)}') &&
+    revealSource.includes('onReady={(uri) => setShown(uri)}') &&
     revealSource.includes('shown === scene.uri ? t(scene.source ? S.personalScene : S.readyScene) : null'),
   'cena viva da revelacao precisa do rotulo honesto da imagem mostrada'
 );
