@@ -19,6 +19,10 @@ export function releaseFeaturesForPlatform(
     androidStoreBoundary,
     publicCommunity: !androidStoreBoundary,
     affirmationAlarm: platformOS !== 'android',
+    // "Meu despertar" (build the sequence, listen to it) everywhere. iOS wakes
+    // with AlarmKit above; Android gets an ordinary reminder with sound that
+    // opens the sequence (no exact alarm); the website only prepares and plays.
+    wakeSequence: true,
     // Common local notifications stay inside the Android store boundary. The
     // plan never enables the exact-alarm module and speech is requested only
     // from the foreground ritual after a clear disclosure. Web speech engines

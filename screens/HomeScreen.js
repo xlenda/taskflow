@@ -35,6 +35,7 @@ import { txt, tr, detectLang } from '../constants/i18n';
 import { isUnder18Age } from './onboarding/flow';
 import { selectDailyRitual } from '../utils/dailyRitual';
 import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
+import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 
 import GradientCover from '../components/GradientCover';
 import CelesteMascot from '../components/CelesteMascot';
@@ -98,13 +99,14 @@ const S = {
     pt: 'Transforme o que ficou dele numa afirmação só sua',
   },
   morningSaved: { en: '{n} dream affirmations saved', pt: '{n} afirmações de sonhos salvas' },
-  alarmTitle: { en: 'My alarm', pt: 'Meu despertador' },
+  alarmTitle: { en: 'My wake-up', pt: 'Meu despertar' },
   alarmEmpty: {
-    en: 'Choose your phrase, time, and days of the week',
-    pt: 'Escolha sua frase, horário e dias da semana',
+    en: 'Choose what to hear, the time, and the days',
+    pt: 'Escolha o que ouvir, o horário e os dias',
   },
   morningPrepared: { en: 'Content selected for {time}', pt: 'Conteúdo escolhido para {time}' },
   morningActive: { en: 'Alarm active at {time}', pt: 'Despertador ativo às {time}' },
+  wakeReminderActive: { en: 'Reminder at {time}', pt: 'Lembrete às {time}' },
   practicePlanTitle: { en: 'Celeste Plan', pt: 'Plano Celeste' },
   practicePlanEmpty: {
     en: 'Choose your vision or Anchor Scene, affirmation, and moments of the day',
@@ -342,7 +344,7 @@ export default function HomeScreen() {
   // quando a pessoa desfaz um dia.
   const isComplete = (m) => m.sessions.length >= m.goalDays;
   const morningRitual = state.morningRitual || {};
-  const hasWakeAffirmation = !!morningRitual.wakeAffirmationText;
+  const hasWakeSequence = wakeSequenceItemsForState(state, lang).length > 0;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const practicePlan = state.practicePlan || {};
   const practicePlanTimes = practiceSlotsInDayOrder(practicePlan).map((slot) => slot.time);
@@ -738,7 +740,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {RELEASE_FEATURES.affirmationAlarm ? (
+        {RELEASE_FEATURES.wakeSequence ? (
           <Card
             testID="open-affirmation-alarm"
             onPress={() => navigation.navigate('AffirmationAlarm')}
@@ -769,8 +771,10 @@ export default function HomeScreen() {
                 style={[th.typography.bodySm, styles.morningSub, { color: th.textMuted }]}
               >
                 {morningRitual.reminderEnabled
-                  ? t(S.morningActive, { time: morningRitual.reminderTime || '07:00' })
-                  : hasWakeAffirmation
+                  ? t(RELEASE_FEATURES.affirmationAlarm ? S.morningActive : S.wakeReminderActive, {
+                      time: morningRitual.reminderTime || '07:00',
+                    })
+                  : hasWakeSequence
                   ? t(S.morningPrepared, { time: morningRitual.reminderTime || '07:00' })
                   : t(S.alarmEmpty)}
               </Text>

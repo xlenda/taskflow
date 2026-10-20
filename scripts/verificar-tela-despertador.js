@@ -243,7 +243,7 @@ assert.ok(
   'salvar no site nao pode fingir que um alarme nativo foi ativado'
 );
 assert.ok(
-  screen.includes("Platform.OS === 'web' ? saveWebChoice : activate") &&
+  screen.includes("Platform.OS === 'web' ? saveWebChoice : reminderMode ? activateReminder : activate") &&
     screen.includes('Salvar minha escolha'),
   'o CTA web precisa confirmar a escolha em vez de parecer inerte'
 );
@@ -270,7 +270,7 @@ assert.ok(home.includes('testID="open-dream-journal"'), 'atalho de sonhos ausent
 assert.ok(home.includes('testID="open-affirmation-alarm"'), 'atalho separado do despertador ausente da Home');
 assert.ok(home.includes("navigation.navigate('AffirmationAlarm')"), 'Home não abre a nova tela');
 assert.ok(
-  home.includes("alarmTitle: { en: 'My alarm', pt: 'Meu despertador' }") &&
+  home.includes("alarmTitle: { en: 'My wake-up', pt: 'Meu despertar' }") &&
     home.includes("morningPrepared: { en: 'Content selected for {time}', pt: 'Conteúdo escolhido para {time}' }"),
   'Home não pode reduzir o conteúdo escolhido do despertador a uma afirmação'
 );

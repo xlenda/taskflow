@@ -477,6 +477,7 @@ function auditNarrationSurfaces() {
     'screens/MorningRitualScreen.js',
     'screens/VisionPlayerScreen.js',
     'screens/VisionsScreen.js',
+    'screens/WakeSequenceScreen.js',
     'screens/onboarding/RevealScreen.js',
   ];
   for (const required of requiredSurfaces) {

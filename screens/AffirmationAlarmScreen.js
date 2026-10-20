@@ -27,6 +27,11 @@ import {
   requestAffirmationAlarmAuthorization,
   scheduleAffirmationAlarm,
 } from '../services/affirmationAlarm';
+import {
+  cancelWakeReminders,
+  getWakeReminderCapability,
+  scheduleWakeReminders,
+} from '../services/wakeReminders';
 import { useTheme } from '../ui/theme';
 import { alarmWeekdaysOrDefault } from '../utils/alarmSchedule';
 import { wavBytesToBase64 } from '../utils/audioBase64';
@@ -178,7 +183,46 @@ const COPY = {
   yours: { pt: 'Sua frase', en: 'Your phrase' },
   close: { pt: 'Fechar', en: 'Close' },
   back: { pt: 'Voltar', en: 'Back' },
+  // Android: an ordinary reminder, not an alarm (see reminderMode).
+  reminderNote: {
+    pt: 'Um lembrete com som avisa no horário escolhido e abre sua sequência. Pode atrasar alguns minutos; a voz toca quando você abrir.',
+    en: 'A reminder with sound arrives at your chosen time and opens your sequence. It may arrive a few minutes late; the voice plays when you open it.',
+  },
+  reminderActivate: { pt: 'Ativar lembrete', en: 'Turn reminder on' },
+  reminderDeactivate: { pt: 'Desativar lembrete', en: 'Turn reminder off' },
+  reminderConfirmTitle: { pt: 'Ativar este lembrete?', en: 'Turn on this reminder?' },
+  reminderConfirmBody: {
+    pt: 'Receber um lembrete com som às {time} nos dias escolhidos para ouvir sua sequência? O aparelho pedirá permissão para notificações.',
+    en: 'Get a reminder with sound at {time} on the selected days to hear your sequence? Your device will ask for notification permission.',
+  },
+  reminderDeactivateTitle: { pt: 'Desativar o lembrete?', en: 'Turn the reminder off?' },
+  reminderDeactivateBody: {
+    pt: 'O lembrete não aparecerá mais no horário escolhido.',
+    en: 'The reminder will no longer appear at the chosen time.',
+  },
+  reminderActive: { pt: 'Lembrete ativo às {time}.', en: 'Reminder on at {time}.' },
+  reminderReady: {
+    pt: 'A permissão de notificações será pedida somente quando você tocar em Ativar lembrete.',
+    en: 'Notification permission is requested only after you tap Turn reminder on.',
+  },
+  reminderDenied: {
+    pt: 'As notificações do Celeste estão desligadas. Ative-as nos Ajustes para receber o lembrete.',
+    en: 'Celeste notifications are off. Turn them on in Settings to get the reminder.',
+  },
+  reminderCancelled: { pt: 'Lembrete desativado.', en: 'Reminder turned off.' },
+  reminderChanged: {
+    pt: 'Há alterações ainda não salvas. O lembrete atual continua como estava.',
+    en: 'There are unsaved changes. Your current reminder remains unchanged.',
+  },
+  reminderCancelFailed: {
+    pt: 'O aparelho não confirmou a desativação. O lembrete continua marcado como ativo.',
+    en: 'Your device did not confirm cancellation. The reminder remains marked as active.',
+  },
 };
+
+// Without AlarmKit (the Android build), the wake-up is an ordinary reminder with
+// sound that opens the sequence: no exact alarm, no phrase baked into a sound.
+const reminderMode = !RELEASE_FEATURES.affirmationAlarm;
 
 const WEEKDAYS = [
   { value: 1, label: { pt: 'Seg', en: 'Mon' }, full: { pt: 'segunda-feira', en: 'Monday' } },
@@ -226,7 +270,8 @@ export default function AffirmationAlarmScreen() {
   const selected = useMemo(() => alarmPhraseForState(state, items), [items, state]);
   // An active alarm switching to a new first phrase: the provider already saved
   // it and the native sync replaces the sound, so this is a notice, not a draft.
-  const soundUpdate = pendingAlarmSound(state, selected);
+  // A reminder has no sound of its own to replace.
+  const soundUpdate = reminderMode ? null : pendingAlarmSound(state, selected);
   const sequenceIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const full = items.length >= WAKE_SEQUENCE_MAX;
   const listeningSeconds = estimateListeningSeconds(items);
@@ -246,7 +291,7 @@ export default function AffirmationAlarmScreen() {
   const dirty =
     time !== (isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00') ||
     !sameDays(weekdays, persistedDays) ||
-    (ritual.reminderEnabled && ritual.wakeNarratorId !== narration.narratorId);
+    (!reminderMode && ritual.reminderEnabled && ritual.wakeNarratorId !== narration.narratorId);
   const alarmSettled = ritual.reminderEnabled && !dirty && !soundUpdate;
 
   useEffect(() => {
@@ -259,7 +304,7 @@ export default function AffirmationAlarmScreen() {
 
   const refreshCapability = useCallback(async () => {
     try {
-      const result = await getAffirmationAlarmCapability();
+      const result = await (reminderMode ? getWakeReminderCapability() : getAffirmationAlarmCapability());
       if (mountedRef.current) setCapability(result);
     } catch (_error) {
       if (mountedRef.current) setCapability({ supported: false, reason: 'capability_error' });
@@ -445,6 +490,51 @@ export default function AffirmationAlarmScreen() {
     }
   }, [haptic, lang, narration, saveMorningRitualPreferences, selected, t, time, weekdays]);
 
+  // Android: the reminder opens the sequence, so no voice is generated here and
+  // notification permission is asked only after this explicit confirmation.
+  const activateReminder = useCallback(async () => {
+    if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
+    const confirmed = await confirmAsync({
+      title: t(COPY.reminderConfirmTitle),
+      message: t(COPY.reminderConfirmBody, { time }),
+      confirmLabel: t(COPY.reminderActivate),
+      cancelLabel: t(COPY.cancel),
+      destructive: false,
+      lang,
+    });
+    if (!confirmed || operationRef.current) return;
+    operationRef.current = true;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const response = await scheduleWakeReminders({ time, weekdays, lang });
+      if (response.ok === true) {
+        // The phrase pointer keeps the load-time rules satisfied; the reminder itself plays nothing.
+        saveMorningRitualPreferences({
+          reminderEnabled: true,
+          alarmSyncError: false,
+          reminderTime: time,
+          weekdays,
+          wakeAffirmationId: selected.id,
+          wakeAffirmationText: selected.text,
+          wakeAffirmationLang: selected.lang,
+        });
+        if (mountedRef.current) {
+          setFeedback('scheduled');
+          haptic(true);
+        }
+      } else if (mountedRef.current) {
+        setFeedback(response.error === 'permission_denied' ? 'denied' : 'failed');
+      }
+    } catch (_error) {
+      if (mountedRef.current) setFeedback('failed');
+    } finally {
+      operationRef.current = false;
+      if (mountedRef.current) setBusy(false);
+      refreshCapability();
+    }
+  }, [haptic, lang, refreshCapability, saveMorningRitualPreferences, selected, t, time, weekdays]);
+
   const saveWebChoice = useCallback(() => {
     if (operationRef.current || !selected || !isValidTime(time) || weekdays.length === 0) return;
     saveMorningRitualPreferences({
@@ -462,8 +552,8 @@ export default function AffirmationAlarmScreen() {
   const deactivate = useCallback(async () => {
     if (operationRef.current) return;
     const confirmed = await confirmAsync({
-      title: t(COPY.deactivateTitle),
-      message: t(COPY.deactivateBody),
+      title: t(reminderMode ? COPY.reminderDeactivateTitle : COPY.deactivateTitle),
+      message: t(reminderMode ? COPY.reminderDeactivateBody : COPY.deactivateBody),
       confirmLabel: t(COPY.deactivateConfirm),
       cancelLabel: t(COPY.cancel),
       destructive: true,
@@ -474,7 +564,7 @@ export default function AffirmationAlarmScreen() {
     setBusy(true);
     setFeedback(null);
     try {
-      const response = await cancelAffirmationAlarm();
+      const response = reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm();
       if (response.ok === true) {
         saveMorningRitualPreferences({ reminderEnabled: false, alarmSyncError: false });
         if (mountedRef.current) {
@@ -514,7 +604,7 @@ export default function AffirmationAlarmScreen() {
     : feedback === 'saved_draft'
     ? t(COPY.savedDraft)
     : feedback === 'denied' || capability?.authorization === 'denied'
-    ? t(COPY.denied)
+    ? t(reminderMode ? COPY.reminderDenied : COPY.denied)
     : feedback === 'permission_required'
     ? t(COPY.permissionRequired)
     : feedback === 'permission_failed'
@@ -524,19 +614,19 @@ export default function AffirmationAlarmScreen() {
     : feedback === 'voice_failed'
     ? t(COPY.voiceFailed)
     : feedback === 'cancel_failed'
-    ? t(COPY.cancelFailed)
+    ? t(reminderMode ? COPY.reminderCancelFailed : COPY.cancelFailed)
     : feedback === 'cancelled'
-    ? t(COPY.cancelled)
+    ? t(reminderMode ? COPY.reminderCancelled : COPY.cancelled)
     : feedback === 'invalid_days'
     ? t(COPY.daysHint)
-    : ritual.alarmSyncError
+    : ritual.alarmSyncError && !reminderMode
     ? t(COPY.failed)
     : ritual.reminderEnabled && dirty
-    ? t(COPY.changed)
+    ? t(reminderMode ? COPY.reminderChanged : COPY.changed)
     : soundUpdate
     ? t(COPY.soundUpdate, { phrase: soundUpdate.text })
     : ritual.reminderEnabled
-    ? t(COPY.active, { time: ritual.reminderTime || '07:00' })
+    ? t(reminderMode ? COPY.reminderActive : COPY.active, { time: ritual.reminderTime || '07:00' })
     : !selected
     ? t(COPY.noPhrase)
     : !capability
@@ -547,7 +637,7 @@ export default function AffirmationAlarmScreen() {
     ? t(COPY.nativeMissing)
     : capability.supported !== true
     ? t(COPY.unsupported)
-    : t(COPY.ready);
+    : t(reminderMode ? COPY.reminderReady : COPY.ready);
 
   const sourceLabel = (source) =>
     source === 'dream'
@@ -753,7 +843,7 @@ export default function AffirmationAlarmScreen() {
                   <Ionicons name="add" size={18} color={theme.accent} />
                   <Text style={[styles.smallButtonText, { color: theme.accent }]}>{t(COPY.add)}</Text>
                 </Pressable>
-                {/* Appears once the listening screen (WakeSequence route) is turned on. */}
+                {/* Opens the listening screen (Traço Celeste, then the sequence). */}
                 {RELEASE_FEATURES.wakeSequence ? (
                   <Pressable
                     testID="wake-listen-now"
@@ -842,6 +932,12 @@ export default function AffirmationAlarmScreen() {
               })}
             </View>
 
+            {reminderMode ? (
+              <Text testID="wake-reminder-note" style={[styles.reminderNote, { color: theme.textMuted }]}>
+                {t(COPY.reminderNote)}
+              </Text>
+            ) : null}
+
             <PrimaryButton
               testID="activate-affirmation-alarm"
               label={
@@ -849,17 +945,25 @@ export default function AffirmationAlarmScreen() {
                   ? COPY.saveChoice
                   : ritual.reminderEnabled
                   ? COPY.update
+                  : reminderMode
+                  ? COPY.reminderActivate
                   : COPY.activate
               }
-              icon={Platform.OS === 'web' ? 'checkmark-circle-outline' : 'alarm-outline'}
+              icon={
+                Platform.OS === 'web'
+                  ? 'checkmark-circle-outline'
+                  : reminderMode
+                  ? 'notifications-outline'
+                  : 'alarm-outline'
+              }
               disabled={busy || (Platform.OS === 'web' ? !canSaveChoice : !canSchedule)}
-              onPress={Platform.OS === 'web' ? saveWebChoice : activate}
+              onPress={Platform.OS === 'web' ? saveWebChoice : reminderMode ? activateReminder : activate}
               style={styles.primaryAction}
             />
             {ritual.reminderEnabled ? (
               <PrimaryButton
                 testID="deactivate-affirmation-alarm"
-                label={COPY.deactivate}
+                label={reminderMode ? COPY.reminderDeactivate : COPY.deactivate}
                 icon="stop-circle-outline"
                 variant="ghost"
                 disabled={busy}
@@ -1065,6 +1169,7 @@ const styles = StyleSheet.create({
   timeInput: { width: 144, height: 60, borderWidth: 1, borderRadius: 18, paddingHorizontal: 16, fontSize: 27, lineHeight: 32, fontWeight: '700', letterSpacing: 0.3 },
   clockIcon: { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   daysRow: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  reminderNote: { fontSize: 13, lineHeight: 20, marginTop: 18, letterSpacing: 0 },
   dayChip: { minWidth: 48, minHeight: 48, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', margin: 4 },
   dayText: { fontSize: 12, fontWeight: '800', letterSpacing: 0 },
   primaryAction: { marginTop: 28 },

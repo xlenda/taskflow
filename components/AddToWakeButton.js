@@ -27,7 +27,7 @@ export default function AddToWakeButton({ kind, id, campaign, accent = 0, style 
   const [addedId, setAddedId] = useState(null);
   const status = useMemo(() => appendToWakeSequence(state, { kind, id }), [state, kind, id]);
 
-  if (!RELEASE_FEATURES.affirmationAlarm || status.reason === 'unknown') return null;
+  if (!RELEASE_FEATURES.wakeSequence || status.reason === 'unknown') return null;
   const inSequence = status.reason === 'duplicate';
   const full = status.reason === 'full';
   const note = full ? t(S.full) : inSequence && addedId === id ? t(S.added) : '';

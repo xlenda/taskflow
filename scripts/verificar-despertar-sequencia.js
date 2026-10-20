@@ -462,4 +462,346 @@ assert.ok(
   'frase do sonho precisa acrescentar à sequência e abrir Meu despertar'
 );
 
-process.stdout.write('Despertar em sequência: tipos, limite, migração, frase do alarme e atalhos aprovados\n');
+// 11. Ligações do ouvir: rota, link do lembrete, atalhos no Android e ativação por lembrete comum.
+const app = read('App.js');
+const features = read('constants/releaseFeatures.js');
+const home = read('screens/HomeScreen.js');
+assert.ok(features.includes('wakeSequence: true'), 'Meu despertar precisa existir em todas as plataformas');
+assert.ok(
+  app.includes('RELEASE_FEATURES.wakeSequence ? (') &&
+    app.includes('<Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />') &&
+    app.includes('<Root.Screen name="WakeSequence" component={WakeSequenceScreen} />') &&
+    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }") &&
+    app.includes('await initialWakeNotificationUrl()') &&
+    app.includes('subscribeWakeNotificationUrls(listener)') &&
+    app.includes('configureWakeNotifications()'),
+  'rota despertar/ouvir, toque no lembrete e configuração das notificações do despertar ausentes'
+);
+assert.ok(
+  addButton.includes('!RELEASE_FEATURES.wakeSequence') && !addButton.includes('RELEASE_FEATURES.affirmationAlarm'),
+  'atalho "Pôr no meu despertar" precisa aparecer também no Android'
+);
+assert.ok(morning.includes('{RELEASE_FEATURES.wakeSequence ? ('), 'botão do sonho precisa aparecer no Android');
+assert.ok(
+  home.includes('RELEASE_FEATURES.wakeSequence ? (') &&
+    home.includes("alarmTitle: { en: 'My wake-up', pt: 'Meu despertar' }") &&
+    home.includes('wakeSequenceItemsForState(state, lang)'),
+  'cartão da Home precisa se chamar Meu despertar e olhar a sequência'
+);
+const reminderActivation = alarmScreen.slice(
+  alarmScreen.indexOf('const activateReminder = useCallback'),
+  alarmScreen.indexOf('const saveWebChoice = useCallback')
+);
+assert.ok(
+  reminderActivation.indexOf('await confirmAsync') >= 0 &&
+    reminderActivation.indexOf('await confirmAsync') < reminderActivation.indexOf('await scheduleWakeReminders({ time, weekdays, lang })') &&
+    reminderActivation.indexOf('await scheduleWakeReminders') < reminderActivation.indexOf('reminderEnabled: true') &&
+    !/scheduleAffirmationAlarm|preparePersonal|requestAffirmationAlarmAuthorization/.test(reminderActivation),
+  'Android: confirmar, pedir permissão no agendamento e só então marcar ativo, sem AlarmKit nem voz paga'
+);
+assert.ok(
+  alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()') &&
+    alarmScreen.includes("Platform.OS === 'web' ? saveWebChoice : reminderMode ? activateReminder : activate") &&
+    alarmScreen.includes('Pode atrasar alguns minutos; a voz toca quando você abrir.') &&
+    alarmScreen.includes('It may arrive a few minutes late; the voice plays when you open it.'),
+  'Android precisa desligar pelo lembrete e avisar com honestidade que pode atrasar'
+);
+
+// 12. Ouvir: a 3ª estrela inicia a voz no mesmo toque. Nada de await entre onFinalStar e o
+// início da voz (o Safari do iPhone descarta o som pedido fora do gesto). Sem comentários.
+const wakeScreen = read('screens/WakeSequenceScreen.js');
+const wakeCode = transformSync(wakeScreen, {
+  babelrc: false,
+  configFile: false,
+  comments: false,
+  parserOpts: { plugins: ['jsx'] },
+}).code;
+const screenBlock = (marker) => {
+  const start = wakeCode.indexOf(marker);
+  assert.ok(start >= 0, `WakeSequenceScreen sem ${marker}`);
+  const rest = wakeCode.slice(start + marker.length);
+  const end = rest.search(/\n {2}(?:function |const |let |useEffect\(|return \()/);
+  return marker + (end >= 0 ? rest.slice(0, end) : rest);
+};
+assert.ok(wakeCode.includes('onFinalStar={() => playItem(0)}'), 'a 3ª estrela precisa começar o 1º item direto');
+const playItemBlock = screenBlock('function playItem(');
+const speakBlock = screenBlock('function speakWithDevice(');
+const silenceBlock = screenBlock('function silence(');
+for (const [name, body] of [
+  ['playItem', playItemBlock],
+  ['speakWithDevice', speakBlock],
+  ['silence', silenceBlock],
+]) {
+  assert.ok(
+    !/\bawait\b|\basync\b/.test(body) && !new RegExp(`\\basync\\s+function\\s+${name}\\(`).test(wakeCode),
+    `${name} não pode esperar nada antes de a voz começar`
+  );
+}
+assert.ok(
+  playItemBlock.indexOf('silence()') >= 0 &&
+    /\.playPersonal\(\{[\s\S]*?\}\)[\s\S]*?\.catch\(/.test(playItemBlock) &&
+    playItemBlock.includes('speakWithDevice(item, epoch)') &&
+    speakBlock.includes('Speech.speak(item.text'),
+  'voz da Celeste (com .catch) ou do aparelho precisa começar dentro de playItem'
+);
+assert.ok(
+  wakeCode.includes('narration.personalNarrationAvailable && hasUnifiedCloudMediaConsent(state?.profile)'),
+  'voz da nuvem só com consentimento já dado; senão a voz do aparelho'
+);
+assert.ok(
+  !/practiceSpeech|recognize\(|getUserMedia|RECORD_AUDIO|useAudioRecorder/.test(wakeScreen),
+  'ouvir o despertar é passivo: nada de microfone'
+);
+for (const testID of ['wake-sequence-screen', 'wake-player', 'wake-pause', 'wake-next', 'wake-stop', 'wake-complete']) {
+  assert.ok(
+    wakeScreen.includes(`testID="${testID}"`) || wakeScreen.includes(`testID: '${testID}'`),
+    `tela de ouvir sem ${testID}`
+  );
+}
+
+// 13. Lembrete Android (expo-notifications falso + Platform falso): DAILY com os 7 dias,
+// WEEKLY por dia (domingo = 1 no Expo), canal próprio com som e web honesta.
+function loadWakeReminders(OS) {
+  const target = path.join(root, 'services', 'wakeReminders.js');
+  delete require.cache[target];
+  const originalLoad = Module._load;
+  Module._load = function mockedLoad(request, parent, isMain) {
+    if (request === 'react-native') return { Platform: { OS } };
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  try {
+    return load('services/wakeReminders.js');
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
+const WAKE_DATA = { kind: 'wake_sequence', url: 'celeste://despertar/ouvir' };
+const scheduledWake = (identifier) => ({ identifier, content: { data: { ...WAKE_DATA } }, trigger: {} });
+const scheduledPlan = {
+  identifier: 'plan-manha',
+  content: { data: { kind: 'practice_plan', slotId: 'manha', url: 'celeste://pratica/manha' } },
+  trigger: {},
+};
+const responseFor = (data) => ({ notification: { request: { content: { data } } } });
+
+function notificationsMock(overrides = {}) {
+  const calls = { channels: [], scheduled: [], cancelled: [], order: [], requests: 0, cleared: 0 };
+  return {
+    calls,
+    AndroidImportance: { DEFAULT: 3, HIGH: 4 },
+    SchedulableTriggerInputTypes: { DAILY: 'daily', WEEKLY: 'weekly' },
+    async getPermissionsAsync() {
+      return { status: 'granted', granted: true };
+    },
+    async requestPermissionsAsync() {
+      calls.requests += 1;
+      return { status: 'granted', granted: true };
+    },
+    async setNotificationChannelAsync(id, config) {
+      calls.channels.push({ id, config });
+    },
+    async scheduleNotificationAsync(request) {
+      calls.scheduled.push(request);
+      calls.order.push('schedule');
+      return `wake-${calls.scheduled.length}`;
+    },
+    async getAllScheduledNotificationsAsync() {
+      return [];
+    },
+    async cancelScheduledNotificationAsync(identifier) {
+      calls.cancelled.push(identifier);
+      calls.order.push(`cancel:${identifier}`);
+    },
+    setNotificationHandler(handler) {
+      calls.handler = handler;
+    },
+    getLastNotificationResponse() {
+      return null;
+    },
+    clearLastNotificationResponse() {
+      calls.cleared += 1;
+    },
+    addNotificationResponseReceivedListener(listener) {
+      calls.listener = listener;
+      return {
+        remove() {
+          calls.removed = true;
+        },
+      };
+    },
+    ...overrides,
+  };
+}
+
+async function verifyWakeReminders() {
+  const service = loadWakeReminders('android');
+  const useMock = (mock) => {
+    service._wakeRemindersTest.setApiForTests(mock);
+    return mock;
+  };
+
+  let mock = useMock(notificationsMock());
+  assert.deepStrictEqual(
+    await service.scheduleWakeReminders({ time: '06:30', weekdays: [7, 1, 2, 3, 4, 5, 6], lang: 'pt' }),
+    { ok: true, identifiers: ['wake-1'], permission: 'granted' }
+  );
+  assert.deepStrictEqual(
+    mock.calls.scheduled.map((request) => request.trigger),
+    [{ type: 'daily', hour: 6, minute: 30, channelId: 'celeste-despertar' }],
+    'os 7 dias viram um único lembrete DAILY no canal do despertar'
+  );
+  const wakeContent = mock.calls.scheduled[0].content;
+  assert.deepStrictEqual(wakeContent.data, WAKE_DATA, 'tocar no lembrete precisa abrir despertar/ouvir');
+  assert.strictEqual(wakeContent.sound, true, 'lembrete do despertar não pode chegar mudo');
+  assert.strictEqual(wakeContent.title, 'Seu despertar está pronto');
+  assert.strictEqual(mock.calls.channels.length, 1);
+  const [{ id: channelId, config: channel }] = mock.calls.channels;
+  assert.strictEqual(channelId, 'celeste-despertar');
+  assert.strictEqual(channel.importance, mock.AndroidImportance.HIGH, 'canal do despertar precisa de importância alta');
+  assert.ok(channel.sound !== null && channel.sound !== false, 'canal do despertar precisa tocar o som padrão');
+  assert.notStrictEqual(channel.enableVibrate, false);
+  assert.ok(channel.name, 'canal sem nome visível nos ajustes');
+
+  mock = useMock(notificationsMock());
+  const weekly = await service.scheduleWakeReminders({ time: '07:05', weekdays: [7, 1, 3, 3], lang: 'en' });
+  assert.deepStrictEqual(weekly, { ok: true, identifiers: ['wake-1', 'wake-2', 'wake-3'], permission: 'granted' });
+  assert.deepStrictEqual(
+    mock.calls.scheduled.map((request) => request.trigger),
+    [
+      { type: 'weekly', weekday: 2, hour: 7, minute: 5, channelId: 'celeste-despertar' },
+      { type: 'weekly', weekday: 4, hour: 7, minute: 5, channelId: 'celeste-despertar' },
+      { type: 'weekly', weekday: 1, hour: 7, minute: 5, channelId: 'celeste-despertar' },
+    ],
+    'dias ISO (segunda = 1) viram WEEKLY do Expo (domingo = 1), um por dia'
+  );
+  assert.strictEqual(mock.calls.scheduled[0].content.title, 'Your wake-up is ready');
+
+  // Trocar horário/dias: os novos nascem antes de os antigos saírem; outros lembretes ficam.
+  mock = useMock(
+    notificationsMock({
+      async getAllScheduledNotificationsAsync() {
+        return [scheduledWake('old-wake'), scheduledPlan];
+      },
+    })
+  );
+  assert.strictEqual((await service.scheduleWakeReminders({ time: '08:00', weekdays: [1], lang: 'pt' })).ok, true);
+  assert.deepStrictEqual(mock.calls.order, ['schedule', 'cancel:old-wake']);
+
+  // Falha no meio: desfaz só o que acabou de criar e mantém o lembrete antigo.
+  mock = useMock(
+    notificationsMock({
+      async getAllScheduledNotificationsAsync() {
+        return [scheduledWake('old-wake')];
+      },
+      async scheduleNotificationAsync() {
+        mock.calls.order.push('schedule');
+        if (mock.calls.order.length === 2) throw new Error('native_failure');
+        return 'new-wake-1';
+      },
+    })
+  );
+  assert.deepStrictEqual(
+    await service.scheduleWakeReminders({ time: '08:00', weekdays: [1, 2], lang: 'pt' }),
+    { ok: false, error: 'schedule_failed', permission: 'granted' }
+  );
+  assert.deepStrictEqual(mock.calls.cancelled, ['new-wake-1'], 'falha no meio apagou o lembrete antigo ou deixou o novo');
+
+  // Permissão: pedida só aqui (na ativação); negada não agenda nada.
+  mock = useMock(
+    notificationsMock({
+      async getPermissionsAsync() {
+        return { status: 'undetermined', granted: false, canAskAgain: true };
+      },
+      async requestPermissionsAsync() {
+        mock.calls.requests += 1;
+        return { status: 'denied', granted: false, canAskAgain: false };
+      },
+    })
+  );
+  assert.deepStrictEqual(
+    await service.scheduleWakeReminders({ time: '07:00', weekdays: [1], lang: 'pt' }),
+    { ok: false, error: 'permission_denied', permission: 'denied' }
+  );
+  assert.strictEqual(mock.calls.requests, 1);
+  assert.strictEqual(mock.calls.scheduled.length, 0, 'sem permissão não pode agendar');
+
+  mock = useMock(notificationsMock());
+  for (const [input, error] of [
+    [{ time: '7:00', weekdays: [1] }, 'invalid_time'],
+    [{ time: '24:00', weekdays: [1] }, 'invalid_time'],
+    [{ time: '07:00', weekdays: [] }, 'invalid_weekdays'],
+    [{ time: '07:00', weekdays: [0, 1] }, 'invalid_weekdays'],
+  ]) {
+    assert.strictEqual((await service.scheduleWakeReminders(input)).error, error, JSON.stringify(input));
+  }
+  assert.strictEqual(mock.calls.scheduled.length, 0);
+
+  // Desligar: só os lembretes do despertar saem.
+  mock = useMock(
+    notificationsMock({
+      async getAllScheduledNotificationsAsync() {
+        return [scheduledWake('old-wake'), scheduledPlan, scheduledWake('old-wake-2')];
+      },
+    })
+  );
+  assert.deepStrictEqual(await service.cancelWakeReminders(), { ok: true });
+  assert.deepStrictEqual(mock.calls.cancelled, ['old-wake', 'old-wake-2']);
+  mock.cancelScheduledNotificationAsync = async () => {
+    throw new Error('native_failure');
+  };
+  assert.deepStrictEqual(await service.cancelWakeReminders(), { ok: false, error: 'cancel_failed' });
+
+  // Tocar no lembrete abre despertar/ouvir; o toque de outro lembrete fica para o dono dele.
+  mock = useMock(notificationsMock({ getLastNotificationResponse: () => responseFor(WAKE_DATA) }));
+  assert.strictEqual(await service.initialWakeNotificationUrl(), 'celeste://despertar/ouvir');
+  assert.strictEqual(mock.calls.cleared, 1);
+  mock = useMock(notificationsMock({ getLastNotificationResponse: () => responseFor(scheduledPlan.content.data) }));
+  assert.strictEqual(await service.initialWakeNotificationUrl(), null);
+  assert.strictEqual(mock.calls.cleared, 0, 'não pode limpar a resposta de outro lembrete');
+  const received = [];
+  const unsubscribe = service.subscribeWakeNotificationUrls((url) => received.push(url));
+  mock.calls.listener(responseFor(scheduledPlan.content.data));
+  mock.calls.listener(responseFor(WAKE_DATA));
+  assert.deepStrictEqual(received, ['celeste://despertar/ouvir']);
+  unsubscribe();
+  assert.strictEqual(mock.calls.removed, true);
+
+  // App aberto: o handler é global; só o despertar toca som, os outros seguem silenciosos.
+  assert.strictEqual(service.configureWakeNotifications(), true);
+  const wakeBehavior = await mock.calls.handler.handleNotification(responseFor(WAKE_DATA).notification);
+  const planBehavior = await mock.calls.handler.handleNotification(responseFor(scheduledPlan.content.data).notification);
+  assert.strictEqual(wakeBehavior.shouldPlaySound, true);
+  assert.strictEqual(planBehavior.shouldPlaySound, false);
+  assert.strictEqual(planBehavior.shouldShowBanner, true);
+
+  for (const [permission, expected] of [
+    [{ status: 'granted', granted: true }, { supported: true, canSchedule: true, canRequestAuthorization: false, authorization: 'authorized' }],
+    [{ status: 'undetermined', granted: false, canAskAgain: true }, { supported: true, canSchedule: false, canRequestAuthorization: true, authorization: 'not_determined' }],
+    [{ status: 'denied', granted: false, canAskAgain: false }, { supported: true, canSchedule: false, canRequestAuthorization: false, authorization: 'denied' }],
+  ]) {
+    useMock(notificationsMock({ getPermissionsAsync: async () => permission }));
+    assert.deepStrictEqual(await service.getWakeReminderCapability(), expected, permission.status);
+  }
+
+  // Site: não finge lembrete.
+  const web = loadWakeReminders('web');
+  assert.deepStrictEqual(await web.scheduleWakeReminders({ time: '07:00', weekdays: [1], lang: 'pt' }), {
+    ok: false,
+    error: 'unsupported',
+  });
+  assert.deepStrictEqual(await web.cancelWakeReminders(), { ok: true });
+  assert.strictEqual(await web.initialWakeNotificationUrl(), null);
+  assert.strictEqual(web.configureWakeNotifications(), false);
+}
+
+verifyWakeReminders()
+  .then(() => {
+    process.stdout.write(
+      'Despertar em sequência: tipos, limite, migração, frase do alarme, atalhos, ouvir e lembrete Android aprovados\n'
+    );
+  })
+  .catch((error) => {
+    console.error(error.stack || error);
+    process.exitCode = 1;
+  });

@@ -1461,7 +1461,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                           <Text style={[styles.resultButtonText, { color: theme.accent }]}>{isTextPlaying({ text: result.affirmation }) ? t(S.stop) : t(S.listenResult)}</Text>
                         </Pressable>
                       ) : null}
-                      {RELEASE_FEATURES.affirmationAlarm ? (
+                      {RELEASE_FEATURES.wakeSequence ? (
                         <Pressable
                           testID="add-to-wake-sonho"
                           accessibilityRole="button"

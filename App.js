@@ -49,6 +49,12 @@ import {
   initialPracticePlanNotificationUrl,
   subscribePracticePlanNotificationUrls,
 } from './services/practicePlanReminders';
+import {
+  cancelWakeReminders,
+  configureWakeNotifications,
+  initialWakeNotificationUrl,
+  subscribeWakeNotificationUrls,
+} from './services/wakeReminders';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -59,6 +65,7 @@ import JourneyScreen from './screens/JourneyScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import MorningRitualScreen from './screens/MorningRitualScreen';
 import AffirmationAlarmScreen from './screens/AffirmationAlarmScreen';
+import WakeSequenceScreen from './screens/WakeSequenceScreen';
 import DailyRitualScreen from './screens/DailyRitualScreen';
 import PracticePlanScreen from './screens/PracticePlanScreen';
 import PracticeRitualScreen from './screens/PracticeRitualScreen';
@@ -564,6 +571,19 @@ function NativeAlarmContentSync() {
   return null;
 }
 
+// Android has no AlarmKit: its wake-up is ordinary reminders. Whatever turns
+// reminderEnabled off (the off button, reset, backup import, deleted content)
+// leaves none behind, and each launch while off sweeps orphans.
+function WakeReminderSync() {
+  const { state } = useApp();
+  const loaded = !!state;
+  const enabled = state?.morningRitual?.reminderEnabled === true;
+  React.useEffect(() => {
+    if (loaded && !enabled) void cancelWakeReminders();
+  }, [loaded, enabled]);
+  return null;
+}
+
 function HomeStackNav() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
@@ -822,8 +842,11 @@ function RootNav() {
         <>
           <Root.Screen name="Main" component={Tabs} />
           <Root.Screen name="MorningRitual" component={MorningRitualScreen} />
-          {RELEASE_FEATURES.affirmationAlarm ? (
-            <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
+          {RELEASE_FEATURES.wakeSequence ? (
+            <>
+              <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
+              <Root.Screen name="WakeSequence" component={WakeSequenceScreen} />
+            </>
           ) : null}
           <Root.Screen name="DailyRitual" component={DailyRitualScreen} />
           {RELEASE_FEATURES.practicePlan ? (
@@ -867,7 +890,9 @@ const linking = {
     const practicePlanUrl = RELEASE_FEATURES.practicePlan
       ? await initialPracticePlanNotificationUrl()
       : null;
-    return practicePlanUrl || initialDailyRitualNotificationUrl();
+    if (practicePlanUrl) return practicePlanUrl;
+    const wakeUrl = RELEASE_FEATURES.wakeSequence ? await initialWakeNotificationUrl() : null;
+    return wakeUrl || initialDailyRitualNotificationUrl();
   },
   subscribe(listener) {
     const linkingSubscription = Linking.addEventListener('url', ({ url }) => listener(url));
@@ -875,10 +900,14 @@ const linking = {
     const unsubscribePracticePlanNotifications = RELEASE_FEATURES.practicePlan
       ? subscribePracticePlanNotificationUrls(listener)
       : () => {};
+    const unsubscribeWakeNotifications = RELEASE_FEATURES.wakeSequence
+      ? subscribeWakeNotificationUrls(listener)
+      : () => {};
     return () => {
       linkingSubscription.remove();
       unsubscribeNotifications();
       unsubscribePracticePlanNotifications();
+      unsubscribeWakeNotifications();
     };
   },
   config: {
@@ -903,7 +932,9 @@ const linking = {
         },
       },
       MorningRitual: 'sonhos',
-      ...(RELEASE_FEATURES.affirmationAlarm ? { AffirmationAlarm: 'despertar' } : {}),
+      ...(RELEASE_FEATURES.wakeSequence
+        ? { AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }
+        : {}),
       DailyRitual: 'ritual',
       ...(RELEASE_FEATURES.practicePlan
         ? { PracticePlan: 'plano', PracticeRitual: 'pratica/:slotId' }
@@ -924,6 +955,8 @@ export default function App() {
   React.useEffect(() => {
     configureDailyRitualNotifications();
     if (RELEASE_FEATURES.practicePlan) configurePracticePlanNotifications();
+    // Last on purpose: the foreground handler is global and only this one adds sound (wake-up only).
+    if (RELEASE_FEATURES.wakeSequence) configureWakeNotifications();
   }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -937,6 +970,7 @@ export default function App() {
             <NarrationProvider>
               <PersistedTheme />
               {RELEASE_FEATURES.affirmationAlarm ? <NativeAlarmContentSync /> : null}
+              {RELEASE_FEATURES.affirmationAlarm ? null : <WakeReminderSync />}
               <StatusBar style="dark" />
               <View testID="celeste-application-layout" style={styles.applicationLayout}>
                 <View testID="celeste-navigation-frame" style={styles.navigationFrame}>

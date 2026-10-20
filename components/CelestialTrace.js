@@ -31,7 +31,7 @@ function lineGeometry(a, b) {
   };
 }
 
-export default function CelestialTrace({ initialComplete = false, onComplete, onFinalStar }) {
+export default function CelestialTrace({ initialComplete = false, onComplete, onFinalStar, readyTitle }) {
   const { t } = useT();
   const [progress, setProgress] = useState(initialComplete ? 3 : 0);
   const [width, setWidth] = useState(320);
@@ -128,7 +128,7 @@ export default function CelestialTrace({ initialComplete = false, onComplete, on
   return (
     <View style={styles.shell}>
       <Text style={styles.eyebrow}>{t(S.eyebrow)}</Text>
-      <Text style={styles.title}>{progress === 3 ? t(S.ready) : t(S.title)}</Text>
+      <Text style={styles.title}>{progress === 3 ? readyTitle || t(S.ready) : t(S.title)}</Text>
 
       <View
         style={styles.sky}

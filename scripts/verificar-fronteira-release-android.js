@@ -20,6 +20,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   androidStoreBoundary: true,
   publicCommunity: false,
   affirmationAlarm: false,
+  wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
   paidCloudProcessing: false,
@@ -28,6 +29,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
   androidStoreBoundary: true,
   publicCommunity: false,
   affirmationAlarm: false,
+  wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
   paidCloudProcessing: false,
@@ -36,6 +38,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
   androidStoreBoundary: false,
   publicCommunity: true,
   affirmationAlarm: false,
+  wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
   paidCloudProcessing: false,
@@ -45,6 +48,7 @@ for (const platformOS of ['ios', 'web']) {
     androidStoreBoundary: false,
     publicCommunity: true,
     affirmationAlarm: true,
+    wakeSequence: true,
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'ios',
     paidCloudProcessing: platformOS === 'web',
@@ -81,19 +85,37 @@ assert.ok(
     home.includes('testID="open-community-home"'),
   'Android store build must omit the Community shortcut from Home'
 );
+// "Meu despertar" (sequence + listening screen) ships on Android as ordinary
+// reminders; the AlarmKit alarm and its sync stay Apple-only.
 assert.ok(
-  app.includes('RELEASE_FEATURES.affirmationAlarm ? (') &&
-    app.includes("{ AffirmationAlarm: 'despertar' }"),
-  'Android store build must omit the alarm screen and deep-link route'
+  app.includes('RELEASE_FEATURES.wakeSequence ? (') &&
+    app.includes('<Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />') &&
+    app.includes('<Root.Screen name="WakeSequence" component={WakeSequenceScreen} />') &&
+    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }"),
+  'Meu despertar and its listening route must sit inside the wakeSequence boundary'
 );
 assert.ok(
   app.includes('RELEASE_FEATURES.affirmationAlarm ? <NativeAlarmContentSync /> : null'),
   'Android store build must not run native alarm synchronization'
 );
 assert.ok(
-  home.includes('RELEASE_FEATURES.affirmationAlarm ? (') &&
+  home.includes('RELEASE_FEATURES.wakeSequence ? (') &&
     home.includes('testID="open-affirmation-alarm"'),
-  'Android store build must omit the alarm shortcut from Home'
+  'Home must expose Meu despertar inside the wakeSequence boundary'
+);
+const wakeReminders = read('services/wakeReminders.js');
+assert.ok(
+  wakeReminders.includes("WAKE_CHANNEL_ID = 'celeste-despertar'") &&
+    wakeReminders.includes('SchedulableTriggerInputTypes.WEEKLY') &&
+    !/SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM|FOREGROUND_SERVICE|affirmationAlarm|requireOptionalNativeModule/.test(
+      wakeReminders
+    ),
+  'Android wake-up must use ordinary notifications, never the exact alarm module'
+);
+assert.ok(
+  alarmScreen.includes('const reminderMode = !RELEASE_FEATURES.affirmationAlarm') &&
+    alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()'),
+  'Without AlarmKit the wake-up must schedule and cancel only ordinary reminders'
 );
 assert.ok(
   home.includes('if (!RELEASE_FEATURES.paidCloudProcessing)') &&
@@ -117,8 +139,9 @@ assert.ok(
 );
 assert.ok(
   morning.includes("const alarmVisible = mode === 'combined' && RELEASE_FEATURES.affirmationAlarm") &&
-    morning.includes('{RELEASE_FEATURES.affirmationAlarm ? ('),
-  'Android store build must omit both legacy and dream-result alarm actions'
+    morning.includes('{RELEASE_FEATURES.wakeSequence ? (') &&
+    morning.includes('testID="add-to-wake-sonho"'),
+  'Android store build must omit the legacy native alarm toggle and keep the dream wake-up shortcut'
 );
 assert.ok(
   !alarmScreen.includes('iPhone ou Android') && !alarmScreen.includes('iPhone or Android'),
@@ -267,4 +290,4 @@ for (const profile of ['preview', 'production']) {
   );
 }
 
-console.log('Fronteira Android v1 verificada: pratica local ativa; audio em segundo plano e alarmes exatos bloqueados.');
+console.log('Fronteira Android v1 verificada: pratica local e lembrete do despertar ativos; audio em segundo plano e alarmes exatos bloqueados.');

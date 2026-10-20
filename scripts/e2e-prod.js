@@ -220,6 +220,26 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       });
     }
   });
+  // Espião de voz: anota quando a fala do aparelho ou um elemento de áudio começa,
+  // para provar que a 3ª estrela do despertar inicia a voz dentro do toque.
+  await page.evaluateOnNewDocument(() => {
+    window.__celesteVoiceStarts = [];
+    const record = (kind) => window.__celesteVoiceStarts.push({ kind, at: performance.now() });
+    if (window.SpeechSynthesis && SpeechSynthesis.prototype.speak) {
+      const speak = SpeechSynthesis.prototype.speak;
+      SpeechSynthesis.prototype.speak = function spiedSpeak(utterance) {
+        record('speech');
+        return speak.call(this, utterance);
+      };
+    }
+    if (window.HTMLMediaElement) {
+      const play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function spiedPlay(...args) {
+        record('media');
+        return play.apply(this, args);
+      };
+    }
+  });
   const fontErrors = [];
   const runtimeErrors = [];
   page.on('pageerror', (error) => runtimeErrors.push(String(error)));
@@ -542,7 +562,19 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await clickTestId(page, 'open-affirmation-alarm');
   await waitForText(page, 'Meu despertar', 20000);
   await waitForText(page, 'No site você pode preparar e ouvir', 20000);
+  // Os 3 tipos: Cena-Âncora e visão (cena viva + história narrada), depois a frase própria.
+  const clickFirstMatch = async (selector) => {
+    await page.waitForSelector(selector, { visible: true, timeout: 15000 });
+    await page.$eval(selector, (el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+    await sleep(180);
+    await page.click(selector);
+    console.log(`  [click] ${selector}`);
+  };
   await clickTestId(page, 'wake-sequence-add');
+  await clickTestId(page, 'wake-picker-tab-anchor');
+  await clickFirstMatch('[data-testid^="wake-picker-item-anchor:"]');
+  await clickTestId(page, 'wake-picker-tab-vision');
+  await clickFirstMatch('[data-testid^="wake-picker-item-"][data-testid*=":vision:"]');
   await clickTestId(page, 'wake-picker-tab-affirmation');
   const customWake = 'Eu acordo confiante e pronta para viver um dia extraordinário.';
   await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { visible: true });
@@ -550,7 +582,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await clickTestId(page, 'save-custom-alarm-affirmation');
   await clickTestId(page, 'wake-picker-close');
   await page.waitForSelector('[data-testid="custom-alarm-affirmation"]', { hidden: true, timeout: 15000 });
-  await page.waitForSelector('[data-testid="wake-sequence-item-0"]', { visible: true, timeout: 15000 });
+  await page.waitForSelector('[data-testid="wake-sequence-item-2"]', { visible: true, timeout: 15000 });
   await page.waitForFunction((text) => document.body.innerText.includes(text), { timeout: 15000 }, customWake);
   await page.$eval('[data-testid="alarm-time-input"]', (input) => {
     input.focus();
@@ -587,6 +619,62 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   ) {
     throw new Error(`Web não salvou o rascunho corretamente: ${JSON.stringify(webAlarmState)}`);
   }
+
+  // Ouvir agora: o Traço Celeste abre a sequência e a 3ª estrela inicia a voz no mesmo
+  // toque (Safari do iPhone descarta som pedido depois). Nada toca antes dela.
+  const wakePosition = (prefix) =>
+    page.waitForFunction(
+      (text) => (document.querySelector('[data-testid="wake-position"]')?.textContent || '').startsWith(text),
+      { timeout: 15000, polling: 100 },
+      prefix
+    );
+  await clickTestId(page, 'wake-listen-now');
+  await page.waitForSelector('[data-testid="wake-sequence-screen"]', { visible: true, timeout: 20000 });
+  await waitForText(page, 'SEU TRAÇO CELESTE', 20000);
+  const voicesBeforeTrace = await page.evaluate(() => window.__celesteVoiceStarts.length);
+  await clickTestId(page, 'trace-star-1');
+  await waitForText(page, '1 de 3 estrelas acesas');
+  await clickTestId(page, 'trace-star-2');
+  await waitForText(page, '2 de 3 estrelas acesas');
+  if ((await page.evaluate(() => window.__celesteVoiceStarts.length)) !== voicesBeforeTrace) {
+    throw new Error('A voz do despertar começou antes da 3ª estrela');
+  }
+  await page.$eval('[data-testid="trace-star-3"]', (el) => el.scrollIntoView({ block: 'center' }));
+  await sleep(180);
+  const thirdStarAt = await page.evaluate(() => performance.now());
+  await page.click('[data-testid="trace-star-3"]');
+  const firstVoice = await (
+    await page.waitForFunction(
+      (since) => window.__celesteVoiceStarts.find((start) => start.at >= since) || false,
+      { timeout: 5000, polling: 20 },
+      thirdStarAt
+    )
+  ).jsonValue();
+  const voiceDelay = Math.round(firstVoice.at - thirdStarAt);
+  if (voiceDelay > 1000) throw new Error(`A voz começou ${voiceDelay} ms depois da 3ª estrela (máximo 1 s)`);
+  console.log(`  [despertar ok] voz (${firstVoice.kind}) começou ${voiceDelay} ms após a 3ª estrela`);
+  await page.waitForSelector('[data-testid="wake-player"]', { visible: true, timeout: 15000 });
+  await wakePosition('1 de 3');
+  await page.waitForSelector('[data-testid="wake-cena-viva"]', { visible: true, timeout: 20000 });
+  const voicesBeforeNext = await page.evaluate(() => window.__celesteVoiceStarts.length);
+  await clickTestId(page, 'wake-next');
+  await wakePosition('2 de 3');
+  await page.waitForFunction(
+    (count) => window.__celesteVoiceStarts.length > count,
+    { timeout: 3000, polling: 50 },
+    voicesBeforeNext
+  );
+  await page.waitForSelector('[data-testid="wake-cena-viva"]', { visible: true, timeout: 20000 });
+  await clickTestId(page, 'wake-next');
+  await wakePosition('3 de 3');
+  await page.waitForSelector('[data-testid="wake-phrase-card"]', { visible: true, timeout: 15000 });
+  await waitForText(page, customWake, 15000);
+  // A frase curta pode terminar sozinha antes do toque; os dois caminhos chegam ao fim.
+  if (await page.$('[data-testid="wake-next"]')) await page.click('[data-testid="wake-next"]');
+  await page.waitForSelector('[data-testid="wake-complete"]', { visible: true, timeout: 20000 });
+  await page.screenshot({ path: path.join(SHOT_DIR, 'despertar-ouvir.png') });
+  await clickTestId(page, 'wake-back');
+  await waitForText(page, 'Meu despertar', 20000);
 
   // O relato continua privado no diario. Reflexao e afirmacao usam sentimento
   // e tema sem recontar a cena, e a transformacao persiste seu recibo tecnico.
