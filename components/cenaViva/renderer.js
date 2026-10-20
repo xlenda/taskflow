@@ -12,6 +12,7 @@ export function installCenaViva(root) {
   const SERIF = "Georgia, 'Times New Roman', serif";
 
   const clamp01 = (v) => (v > 0 ? (v < 1 ? v : 1) : 0);
+  const hasText = (v) => v != null && String(v).trim() !== ''; // só espaços não é legenda
   const span = (t, start, duration) => clamp01((t - start) / duration);
   const smooth = (p) => p * p * (3 - 2 * p);
   const inOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
@@ -108,6 +109,10 @@ export function installCenaViva(root) {
   }
 
   function createRenderer(canvas, options) {
+    return buildRenderer(canvas, options).api;
+  }
+
+  function buildRenderer(canvas, options) {
     const o = options || {};
     const ctx = canvas.getContext('2d');
     const image = o.image;
@@ -125,7 +130,7 @@ export function installCenaViva(root) {
     let rayLayer = null;
     let backdrop = null;
     let backdropKey = '';
-    let caption = o.phrase ? { text: String(o.phrase), progress: 1, phrase: true } : null;
+    let caption = hasText(o.phrase) ? { text: String(o.phrase), progress: 1, phrase: true } : null;
     let layout = null;
     let layoutKey = '';
     let playing = false;
@@ -363,10 +368,11 @@ export function installCenaViva(root) {
       }
       if (current.words.length) lines.push(current);
       lines.forEach((ln) => {
-        let x = (W - ln.width) / 2;
+        ln.scale = Math.min(1, (W * 0.84) / ln.width); // palavra sozinha mais larga que a caixa: encolhe, não corta
+        let x = (W - ln.width * ln.scale) / 2;
         ln.words.forEach((word) => {
           word.x = x;
-          x += word.width + space;
+          x += (word.width + space) * ln.scale;
         });
       });
       layoutKey = key;
@@ -400,7 +406,6 @@ export function installCenaViva(root) {
         if (ln.words[0].start < reached) last = i;
       });
       const first = Math.max(0, last - 2);
-      ctx.font = captionFont(size);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.shadowColor = 'rgba(8,16,30,0.6)';
@@ -408,6 +413,7 @@ export function installCenaViva(root) {
       ctx.fillStyle = '#FFF9F0';
       for (let i = first; i <= last; i++) {
         const y = bottom - (slots - 1 - (i - first)) * lineHeight;
+        ctx.font = captionFont(Math.round(size * lines[i].scale * 10) / 10);
         for (const word of lines[i].words) {
           const alpha = fade * clamp01((reached - word.start) / Math.min(3, word.text.length));
           if (alpha <= 0) break;
@@ -523,7 +529,7 @@ export function installCenaViva(root) {
         [1, 'rgba(10,18,34,0.5)'],
       ]);
       ctx.fillRect(0, 0, W, H);
-      if (caption && caption.text) {
+      if (caption && hasText(caption.text)) {
         drawCaption(t, W, H, r, caption); // o véu da legenda também cobre a assinatura
       } else if (o.signature) {
         const top = r.y + r.h * 0.55;
@@ -562,11 +568,17 @@ export function installCenaViva(root) {
       raf = 0;
     }
 
-    function setCaption(next) {
+    function assignCaption(next) {
       caption =
-        next && next.text
+        next && hasText(next.text)
           ? { text: String(next.text), progress: next.progress == null ? 1 : clamp01(Number(next.progress)), phrase: false }
           : null;
+    }
+
+    function setCaption(next) {
+      assignCaption(next);
+      // parado (antes do start, depois do stop, reduzir movimento) ninguém repinta: a legenda nova aparece já
+      if (!playing) drawFrame(elapsed);
     }
 
     function destroy() {
@@ -580,7 +592,14 @@ export function installCenaViva(root) {
       layoutKey = '';
     }
 
-    return { start, stop, drawFrame, setCaption, destroy };
+    return {
+      api: { start, stop, drawFrame, setCaption, destroy },
+      // gravação: troca a legenda e pinta o quadro t numa passada só (setCaption parado repintaria antes: custo dobrado)
+      paintWithCaption: (t, next) => {
+        assignCaption(next);
+        drawFrame(t);
+      },
+    };
   }
 
   // grava o vídeo compartilhável: 9:16 com a intro, legenda progressiva (progress = t / duração) e assinatura
@@ -603,11 +622,9 @@ export function installCenaViva(root) {
       canvas.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none';
       host.appendChild(canvas);
     }
-    const renderer = createRenderer(canvas, { image, format: '9:16', mode: 'intro', reducedMotion: false, signature: true, linkText });
-    const paint = (t) => {
-      renderer.setCaption({ text: phrase || '', progress: t / durationMs });
-      renderer.drawFrame(t);
-    };
+    const scene = buildRenderer(canvas, { image, format: '9:16', mode: 'intro', reducedMotion: false, signature: true, linkText });
+    const renderer = scene.api;
+    const paint = (t) => scene.paintWithCaption(t, { text: phrase || '', progress: t / durationMs });
     return new Promise((resolve, reject) => {
       const chunks = [];
       let stream = null;
@@ -646,7 +663,7 @@ export function installCenaViva(root) {
         paint(t);
         frames += 1;
         // agenda pelo relógio do vídeo (não 33 ms depois do desenho): sem isso cai para ~27 fps
-        if (t < durationMs) root.setTimeout(tick, Math.max(0, startedAt + (frames * 1000) / fps - now()));
+        if (t < durationMs) root.setTimeout(tick, Math.max(0, startedAt + ((frames + 1) * 1000) / fps - now()));
         else if (recorder.state !== 'inactive') recorder.stop();
       };
       root.setTimeout(tick, 1000 / fps);

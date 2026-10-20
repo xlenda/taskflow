@@ -96,16 +96,19 @@ const discAt = (calls, x, y, minRadius = 0) =>
 const lineTo = (calls, x, y) => ops(calls, 'lineTo').some(({ args }) => near(args[0], x) && near(args[1], y));
 const words = (calls) => ops(calls, 'fillText').map((call) => call.args[0]);
 const count = (list, item) => list.filter((entry) => entry === item).length;
-// véu de legibilidade: entre a imagem e a palavra, um fillRect com gradiente que chega a rgba(8,16,28,0.62)
-function veilBefore(calls, word) {
+const VEIL = 'rgba(8,16,28,0.62)'; // véu da legenda
+const SCRIM = 'rgba(10,20,38,0.5)'; // véu da assinatura sozinha
+const hasStop = (style, color) => !!style && (style.stops || []).some(([, stop]) => stop === color);
+const usesColor = (calls, color) => calls.some((call) => call.op === '=fillStyle' && hasStop(call.args[0], color));
+// véu de legibilidade: entre a imagem e a palavra, um fillRect com gradiente que chega à cor do véu
+function veilBefore(calls, word, color = VEIL) {
   const at = calls.findIndex((call) => call.op === 'fillText' && call.args[0] === word);
   let from = at;
   while (from > 0 && !(calls[from].op === 'drawImage' && calls[from].args[0] === image)) from -= 1;
   let style = null;
   for (let i = Math.max(0, from); i < at; i++) {
     if (calls[i].op === '=fillStyle') style = calls[i].args[0];
-    const dark = style && (style.stops || []).some(([, color]) => color === 'rgba(8,16,28,0.62)');
-    if (calls[i].op === 'fillRect' && dark) return { gradient: style, rect: calls[i].args, at, calls };
+    if (calls[i].op === 'fillRect' && hasStop(style, color)) return { gradient: style, rect: calls[i].args, at, calls };
   }
   return null;
 }
@@ -224,6 +227,19 @@ async function main() {
   const story = Array.from({ length: 60 }, (_, i) => `p${i}`).join(' ');
   const rolled = words(render({}, 4000, [320, 400], { text: story, progress: 1 }));
   assert.ok(rolled.length < 60 && rolled[rolled.length - 1] === 'p59', 'narração longa rola: últimas linhas');
+  assert.deepStrictEqual(words(caption(-0.5)), [], 'progress < 0 vira 0');
+  assert.deepStrictEqual(words(caption(1.7)), ['aa', 'bb', 'cc', 'dd'], 'progress > 1 vira 1');
+  assert.deepStrictEqual(words(caption(Number.NaN)), [], 'progress NaN vira 0');
+  for (const text of ['', '   ']) {
+    const blank = render({}, 4000, [320, 400], { text, progress: 1 });
+    assert.ok(!ops(blank, 'fillText').length && !usesColor(blank, VEIL), `texto ${JSON.stringify(text)} não vira legenda`);
+  }
+  // palavra sozinha mais larga que a caixa (84%): a linha encolhe e cabe, nada cortado
+  const wide = render({}, 4000, [320, 400], { text: 'x'.repeat(40), progress: 1 });
+  const lineSize = Number(/(\d+(?:\.\d+)?)px/.exec(ops(wide, '=font').pop().args[0])[1]);
+  const [longWord] = ops(wide, 'fillText');
+  const scaledWidth = 400 * (lineSize / Math.round(320 * 0.058)); // canvas falso: 10 px por letra no tamanho base
+  assert.ok(longWord.args[1] >= 0 && longWord.args[1] + scaledWidth <= 320, 'palavra longa encolhe e cabe');
   assert.deepStrictEqual(words(render({ mode: 'intro', phrase: 'aa bb' }, 0)), [], 'intro: frase espera o sol');
   assert.deepStrictEqual(words(render({ mode: 'intro', phrase: 'aa bb' }, 4000)), ['aa', 'bb']);
 
@@ -231,6 +247,9 @@ async function main() {
   const signed = words(render({ format: '9:16', signature: true, linkText: 'celeste.app' }, 4000, [720, 1280]));
   assert.ok(signed.includes('Celeste') && signed.includes('celeste.app'), 'assinatura com Celeste e link');
   assert.ok(!words(render({}, 4000)).includes('Celeste'), 'sem assinatura quando signature=false');
+  const spaces = render({ format: '9:16', signature: true, linkText: 'celeste.app' }, 4000, [720, 1280], { text: '  ' });
+  assert.ok(!usesColor(spaces, VEIL), 'legenda só de espaços não conta como legenda');
+  assert.ok(veilBefore(spaces, 'Celeste', SCRIM), 'assinatura nunca aparece sem o seu véu');
 
   // 9) 9:16: imagem 4:5 nítida centralizada sobre a mesma imagem borrada cobrindo o quadro
   const tall = ops(render({ format: '9:16' }, 0, [720, 1280]), 'drawImage').map(({ args }) => ({
@@ -264,6 +283,23 @@ async function main() {
   quiet.start();
   assert.strictEqual(win.frames.length, scheduled + 1, 'reduzir movimento não anima');
   quiet.destroy();
+  // setCaption parado (antes do start, depois do stop, reduzir movimento) repinta já; tocando, quem pinta é o laço
+  const idle = fakeCanvas(320, 400);
+  const idleRenderer = CV.createRenderer(idle, options);
+  idleRenderer.setCaption({ text: 'aa bb', progress: 1 });
+  assert.deepStrictEqual(words(idle.calls), ['aa', 'bb'], 'antes do start: a legenda nova aparece já');
+  idleRenderer.start();
+  idle.calls.length = 0;
+  idleRenderer.setCaption({ text: 'cc dd', progress: 1 });
+  assert.deepStrictEqual(words(idle.calls), [], 'tocando: sem quadro extra, o laço pinta');
+  idleRenderer.stop();
+  idle.calls.length = 0;
+  idleRenderer.setCaption({ text: 'ee ff', progress: 1 });
+  assert.deepStrictEqual(words(idle.calls), ['ee', 'ff'], 'depois do stop: a legenda nova aparece já');
+  idleRenderer.destroy();
+  const calm = fakeCanvas(320, 400);
+  CV.createRenderer(calm, { ...options, reducedMotion: true }).setCaption({ text: 'gg hh', progress: 1 });
+  assert.deepStrictEqual(words(calm.calls), ['gg', 'hh'], 'reduzir movimento: a legenda nova aparece já');
 
   // 11) recordVideo: sem gravador compatível rejeita com recorder_unsupported (a tela oferece o cartão)
   await assert.rejects(CV.recordVideo({ image, phrase: 'aa' }), (error) => error.code === 'recorder_unsupported');
@@ -271,42 +307,47 @@ async function main() {
   installCenaViva(none);
   await assert.rejects(none.CenaViva.recordVideo({ image }), (error) => error.code === 'recorder_unsupported');
 
-  // gravador falso + relógio que anda 100 ms por quadro: 9:16 720×1280 a 30 fps, para no fim, devolve o blob
-  let clock = 0;
-  const delays = [];
-  const recorders = [];
-  class FakeRecorder {
-    static isTypeSupported(mime) {
-      return mime.startsWith('video/webm');
+  // gravador falso; a cada setTimeout o relógio anda advance(ms)
+  async function fakeRecording(advance) {
+    let clock = 0;
+    const delays = [];
+    const recorders = [];
+    class FakeRecorder {
+      static isTypeSupported(mime) {
+        return mime.startsWith('video/webm');
+      }
+      constructor(stream, recorderOptions) {
+        Object.assign(this, { stream, recorderOptions, state: 'inactive' });
+        recorders.push(this);
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable({ data: new Blob(['abc']) });
+        this.onstop();
+      }
     }
-    constructor(stream, recorderOptions) {
-      Object.assign(this, { stream, recorderOptions, state: 'inactive' });
-      recorders.push(this);
-    }
-    start() {
-      this.state = 'recording';
-    }
-    stop() {
-      this.state = 'inactive';
-      this.ondataavailable({ data: new Blob(['abc']) });
-      this.onstop();
-    }
+    const studio = fakeWindow({
+      MediaRecorder: FakeRecorder,
+      Blob,
+      performance: { now: () => clock },
+      setTimeout(fn, ms) {
+        delays.push(ms);
+        clock += advance(ms);
+        setImmediate(fn);
+      },
+    });
+    installCenaViva(studio);
+    const video = await studio.CenaViva.recordVideo({ image, phrase: 'aa bb', linkText: 'celeste.app', durationMs: 1000 });
+    return { video, delays, recorders, recording: studio.made[0], clock };
   }
-  const studio = fakeWindow({
-    MediaRecorder: FakeRecorder,
-    Blob,
-    performance: { now: () => clock },
-    setTimeout(fn, ms) {
-      delays.push(ms);
-      clock += 100;
-      setImmediate(fn);
-    },
-  });
-  installCenaViva(studio);
-  const video = await studio.CenaViva.recordVideo({ image, phrase: 'aa bb', linkText: 'celeste.app', durationMs: 1000 });
+
+  // relógio de 100 ms por quadro: 9:16 720×1280, legenda progressiva, para no fim, devolve o blob
+  const { video, delays, recorders, recording, clock } = await fakeRecording(() => 100);
   assert.strictEqual(video.mimeType, 'video/webm;codecs=vp9');
   assert.ok(video.blob.size === 3 && video.blob.type === 'video/webm;codecs=vp9', 'blob com o mime escolhido');
-  const [recording] = studio.made;
   assert.ok(recording.width === 720 && recording.height === 1280, 'grava em 720×1280');
   assert.strictEqual(recorders.length, 1);
   assert.strictEqual(recorders[0].stream.fps, undefined, 'captureStream sem teto: o laço de pintura é o relógio');
@@ -320,6 +361,9 @@ async function main() {
   assert.strictEqual(count(recorded, 'aa'), 10, 'legenda começa vazia em t=0 (progress = t / duração)');
   assert.strictEqual(count(recorded, 'bb'), 4, '"bb" só depois que o progresso passa do seu começo');
   assert.ok(veilBefore(recording.calls, 'aa'), 'vídeo 9:16: véu de legibilidade antes da legenda');
+  // ritmo: com pintura instantânea, cada quadro sai 1/30 s depois do anterior (sem quadro repetido no começo)
+  const paced = await fakeRecording((ms) => ms);
+  assert.ok(paced.delays.length >= 30 && paced.delays.every((ms) => near(ms, 1000 / 30)), 'um quadro a cada 1/30 s');
 
   // 12) a WebView roda a MESMA fonte: arquivo gerado sincronizado e executável sem módulo
   const check = spawnSync(process.execPath, [path.join('scripts', 'gerar-cena-viva-webview.js'), '--check'], {
