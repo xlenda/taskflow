@@ -136,6 +136,16 @@ assert.strictEqual(vercel.rewrites[0].source, `${challengePrefix}/a-4-a/c.js`);
 assert.strictEqual(vercel.rewrites[1].source, `${challengePrefix}/:path*`);
 assert.match(vercel.rewrites[0].destination, /bot-protection\/v1\/challenge$/);
 assert.match(vercel.rewrites[1].destination, /bot-protection\/v1\/proxy\/:path\*$/);
+// Supabase grátis pausa sem consulta e derruba imagem e voz (09/2026): o cron diário não pode sumir.
+assert.ok(
+  (vercel.crons || []).some((cron) => cron.path === '/api/manter-supabase' && /^\d+ \d+ \* \* \*$/.test(cron.schedule)),
+  'cron diario /api/manter-supabase ausente do vercel.json'
+);
+assert.match(
+  read('api/manter-supabase.js'),
+  /`Bearer \$\{secret\}`/,
+  'manter-supabase precisa exigir o CRON_SECRET que a Vercel envia'
+);
 
 assert.strictEqual(firewall.action, 'rules.update');
 assert.strictEqual(firewall.id, 'rule_celeste_gemini_api_rate_limit_o1N0Tn');
