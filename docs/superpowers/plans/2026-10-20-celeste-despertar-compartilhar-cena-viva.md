@@ -64,7 +64,7 @@
 
 **Interfaces:**
 - Produces: `installCenaViva(root)` define `root.CenaViva = { createRenderer, recordVideo, pickRecorderMime, splitChunks, joinChunks }`:
-  - `createRenderer(canvas, { image: HTMLImageElement, phrase?: string, format: '4:5'|'9:16', mode: 'intro'|'loop', reducedMotion: boolean, signature: boolean, linkText?: string, seed?: number }) -> { start(), stop(), drawFrame(tMs: number), destroy() }`
+  - `createRenderer(canvas, { image: HTMLImageElement, phrase?: string, format: '4:5'|'9:16', mode: 'intro'|'loop', reducedMotion: boolean, signature: boolean, linkText?: string, seed?: number }) -> { start(), stop(), drawFrame(tMs: number), setCaption({ text: string, progress: number /* 0..1 */ }), destroy() }` — `setCaption` desenha só as palavras até `progress` (legenda serifada no terço inferior); `recordVideo` usa `progress = t / durationMs`.
   - `recordVideo({ image, phrase, linkText, durationMs = 8000, width = 720, height = 1280, fps = 30 }) -> Promise<{ blob: Blob, mimeType: string }>`
   - `pickRecorderMime(isTypeSupported: (m) => boolean) -> string|null` (ordem das Global Constraints)
   - `splitChunks(base64: string, size = 512 * 1024) -> string[]`, `joinChunks(parts: string[]) -> string`
@@ -92,7 +92,7 @@
 **Interfaces:**
 - Consumes: `installCenaViva`, `CENA_VIVA_RENDERER_SOURCE` (Task 2); `pickReadyScene` (Task 1).
 - Produces:
-  - `<CenaViva imageUri: string, phrase?: string, format?: '4:5'|'9:16', mode?: 'intro'|'loop', reducedMotion?: boolean, style, testID = 'cena-viva', onReady?: () => void />`
+  - `<CenaViva imageUri: string, phrase?: string, format?: '4:5'|'9:16', mode?: 'intro'|'loop', active?: boolean /* false = poster parado */, caption?: { text: string, progress: number }, reducedMotion?: boolean, style, testID = 'cena-viva', onReady?: () => void />`
   - `CenaVivaRecorder` com ref `{ record({ imageUri, phrase, linkText }) -> Promise<{ uri?: string /* nativo, file:// */, file?: File /* web */, mimeType: string }> }`
   - `imageUriForCenaViva({ personalUri: string|null, readyScene }) -> Promise<string>` — web: blob/asset URL; nativo: `data:image/jpeg;base64,...` lido com `expo-file-system` (`File(uri).base64()`; asset pronto via `Asset.fromModule(src).downloadAsync()`).
 
@@ -196,6 +196,35 @@
 
 - [ ] **Step 1: Teste que falha**: `RevealScreen` chama `maybeRequestStoreReview` dentro de `continueFlow`; nenhuma tela tem texto perguntando "gostou"/"5 estrelas"; Grow removido.
 - [ ] **Step 2: Rodar e ver falhar.** — [ ] **Step 3: Implementar.** — [ ] **Step 4: Passar**; commit `feat: avaliação nativa depois da Cena-Âncora`.
+
+### Task 11: Cena viva em todos os cards
+
+**Files:**
+- Modify: `components/GradientCover.js` (prop `live?: boolean` → `CenaViva` com `active={live}`; sem `live` continua imagem)
+- Modify: `screens/AffirmationsScreen.js` (card da vez), `screens/VisionsScreen.js` (card em foco/tocando), `screens/HomeScreen.js` (card da Cena-Âncora), `screens/ManifestationScreen.js`, `screens/PracticeRitualScreen.js`, `screens/MorningRitualScreen.js`
+- Test: `scripts/verificar-cena-viva.js` (acrescentar) + E2E
+
+**Interfaces:**
+- Consumes: `CenaViva` (Task 3), `pickReadyScene`/`imageUriForCenaViva`.
+- Produces: `GradientCover` prop `live`; regra "um card animado por vez" (`active` só no card em foco).
+
+- [ ] **Step 1: Teste que falha**: no máximo 1 `[data-testid="cena-viva"][data-active="true"]` visível em Afirmações e Visões; card sem imagem pessoal usa cena pronta; reduzir movimento → nenhum ativo.
+- [ ] **Step 2: Ver falhar.** — [ ] **Step 3: Implementar.** — [ ] **Step 4: Passar**; commit `feat: cena viva em todos os cards`.
+
+### Task 12: Narração com vídeo e palavras
+
+**Files:**
+- Create: `components/NarratedScene.js` (`CenaViva` + legenda progressiva)
+- Create: `utils/captionProgress.js`
+- Modify: `screens/VisionPlayerScreen.js`, `screens/ManifestationScreen.js`, `screens/onboarding/RevealScreen.js` (Ouvir minha cena), `screens/AffirmationsScreen.js` (Ouvir), `screens/WakeSequenceScreen.js`
+- Test: `scripts/verificar-cena-viva.js` (acrescentar)
+
+**Interfaces:**
+- Consumes: `useNarration()` (`progress`, `chunkIndex`, `chunkCount`, `isPlaying`), `expo-speech` `onBoundary` (`{ charIndex }`).
+- Produces: `captionProgressFromNarration({ progress }) -> number` (clamp 0..1); `captionProgressFromBoundary({ charIndex, textLength }) -> number`; `captionProgressFromTime({ elapsedMs, text }) -> number` (14 chars/s); `<NarratedScene imageUri, text, progress, active, testID = 'narrated-scene' />`.
+
+- [ ] **Step 1: Teste que falha**: `captionProgressFromTime({ elapsedMs: 5000, text: 'a'.repeat(140) }) === 0.5`; boundary 70/140 → 0.5; valores fora de 0..1 são limitados; nas 5 telas a narração renderiza `narrated-scene`.
+- [ ] **Step 2: Ver falhar.** — [ ] **Step 3: Implementar.** — [ ] **Step 4: Passar**; commit `feat: narração com cena viva e palavras sincronizadas`.
 
 ### Task 9: Portões no deploy
 

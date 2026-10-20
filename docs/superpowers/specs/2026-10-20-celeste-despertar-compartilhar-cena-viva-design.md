@@ -183,6 +183,24 @@ Depois do code review e do deploy web: `eas build -p android --profile productio
 (nuvem da Expo, cota grátis), versionCode automático. Entregar o link do build.
 Não enviar para a Play Store.
 
+### F. Cena viva em todos os cards (pedido do Lenda, 20/10)
+"Fazer isso em todos os cards agora em vez da imagem": todo card de conteúdo
+com imagem (visões, afirmações, Cena-Âncora, prática, sonho, Home) usa a cena
+viva no lugar da imagem parada. Para não pesar (sobretudo WebViews no Android),
+**anima um card por vez** — o que está em foco (o da vez no carrossel, o que
+está tocando, o aberto); os demais mostram o primeiro quadro da mesma cena
+(poster). Referência visual aprovada: o vídeo das estrelas
+(`Downloads\CELESTE-ANCORA-CINEMATOGRAFICO.mp4`).
+
+### G. Narração com vídeo e palavras (pedido do Lenda, 20/10)
+"Enquanto vem a narração vai aparecendo o vídeo e as palavras": quando a voz
+toca (Ouvir minha cena, player de visão, manifestação, afirmação, despertar),
+a cena viva aparece e o texto surge **palavra por palavra acompanhando a voz**.
+Sincronia: pelo progresso do áudio (NarrationContext: progresso por trecho) e,
+na voz do aparelho, pelos eventos de palavra (`onBoundary`) quando existirem;
+sem eles, proporcional ao tempo estimado. O renderizador desenha a legenda
+(mesma fonte serifada) — o vídeo compartilhado usa a mesma legenda progressiva.
+
 ## 6.1 Respostas da revisão do construtor (minhas decisões)
 
 - **Origens da sequência**: o seletor atual já aceita 6 origens
