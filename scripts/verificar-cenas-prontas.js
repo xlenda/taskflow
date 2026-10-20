@@ -52,11 +52,21 @@ const { READY_SCENES, READY_SCENE_PLACES } = load('constants/readyScenes.js');
 const ANSWERS = {
   home: ['Onde moro hoje, mas do meu jeito', 'Where I live now, but better'],
   city: ['Em uma cidade grande', 'In a big city'],
-  beach: ['Na praia ou no litoral', 'By the beach or coast', 'Uma casa perto do mar', 'Viajando pelo litoral'],
-  countryside: ['No campo ou nas montanhas', 'In the countryside or mountains', 'Uma casinha na serra'],
-  abroad: ['Em outro país', 'In another country'],
+  beach: [
+    'Na praia ou no litoral', 'By the beach or coast', 'Uma casa perto do mar', 'Viajando pelo litoral',
+    'Morar nas ilhas', 'Near quiet beaches',
+  ],
+  countryside: [
+    'No campo ou nas montanhas', 'In the countryside or mountains', 'Uma casinha na serra',
+    'Quero morar no interior', 'Perto dos campos', 'Entre fazendas',
+  ],
+  abroad: ['Em outro país', 'In another country', 'Em outros países', 'Morar fora', 'Morar no exterior'],
   traveling: ['Viajando, sem lugar fixo', 'Traveling with no fixed base'],
-  neutral: ['Ainda não sei', "I'm not sure yet", 'Perto de quem eu amo', '', undefined, null],
+  // "interior"/"exterior" soltos descrevem a casa, não o lugar: só contam como "no interior"/"no exterior".
+  neutral: [
+    'Ainda não sei', "I'm not sure yet", 'Perto de quem eu amo', 'A home with a cozy interior',
+    'Uma casa com área exterior', '', undefined, null,
+  ],
 };
 for (const [place, answers] of Object.entries(ANSWERS)) {
   for (const answer of answers) {
@@ -83,6 +93,7 @@ for (const category of ['Personal', 'toString', '', undefined]) {
   );
 }
 assert.strictEqual(pickReadyScene().id, 'neutral-Peace', 'sem respostas: cena neutra de paz');
+assert.strictEqual(pickReadyScene(null).id, 'neutral-Peace', 'null conta como sem respostas');
 
 assert.deepStrictEqual(READY_SCENE_PLACES, PLACES);
 const constantsSource = fs.readFileSync(path.join(root, 'constants', 'readyScenes.js'), 'utf8');

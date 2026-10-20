@@ -1,13 +1,20 @@
 import { READY_SCENES } from '../constants/readyScenes';
 
 // profile.dreamLocation guarda o chip no idioma dela (flow.js, dreamPlace) ou texto livre.
-// A ordem decide empates: "viajando pelo litoral" é praia.
+// A ordem decide empates: "viajando pelo litoral" é praia. "Interior"/"exterior" soltos descrevem a casa
+// ("cozy interior", "área exterior"); só viram lugar como "no interior" / "no exterior".
 const PLACE_PATTERNS = [
-  ['beach', /\b(praias?|litoral|beira-mar|mar|ilha|beach|coast|coastal|seaside|ocean|sea|island)\b/],
-  ['city', /\b(cidades?|metropole|urbano|urbana|city|urban|downtown)\b/],
-  ['countryside', /\b(campo|montanhas?|serra|fazenda|sitio|chacara|interior|roca|countryside|mountains?|farm|ranch|rural)\b/],
-  ['abroad', /\b(outro pais|exterior|fora do pais|fora do brasil|another country|abroad|overseas)\b/],
-  ['traveling', /\b(viajando|viajar|viagem|nomade|sem lugar fixo|traveling|travelling|travel|nomad|no fixed)\b/],
+  ['beach', /\b(praias?|litoral|beira-mar|mar|ilhas?|beach(?:es)?|coasts?|coastal|seaside|ocean|sea|islands?)\b/],
+  ['city', /\b(cidades?|metropole|urbano|urbana|city|cities|urban|downtown)\b/],
+  [
+    'countryside',
+    /\b(campos?|montanhas?|serras?|fazendas?|sitios?|chacaras?|(?:no|do|pro|para o) interior|roca|countryside|mountains?|farms?|ranch(?:es)?|rural)\b/,
+  ],
+  [
+    'abroad',
+    /\b(outros? pais(?:es)?|(?:no|do|pro|para o) exterior|fora do pais|fora do brasil|morar fora|another country|other countries|abroad|overseas)\b/,
+  ],
+  ['traveling', /\b(viajando|viajar|viage(?:m|ns)|nomades?|sem lugar fixo|traveling|travelling|travel|nomads?|no fixed)\b/],
   ['home', /\b(onde moro|moro hoje|minha casa|where i live|my home|my house)\b/],
 ];
 
@@ -18,7 +25,8 @@ export function placeFromDreamLocation(text) {
   return match ? match[0] : 'neutral';
 }
 
-export function pickReadyScene({ dreamLocation, category } = {}) {
+export function pickReadyScene(input) {
+  const { dreamLocation, category } = input || {};
   const place = placeFromDreamLocation(dreamLocation);
   const area = Object.prototype.hasOwnProperty.call(READY_SCENES[place], category) ? category : 'Peace';
   return { id: `${place}-${area}`, source: READY_SCENES[place][area], place, category: area };
