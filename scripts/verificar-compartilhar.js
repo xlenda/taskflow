@@ -918,6 +918,15 @@ async function main() {
     global.setTimeout = originalTimeout;
   }
 
+  // player da visão: narrando, o texto inteiro da reserva (sem cena) rola — o palco por cima deixa toque e rolagem
+  // passarem (box-none) e o selo da categoria sai, para não cobrir a 1ª linha
+  const playerSource = fs.readFileSync(path.join(root, 'screens/VisionPlayerScreen.js'), 'utf8');
+  assert.ok(/stageContent: \{[^}]*pointerEvents: 'box-none'/.test(playerSource), 'player: o palco deixa a rolagem passar');
+  assert.ok(
+    /\{narrating \? null : \(\s*<View style=\{\[styles\.pill,/.test(playerSource),
+    'player: narrando, o selo da categoria sai de cima do texto'
+  );
+
   console.log(
     'Compartilhar aprovado: link só com utm, cartão final do vídeo, arquivo no mesmo toque, vídeo temporário fora do ' +
       'cache, cartão 9:16 com a cena pronta e folha com prévia, aviso de webm e cartão oferecido'

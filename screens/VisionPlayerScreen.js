@@ -800,11 +800,15 @@ function PersonalVisionPlayer({
               }}
             />
           ) : null}
+          {/* narrando, o selo sai como a legenda e o roteiro: o texto inteiro da reserva (sem cena) não fica com a
+              1ª linha coberta, e o palco vazio deixa o toque e a rolagem chegarem nele (box-none no estilo) */}
           <View style={[styles.stageContent, compact && styles.stageContentCompact]}>
-            <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
-              <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
-              <Text style={styles.pillText}>{catLabel}</Text>
-            </View>
+            {narrating ? null : (
+              <View style={[styles.pill, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
+                <Ionicons name={categoryMeta(vision.category).icon} size={12} color="#FFFFFF" />
+                <Text style={styles.pillText}>{catLabel}</Text>
+              </View>
+            )}
             {narrating ? null : (
               <Animated.Text
                 testID="vision-player-caption"
@@ -1069,7 +1073,8 @@ const styles = StyleSheet.create({
   editButton: { flex: 1 },
   stage: { borderWidth: 1, borderRadius: 28, overflow: 'hidden' },
   stageCompact: { borderRadius: 24 },
-  stageContent: { flex: 1, padding: 22, justifyContent: 'space-between' },
+  // por cima da cena: só o selo, a frase e as barras pegam toque; o resto passa para a narração por baixo
+  stageContent: { flex: 1, padding: 22, justifyContent: 'space-between', pointerEvents: 'box-none' },
   stageContentCompact: { padding: 18 },
   pill: {
     flexDirection: 'row',
