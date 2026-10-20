@@ -44,6 +44,19 @@
           "headline": "Affirmations shaped by your answers",
           "alt": "A personal affirmation based on the person's story, with options to save and report the content."
         }
+      },
+      {
+        "order": 7,
+        "id": "living-mirror",
+        "desiredNativeScreen": "journey",
+        "pt-BR": {
+          "headline": "Sua jornada, um dia de cada vez",
+          "alt": "Tela Jornada com a constância dos últimos 30 dias, dias seguidos, práticas e ciclos concluídos."
+        },
+        "en-US": {
+          "headline": "Your journey, one day at a time",
+          "alt": "Journey screen with 30-day consistency, day streak, practices, and cycles complete."
+        }
       }
     ]
   },
@@ -138,7 +151,7 @@
       "source": "home",
       "sources": {
         "apple": "manifestation-progress",
-        "google-play": "manifestation-progress"
+        "google-play": "journey"
       },
       "accent": "#4A80C9",
       "pt-BR": {
