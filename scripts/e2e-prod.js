@@ -248,8 +248,6 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   }
   await waitForText(page, 'funciona melhor com Notificações', 30000);
   await waitAndClick(page, 'Continuar');
-  await waitForText(page, 'Ajude a gente a crescer', 30000);
-  await waitAndClick(page, 'Continuar');
 
   // Prova comportamental da digitação: o toque termina só a frase atual. A
   // pergunta seguinte precisa voltar a animar a última letra e emitir pulsos

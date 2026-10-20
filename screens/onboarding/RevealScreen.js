@@ -24,6 +24,7 @@ import CelestialTrace from '../../components/CelestialTrace';
 import GradientCover from '../../components/GradientCover';
 import NarratorSelector from '../../components/NarratorSelector';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
+import { maybeRequestStoreReview } from '../../utils/storeReview';
 
 const BRIDGE_MIN_HEIGHT = 118;
 
@@ -92,6 +93,7 @@ export default function RevealScreen({ navigation, route }) {
     ensurePersonalVisual,
     setNarrator,
     updateManifestation,
+    markStoreReviewRequested,
   } = useApp();
   const narration = usePersonalNarration();
   const { withCloudMediaConsent } = useCloudMediaConsent();
@@ -222,6 +224,8 @@ export default function RevealScreen({ navigation, route }) {
     narration.stop();
     const bridge = bridgeDraft.trim();
     if (bridge !== m.anchorStep) updateManifestation(m.id, { anchorStep: bridge });
+    // Só a janela nativa da loja, depois da Cena-Âncora aberta; sem esperar.
+    void maybeRequestStoreReview({ state, markRequested: markStoreReviewRequested });
     navigation.replace('Paywall');
   };
 

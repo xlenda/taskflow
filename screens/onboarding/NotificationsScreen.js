@@ -24,7 +24,7 @@ export default function NotificationsScreen({ navigation }) {
         </View>
       </Pressable>
       <View style={{ paddingHorizontal: 20, paddingBottom: 28, opacity: typed ? 1 : 0 }}>
-        <ContinueButton label={T.continue} onPress={() => navigation.navigate('Grow')} disabled={!typed} />
+        <ContinueButton label={T.continue} onPress={() => navigation.navigate('ChatOnboarding')} disabled={!typed} />
       </View>
     </OnbScreen>
   );

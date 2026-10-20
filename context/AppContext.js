@@ -526,6 +526,10 @@ function mergeDefensivo(parsed) {
   // Estados antigos podem trazer strings. Somente true real (ou seu legado
   // serializado) libera o app; `"false"` e `"0"` nunca podem ser truthy aqui.
   st.onboardingDone = st.onboardingDone === true || st.onboardingDone === 'true';
+  st.storeReviewRequestedAt =
+    typeof st.storeReviewRequestedAt === 'string' && !Number.isNaN(Date.parse(st.storeReviewRequestedAt))
+      ? st.storeReviewRequestedAt
+      : null;
   if (st.lang !== 'pt' && st.lang !== 'en') st.lang = detectLang();
   st.name = shortText(st.name, 80);
   st.mood = VISUAL_MOODS.includes(st.mood) ? st.mood : null;
@@ -2769,7 +2773,13 @@ export function AppProvider({ children }) {
     const current = stateRef.current || initialState();
     // Reset apaga os dados, não as preferências: idioma e clima ficam
     // (senão quem tem celular em inglês volta pro inglês do detectLang).
-    const next = { ...initialState(), lang: current.lang, mood: current.mood };
+    // O pedido de avaliação também fica: é uma vez por instalação.
+    const next = {
+      ...initialState(),
+      lang: current.lang,
+      mood: current.mood,
+      storeReviewRequestedAt: current.storeReviewRequestedAt || null,
+    };
     let communityToken = null;
     let preparationPromise = null;
     try {
@@ -2901,6 +2911,14 @@ export function AppProvider({ children }) {
   const setNarrator = useCallback((narratorId) => {
     if (!isNarratorId(narratorId)) return;
     setState((s) => ({ ...s, narration: { narratorId } }));
+  }, []);
+
+  const markStoreReviewRequested = useCallback(() => {
+    setState((s) =>
+      s && !s.storeReviewRequestedAt
+        ? { ...s, storeReviewRequestedAt: new Date().toISOString() }
+        : s
+    );
   }, []);
 
   const saveDailyRitualPreferences = useCallback((patch) => {
@@ -3626,6 +3644,7 @@ export function AppProvider({ children }) {
       setName,
       setMood,
       setNarrator,
+      markStoreReviewRequested,
       saveDailyRitualPreferences,
       savePracticePlan,
       completePracticePlanSlot,
@@ -3677,6 +3696,7 @@ export function AppProvider({ children }) {
       setName,
       setMood,
       setNarrator,
+      markStoreReviewRequested,
       saveDailyRitualPreferences,
       savePracticePlan,
       completePracticePlanSlot,

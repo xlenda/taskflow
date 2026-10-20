@@ -36,7 +36,8 @@ const chatFile = path.join(root, 'screens', 'onboarding', 'ChatOnboardingScreen.
 const onboardingUiFile = path.join(root, 'screens', 'onboarding', 'onboardingUI.js');
 const welcomeFile = path.join(root, 'screens', 'onboarding', 'WelcomeScreen.js');
 const notificationsFile = path.join(root, 'screens', 'onboarding', 'NotificationsScreen.js');
-const growFile = path.join(root, 'screens', 'onboarding', 'GrowScreen.js');
+const revealFile = path.join(root, 'screens', 'onboarding', 'RevealScreen.js');
+const storeReviewFile = path.join(root, 'utils', 'storeReview.js');
 const { FLOW } = requireProjectModule(flowFile);
 const {
   CUSTOM_CHOICE_KEY,
@@ -382,7 +383,9 @@ const chatSource = fs.readFileSync(chatFile, 'utf8');
 const onboardingUiSource = fs.readFileSync(onboardingUiFile, 'utf8');
 const welcomeSource = fs.readFileSync(welcomeFile, 'utf8');
 const notificationsSource = fs.readFileSync(notificationsFile, 'utf8');
-const growSource = fs.readFileSync(growFile, 'utf8');
+const revealSource = fs.readFileSync(revealFile, 'utf8');
+const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+const contextSource = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
 
 assert.ok(
   chatSource.includes('testID="onboarding-progress"') &&
@@ -428,12 +431,91 @@ assert.ok(
   'a tela de codigo de indicacao foi removida do funil e nao pode voltar'
 );
 assert.ok(
-  notificationsSource.includes("navigation.navigate('Grow')"),
-  'Notificacoes precisa continuar para a tela Crescer'
+  notificationsSource.includes("navigation.navigate('ChatOnboarding')"),
+  'Notificacoes precisa abrir a conversa completa direto'
+);
+
+// Decisão do Lenda (20/10/2026): o pedido de avaliação vem depois da revelação,
+// só pela API nativa da loja (Google In-App Review e App Store 5.6.1): nenhuma
+// pergunta antes, nenhum botão que dispare, nenhuma prova social inventada.
+assert.ok(
+  !fs.existsSync(path.join(root, 'screens', 'onboarding', 'GrowScreen.js')),
+  'a tela Crescer saiu do funil; a avaliação é nativa depois da Cena-Âncora'
 );
 assert.ok(
-  growSource.includes("navigation.navigate('ChatOnboarding')"),
-  'Crescer precisa abrir a conversa completa'
+  !/\bGrow\b|GrowScreen|'crescer'/.test(appSource),
+  'App.js nao pode manter rota, import ou link da tela Crescer'
+);
+const { UI } = requireProjectModule(path.join(root, 'constants', 'i18n.js'));
+assert.ok(!('grow' in UI.en) && !('grow' in UI.pt), 'o texto da tela Crescer precisa sair do i18n');
+
+const continueFlowStart = revealSource.indexOf('const continueFlow');
+const continueFlowEnd = revealSource.indexOf('const openScene');
+assert.ok(continueFlowStart >= 0 && continueFlowEnd > continueFlowStart, 'continueFlow da revelacao nao encontrado');
+const continueFlowBlock = revealSource.slice(continueFlowStart, continueFlowEnd);
+assert.ok(
+  revealSource.includes("import { maybeRequestStoreReview } from '../../utils/storeReview';") &&
+    continueFlowBlock.includes(
+      'void maybeRequestStoreReview({ state, markRequested: markStoreReviewRequested })'
+    ),
+  'Guardar minha Cena-Âncora precisa pedir a avaliação nativa sem esperar por ela'
+);
+assert.ok(
+  continueFlowBlock.indexOf('maybeRequestStoreReview(') <
+    continueFlowBlock.indexOf("navigation.replace('Paywall')") &&
+    !/\bawait\b|\.then\(/.test(continueFlowBlock),
+  'a avaliação nativa nunca pode segurar a ida para a oferta'
+);
+
+const sourceFiles = (entries) =>
+  entries
+    .flatMap((entry) => {
+      const full = path.join(root, entry);
+      return fs.statSync(full).isDirectory()
+        ? fs.readdirSync(full, { recursive: true }).map((file) => path.join(full, String(file)))
+        : [full];
+    })
+    .filter((file) => /\.(js|jsx|ts|tsx)$/.test(file));
+const RATING_PRE_QUESTION =
+  /\b(gostou|gostando|avalie|enjoying|rate us|help us grow)\b|\b(5|cinco|five) (estrelas|stars)\b|do you (like|love|enjoy)|ajude a gente a crescer/i;
+sourceFiles(['App.js', 'screens', 'components', 'constants']).forEach((file) => {
+  assert.ok(
+    !RATING_PRE_QUESTION.test(fs.readFileSync(file, 'utf8')),
+    `${path.relative(root, file)} nao pode perguntar se gostou nem pedir estrelas antes da avaliação`
+  );
+});
+sourceFiles(['App.js', 'screens', 'components', 'constants', 'utils', 'context', 'services']).forEach(
+  (file) => {
+    const relative = path.relative(root, file);
+    const source = fs.readFileSync(file, 'utf8');
+    assert.ok(
+      file === storeReviewFile || !source.includes('expo-store-review'),
+      `${relative}: só utils/storeReview.js pode chamar a API de avaliação`
+    );
+    assert.ok(
+      file === storeReviewFile || file === revealFile || !source.includes('maybeRequestStoreReview'),
+      `${relative}: nenhum botão ou tela além da revelação pode disparar a avaliação`
+    );
+  }
+);
+const mergeBlock = contextSource.slice(
+  contextSource.indexOf('function mergeDefensivo'),
+  contextSource.indexOf('export function AppProvider')
+);
+assert.ok(
+  /st\.storeReviewRequestedAt\s*=[\s\S]{0,80}Date\.parse\(st\.storeReviewRequestedAt\)[\s\S]{0,80}:\s*null;/.test(
+    mergeBlock
+  ),
+  'estado salvo precisa normalizar storeReviewRequestedAt como data ISO ou null'
+);
+assert.ok(
+  /const markStoreReviewRequested = useCallback\(/.test(contextSource) &&
+    (contextSource.match(/^\s+markStoreReviewRequested,$/gm) || []).length === 2,
+  'o contexto precisa expor markStoreReviewRequested'
+);
+assert.ok(
+  /"expo-store-review":\s*"~57\./.test(fs.readFileSync(path.join(root, 'package.json'), 'utf8')),
+  'expo-store-review precisa estar instalado na versao do SDK 57'
 );
 
 const draftVersion = chatSource.match(/const\s+DRAFT_V\s*=\s*(\d+)\s*;/);
@@ -453,6 +535,129 @@ assert.ok(
   'rascunho deve salvar DRAFT_V'
 );
 
-process.stdout.write(
-  'Perguntas Stella: sem indicacao + 27 etapas, 21 historicas, nuvem local por padrao e draft aprovados\n'
-);
+function loadStoreReview(platform, storeReview) {
+  const loaded = new Module(storeReviewFile, module);
+  loaded.filename = storeReviewFile;
+  loaded.paths = Module._nodeModulePaths(path.dirname(storeReviewFile));
+  loaded.require = (request) => {
+    if (request === 'react-native') return { Platform: { OS: platform } };
+    if (request === 'expo-store-review') return storeReview;
+    return require(request);
+  };
+  const compiled = transformSync(fs.readFileSync(storeReviewFile, 'utf8'), {
+    filename: storeReviewFile,
+    presets: ['babel-preset-expo'],
+    sourceType: 'module',
+  }).code;
+  loaded._compile(compiled, storeReviewFile);
+  return loaded.exports;
+}
+
+function storeReviewHarness(platform, { available = true, availableError, requestError } = {}) {
+  const calls = { isAvailable: 0, requestReview: 0, marked: 0 };
+  const { maybeRequestStoreReview } = loadStoreReview(platform, {
+    async isAvailableAsync() {
+      calls.isAvailable += 1;
+      if (availableError) throw availableError;
+      return available;
+    },
+    async requestReview() {
+      calls.requestReview += 1;
+      if (requestError) throw requestError;
+    },
+  });
+  const markRequested = () => {
+    calls.marked += 1;
+  };
+  return { calls, ask: (state) => maybeRequestStoreReview({ state, markRequested }) };
+}
+
+async function runStoreReview(platform, state, options) {
+  const harness = storeReviewHarness(platform, options);
+  return { result: await harness.ask(state), calls: harness.calls };
+}
+
+async function verifyStoreReview() {
+  const openedAnchor = {
+    anchorSceneId: 'm-anchor',
+    manifestations: [{ id: 'm-anchor', anchorOpenedAt: '2026-10-20T12:00:00.000Z' }],
+    storeReviewRequestedAt: null,
+  };
+  const untouched = { isAvailable: 0, requestReview: 0, marked: 0 };
+
+  for (const platform of ['android', 'ios']) {
+    const asked = await runStoreReview(platform, openedAnchor);
+    assert.strictEqual(asked.result, 'requested', `${platform}: avaliação nativa disponível precisa ser pedida`);
+    assert.deepStrictEqual(
+      asked.calls,
+      { isAvailable: 1, requestReview: 1, marked: 1 },
+      `${platform}: requestReview uma vez e o pedido registrado no estado`
+    );
+  }
+
+  const web = await runStoreReview('web', openedAnchor);
+  assert.strictEqual(web.result, 'skipped', 'web nao tem avaliação de loja');
+  assert.deepStrictEqual(web.calls, untouched, 'web nao pode tocar na API de avaliação');
+
+  const again = await runStoreReview('android', {
+    ...openedAnchor,
+    storeReviewRequestedAt: '2026-10-20T12:01:00.000Z',
+  });
+  assert.strictEqual(again.result, 'skipped', 'a avaliação só pode ser pedida uma vez por instalação');
+  assert.deepStrictEqual(again.calls, untouched, 'pedido já feito nao pode consultar a loja de novo');
+
+  const closedAnchor = await runStoreReview('android', {
+    ...openedAnchor,
+    manifestations: [{ id: 'm-anchor' }],
+  });
+  assert.strictEqual(closedAnchor.result, 'skipped', 'nunca pedir avaliação antes de abrir a Cena-Âncora');
+  assert.deepStrictEqual(closedAnchor.calls, untouched, 'Cena-Âncora fechada nao pode tocar na loja');
+  assert.strictEqual((await runStoreReview('android', { ...openedAnchor, anchorSceneId: null })).result, 'skipped');
+  assert.strictEqual((await runStoreReview('android', undefined)).result, 'skipped', 'sem estado nao pede');
+
+  const unavailable = await runStoreReview('android', openedAnchor, { available: false });
+  assert.strictEqual(unavailable.result, 'skipped', 'loja indisponível nao pede avaliação');
+  assert.deepStrictEqual(
+    unavailable.calls,
+    { isAvailable: 1, requestReview: 0, marked: 0 },
+    'loja indisponível nao pode registrar pedido'
+  );
+
+  const availabilityFails = await runStoreReview('ios', openedAnchor, {
+    availableError: new Error('store_unavailable'),
+  });
+  assert.strictEqual(availabilityFails.result, 'skipped', 'erro ao consultar a loja vira skipped');
+  assert.strictEqual(availabilityFails.calls.requestReview, 0);
+
+  const requestFails = await runStoreReview('android', openedAnchor, {
+    requestError: new Error('review_failed'),
+  });
+  assert.strictEqual(requestFails.result, 'skipped', 'erro da API nativa vira skipped, nunca exceção');
+  assert.strictEqual(requestFails.calls.requestReview, 1);
+
+  // Toque duplo em "Guardar minha Cena-Âncora": o segundo toque ainda vê o estado
+  // antigo (sem storeReviewRequestedAt), mas a loja só pode ser chamada uma vez.
+  const doubleTap = storeReviewHarness('android');
+  assert.deepStrictEqual(
+    await Promise.all([doubleTap.ask(openedAnchor), doubleTap.ask(openedAnchor)]),
+    ['requested', 'skipped'],
+    'segundo toque nao pode pedir avaliação de novo'
+  );
+  assert.strictEqual(await doubleTap.ask(openedAnchor), 'skipped', 'toque tardio também fica de fora');
+  assert.deepStrictEqual(
+    doubleTap.calls,
+    { isAvailable: 1, requestReview: 1, marked: 1 },
+    'toque duplo chama a loja uma vez só'
+  );
+}
+
+verifyStoreReview()
+  .then(() => {
+    process.stdout.write(
+      'Perguntas Stella: sem indicacao nem Crescer + 27 etapas, 21 historicas, avaliacao nativa so depois da Cena-Ancora, nuvem local por padrao e draft aprovados\n'
+    );
+  })
+  .catch((error) => {
+    console.error(error.stack || error);
+    process.exitCode = 1;
+  });

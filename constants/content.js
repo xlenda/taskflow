@@ -52,6 +52,8 @@ export const initialState = () => ({
   },
   manifestations: [],
   anchorSceneId: null,
+  // Pedido nativo de avaliação da loja: uma vez por instalação (utils/storeReview).
+  storeReviewRequestedAt: null,
   favoriteAffirmations: [],
   savedVisions: [],
   visionPlays: [],

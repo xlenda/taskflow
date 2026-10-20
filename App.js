@@ -66,7 +66,6 @@ import ProfileScreen from './screens/ProfileScreen';
 
 import WelcomeScreen from './screens/onboarding/WelcomeScreen';
 import NotificationsScreen from './screens/onboarding/NotificationsScreen';
-import GrowScreen from './screens/onboarding/GrowScreen';
 import ChatOnboardingScreen from './screens/onboarding/ChatOnboardingScreen';
 import RevealScreen from './screens/onboarding/RevealScreen';
 import PaywallScreen from './screens/onboarding/PaywallScreen';
@@ -839,7 +838,6 @@ function RootNav() {
         <>
           <Root.Screen name="Welcome" component={WelcomeScreen} />
           <Root.Screen name="Notifications" component={NotificationsScreen} />
-          <Root.Screen name="Grow" component={GrowScreen} />
           <Root.Screen name="ChatOnboarding" component={ChatOnboardingScreen} />
           <Root.Screen name="Reveal" component={RevealScreen} />
           <Root.Screen name="Paywall" component={PaywallScreen} />
@@ -913,7 +911,6 @@ const linking = {
       Profile: 'perfil',
       Welcome: 'bem-vindo',
       Notifications: 'notificacoes',
-      Grow: 'crescer',
       ChatOnboarding: 'conversa',
       // O id faz parte do endereço para que F5 retome exatamente a cena certa;
       // sem ele, a tela se recusa a adivinhar qual história pessoal mostrar.
