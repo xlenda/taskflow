@@ -25,12 +25,14 @@ function load(relative) {
 }
 
 // Canvas falso: o contexto 2D grava cada chamada ({ op, args }) e cada propriedade atribuída ({ op: '=font' }).
+// measureText acompanha a fonte atual: 10 px por letra no tamanho base de um quadro de 320 (19 px).
+const fontPx = (font) => Number((/(\d+(?:\.\d+)?)px/.exec(font || '') || [0, 19])[1]);
 function fakeCanvas(width = 0, height = 0) {
   const calls = [];
   const ctx = new Proxy({}, {
     get(state, prop) {
       if (prop in state) return state[prop];
-      if (prop === 'measureText') return (text) => ({ width: String(text).length * 10 });
+      if (prop === 'measureText') return (text) => ({ width: (String(text).length * 10 * fontPx(state.font)) / 19 });
       if (prop === 'createImageData') return (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) });
       // o registro da chamada também serve de gradiente/padrão: guarda as paradas de cor
       return (...args) => {
@@ -452,8 +454,9 @@ async function main() {
     legible.calls.slice(0, legible.at).some((call) => call.op === '=shadowBlur' && call.args[0] > 0),
     'sombra suave no texto'
   );
+  // narração em andamento (progress < 1): tamanho cheio e janela que rola nas últimas 3 linhas
   const story = Array.from({ length: 60 }, (_, i) => `p${i}`).join(' ');
-  const rolled = words(render({}, 4000, [320, 400], { text: story, progress: 1 }));
+  const rolled = words(render({}, 4000, [320, 400], { text: story, progress: 0.99 }));
   assert.ok(rolled.length < 60 && rolled[rolled.length - 1] === 'p59', 'narração longa rola: últimas linhas');
   assert.deepStrictEqual(words(caption(-0.5)), [], 'progress < 0 vira 0');
   assert.deepStrictEqual(words(caption(1.7)), ['aa', 'bb', 'cc', 'dd'], 'progress > 1 vira 1');
@@ -470,6 +473,64 @@ async function main() {
   assert.ok(longWord.args[1] >= 0 && longWord.args[1] + scaledWidth <= 320, 'palavra longa encolhe e cabe');
   assert.deepStrictEqual(words(render({ mode: 'intro', phrase: 'aa bb' }, 0)), [], 'intro: frase espera o sol');
   assert.deepStrictEqual(words(render({ mode: 'intro', phrase: 'aa bb' }, 4000)), ['aa', 'bb']);
+
+  // frase PARADA (phrase sem legenda, ou legenda com progress 1 — inclusive a volta { text: phrase, progress: 1 })
+  // cabe INTEIRA: a fonte encolhe até caber em até 5 linhas (no mínimo 60%); só então a 5ª linha termina em "…".
+  // A janela que rola (últimas 3 linhas) é só para a legenda em andamento (karaokê da narração).
+  const longPhrase =
+    'Eu escolho viver com mais calma e propósito, em cada dia. Eu reconheço minha curiosidade, minha coragem e ' +
+    'minha persistência, e deixo essas qualidades orientarem meus próximos passos.';
+  assert.strictEqual(longPhrase.length, 183);
+  const base720 = Math.round(720 * 0.058);
+  const linesOf = (calls) => new Set(ops(calls, 'fillText').map((call) => Math.round(call.args[2]))).size;
+  // tamanho da fonte em vigor em cada palavra desenhada
+  const textFonts = (calls) => {
+    let font = '';
+    return calls.flatMap((call) => {
+      if (call.op === '=font') font = call.args[0];
+      return call.op === 'fillText' ? [fontPx(font)] : [];
+    });
+  };
+  const fitted = render({ phrase: longPhrase }, 4000, [720, 900]);
+  const fittedWords = words(fitted);
+  assert.strictEqual(fittedWords.join(' '), longPhrase, 'frase longa parada: inteira, da primeira à última palavra');
+  assert.ok(linesOf(fitted) <= 5, `frase longa parada: até 5 linhas (veio ${linesOf(fitted)})`);
+  const fittedSize = Math.max(...textFonts(fitted));
+  assert.ok(fittedSize < base720 && fittedSize >= base720 * 0.6, `a fonte encolheu sem passar de 60% (${fittedSize}px)`);
+  assert.strictEqual(words(render({ mode: 'intro', phrase: longPhrase }, 4000, [720, 900])).join(' '), longPhrase, 'intro: inteira');
+  assert.strictEqual(Math.max(...textFonts(render({ phrase: 'aa bb' }, 4000, [720, 900]))), base720, 'frase curta: tamanho cheio');
+  // véu antes do texto cobrindo o bloco mais alto (5 linhas): sólido acima da 1ª linha, até o pé
+  const tallVeil = veilBefore(fitted, 'Eu');
+  assert.ok(tallVeil, 'véu de legibilidade antes do texto');
+  const topBaseline = Math.min(...ops(fitted, 'fillText').map((call) => call.args[2]));
+  assert.ok(tallVeil.gradient.args[3] <= topBaseline - fittedSize, 'véu já sólido acima da 1ª das linhas');
+  assert.ok(tallVeil.rect[1] + tallVeil.rect[3] >= 900, 'véu vai até o pé');
+  // a mesma frase em andamento (0,5): tamanho cheio, só as últimas 3 linhas (a 1ª linha já rolou)
+  const rollingWords = render({}, 4000, [720, 900], { text: longPhrase, progress: 0.5 });
+  assert.ok(linesOf(rollingWords) <= 3 && !words(rollingWords).includes('escolho'), 'em andamento: janela de 3 linhas que rola');
+  assert.ok(words(rollingWords).includes('reconheço'), 'em andamento: mostra até onde a voz chegou');
+  assert.strictEqual(Math.max(...textFonts(rollingWords)), base720, 'em andamento: tamanho cheio');
+  // a mesma frase com progress 1 (fim da narração, ou a frase de volta): inteira e ajustada
+  const finished = render({}, 4000, [720, 900], { text: longPhrase, progress: 1 });
+  assert.ok(words(finished).join(' ') === longPhrase && linesOf(finished) <= 5, 'progress 1: a frase inteira, ajustada');
+  // nem a 60% coube: 5 linhas, fonte em 60% e a última termina em "…" dentro da largura
+  const endless = Array.from({ length: 12 }, () => longPhrase).join(' ');
+  const cut = render({ phrase: endless }, 4000, [720, 900]);
+  const cutWords = words(cut);
+  assert.ok(linesOf(cut) === 5 && /…$/.test(cutWords[cutWords.length - 1]), 'texto enorme: 5 linhas e "…" no fim');
+  assert.ok(Math.abs(Math.max(...textFonts(cut)) - base720 * 0.6) < 0.2, 'reticências só depois de chegar a 60%');
+  const cutFonts = textFonts(cut);
+  assert.strictEqual(new Set(cutFonts).size, 1, 'a linha com "…" no mesmo tamanho das outras (palavras saem, não encolhe)');
+  // 5ª linha cheia (2 palavras de 22 letras = as 45 letras da coluna a 60%): o "…" só cabe se uma palavra sair
+  const packed = render({ phrase: Array.from({ length: 30 }, () => 'abcdefghijklmnopqrstuv').join(' ') }, 4000, [720, 900]);
+  assert.ok(
+    words(packed).length === 9 && words(packed)[8] === 'abcdefghijklmnopqrstuv…' && new Set(textFonts(packed)).size === 1,
+    'linha cheia: sai uma palavra para o "…" caber, sem encolher a linha'
+  );
+  assert.ok(
+    ops(cut, 'fillText').every((call, i) => call.args[1] >= 57 && call.args[1] + (call.args[0].length * 10 * cutFonts[i]) / 19 <= 663),
+    'nenhuma palavra sai da coluna de 84%'
+  );
 
   // 8) assinatura: 3 estrelas + "Celeste" + link no rodapé, só quando pedida
   const signed = words(render({ format: '9:16', signature: true, linkText: 'celeste.app' }, 4000, [720, 1280]));

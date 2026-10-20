@@ -348,10 +348,8 @@ export function installCenaViva(root) {
 
     const captionFont = (size) => `italic 500 ${size}px ${SERIF}`;
 
-    // quebra o texto inteiro em linhas uma vez: as palavras surgem sem a linha mudar de lugar
-    function captionLines(text, W, size) {
-      const key = `${text}|${W}|${size}`;
-      if (key === layoutKey) return layout;
+    // quebra o texto em linhas num tamanho de fonte; cada palavra guarda onde começa (o progresso a revela)
+    function wrapCaption(text, W, size) {
       ctx.font = captionFont(size);
       const space = ctx.measureText(' ').width;
       const lines = [];
@@ -369,25 +367,54 @@ export function installCenaViva(root) {
         match = re.exec(text);
       }
       if (current.words.length) lines.push(current);
-      lines.forEach((ln) => {
+      return { lines, size, space };
+    }
+
+    // nem a 60% coube em 5 linhas: a 5ª perde palavras do fim até caber com "…"
+    function ellipsize(fit, W) {
+      const lines = fit.lines.slice(0, 5);
+      const tail = lines[4];
+      ctx.font = captionFont(fit.size);
+      const dots = ctx.measureText('…').width;
+      while (tail.words.length > 1 && tail.width + dots > W * 0.84) tail.width -= tail.words.pop().width + fit.space;
+      const end = tail.words[tail.words.length - 1];
+      end.text += '…';
+      end.width += dots;
+      tail.width += dots;
+      return { lines, size: fit.size, space: fit.space };
+    }
+
+    // legenda em andamento: tamanho cheio, quebrada uma vez (as palavras surgem sem a linha mudar de lugar).
+    // Parada (phrase, ou progress 1): INTEIRA — a fonte desce 5% por vez até caber em 5 linhas (no mínimo 60%);
+    // se nem assim, a 5ª linha termina em "…"
+    function captionLayout(text, W, base, whole) {
+      const key = `${text}|${W}|${base}|${whole}`;
+      if (key === layoutKey) return layout;
+      let fit = wrapCaption(text, W, base);
+      for (let step = 1; whole && fit.lines.length > 5 && step <= 8; step++) {
+        fit = wrapCaption(text, W, Math.round(base * (1 - 0.05 * step) * 10) / 10);
+      }
+      if (whole && fit.lines.length > 5) fit = ellipsize(fit, W);
+      fit.lines.forEach((ln) => {
         ln.scale = Math.min(1, (W * 0.84) / ln.width); // palavra sozinha mais larga que a caixa: encolhe, não corta
         let x = (W - ln.width * ln.scale) / 2;
         ln.words.forEach((word) => {
           word.x = x;
-          x += (word.width + space) * ln.scale;
+          x += (word.width + fit.space) * ln.scale;
         });
       });
       layoutKey = key;
-      layout = lines;
-      return lines;
+      layout = fit;
+      return fit;
     }
 
-    // legenda: só as palavras cujo começo o progresso já passou; narração longa mostra as últimas 3 linhas
+    // legenda: só as palavras cujo começo o progresso já passou. Em andamento, narração longa mostra só as últimas
+    // 3 linhas (karaokê); parada, a frase inteira no tamanho que coube
     function drawCaption(t, W, H, r, current) {
-      const size = Math.round(r.w * 0.058);
-      const lines = captionLines(current.text, W, size);
+      const whole = current.phrase || current.progress >= 1;
+      const { lines, size } = captionLayout(current.text, W, Math.round(r.w * 0.058), whole);
       if (!lines.length) return;
-      const slots = Math.min(3, lines.length);
+      const slots = whole ? lines.length : Math.min(3, lines.length);
       const lineHeight = size * 1.32;
       const bottom = r.y + r.h * 0.93 - (o.signature && !tall ? 96 * (W / 720) : 0);
       const fade = current.phrase && intro && !still ? smooth(span(t, 2400, 900)) : 1;
@@ -407,7 +434,7 @@ export function installCenaViva(root) {
       lines.forEach((ln, i) => {
         if (ln.words[0].start < reached) last = i;
       });
-      const first = Math.max(0, last - 2);
+      const first = Math.max(0, last - slots + 1);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.shadowColor = 'rgba(8,16,30,0.6)';
