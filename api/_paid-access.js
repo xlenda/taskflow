@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const net = require('net');
+const playIntegrity = require('./_play-integrity');
 
 const USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{16,96}$/;
@@ -122,6 +123,18 @@ function deriveActorHash(req, secret) {
     .digest('hex');
 }
 
+// Every Play-Integrity-verified native voice request shares this one actor, so
+// the 'audio' row of celeste_generation_operation_policy (actor_daily_units,
+// migration 010) is the Android-wide daily ceiling on top of the per-person
+// quota. No migration: the existing actor/operation counter does the work.
+function deriveNativeVoiceActorHash(secret) {
+  if (!validActorHashSecret(secret)) return '';
+  return crypto
+    .createHmac('sha256', secret)
+    .update('celeste-native-voice-pool-v1', 'utf8')
+    .digest('hex');
+}
+
 function deriveReportActorHash(req, secret) {
   if (!validActorHashSecret(secret)) return '';
   const origin = trustedActorOrigin(req);
@@ -161,9 +174,16 @@ function localNativeBypassEnabled() {
 }
 
 function isNativeRequest(req) {
-  // X-Celeste-Client is attacker-controlled. Native traffic stays closed until
-  // App Attest / Play Integrity is verified server-side.
-  return hasNativeClientClaim(req) && localNativeBypassEnabled();
+  // X-Celeste-Client is attacker-controlled. This synchronous pre-filter only
+  // lets a native claim past the route's Origin/BotID gate when it carries a
+  // Play Integrity token (Android) or the local development bypass is on;
+  // authorizePaidRequest verifies that token with Google before any identity,
+  // quota or provider call. iOS stays closed (no App Attest yet).
+  return (
+    hasNativeClientClaim(req) &&
+    (localNativeBypassEnabled() ||
+      (clientKind(req) === 'android' && Boolean(playIntegrity.integrityToken(req))))
+  );
 }
 
 async function fetchWithTimeout(url, options) {
@@ -308,6 +328,11 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   if (hasNativeClientClaim(req) && !isNativeRequest(req)) {
     return { error: 'native_attestation_required', status: 403 };
   }
+  // Play Integrity opens only the Android voice; every other native call stays closed.
+  const attestNative = hasNativeClientClaim(req) && !localNativeBypassEnabled();
+  if (attestNative && operation !== playIntegrity.NATIVE_OPERATION) {
+    return { error: 'native_attestation_required', status: 403 };
+  }
 
   const config = serverConfig();
   if (
@@ -318,13 +343,20 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   ) {
     return { error: 'spend_guard_not_configured', status: 503 };
   }
-  const actorHash = deriveActorHash(req, config.actorHashSecret);
+  const actorHash = attestNative
+    ? deriveNativeVoiceActorHash(config.actorHashSecret)
+    : deriveActorHash(req, config.actorHashSecret);
   if (!ACTOR_HASH_PATTERN.test(actorHash)) {
     return { error: 'spend_guard_unavailable', status: 503 };
   }
   const token = bearerToken(req);
   const id = requestId(req);
   if (!token || !id) return { error: 'identity_required', status: 401 };
+
+  if (attestNative) {
+    const integrity = await playIntegrity.verifyPlayIntegrity(req, { operation, requestId: id });
+    if (!integrity.ok) return { error: 'native_attestation_required', status: 403 };
+  }
 
   const identity = await authenticatedUser(config, token);
   if (identity.error) return identity;
@@ -434,6 +466,7 @@ module.exports = {
     ACTOR_HASH_SECRET_MIN_BYTES,
     TRUSTED_VERCEL_IP_HEADER,
     deriveActorHash,
+    deriveNativeVoiceActorHash,
     deriveReportActorHash,
     normalizeActorOrigin,
     trustedActorOrigin,

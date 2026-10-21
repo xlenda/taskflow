@@ -1,11 +1,16 @@
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 
 const paidAccess = require('../api/_paid-access');
+const playIntegrity = require('../api/_play-integrity');
+const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const ENV_KEYS = [
+  'CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64',
+  'ELEVENLABS_API_KEY',
   'CELESTE_SUPABASE_URL',
   'CELESTE_SUPABASE_ANON_KEY',
   'CELESTE_SUPABASE_SERVICE_ROLE_KEY',
@@ -39,7 +44,10 @@ function configure() {
   process.env.VERCEL_ENV = 'production';
   process.env.VERCEL = '1';
   process.env.NODE_ENV = 'production';
+  delete process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64;
+  delete process.env.ELEVENLABS_API_KEY;
   paidAccess.resetAuthorizerForTests();
+  playIntegrity.resetForTests();
 }
 
 function restore() {
@@ -49,6 +57,7 @@ function restore() {
   }
   global.fetch = originalFetch;
   paidAccess.resetAuthorizerForTests();
+  playIntegrity.resetForTests();
 }
 
 function request(overrides = {}) {
@@ -658,4 +667,410 @@ test('migrations 008-012 and paid routes keep operation accounting fail-closed',
       );
     }
   }
+});
+
+// Android voice: Play Integrity "standard request". Docs:
+// developer.android.com/google/play/integrity/standard (decodeIntegrityToken) and
+// developer.android.com/google/play/integrity/verdicts (payload fields).
+const PLAY_PACKAGE = 'com.celesteapp.affirmations';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const PLAY_DECODE_URL = `https://playintegrity.googleapis.com/v1/${PLAY_PACKAGE}:decodeIntegrityToken`;
+const ACTOR_SECRET = 'actor-hmac-secret-with-at-least-32-bytes';
+const SERVICE_EMAIL = 'play-integrity@celeste-test.iam.gserviceaccount.com';
+const integrityKeys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+const SERVICE_ACCOUNT_B64 = Buffer.from(
+  JSON.stringify({
+    type: 'service_account',
+    project_id: 'celeste-test',
+    private_key_id: 'test-key-id',
+    private_key: integrityKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    client_email: SERVICE_EMAIL,
+  })
+).toString('base64');
+const INTEGRITY_TOKEN = 'play-integrity-token.0001-abcdefghijklmnop';
+const VOICE_REQUEST_ID = 'celeste-android-voice-0001';
+const voiceBody = Object.freeze({
+  mode: 'personal',
+  narratorId: 'serena',
+  lang: 'pt',
+  text: 'Eu escolho ouvir a minha voz com calma e coragem.',
+  cloudConsent: true,
+  cloudConsentVersion: CLOUD_CONSENT_VERSION,
+  adultConfirmed: true,
+});
+const NATIVE_DENIED = Object.freeze({ error: 'native_attestation_required', status: 403 });
+
+const sha256Hex = (value) => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+// Independent oracle of the canonical request hash (services/appIntegrity.js and
+// api/_play-integrity.js must both produce exactly this value).
+const expectedRequestHash = (operation, requestId, body) =>
+  sha256Hex(
+    ['celeste-play-integrity-v1', operation, requestId, sha256Hex(JSON.stringify(body))].join('\n')
+  );
+const nativePoolActor = crypto
+  .createHmac('sha256', ACTOR_SECRET)
+  .update('celeste-native-voice-pool-v1', 'utf8')
+  .digest('hex');
+
+function nativeVoiceRequest({ headers = {}, body = voiceBody } = {}) {
+  return {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer android-anonymous-session',
+      'content-type': 'application/json',
+      'x-celeste-client': 'android',
+      'x-celeste-request-id': VOICE_REQUEST_ID,
+      'x-celeste-integrity': INTEGRITY_TOKEN,
+      'x-vercel-forwarded-for': '203.0.113.20',
+      ...headers,
+    },
+    body,
+  };
+}
+
+function validVerdict(mutate) {
+  const payload = {
+    requestDetails: {
+      requestPackageName: PLAY_PACKAGE,
+      requestHash: expectedRequestHash('audio', VOICE_REQUEST_ID, voiceBody),
+      timestampMillis: String(Date.now() - 1000),
+    },
+    appIntegrity: {
+      appRecognitionVerdict: 'PLAY_RECOGNIZED',
+      packageName: PLAY_PACKAGE,
+      certificateSha256Digest: ['test-certificate-digest'],
+      versionCode: '7',
+    },
+    deviceIntegrity: { deviceRecognitionVerdict: ['MEETS_DEVICE_INTEGRITY'] },
+    accountDetails: { appLicensingVerdict: 'LICENSED' },
+  };
+  if (mutate) mutate(payload);
+  return payload;
+}
+
+function googleAndSupabase(state) {
+  state.calls = [];
+  state.jwts = [];
+  state.decodes = [];
+  state.reservations = [];
+  state.elevenLabs = 0;
+  return async (url, options = {}) => {
+    state.calls.push(url);
+    if (url === GOOGLE_TOKEN_URL) {
+      const form = new URLSearchParams(options.body);
+      const [header, claims, signature] = String(form.get('assertion') || '').split('.');
+      state.jwts.push({
+        grantType: form.get('grant_type'),
+        header: JSON.parse(Buffer.from(header, 'base64url').toString('utf8')),
+        claims: JSON.parse(Buffer.from(claims, 'base64url').toString('utf8')),
+        signed: crypto.verify(
+          'sha256',
+          Buffer.from(`${header}.${claims}`),
+          integrityKeys.publicKey,
+          Buffer.from(signature, 'base64url')
+        ),
+      });
+      if (state.tokenStatus) {
+        return { ok: false, status: state.tokenStatus, json: async () => ({ error: 'unavailable' }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'google-access-token', expires_in: 3599, token_type: 'Bearer' }),
+      };
+    }
+    if (url === PLAY_DECODE_URL) {
+      state.decodes.push({
+        method: options.method,
+        authorization: options.headers && options.headers.Authorization,
+        body: JSON.parse(options.body),
+      });
+      if (state.decodeStatus) {
+        return { ok: false, status: state.decodeStatus, json: async () => ({ error: { code: state.decodeStatus } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ tokenPayloadExternal: state.verdict }) };
+    }
+    if (url.endsWith('/auth/v1/user')) {
+      return {
+        ok: true,
+        json: async () => ({ id: '00000000-0000-4000-8000-0000000000aa', is_anonymous: true }),
+      };
+    }
+    if (url.endsWith('/rpc/celeste_reserve_generation_credit')) {
+      state.reservations.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => ({
+          allowed: true,
+          duplicate: false,
+          reserved: false,
+          actorQuota: true,
+          operationQuota: true,
+        }),
+      };
+    }
+    if (url.startsWith('https://api.elevenlabs.io/')) {
+      state.elevenLabs += 1;
+      const pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]);
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'audio/pcm' : null) },
+        arrayBuffer: async () => pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength),
+      };
+    }
+    throw new Error(`URL inesperada no teste Play Integrity: ${url}`);
+  };
+}
+
+const reachedSupabase = (state) => state.calls.some((url) => url.includes('supabase.co'));
+
+test('Android voice passes only with a Play Integrity verdict bound to the request', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  const state = { verdict: validVerdict() };
+  global.fetch = googleAndSupabase(state);
+
+  const allowed = await paidAccess.authorizePaidRequest(nativeVoiceRequest(), {
+    operation: 'audio',
+    units: 4,
+  });
+  assert.strictEqual(allowed.ok, true, JSON.stringify(allowed));
+  assert.strictEqual(allowed.native, true);
+  assert.deepStrictEqual(
+    state.calls,
+    [
+      GOOGLE_TOKEN_URL,
+      PLAY_DECODE_URL,
+      'https://celeste.supabase.co/auth/v1/user',
+      'https://celeste.supabase.co/rest/v1/rpc/celeste_reserve_generation_credit',
+    ],
+    'Google precisa validar antes de identidade e cota'
+  );
+  assert.strictEqual(state.jwts.length, 1);
+  const [jwt] = state.jwts;
+  assert.strictEqual(jwt.signed, true, 'JWT da conta de servico precisa ser RS256 valido');
+  assert.strictEqual(jwt.grantType, 'urn:ietf:params:oauth:grant-type:jwt-bearer');
+  assert.deepStrictEqual(jwt.header, { alg: 'RS256', typ: 'JWT', kid: 'test-key-id' });
+  assert.strictEqual(jwt.claims.iss, SERVICE_EMAIL);
+  assert.strictEqual(jwt.claims.scope, 'https://www.googleapis.com/auth/playintegrity');
+  assert.strictEqual(jwt.claims.aud, GOOGLE_TOKEN_URL);
+  assert.ok(jwt.claims.exp > jwt.claims.iat && jwt.claims.exp - jwt.claims.iat <= 3600);
+  assert.deepStrictEqual(state.decodes, [
+    {
+      method: 'POST',
+      authorization: 'Bearer google-access-token',
+      body: { integrityToken: INTEGRITY_TOKEN },
+    },
+  ]);
+  assert.strictEqual(state.reservations.length, 1);
+  assert.strictEqual(state.reservations[0].p_operation, 'audio');
+  assert.strictEqual(state.reservations[0].p_units, 4);
+  assert.strictEqual(
+    state.reservations[0].p_actor_hash,
+    nativePoolActor,
+    'toda voz nativa verificada divide um ator: a cota de ator do audio vira o teto diario do Android'
+  );
+  assert.notStrictEqual(
+    nativePoolActor,
+    paidAccess._internals.deriveActorHash(nativeVoiceRequest(), ACTOR_SECRET),
+    'voz nativa nao pode cair na cota por IP do site'
+  );
+
+  const secondId = 'celeste-android-voice-0002';
+  state.verdict = validVerdict((payload) => {
+    payload.requestDetails.requestHash = expectedRequestHash('audio', secondId, voiceBody);
+  });
+  const second = await paidAccess.authorizePaidRequest(
+    nativeVoiceRequest({
+      headers: { 'x-celeste-request-id': secondId, 'x-vercel-forwarded-for': '198.51.100.30' },
+    }),
+    { operation: 'audio', units: 4 }
+  );
+  assert.strictEqual(second.ok, true, JSON.stringify(second));
+  assert.strictEqual(state.jwts.length, 1, 'token de acesso do Google deve ser reutilizado ate expirar');
+  assert.strictEqual(state.reservations[1].p_actor_hash, nativePoolActor, 'outra rede, mesmo teto nativo');
+});
+
+test('Play Integrity failures keep native voice closed before identity and quota', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  assert.strictEqual(playIntegrity.MAX_TOKEN_AGE_MS, 2 * 60 * 1000, 'janela documentada do token: 2 minutos');
+  const otherBody = { ...voiceBody, text: 'Outro texto pago por quem roubou o token.' };
+  const cases = [
+    ['pacote errado', { verdict: validVerdict((p) => { p.requestDetails.requestPackageName = 'com.attacker.clone'; }) }],
+    ['app fora da Play', { verdict: validVerdict((p) => { p.appIntegrity.appRecognitionVerdict = 'UNRECOGNIZED_VERSION'; }) }],
+    ['token reaproveitado (Google apaga o veredito)', {
+      verdict: validVerdict((p) => {
+        p.appIntegrity = { appRecognitionVerdict: 'UNEVALUATED' };
+        p.deviceIntegrity = {};
+      }),
+    }],
+    ['aparelho so com integridade basica', { verdict: validVerdict((p) => { p.deviceIntegrity.deviceRecognitionVerdict = ['MEETS_BASIC_INTEGRITY']; }) }],
+    ['aparelho sem veredito', { verdict: validVerdict((p) => { delete p.deviceIntegrity.deviceRecognitionVerdict; }) }],
+    ['hash de outro corpo', { verdict: validVerdict((p) => { p.requestDetails.requestHash = expectedRequestHash('audio', VOICE_REQUEST_ID, otherBody); }) }],
+    ['hash de outro pedido', { verdict: validVerdict((p) => { p.requestDetails.requestHash = expectedRequestHash('audio', 'celeste-android-voice-9999', voiceBody); }) }],
+    ['hash de outra operacao', { verdict: validVerdict((p) => { p.requestDetails.requestHash = expectedRequestHash('visual', VOICE_REQUEST_ID, voiceBody); }) }],
+    ['token velho', { verdict: validVerdict((p) => { p.requestDetails.timestampMillis = String(Date.now() - (2 * 60 * 1000) - 5000); }) }],
+    ['token do futuro', { verdict: validVerdict((p) => { p.requestDetails.timestampMillis = String(Date.now() + (5 * 60 * 1000)); }) }],
+    ['Google recusa o token', { verdict: validVerdict(), decodeStatus: 400 }],
+    ['Google sem resposta', { verdict: validVerdict(), tokenStatus: 503 }],
+  ];
+  for (const [label, scenario] of cases) {
+    playIntegrity.resetForTests();
+    const state = { ...scenario };
+    global.fetch = googleAndSupabase(state);
+    const result = await paidAccess.authorizePaidRequest(nativeVoiceRequest(), {
+      operation: 'audio',
+      units: 4,
+    });
+    assert.deepStrictEqual(result, NATIVE_DENIED, label);
+    assert.ok(!reachedSupabase(state), `${label}: Supabase nao pode ser chamado sem veredito valido`);
+  }
+});
+
+test('native claims without a usable attestation never reach Google, identity or quota', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  const state = { verdict: validVerdict() };
+  global.fetch = googleAndSupabase(state);
+
+  const scenarios = [
+    ['Android sem token', nativeVoiceRequest({ headers: { 'x-celeste-integrity': '' } }), 'audio'],
+    ['token com espaco', nativeVoiceRequest({ headers: { 'x-celeste-integrity': 'token forjado com espaco' } }), 'audio'],
+    ['iOS com token', nativeVoiceRequest({ headers: { 'x-celeste-client': 'ios' } }), 'audio'],
+    ['cena pelo Android', nativeVoiceRequest(), 'scene'],
+    ['imagem pelo Android', nativeVoiceRequest(), 'visual'],
+    ['sonho pelo Android', nativeVoiceRequest(), 'dream'],
+    ['traducao pelo Android', nativeVoiceRequest(), 'translation'],
+  ];
+  for (const [label, req, operation] of scenarios) {
+    const result = await paidAccess.authorizePaidRequest(req, {
+      operation,
+      units: operation === 'visual' ? 8 : operation === 'audio' ? 4 : 3,
+    });
+    assert.deepStrictEqual(result, NATIVE_DENIED, label);
+    assert.deepStrictEqual(state.calls, [], `${label}: nada pode sair da funcao`);
+  }
+
+  for (const [label, value] of [
+    ['sem credencial do Google', undefined],
+    ['credencial sem chave privada', Buffer.from(JSON.stringify({ type: 'authorized_user', client_email: SERVICE_EMAIL })).toString('base64')],
+    ['credencial sem e-mail da conta', Buffer.from(JSON.stringify({ type: 'service_account', private_key: integrityKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }) })).toString('base64')],
+    ['credencial ilegivel', 'isto-nao-e-json-em-base64'],
+  ]) {
+    playIntegrity.resetForTests();
+    if (value === undefined) delete process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64;
+    else process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = value;
+    const result = await paidAccess.authorizePaidRequest(nativeVoiceRequest(), {
+      operation: 'audio',
+      units: 4,
+    });
+    assert.deepStrictEqual(result, NATIVE_DENIED, label);
+    assert.deepStrictEqual(state.calls, [], `${label}: fechado sem chamar Google nem Supabase`);
+  }
+
+  assert.strictEqual(paidAccess.isNativeRequest(nativeVoiceRequest()), true, 'Android com token passa so o pre-filtro');
+  assert.strictEqual(paidAccess.isNativeRequest(nativeVoiceRequest({ headers: { 'x-celeste-integrity': '' } })), false);
+  assert.strictEqual(paidAccess.isNativeRequest(nativeVoiceRequest({ headers: { 'x-celeste-client': 'ios' } })), false);
+  assert.strictEqual(
+    paidAccess.isNativeRequest(nativeVoiceRequest({ headers: { origin: 'https://celeste.example' } })),
+    false,
+    'navegador nunca vira cliente nativo'
+  );
+
+  // The explicit local development bypass keeps its old behaviour: no Google
+  // call and the per-origin actor, never the native pool.
+  process.env.CELESTE_ALLOW_LOCAL_NATIVE_BYPASS = '1';
+  process.env.VERCEL_ENV = 'development';
+  process.env.NODE_ENV = 'development';
+  delete process.env.VERCEL;
+  const bypassed = await paidAccess.authorizePaidRequest(
+    {
+      ...nativeVoiceRequest({ headers: { 'x-celeste-integrity': '' } }),
+      socket: { remoteAddress: '127.0.0.1' },
+    },
+    { operation: 'scene', units: 4 }
+  );
+  assert.strictEqual(bypassed.ok, true, JSON.stringify(bypassed));
+  assert.ok(!state.calls.some((url) => url.includes('googleapis.com')), 'bypass local nao chama o Google');
+  assert.notStrictEqual(state.reservations.at(-1).p_actor_hash, nativePoolActor);
+});
+
+test('gerar-audio serves verified Android voice and refuses a body changed after the token', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  process.env.ELEVENLABS_API_KEY = 'elevenlabs-route-test-secret';
+  const audioRoute = require('../api/gerar-audio');
+  const response = () => ({
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[String(name).toLowerCase()] = String(value);
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+    send(value) {
+      this.body = value;
+      return this;
+    },
+    end() {
+      return this;
+    },
+  });
+
+  for (const body of [voiceBody, JSON.stringify(voiceBody)]) {
+    playIntegrity.resetForTests();
+    const state = { verdict: validVerdict() };
+    global.fetch = googleAndSupabase(state);
+    const served = response();
+    await audioRoute(nativeVoiceRequest({ body }), served);
+    assert.strictEqual(served.statusCode, 200, JSON.stringify(served.body));
+    assert.strictEqual(served.headers['content-type'], 'audio/wav');
+    assert.strictEqual(state.elevenLabs, 1);
+  }
+
+  playIntegrity.resetForTests();
+  const tamperedState = { verdict: validVerdict() };
+  global.fetch = googleAndSupabase(tamperedState);
+  const tampered = response();
+  await audioRoute(
+    nativeVoiceRequest({ body: { ...voiceBody, text: 'Texto trocado depois do token ser emitido.' } }),
+    tampered
+  );
+  assert.strictEqual(tampered.statusCode, 403);
+  assert.deepStrictEqual(tampered.body, { error: 'native_attestation_required' });
+  assert.strictEqual(tamperedState.elevenLabs, 0, 'ElevenLabs nao pode ser chamado com corpo adulterado');
+  assert.ok(!reachedSupabase(tamperedState));
+});
+
+test('Play Integrity module stays dependency-free, silent and pinned to the documented checks', () => {
+  const root = path.resolve(__dirname, '..');
+  const source = fs.readFileSync(path.join(root, 'api', '_play-integrity.js'), 'utf8');
+  const paidSource = fs.readFileSync(path.join(root, 'api', '_paid-access.js'), 'utf8');
+  assert.deepStrictEqual(
+    [...source.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)].map((match) => match[1]),
+    ['crypto'],
+    'o deploy empacota so o botid: _play-integrity.js nao pode depender de pacote npm'
+  );
+  assert.doesNotMatch(
+    `${source}\n${paidSource}`,
+    /console\.(?:log|info|warn|error|debug)/,
+    'credencial do Google e token de integridade nunca podem ir para log'
+  );
+  assert.strictEqual(playIntegrity.PACKAGE_NAME, PLAY_PACKAGE);
+  assert.strictEqual(playIntegrity.NATIVE_OPERATION, 'audio');
+  assert.match(paidSource, /require\('\.\/_play-integrity'\)/);
+  assert.match(source, /CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64/);
 });

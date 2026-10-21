@@ -69,6 +69,7 @@
     "verify:performance": "node scripts/medir-performance.js"
   },
   "dependencies": {
+    "@expo/app-integrity": "~57.0.2",
     "@expo/metro-runtime": "~57.0.14",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",

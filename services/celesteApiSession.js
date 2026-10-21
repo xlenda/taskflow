@@ -1,13 +1,21 @@
 import { Platform } from 'react-native';
+import { appIntegrityConfigured, integrityHeaderFor, requestBodyHash } from './appIntegrity';
 import { getCelesteSupabaseClient } from './celesteSupabase';
 
 let sessionPromise;
 
 const NATIVE_STORE_PLATFORMS = new Set(['ios', 'android']);
+// The one paid operation Android may run: the voice, verified by Play Integrity
+// (same name as the server operation in api/gerar-audio.js).
+const ANDROID_VOICE_OPERATION = 'audio';
 
-export function celesteCloudAccessCapability(platform = Platform.OS) {
+function androidVoice(client, operation) {
+  return client === 'android' && operation === ANDROID_VOICE_OPERATION && appIntegrityConfigured();
+}
+
+export function celesteCloudAccessCapability(platform = Platform.OS, operation = null) {
   const client = ['ios', 'android', 'web'].includes(platform) ? platform : 'native';
-  if (NATIVE_STORE_PLATFORMS.has(client)) {
+  if (NATIVE_STORE_PLATFORMS.has(client) && !androidVoice(client, operation)) {
     return {
       available: false,
       client,
@@ -17,12 +25,16 @@ export function celesteCloudAccessCapability(platform = Platform.OS) {
   return { available: true, client, reason: null };
 }
 
-function assertCloudAccessAvailable() {
-  const capability = celesteCloudAccessCapability();
+function attestationRequired() {
+  const error = new Error('native_attestation_required');
+  error.code = 'native_attestation_required';
+  return error;
+}
+
+function assertCloudAccessAvailable(operation) {
+  const capability = celesteCloudAccessCapability(Platform.OS, operation);
   if (capability.available) return capability;
-  const error = new Error(capability.reason);
-  error.code = capability.reason;
-  throw error;
+  throw attestationRequired();
 }
 
 function requestId() {
@@ -45,12 +57,7 @@ async function currentOrAnonymousSession() {
   return data.session;
 }
 
-export async function getCelesteApiSession() {
-  // The first store release deliberately stays local on iOS/Android. A client
-  // header or embedded secret cannot prove that a request came from the
-  // official binary, so do not even create an anonymous cloud session until
-  // App Attest / Play Integrity verification exists end to end.
-  assertCloudAccessAvailable();
+function apiSession() {
   if (!sessionPromise) {
     sessionPromise = currentOrAnonymousSession().finally(() => {
       sessionPromise = null;
@@ -59,12 +66,33 @@ export async function getCelesteApiSession() {
   return sessionPromise;
 }
 
-export async function celestePaidApiHeaders() {
-  const capability = assertCloudAccessAvailable();
-  const session = await getCelesteApiSession();
+export async function getCelesteApiSession() {
+  // A client header or embedded secret cannot prove that a request came from
+  // the official binary: iOS/Android never get a generic cloud session.
+  // Android voice gets one only through celestePaidApiHeaders, after a Play
+  // Integrity token was issued for that exact request.
+  assertCloudAccessAvailable();
+  return apiSession();
+}
+
+// `body` is the exact JSON string the caller will send: on Android the Play
+// Integrity token is bound to it, so the voice request must pass it here.
+export async function celestePaidApiHeaders({ operation = null, body } = {}) {
+  const capability = assertCloudAccessAvailable(operation);
+  const id = requestId();
+  let integrity = null;
+  if (capability.client === 'android') {
+    integrity =
+      typeof body === 'string'
+        ? await integrityHeaderFor({ operation, requestId: id, bodyHash: requestBodyHash(body) })
+        : null;
+    if (!integrity) throw attestationRequired();
+  }
+  const session = await apiSession();
   return {
     Authorization: `Bearer ${session.access_token}`,
     'X-Celeste-Client': capability.client,
-    'X-Celeste-Request-Id': requestId(),
+    'X-Celeste-Request-Id': id,
+    ...integrity,
   };
 }
