@@ -18,7 +18,10 @@ fronteira mais restrita: não oferece Comunidade pública, conta visível,
 compras, anúncios, despertador nem geração paga de cena, imagem, sonho ou
 tradução em nuvem. Desde 21/10, a única exceção é a narração com a voz
 escolhida (ElevenLabs): só depois do consentimento adulto e só quando o servidor
-confirma a verificação Play Integrity; sem isso, toca a voz do aparelho com aviso.
+confirma a verificação Play Integrity. Depois do consentimento, sem a verificação
+ou sem internet, toca a voz do aparelho com aviso; sem o consentimento, a
+narração não toca e a tela oferece o texto (o despertar e a prática do Plano
+Celeste usam a voz do aparelho).
 
 ## 1. Escopo técnico auditado
 
@@ -38,7 +41,7 @@ confirma a verificação Play Integrity; sem isso, toca a voz do aparelho com av
 | Narração (voz) | Sim, somente após toque | com consentimento adulto e Play Integrity confirmado no servidor, a voz escolhida vem da ElevenLabs pelo backend (Vercel); caso contrário, `expo-speech` usa o sintetizador do sistema, sem permissão sensível nova, e não deve ser descrito como necessariamente offline sem validar a engine/voz do aparelho |
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de cena, tradução, imagem e sonho | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
-| API de voz (ElevenLabs) | Liberada no Android desde 21/10, com trava | o servidor só aceita o pedido nativo com token Play Integrity verificado no Google (pacote, `PLAY_RECOGNIZED`, `MEETS_DEVICE_INTEGRITY`, hash do pedido, token recente) e teto diário próprio; sem isso, 403 `native_attestation_required` |
+| API de voz (ElevenLabs) | Liberada no Android desde 21/10, com trava | o servidor só aceita o pedido nativo com token Play Integrity verificado no Google (pacote do pedido e do app, `PLAY_RECOGNIZED`, `MEETS_DEVICE_INTEGRITY`, hash do pedido e da sessão, token recente); cada pessoa gasta a própria cota diária, e todas dividem o teto global do servidor (o mesmo do site); sem a verificação, 403 `native_attestation_required` |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
 | Denúncia de conteúdo gerado | Sim, dentro do app | as telas de conteúdo gerado, e toda tela onde a voz da ElevenLabs toca, enviam somente a saída gerada escolhida (ou referência visual) pelo gateway; o Perfil oferece exclusão confirmada; migrations `013`/`014` limitam retenção a 180 dias e fecham a RPC legada |
 | Conteúdo público criado por usuários | Não | Comunidade e seus deep links ficam fora da v1 Android |
@@ -115,7 +118,8 @@ growth`, `Mindfulness`, `Journal`, `Meditation` e `Well-being`.
 > Cena-Âncora é criada automaticamente no aparelho, com a nuvem desligada. Ao
 > tocar para ouvir, a Celeste pede uma vez a confirmação de 18+ e a permissão da
 > voz em nuvem; com ela, o texto escolhido é narrado com a voz de IA da
-> ElevenLabs; sem ela, pelo sintetizador do sistema. O Plano Celeste usa
+> ElevenLabs; sem ela, a narração não toca e o texto fica na tela (o despertar e
+> o Plano Celeste usam o sintetizador do sistema). O Plano Celeste usa
 > lembretes comuns, mostra imagem e texto e narra a visão somente depois de um
 > toque. Após a narração, pode pedir o microfone somente quando você tocar para
 > iniciar as duas repetições. A Comunidade, o despertador exato e a geração de
@@ -220,12 +224,16 @@ files` nem um novo tipo coletado ao Data Safety.
 
 A narração de saída é separada do microfone. Com consentimento adulto e Play
 Integrity confirmado no servidor, o texto que a pessoa pediu para ouvir, o idioma
-e a voz vão pelo backend (Vercel) à ElevenLabs; esse texto entra em `Other
-user-generated content` (tabela abaixo). O backend da Celeste não grava o texto:
-o registro de limite guarda só a sessão anônima, o id do pedido, a operação e um
-hash da origem de rede. Sem consentimento ou verificação, `expo-speech` entrega o
-texto ao sintetizador escolhido pelo sistema; a biblioteca não adiciona uma nova
-permissão sensível, mas a engine ou voz pode usar rede. Antes de preencher o
+e a voz vão ao backend (Vercel), que repassa só o texto e a voz à ElevenLabs;
+esse texto entra em `Other user-generated content` (tabela abaixo). O backend da
+Celeste não grava o texto: o registro de limite guarda só a sessão anônima, o id
+do pedido, a operação e, no Android, um HMAC (resumo com chave secreta do
+servidor) do id da sessão anônima, que conta o teto diário da própria pessoa.
+Depois do consentimento, sem a verificação ou sem internet, `expo-speech` entrega
+o texto ao sintetizador escolhido pelo sistema, com aviso na tela; sem o
+consentimento, só o despertar e a prática do Plano Celeste fazem isso (nas outras
+telas a narração não toca e o texto fica na tela). A biblioteca não adiciona uma
+nova permissão sensível, mas a engine ou voz pode usar rede. Antes de preencher o
 console, confirmar no AAB e no tráfego se esse caminho mantém o texto no aparelho.
 
 ### Data collection and security

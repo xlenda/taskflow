@@ -114,8 +114,7 @@
               </div>
               <div class="processor">
                 <strong>ElevenLabs</strong>
-                Recebe o texto final, idioma e narrador escolhidos para produzir a narração
-                solicitada.
+                Recebe o texto final e o narrador escolhido para produzir a narração solicitada.
               </div>
               <div class="processor">
                 <strong>Vercel e BotID</strong>
@@ -150,19 +149,21 @@
               Celeste, hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
               história ou Cena-Âncora), o idioma, o identificador da voz escolhida e a sessão técnica
               anônima, usada para autorizar o pedido e aplicar limites de uso. O backend repassa
-              somente o texto, o idioma e a voz à ElevenLabs, que atua como processadora para gerar o
-              áudio. Como esse texto é o que aparece na tela, ele pode repetir detalhes pessoais que
-              a pessoa escreveu.
+              somente o texto e a voz à ElevenLabs, que atua como processadora para gerar o áudio.
+              Como esse texto é o que aparece na tela, ele pode repetir detalhes pessoais que a
+              pessoa escreveu.
             </p>
             <p>
               Para prevenir abuso, o pedido também leva uma verificação do Google Play Integrity,
               presa àquele pedido por um resumo criptográfico, sem enviar o texto ao Google. O
               backend confere essa verificação com o Google e só gera a voz quando ela confirma o app
               oficial instalado pela Google Play num aparelho certificado; o resultado não informa à
-              Celeste quem é a pessoa. Sem essa confirmação, sem conexão ou sem consentimento, toca a
-              voz do próprio aparelho, com aviso. O áudio devolvido segue as regras da seção 4; a
-              sessão técnica anônima pode permanecer para prevenção de abuso e não é uma conta
-              pessoal; os prazos dos fornecedores seguem o aviso da seção 5.
+              Celeste quem é a pessoa. Depois do consentimento, sem essa confirmação ou sem conexão,
+              toca a voz do próprio aparelho, com aviso. Sem o consentimento, nada vai para a nuvem:
+              a narração não toca e a tela oferece o texto para ler; o despertar e a prática do
+              Plano Celeste leem com a voz do próprio aparelho. O áudio devolvido segue as regras da
+              seção 4; a sessão técnica anônima pode permanecer para prevenção de abuso e não é uma
+              conta pessoal; os prazos dos fornecedores seguem o aviso da seção 5.
             </p>
             <h3>Denúncia de conteúdo de IA</h3>
             <p>
@@ -193,7 +194,7 @@
               </li>
               <li>
                 Se o consentimento para processamento em nuvem já estiver ativo, esse toque pode
-                enviar à ElevenLabs o texto escolhido, idioma e narrador para produzir a narração.
+                enviar à ElevenLabs o texto escolhido e o narrador para produzir a narração.
                 O áudio devolvido não é publicado e pode ser guardado em cache privado; itens sem
                 uso por 30 dias são removidos periodicamente.
               </li>

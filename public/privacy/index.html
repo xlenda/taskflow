@@ -112,8 +112,7 @@
               </div>
               <div class="processor">
                 <strong>ElevenLabs</strong>
-                Receives the final text, language and selected narrator to produce requested
-                narration.
+                Receives the final text and selected narrator to produce requested narration.
               </div>
               <div class="processor">
                 <strong>Vercel and BotID</strong>
@@ -147,20 +146,22 @@
               After adult consent, each tap to listen sends to Celeste's backend, hosted on Vercel,
               the text the person asked to hear (an affirmation, vision, story or Anchor Scene), its
               language, the selected voice identifier and the anonymous technical session, which
-              authorizes the request and enforces usage limits. The backend passes only the text,
-              language and voice to ElevenLabs, which acts as a processor to create the audio.
-              Because that text is what appears on screen, it may repeat personal details the
-              person wrote.
+              authorizes the request and enforces usage limits. The backend passes only the text
+              and voice to ElevenLabs, which acts as a processor to create the audio. Because that
+              text is what appears on screen, it may repeat personal details the person wrote.
             </p>
             <p>
               To prevent abuse, the request also carries a Google Play Integrity check, bound to
               that request by a cryptographic hash without sending the text to Google. The backend
               confirms the check with Google and creates the voice only when it confirms the official
               app installed from Google Play on a certified device; the result does not tell Celeste
-              who the person is. Without that confirmation, a connection or consent, the device's
-              own voice plays instead, with a notice. The returned audio follows the rules in
-              section 4; the anonymous technical session may remain for abuse prevention and is not
-              a personal account; provider retention follows the notice in section 5.
+              who the person is. After consent, without that confirmation or a connection, the
+              device's own voice plays instead, with a notice. Without consent, nothing goes to the
+              cloud: the narration does not play and the screen offers the text to read; the wake-up
+              and the Celeste Plan practice read with the device's own voice. The returned audio
+              follows the rules in section 4; the anonymous technical session may remain for abuse
+              prevention and is not a personal account; provider retention follows the notice in
+              section 5.
             </p>
             <h3>AI-content reports</h3>
             <p>
@@ -190,7 +191,7 @@
               </li>
               <li>
                 If consent for cloud processing is already active, that tap may send the selected
-                text, language and narrator to ElevenLabs to produce the narration. The returned
+                text and narrator to ElevenLabs to produce the narration. The returned
                 audio is not published and may be kept in a private cache; items unused for 30 days
                 are periodically removed.
               </li>

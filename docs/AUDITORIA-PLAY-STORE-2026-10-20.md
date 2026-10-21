@@ -393,7 +393,7 @@ Concluir o D-U-N-S e a verificação da organização.
 **Segurança dos dados (Data safety)** — atualizado em 21/10 com a voz no Android.
 
 O que sai do celular agora, só depois que a pessoa permite a voz em nuvem ou envia uma denúncia:
-- o texto que ela pediu para ouvir, o idioma e a voz escolhida → nosso servidor (Vercel) → ElevenLabs, para criar o áudio;
+- o texto que ela pediu para ouvir, o idioma e a voz escolhida → nosso servidor (Vercel); dele, só o texto e a voz → ElevenLabs, para criar o áudio;
 - a sessão anônima (um código do Supabase, sem nome nem e-mail) → para autorizar o pedido e aplicar o limite de gasto;
 - a verificação do Google (Play Integrity) → para recusar pedidos que não venham do app oficial;
 - a denúncia, como antes.

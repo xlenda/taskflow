@@ -20,10 +20,12 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   controle único de processamento em nuvem.
 - No Android (desde 21/10), o único recurso em nuvem é a narração com a voz
   escolhida: depois do consentimento adulto, o texto que a pessoa pediu para
-  ouvir, o idioma e a voz vão pelo backend (Vercel) à ElevenLabs. O servidor só
-  aceita o pedido com a verificação Play Integrity aprovada; sem ela, sem
-  internet ou sem consentimento, toca a voz do aparelho com aviso. Imagens,
-  cenas, sonhos e traduções em nuvem continuam só no site.
+  ouvir, o idioma e a voz vão ao backend (Vercel), que repassa só o texto e a
+  voz à ElevenLabs. O servidor só aceita o pedido com a verificação Play
+  Integrity aprovada; sem ela ou sem internet, toca a voz do aparelho com aviso.
+  Sem o consentimento, a narração não toca e a tela oferece o texto; o despertar
+  e a prática do Plano Celeste usam a voz do aparelho. Imagens, cenas, sonhos e
+  traduções em nuvem continuam só no site.
 - Toda tela do Android onde a voz gerada toca tem `Denunciar este conteúdo de IA`.
 - O app nao apresenta afirmacoes ou sonhos como previsao, diagnostico ou garantia.
 
