@@ -1,18 +1,19 @@
 import { READY_SCENES } from '../constants/readyScenes';
 
 // profile.dreamLocation guarda o chip no idioma dela (flow.js, dreamPlace) ou texto livre.
-// A ordem decide empates: "viajando pelo litoral" é praia. "Interior"/"exterior" soltos descrevem a casa
-// ("cozy interior", "área exterior"); só viram lugar como "no interior" / "no exterior".
+// A ordem decide empates: "viajando pelo litoral" é praia. "Interior"/"exterior" no meio da frase descrevem
+// a casa ("cozy interior", "área exterior"); só viram lugar como "no interior"/"no exterior" ou abrindo a
+// resposta. "Morar fora de/da/do X" é sair de um lugar (cidade), não do país.
 const PLACE_PATTERNS = [
   ['beach', /\b(praias?|litoral|beira-mar|mar|ilhas?|beach(?:es)?|coasts?|coastal|seaside|ocean|sea|islands?)\b/],
   ['city', /\b(cidades?|metropole|urbano|urbana|city|cities|urban|downtown)\b/],
   [
     'countryside',
-    /\b(campos?|montanhas?|serras?|fazendas?|sitios?|chacaras?|(?:no|do|pro|para o) interior|roca|countryside|mountains?|farms?|ranch(?:es)?|rural)\b/,
+    /\b(campos?|montanhas?|serras?|fazendas?|sitios?|chacaras?|(?:no|do|pro|para o) interior|^interior|roca|countryside|mountains?|farms?|ranch(?:es)?|rural)\b/,
   ],
   [
     'abroad',
-    /\b(outros? pais(?:es)?|(?:no|do|pro|para o) exterior|fora do pais|fora do brasil|morar fora|another country|other countries|abroad|overseas)\b/,
+    /\b(outros? pais(?:es)?|(?:no|do|pro|para o) exterior|^exterior|fora do pais|fora do brasil|morar fora(?! d[aeo])|another country|other countries|abroad|overseas)\b/,
   ],
   ['traveling', /\b(viajando|viajar|viage(?:m|ns)|nomades?|sem lugar fixo|traveling|travelling|travel|nomads?|no fixed)\b/],
   ['home', /\b(onde moro|moro hoje|minha casa|where i live|my home|my house)\b/],

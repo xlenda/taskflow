@@ -58,14 +58,18 @@ const ANSWERS = {
   ],
   countryside: [
     'No campo ou nas montanhas', 'In the countryside or mountains', 'Uma casinha na serra',
-    'Quero morar no interior', 'Perto dos campos', 'Entre fazendas',
+    'Quero morar no interior', 'Perto dos campos', 'Entre fazendas', 'Interior de Minas',
   ],
-  abroad: ['Em outro país', 'In another country', 'Em outros países', 'Morar fora', 'Morar no exterior'],
+  abroad: [
+    'Em outro país', 'In another country', 'Em outros países', 'Morar fora', 'Morar no exterior', 'Exterior',
+    'Quero morar fora do Brasil',
+  ],
   traveling: ['Viajando, sem lugar fixo', 'Traveling with no fixed base'],
-  // "interior"/"exterior" soltos descrevem a casa, não o lugar: só contam como "no interior"/"no exterior".
+  // "interior"/"exterior" no meio da frase descrevem a casa: só contam como "no interior"/"no exterior"
+  // ou abrindo a resposta. "Morar fora de São Paulo" é sair da cidade, não do país.
   neutral: [
     'Ainda não sei', "I'm not sure yet", 'Perto de quem eu amo', 'A home with a cozy interior',
-    'Uma casa com área exterior', '', undefined, null,
+    'Uma casa com área exterior', 'Quero morar fora de São Paulo', '', undefined, null,
   ],
 };
 for (const [place, answers] of Object.entries(ANSWERS)) {
