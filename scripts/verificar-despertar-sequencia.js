@@ -28,7 +28,8 @@ function load(relative) {
   }
 }
 
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+// fim de linha do checkout (core.autocrlf=true grava CRLF no Windows): os trechos procurados abaixo usam \n
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replace(/\r\n/g, '\n');
 
 const {
   WAKE_SEQUENCE_MAX,
@@ -532,6 +533,8 @@ for (const [name, body] of [
   ['playItem', playItemBlock],
   ['speakWithDevice', speakBlock],
   ['silence', silenceBlock],
+  // "Tocar de novo" / "Ouvir de novo": dá outra chance à voz da Celeste e toca no mesmo toque
+  ['retryWithCeleste', screenBlock('function retryWithCeleste(')],
 ]) {
   assert.ok(
     !/\bawait\b|\basync\b/.test(body) && !new RegExp(`\\basync\\s+function\\s+${name}\\(`).test(wakeCode),

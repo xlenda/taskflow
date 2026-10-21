@@ -42,9 +42,11 @@ export default function NarratedScene({
       style={[styles.box, asText && styles.boxWithText, style]}
     >
       {asText ? (
-        // nestedScrollEnabled: no Android a rolagem aninhada vem desligada e o texto não rolaria dentro da tela
+        // nestedScrollEnabled: no Android a rolagem aninhada vem desligada e o texto não rolaria dentro da tela;
+        // alwaysBounceVertical: no iPhone o texto curto que cabe não quica nem prende o arrasto da página
         <ScrollView
           nestedScrollEnabled
+          alwaysBounceVertical={false}
           style={[styles.textBox, broken && styles.panel]}
           contentContainerStyle={styles.textContent}
         >
@@ -64,7 +66,8 @@ export default function NarratedScene({
               setFailedUri(imageUri);
               if (onError) onError(code);
             }}
-            style={{ width, height }}
+            // transparente até pintar, como a cena parada da capa: o que está por baixo segue à vista
+            style={{ width, height, backgroundColor: 'transparent' }}
           />
           {label && paintedUri === imageUri ? (
             <View

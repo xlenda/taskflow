@@ -822,8 +822,45 @@ async function main() {
   assert.strictEqual(
     await imageUriForCenaViva({ personalUri: null, readyScene }),
     'data:image/jpeg;base64,b64(file:///cache/scene-7.jpg)',
-    'app: cena pronta baixada do pacote (localUri) e lida em base64'
+    'app (iPhone, build de desenvolvimento): cena pronta baixada do pacote (localUri file://) e lida em base64'
   );
+  // Android RELEASE (AAB sem Expo Go nem expo-updates): o expo-asset entrega a imagem empacotada com o NOME do drawable
+  // em uri e localUri e downloaded = true (Asset.fromModule, para o <Image>) — sem esquema, o File não lê. A cena pede
+  // a cópia do downloader nativo (cache/ExponentAsset-<hash>.jpg) e lê o base64 dali
+  const nativeCopies = [];
+  const releaseAsset = (source) => ({
+    uri: `assets_scenes_scene${source}`,
+    localUri: `assets_scenes_scene${source}`,
+    downloaded: true,
+    hash: `h${source}`,
+    type: 'jpg',
+    async downloadAsync() {
+      if (this.downloaded) return this; // como o expo-asset: já "baixada", nada a fazer
+      nativeCopies.push(this.uri);
+      this.localUri = `file:///cache/ExponentAsset-${this.hash}.${this.type}`;
+      this.downloaded = true;
+      return this;
+    },
+  });
+  class AppFile {
+    constructor(uri) {
+      this.uri = uri;
+    }
+    base64() {
+      return /^file:\/\//.test(this.uri) ? Promise.resolve(`b64(${this.uri})`) : Promise.reject(new Error(`sem arquivo: ${this.uri}`));
+    }
+  }
+  const { imageUriForCenaViva: releaseSceneImage } = loadWith('components/cenaViva/imageSource.js', {
+    ...mocks,
+    'expo-asset': { Asset: { fromModule: releaseAsset } },
+    'expo-file-system': { File: AppFile, Paths: { cache: { uri: 'file:///cache' } } },
+  });
+  assert.strictEqual(
+    await releaseSceneImage({ personalUri: null, readyScene: { ...readyScene, source: 9 } }),
+    'data:image/jpeg;base64,b64(file:///cache/ExponentAsset-h9.jpg)',
+    'Android release: a cena pronta vem da cópia nativa no cache (file://), não do nome do drawable'
+  );
+  assert.deepStrictEqual(nativeCopies, ['assets_scenes_scene9'], 'Android release: pediu ao downloader nativo a cópia do recurso');
   RN.Platform.OS = 'ios';
   assert.strictEqual(
     await imageUriForCenaViva({ personalUri: 'file:///document/v.jpg', readyScene }),
@@ -1834,6 +1871,9 @@ async function main() {
   assert.ok(near(wideBox.width, 240) && near(wideBox.height, 300), 'espaço largo: a cena 4:5 inteira na altura, centrada');
   const tallBox = layout(300, 600);
   assert.ok(near(tallBox.width, 300) && near(tallBox.height, 375), 'espaço alto: a cena 4:5 inteira na largura');
+  // transparente até pintar, como a cena parada da capa: na troca para a 2ª imagem do player, a capa segue à vista em
+  // vez de um quadro azul-marinho sem palavras por até 1 s
+  assert.strictEqual(tallBox.backgroundColor, 'transparent', 'cena narrada transparente até pintar');
   const narratedScene = () => narrated.find('CenaViva');
   assert.deepStrictEqual(narratedScene().props.caption, { text: 'Eu escolho a paz', progress: 0.25 }, 'a legenda vai para a cena');
   assert.ok(narratedScene().props.phrase == null, 'só a legenda: nada de frase parada por baixo');
@@ -1866,6 +1906,8 @@ async function main() {
     fallbackScroll.props.nestedScrollEnabled === true && fallbackScroll.props.scrollEnabled !== false,
     'o texto inteiro rola mesmo dentro da tela que rola (Android: rolagem aninhada ligada)'
   );
+  // iPhone: texto curto que cabe não "quica" — senão o arrasto da página (o player) fica preso nele
+  assert.strictEqual(fallbackScroll.props.alwaysBounceVertical, false, 'texto curto não prende o arrasto da página (iOS)');
   narrated.update({ imageUri: 'data:image/jpeg;base64,REVG' }); // outra imagem: a pronta no lugar da quebrada
   assert.ok(narratedScene() && !narrated.find('ScrollView'), 'imagem nova: a cena volta');
   // a imagem ainda vem vindo (no aparelho, um base64 de até ~3,4 MB a cada play): as palavras por cima da capa que já
@@ -2060,6 +2102,9 @@ async function main() {
   let cloudVoice = false;
   let wakeClock = 1000;
   const intervals = [];
+  // tela acesa enquanto a voz toca (apagar a tela pararia a voz): cada pedido ao expo-keep-awake, em ordem
+  const keepAwake = [];
+  const screenOn = () => keepAwake.length > 0 && keepAwake[keepAwake.length - 1][0] === 'on';
   const wakeMocks = {
     ...mocks,
     ...sceneFiles,
@@ -2079,11 +2124,15 @@ async function main() {
       speak: (text, options) => speeches.push({ text, options }),
       stop: () => Promise.resolve(),
     },
+    'expo-keep-awake': {
+      activateKeepAwakeAsync: (tag) => keepAwake.push(['on', tag]) && Promise.resolve(),
+      deactivateKeepAwake: (tag) => keepAwake.push(['off', tag]) && Promise.resolve(),
+    },
     '../components/CelestialTrace': esDefault('CelestialTrace'),
     '../components/PrimaryButton': esDefault('PrimaryButton'),
     '../components/NarratedScene': esDefault('NarratedScene'),
     '../context/AppContext': { useApp: () => ({ state: appState }) },
-    '../ui/theme': coverMocks['../ui/theme'],
+    '../ui/theme': { useTheme: () => ({ ...coverMocks['../ui/theme'].useTheme(), surfaceAlt: '#EAEEF5' }) },
     '../utils/useCloudMediaConsent': { hasUnifiedCloudMediaConsent: () => cloudVoice },
     '../utils/usePersonalNarration': { usePersonalNarration: () => narrationDouble },
     '../utils/usePersonalVisual': { usePersonalVisual: () => null },
@@ -2106,10 +2155,17 @@ async function main() {
     const storyShown = () => !!wakeScreen.where((node) => node.type === 'Text' && node.props.children === wakeStory);
     const tickIntervals = () => intervals.filter((entry) => entry.live).forEach((entry) => entry.fn());
     const trace = wakeScreen.find('CelestialTrace');
+    assert.strictEqual(keepAwake.length, 0, 'antes da 3ª estrela a tela apaga como sempre');
     trace.props.onFinalStar();
+    // a voz começa no próprio toque: manter a tela acesa vem depois, sem nada esperado antes da voz
+    assert.strictEqual(speeches.length, 1, 'a 3ª estrela começa a voz no mesmo toque');
     trace.props.onComplete();
     wakeScreen.flush();
     await settle(wakeScreen, narratedNow, 'cena narrada do 1º item');
+    await settle(wakeScreen, screenOn, 'tela acesa com a voz tocando');
+    assert.deepStrictEqual(keepAwake, [['on', 'celeste-wake']], 'tocando: a tela fica acesa (marca celeste-wake)');
+    // a cena narrada é transparente até pintar: o quadro mantém a cor do espaço reservado de antes (sem buraco)
+    assert.strictEqual(flat(narratedNow().props.style).backgroundColor, '#EAEEF5', 'até a cena pintar: o espaço reservado à vista');
     assert.strictEqual(speeches.length, 1, 'a 3ª estrela começa a voz do aparelho');
     const first = speeches[0].options;
     assert.strictEqual(narratedNow().props.progress, 0, 'antes da 1ª palavra, nenhuma palavra');
@@ -2164,12 +2220,15 @@ async function main() {
     wakeScreen.flush();
     assert.ok(narratedNow().props.progress === (2 * 14) / 48 && narratedNow().props.active === false, 'pausado: congela');
     assert.ok(storyShown(), 'pausado: a história volta em texto');
+    await settle(wakeScreen, () => !screenOn(), 'pausado: a tela volta a poder apagar');
+    assert.deepStrictEqual(keepAwake[keepAwake.length - 1], ['off', 'celeste-wake'], 'pausado: solta a mesma marca');
     // voz da Celeste (nuvem): as palavras seguem o progresso da narração
     cloudVoice = true;
     narrationDouble.personalNarrationAvailable = true;
     wakeScreen.update({});
     wakeScreen.where((node) => node.props.testID === 'wake-resume').props.onPress();
     wakeScreen.flush();
+    await settle(wakeScreen, screenOn, 'continuou: a tela acesa de novo');
     assert.strictEqual(narratedNow().props.progress, 0, 'voz da Celeste começando: nenhuma palavra antes dela');
     assert.strictEqual(
       narratedNow().props.text,
@@ -2199,7 +2258,10 @@ async function main() {
     narratedNow().props.onError('image_error');
     wakeScreen.flush();
     assert.ok(!narratedNow() && storyShown(), 'sem imagem nenhuma: as palavras ficam em texto');
+    assert.ok(screenOn(), 'ainda tocando: a tela segue acesa');
     wakeScreen.unmount();
+    for (let i = 0; i < 5; i++) await tick();
+    assert.ok(!screenOn(), 'saiu da tela tocando: a tela volta a poder apagar');
 
     // a voz da Celeste quebrou num navegador sem voz do aparelho: nenhuma voz toca. O aviso diz que o texto continua
     // ali, então a história INTEIRA fica à vista; e cada item mostra o PRÓPRIO texto, nunca o do item anterior
@@ -2219,12 +2281,16 @@ async function main() {
       silentTrace.props.onComplete();
       await settle(silentScreen, silentNarrated, 'cena do 1º item, voz da Celeste');
       assert.strictEqual(silentNarrated().props.text, 'Primeira cena, vivida com leveza.', 'voz da Celeste: a legenda é o texto dela');
+      const keepRequests = () => keepAwake.filter(([kind]) => kind === 'on').length;
+      const requestsBeforeSilence = keepRequests();
       Object.assign(narrationDouble, { phase: 'error' }); // a voz da Celeste quebrou; a do aparelho não existe aqui
       silentScreen.update({});
       assert.ok(
         shownText(voiceFailedNotice) && silentScreen.where((node) => node.props.testID === 'wake-pause'),
         'nenhuma voz tocou: o aviso honesto, com o item ainda na vez'
       );
+      await settle(silentScreen, () => !screenOn(), 'nenhuma voz tocando: a tela pode apagar (nada a proteger)');
+      assert.strictEqual(keepRequests(), requestsBeforeSilence, 'nenhuma voz tocando: nenhum pedido novo de tela acesa');
       assert.ok(shownText('Primeira cena, vivida com calma.'), 'sem voz: a história inteira à vista, como o aviso promete');
       assert.strictEqual(
         silentNarrated().props.text,
@@ -2242,7 +2308,28 @@ async function main() {
         shownText(voiceFailedNotice) && shownText('Segunda cena, cheia de amor.'),
         'o 2º item também sem voz: o aviso e a história dele à vista'
       );
+      // pedido dela ("Tocar de novo", "Ouvir de novo"): a voz da Celeste ganha outra chance — a quebra de antes não vale
+      // para sempre —, no próprio toque (nada de await antes)
+      const press = (testID) => silentScreen.where((node) => node.props.testID === testID).props.onPress();
+      Object.assign(narrationDouble, { phase: 'idle' });
+      silentScreen.update({});
+      const triesBeforeRetry = narrationDouble.played.length;
+      press('wake-retry-voice');
+      assert.strictEqual(narrationDouble.played.length, triesBeforeRetry + 1, 'Tocar de novo: a voz da Celeste tenta de novo');
+      Object.assign(narrationDouble, { phase: 'error' }); // quebrou de novo (e aqui não há voz do aparelho)
+      silentScreen.update({});
+      press('wake-stop');
+      silentScreen.flush();
+      await settle(silentScreen, () => !screenOn(), 'parou: a tela volta a poder apagar');
+      Object.assign(narrationDouble, { phase: 'idle' });
+      silentScreen.update({});
+      const triesBeforeRestart = narrationDouble.played.length;
+      press('wake-restart');
+      assert.strictEqual(narrationDouble.played.length, triesBeforeRestart + 1, 'Ouvir de novo: a voz da Celeste tenta de novo');
+      await settle(silentScreen, screenOn, 'ouvindo de novo: a tela acesa');
       silentScreen.unmount();
+      for (let i = 0; i < 5; i++) await tick();
+      assert.ok(!screenOn(), 'saiu: a tela volta a poder apagar');
     } finally {
       RN.Platform.OS = 'android';
     }

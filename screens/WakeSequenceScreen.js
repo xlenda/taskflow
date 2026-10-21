@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Speech from 'expo-speech';
 
 import CelestialTrace from '../components/CelestialTrace';
@@ -37,6 +38,7 @@ import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 
 const GAP_MS = 900; // a breath between items
 const START_WATCHDOG_MS = 4000;
+const KEEP_AWAKE_TAG = 'celeste-wake';
 // Every word on the scene; 1 would switch the renderer to the fitted still phrase. The live caption stays below it
 // until the item ends (the last word, the cloud voice's final progress or the clock can reach 1 a moment earlier).
 const ALL_WORDS = 0.999;
@@ -274,6 +276,13 @@ export default function WakeSequenceScreen() {
     speakWithDevice(item, epoch);
   }
 
+  // "Play again" and "Listen again" are her asking: the Celeste voice gets another chance (an earlier break is not
+  // forever). Synchronous like playItem: it runs inside the tap.
+  function retryWithCeleste(position) {
+    cloudBrokenRef.current = false;
+    playItem(position);
+  }
+
   // ponytail: the device voice cannot pause (Android), so holding stops it and
   // Continue replays this item ("Recomeçar"), or plays the next one when the
   // pause fell in the breath between items.
@@ -351,6 +360,18 @@ export default function WakeSequenceScreen() {
     }, 250);
     return () => clearInterval(timer);
   }, [phase]);
+
+  // Listening is just listening: while the voice plays the screen stays on, or the auto-lock would stop it after
+  // 30-60 s. No permission and foreground only (expo-keep-awake). Set after the tap that started the voice, never
+  // awaited; the release waits for the request so a quick pause cannot leave the screen on. No voice could play:
+  // nothing to protect, the screen may sleep.
+  useEffect(() => {
+    if (phase !== 'playing' || voiceFailed) return undefined;
+    const kept = activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
+    return () => {
+      kept.then(() => deactivateKeepAwake(KEEP_AWAKE_TAG)).catch(() => {});
+    };
+  }, [phase, voiceFailed]);
 
   // Leaving the screen or the app stops the voice (no background audio in this version).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -442,7 +463,7 @@ export default function WakeSequenceScreen() {
         <Text style={[styles.body, styles.centered, { color: theme.textMuted }]}>
           {t(phase === 'done' ? S.doneBody : S.stoppedBody)}
         </Text>
-        <PrimaryButton testID="wake-restart" label={S.again} icon="refresh" onPress={() => playItem(0)} style={styles.cardAction} />
+        <PrimaryButton testID="wake-restart" label={S.again} icon="refresh" onPress={() => retryWithCeleste(0)} style={styles.cardAction} />
         <PrimaryButton testID="wake-close" label={S.close} icon="close" variant="ghost" onPress={leave} style={styles.cardAction} />
       </View>
     );
@@ -487,7 +508,8 @@ export default function WakeSequenceScreen() {
                 active={phase === 'playing'}
                 onReady={(uri) => setShown(uri)}
                 onError={(code) => code === 'image_error' && dropScene(currentScene.source)}
-                style={[styles.scene, sceneSize]}
+                // the scene is transparent until it paints: the placeholder color stays until then
+                style={[styles.scene, sceneSize, { backgroundColor: theme.surfaceAlt }]}
               />
             ) : (
               <View style={[styles.scene, sceneSize, { backgroundColor: theme.surfaceAlt }]} />
@@ -507,7 +529,7 @@ export default function WakeSequenceScreen() {
               label={S.retryVoice}
               icon="volume-high-outline"
               variant="soft"
-              onPress={() => playItem(positionRef.current)}
+              onPress={() => retryWithCeleste(positionRef.current)}
               style={styles.noticeAction}
             />
           </View>

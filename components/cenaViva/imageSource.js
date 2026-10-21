@@ -7,8 +7,16 @@ import { File } from 'expo-file-system';
 export async function imageUriForCenaViva({ personalUri, readyScene }) {
   let uri = personalUri;
   if (!uri) {
-    const asset = await Asset.fromModule(readyScene.source).downloadAsync();
-    uri = asset.localUri || asset.uri;
+    const asset = Asset.fromModule(readyScene.source);
+    // Android release (sem Expo Go nem expo-updates): a imagem empacotada chega com o nome do drawable como localUri
+    // e "já baixada" — serve ao <Image>, não ao File. Sem esquema, o downloader nativo do expo-asset copia o recurso
+    // (raw ou drawable) para cache/ExponentAsset-<hash>.jpg
+    if (Platform.OS === 'android' && asset.localUri && !asset.localUri.includes(':')) {
+      asset.downloaded = false;
+      asset.localUri = null;
+    }
+    const downloaded = await asset.downloadAsync();
+    uri = downloaded.localUri || downloaded.uri;
   }
   if (Platform.OS === 'web') return uri;
   return `data:image/jpeg;base64,${await new File(uri).base64()}`;
