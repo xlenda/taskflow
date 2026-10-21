@@ -79,15 +79,17 @@ Roda só o bloco `productionChecks` (`scripts/deploy-celeste.js:463-467`).
 
 ## C) O que está implementado de verdade
 
-### Telas (11 arquivos em `screens/`, mais 5 no fluxo de entrada)
+### Telas (14 arquivos em `screens/`, mais 5 no fluxo de entrada)
 
-`screens/`: `HomeScreen`, `JourneyScreen`, `ManifestationScreen`, `AffirmationsScreen`, `AffirmationAlarmScreen`, `MorningRitualScreen`, `VisionsScreen`, `VisionPlayerScreen`, `CommunityScreen`, `ProfileScreen`.
+`screens/`: `HomeScreen`, `JourneyScreen`, `ManifestationScreen`, `AffirmationsScreen`, `AffirmationAlarmScreen`, `WakeSequenceScreen` (ouvir o despertar), `MorningRitualScreen`, `DailyRitualScreen`, `PracticePlanScreen`, `PracticeRitualScreen`, `VisionsScreen`, `VisionPlayerScreen`, `CommunityScreen`, `ProfileScreen`.
 
 `screens/onboarding/`: `WelcomeScreen`, `NotificationsScreen`, `ChatOnboardingScreen`, `RevealScreen`, `PaywallScreen`, além de `flow.js` e `onboardingUI.js`. A tela Crescer saiu do funil (20/10/2026): o pedido de avaliação é só a janela nativa da loja (`utils/storeReview.js`), uma vez por instalação, ao guardar a Cena-Âncora.
 
-### Componentes (11 arquivos em `components/`)
+### Componentes (18 arquivos em `components/`, mais a cena viva em `components/cenaViva/`)
 
-`AffirmationCard`, `CelesteMascot`, `CelestialTrace`, `GradientCover`, `ManifestCard`, `NarratorSelector`, `PrimaryButton`, `SectionHeading`, `Typewriter`, `WeekChart`, `WelcomeVideo`.
+`AddToWakeButton`, `AffirmationCard`, `AiContentReportAction`, `CelesteMascot`, `CelestialTrace`, `CoverScene`, `GradientCover`, `ManifestCard`, `NarratedScene`, `NarrationPlaybackControls`, `NarratorSelector`, `PrimaryButton`, `SectionHeading`, `ShareCard`, `ShareSheet`, `Typewriter`, `WeekChart`, `WelcomeVideo`.
+
+`components/cenaViva/`: `CenaViva` e `CenaVivaRecorder` (cada um com a versão `.web.js`), `imageSource`, `renderer` e `rendererSource.generated` (fonte da WebView, gerada por `scripts/gerar-cena-viva-webview.js`). O antigo `AffirmationShareCard` saiu (o compartilhar é `ShareCard` + `ShareSheet`).
 
 ### Endpoints (4 Vercel Functions em `api/`)
 
