@@ -576,8 +576,8 @@ function NativeAlarmContentSync() {
 
 // Android has no AlarmKit: its wake-up is ordinary reminders. Whatever turns
 // reminderEnabled off (the off button, reset, backup import, deleted content)
-// leaves none behind, and each launch while off sweeps orphans. While on (with
-// something to hear), each launch and each return to the foreground re-creates
+// leaves none behind, and each launch while off (or with nothing left to hear)
+// sweeps orphans. While on (with something to hear), each launch and each return to the foreground re-creates
 // reminders that vanished or no longer match the time, days or app language,
 // without ever asking for permission.
 function WakeReminderSync() {
@@ -593,8 +593,8 @@ function WakeReminderSync() {
   const time = ritual?.reminderTime;
   const days = Array.isArray(ritual?.weekdays) ? ritual.weekdays.join(',') : '';
   React.useEffect(() => {
-    if (loaded && !enabled) void cancelWakeReminders();
-  }, [loaded, enabled]);
+    if (loaded && (!enabled || !hasSequence)) void cancelWakeReminders();
+  }, [loaded, enabled, hasSequence]);
   React.useEffect(() => {
     if (!enabled || !hasSequence) return undefined;
     const sync = () => void syncWakeReminders({ time, weekdays: days.split(',').map(Number), lang });

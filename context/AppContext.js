@@ -806,8 +806,9 @@ function mergeDefensivo(parsed) {
     const contentChanged =
       st.morningRitual.wakeAffirmationText !== resolvedWake.text ||
       st.morningRitual.wakeAffirmationLang !== resolvedWake.lang;
-    if (contentChanged && st.morningRitual.reminderEnabled) {
-      // Keep the last native-confirmed text as the cache. NativeAlarmContentSync
+    if (contentChanged && st.morningRitual.reminderEnabled && RELEASE_FEATURES.affirmationAlarm) {
+      // Only the native alarm (iOS) carries the phrase audio; the Android reminder
+      // text is generic, so there nothing needs replacing. Keep the last native-confirmed text as the cache. NativeAlarmContentSync
       // must see the difference and replace the actual audio before this cache
       // is advanced to the freshly resolved content.
       st.morningRitual.alarmSyncError = true;

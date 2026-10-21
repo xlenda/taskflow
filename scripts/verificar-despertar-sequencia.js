@@ -539,7 +539,8 @@ assert.ok(
 // sem pedir permissão. Desligado, nada é refeito e os órfãos saem como antes.
 const wakeSync = app.slice(app.indexOf('function WakeReminderSync()'), app.indexOf('function HomeStackNav()'));
 assert.ok(
-  wakeSync.includes('if (loaded && !enabled) void cancelWakeReminders();') &&
+  wakeSync.includes('if (loaded && (!enabled || !hasSequence)) void cancelWakeReminders();') &&
+    /\}, \[loaded, enabled, hasSequence\]\);/.test(wakeSync) &&
     /if \(!enabled \|\| !hasSequence\) return undefined;/.test(wakeSync) &&
     /syncWakeReminders\(\{ time, weekdays: days\.split\(','\)\.map\(Number\), lang \}\)/.test(wakeSync) &&
     /AppState\.addEventListener\('change', \(next\) => \{\s*if \(next === 'active'\) sync\(\);/.test(wakeSync) &&
