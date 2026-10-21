@@ -71,8 +71,8 @@ const S = {
   listen: { en: 'Listen to the narrative', pt: 'Ouvir a narrativa' },
   pause: { en: 'Pause the narrative', pt: 'Pausar a narrativa' },
   audioFail: {
-    en: 'The narration did not play here — read the story below at your own pace.',
-    pt: 'A narração não tocou aqui — leia a história abaixo no seu ritmo.',
+    en: 'The narration did not play here — read the story in “Read the text”, at your own pace.',
+    pt: 'A narração não tocou aqui — leia a história em “Ler o texto”, no seu ritmo.',
   },
   prevLine: { en: 'Previous sentence', pt: 'Frase anterior' },
   nextLine: { en: 'Next sentence', pt: 'Próxima frase' },
@@ -336,8 +336,12 @@ export default function ManifestationScreen() {
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
+  // a voz falhou (no ▶ da história ou no play do áudio): a história abre sozinha em "Ler o texto", onde o aviso aponta
+  useEffect(() => {
+    if (audioFailed) setStoryOpen(true);
+  }, [audioFailed]);
   const scrollRef = useRef(null);
-  const storyYRef = useRef(0);
+  const storyRef = useRef(null);
   const requestEpochRef = useRef(0);
   const playbackStartedRef = useRef(false);
   const manualStopRef = useRef(false);
@@ -812,11 +816,17 @@ export default function ManifestationScreen() {
     ? t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
     : t(S.hintEyes);
 
-  // o play da narrativa em áudio toca a MESMA história em vídeo: a voz começa no toque e a tela desce até ela
+  // o play da narrativa em áudio toca a MESMA história em vídeo: a voz começa no toque e só depois a tela mede onde a
+  // história está agora (no site o onLayout só avisa mudança de tamanho: o que cresce acima dela a empurra sem avisar)
+  // e desce até ela
   const playFromAudioCard = () => {
     const starts = !playing;
     togglePlay();
-    if (starts) scrollRef.current?.scrollTo({ y: storyYRef.current, animated: true });
+    if (starts) {
+      storyRef.current?.measureLayout(scrollRef.current?.getInnerViewRef(), (x, y) =>
+        scrollRef.current?.scrollTo({ y, animated: true })
+      );
+    }
   };
 
   return (
@@ -1238,12 +1248,7 @@ export default function ManifestationScreen() {
         {/* "Sua história" é um vídeo: parada, a imagem da cena da manifestação (a mesma da capa, sem WebView) com o
             começo da história e o ▶; no toque a voz conta e só então a cena viva monta, com as palavras no ritmo da
             voz (a capa fica na imagem parada). O texto inteiro fica em "Ler o texto". */}
-        <View
-          testID="manifestation-story"
-          onLayout={(event) => {
-            storyYRef.current = event.nativeEvent.layout.y;
-          }}
-        >
+        <View testID="manifestation-story" ref={storyRef}>
           <SectionHeading title={t(S.storyTitle)} />
           <GradientCover
             testID="manifestation-story-video"
@@ -1282,6 +1287,15 @@ export default function ManifestationScreen() {
               </TouchableOpacity>
             ) : null}
           </GradientCover>
+          {audioFailed ? (
+            <Text
+              testID="manifestation-story-failed"
+              accessibilityLiveRegion="polite"
+              style={[styles.hint, { color: th.textMuted }]}
+            >
+              {t(S.audioFail)}
+            </Text>
+          ) : null}
           <TouchableOpacity
             testID="manifestation-story-read"
             activeOpacity={0.7}

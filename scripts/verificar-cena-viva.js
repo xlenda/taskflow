@@ -2370,9 +2370,11 @@ async function main() {
   //     a cena pronta das respostas, com o rótulo honesto — sem CenaViva/WebView) com o COMEÇO da história e o ▶. O ▶
   //     começa a voz no MESMO toque e só então a cena viva da história monta, com as palavras no ritmo da voz — o
   //     único lugar delas; a capa fica na imagem parada. Uma cena viva por vez na tela (no app, cada uma é uma WebView
-  //     de até ~3,4 MB): parada, só a da capa; tocando, só a da história. Pausar/continuar são os controles de sempre;
-  //     o play da narrativa em áudio toca o mesmo vídeo (e leva a tela até ele). "Ler o texto" abre e fecha a história
-  //     inteira. Folha do compartilhar aberta: nada anima. Reduzir movimento: palavras sim, animação não.
+  //     de até ~3,4 MB): parada, só a da capa; tocando, só a da história. A troca nunca pisca: a imagem parada fica por
+  //     baixo enquanto a cena viva sobe. Pausar/continuar são os controles de sempre; o play da narrativa em áudio
+  //     toca o mesmo vídeo (e, depois da voz, mede onde ele está e leva a tela até ele). "Ler o texto" abre e fecha a
+  //     história inteira; a voz que falha avisa ali e abre o texto. Folha do compartilhar aberta: nada anima. Reduzir
+  //     movimento: palavras sim, animação não.
   const storySentences = [
     'Eu acordo com a luz do mar entrando devagar pela janela do quarto.', // 66 letras
     'O café passa sem pressa e Alex ri comigo na varanda.', // 52: as duas somam 119
@@ -2420,7 +2422,18 @@ async function main() {
   const manifestShare = { open: false };
   const storyScrolls = [];
   const practiceToggles = [];
-  hosts.ScrollView = () => ({ scrollTo: (options) => storyScrolls.push(options) });
+  // a rolagem e o bloco da história como no aparelho e no site: a medida do bloco chega depois (no site, num
+  // setTimeout), relativa ao conteúdo da rolagem; storyAt.y = onde a história está no conteúdo AGORA (no site, o que
+  // cresce acima dela a empurra sem novo onLayout: ele só avisa mudança de tamanho)
+  const scrollContent = { conteudo: 'da rolagem' };
+  const storyAt = { y: 1480 };
+  hosts.ScrollView = () => ({ scrollTo: (options) => storyScrolls.push(options), getInnerViewRef: () => scrollContent });
+  hosts.View = () => ({
+    measureLayout: (relativeTo, onSuccess) => {
+      voiceCalls.push('measure');
+      setImmediate(() => onSuccess(0, relativeTo === scrollContent ? storyAt.y : -1, 350, 640));
+    },
+  });
   const manifestMocks = {
     ...mocks,
     ...sceneFiles,
@@ -2650,17 +2663,34 @@ async function main() {
   assert.ok(heroCover().props.live === true && !heroCover().props.narration, 'a voz terminou: a capa volta a ser a cena viva');
   assert.deepStrictEqual(practiceToggles, ['m-historia'], 'o fim da história registra a prática do dia');
 
-  // o play da narrativa em áudio toca o MESMO vídeo: a voz começa no toque e a tela desce até a história
-  storyBlock().props.onLayout({ nativeEvent: { layout: { x: 0, y: 1480, width: 350, height: 640 } } });
+  // o play da narrativa em áudio toca o MESMO vídeo: a voz começa no toque e SÓ DEPOIS a tela mede onde a história
+  // está agora e desce até ela
   voiceCalls.length = 0;
   storyScrolls.length = 0;
   audioPlay().props.onPress();
-  assert.deepStrictEqual(voiceCallNames(), ['prime', 'playPersonal'], 'o play da narrativa em áudio começa a voz no mesmo toque');
+  assert.deepStrictEqual(
+    voiceCallNames(),
+    ['prime', 'playPersonal', 'measure'],
+    'o play da narrativa em áudio começa a voz no mesmo toque; só depois mede onde a história está'
+  );
+  await tick();
   assert.deepStrictEqual(storyScrolls, [{ y: 1480, animated: true }], 'e leva a tela até a história em vídeo, onde as palavras aparecem');
   narrateAs({ activePlaybackId: 'manifestation:m-historia', lastCompletedPlaybackId: null, phase: 'playing', progress: 0.2 });
   assert.deepStrictEqual(storyCover().props.narration, { text: spokenStory, progress: 0.2, active: true }, 'o mesmo vídeo conta a história');
   audioPlay().props.onPress();
+  await tick();
   assert.ok(voiceCalls[voiceCalls.length - 1] === 'pause' && storyScrolls.length === 1, 'pausar pelo áudio: sem rolar a tela');
+  narrateAs({ activePlaybackId: null, phase: 'idle', progress: 0 });
+  // o que fica acima da história cresceu e a empurrou para baixo (no site, sem novo onLayout): o play mede na hora
+  storyAt.y = 1720;
+  storyScrolls.length = 0;
+  audioPlay().props.onPress();
+  await tick();
+  assert.deepStrictEqual(
+    storyScrolls,
+    [{ y: 1720, animated: true }],
+    'a história desceu (o conteúdo acima cresceu): o play a mede na hora do toque e desce até onde ela está agora'
+  );
   narrateAs({ activePlaybackId: null, phase: 'idle', progress: 0 });
 
   // "Ler o texto": logo abaixo do vídeo, um botão com estado aberto/fechado; abre e fecha a história inteira
@@ -2680,6 +2710,41 @@ async function main() {
   manifestScreen.flush();
   assert.ok(readToggle().props['aria-expanded'] === false && !fullStoryShown(), '"Ler o texto" fecha de novo');
 
+  // a voz falhou depois do ▶: o aviso aparece ali mesmo, entre o vídeo e "Ler o texto" (o leitor de tela anuncia), e
+  // a história abre sozinha — o aviso aponta para "Ler o texto", não para um texto "abaixo" que agora fica fechado
+  const realPlayPersonal = manifestNarration.playPersonal;
+  manifestNarration.playPersonal = (request) => {
+    voiceCalls.push(['playPersonal', request]);
+    return Promise.resolve({ ok: false, error: 'tts_unavailable' });
+  };
+  refresh();
+  storyPlay().props.onPress();
+  await tick();
+  manifestScreen.flush();
+  const failLine = byTestID('manifestation-story-failed')();
+  const failParts = [].concat(storyBlock().props.children).flat(Infinity).filter(Boolean);
+  assert.ok(
+    failLine &&
+      failParts.indexOf(failLine) === failParts.indexOf(storyCover()) + 1 &&
+      failParts.indexOf(readToggle()) === failParts.indexOf(failLine) + 1 &&
+      failLine.props.accessibilityLiveRegion === 'polite',
+    'a voz falhou depois do ▶: o aviso ali mesmo, entre o vídeo e "Ler o texto", anunciado ao leitor de tela'
+  );
+  assert.ok(String(failLine.props.children).includes('“Ler o texto”'), 'o aviso da falha aponta para "Ler o texto"');
+  assert.ok(readToggle().props['aria-expanded'] === true && fullStoryShown(), 'a voz falhou: a história abre sozinha em "Ler o texto"');
+  manifestNarration.playPersonal = realPlayPersonal;
+  // nos dois idiomas o aviso cita o botão pelo nome que ele tem na tela
+  const screenCopy = (key) => {
+    const found = new RegExp(`\\s${key}: \\{\\s*en: '([^']*)',\\s*pt: '([^']*)'`).exec(screen('ManifestationScreen.js'));
+    return found ? { en: found[1], pt: found[2] } : { en: '', pt: '' };
+  };
+  const failCopy = screenCopy('audioFail');
+  const readCopy = screenCopy('readText');
+  assert.ok(
+    !!readCopy.en && failCopy.en.includes(`“${readCopy.en}”`) && !!readCopy.pt && failCopy.pt.includes(`“${readCopy.pt}”`),
+    'o aviso da falha cita "Ler o texto" / "Read the text" em pt e en'
+  );
+
   // sem voz pessoal (o app nesta versão): a imagem com o começo e "Ler o texto", sem um ▶ que não tocaria nada
   manifestNarration.personalNarrationAvailable = false;
   refresh();
@@ -2692,10 +2757,83 @@ async function main() {
   manifestShare.open = false;
   refresh();
 
+  // nenhum quadro em branco na troca da imagem parada pela cena viva: a camada viva nasce transparente e só mostra a
+  // cena quando pinta (§19; no app, a WebView inteira subindo) — até lá, e enquanto ela pinta, a imagem parada fica
+  // por baixo. Quadro a quadro, a capa de verdade com as props que a tela dá a cada estado: à vista é a mesma imagem
+  // do quadro anterior (mesmo lugar, mesma key: o React a mantém; a que acabou de montar ainda carrega e entra com
+  // fade); pintada é a cena da camada que já deu onReady (camada nova nasce sem pintar)
+  const watchFrames = async (cover, label) => {
+    const frames = [];
+    let painted = false;
+    let before = null;
+    const tree = app.mount(
+      (props) => {
+        const frame = GradientCover(props);
+        const slots = [].concat(frame.props.children);
+        const at = slots.findIndex((node) => !!node && node.type === 'Image' && node.props.source === props.readyScene.source);
+        const still = at < 0 ? null : `${at}:${slots[at].key}`;
+        const layer = !!inside(frame, (node) => node.type === 'CoverScene');
+        if (!layer) painted = false;
+        frames.push({ shown: !!still && still === before, layer, painted: layer && painted });
+        before = still;
+        return frame;
+      },
+      { accent: 0, ...cover().props }
+    );
+    await settle(tree, typed('Image'), label);
+    frames.length = 0;
+    return {
+      frames,
+      follow: () => tree.update(cover().props),
+      paint: () => {
+        painted = true;
+      },
+      unmount: () => tree.unmount(),
+    };
+  };
+  const blankFrame = (watch) => watch.frames.findIndex((frame) => !frame.shown && !frame.painted);
+  manifestShare.open = true; // a capa parada, como com a folha aberta (no app: fora de foco)
+  refresh();
+  const heroFrames = await watchFrames(heroCover, 'capa parada antes de a folha fechar');
+  const storyFrames = await watchFrames(storyCover, 'história parada antes do ▶');
+  const followFrames = () => [heroFrames, storyFrames].forEach((watch) => watch.follow());
+  // a folha fecha (no app, o foco volta): a cena viva da capa monta, sobe e pinta
+  manifestShare.open = false;
+  refresh();
+  followFrames();
+  heroFrames.paint();
+  // o ▶: a cena da história monta (a voz carregando, depois tocando) e pinta; a da capa sai
+  storyPlay().props.onPress();
+  narrateAs({ activePlaybackId: 'manifestation:m-historia', lastCompletedPlaybackId: null, phase: 'loading', progress: 0 });
+  followFrames();
+  narrateAs({ phase: 'playing', progress: 0.3 });
+  followFrames();
+  storyFrames.paint();
+  // a voz termina: a cena da história sai; a da capa monta de novo
+  narrateAs({ activePlaybackId: null, lastCompletedPlaybackId: 'manifestation:m-historia', phase: 'idle', progress: 1 });
+  followFrames();
+  assert.ok(storyFrames.frames.some((frame) => frame.layer && !frame.painted), 'a história passou pela cena viva subindo (antes de pintar)');
+  assert.strictEqual(
+    blankFrame(storyFrames),
+    -1,
+    'Sua história: do ▶ até a cena pintar e de volta no fim, nenhum quadro sem a imagem parada e sem a cena pintada'
+  );
+  assert.ok(
+    heroFrames.frames.filter((frame) => frame.layer && !frame.painted).length >= 2,
+    'a capa passou pela cena viva subindo (ao voltar da folha e no fim da história)'
+  );
+  assert.strictEqual(
+    blankFrame(heroFrames),
+    -1,
+    'a capa: ao voltar da folha, ao tocar a história e no fim dela, nenhum quadro sem a imagem parada e sem a cena pintada'
+  );
+  heroFrames.unmount();
+  storyFrames.unmount();
+
   // a imagem parada com readyScene (a do cartão do compartilhar, sem WebView): sem a imagem dela, a cena pronta com o
   // rótulo; com a dela, ela sem rótulo; enquanto a dela abre, nenhuma (a pronta não pisca); com a cena viva montada, a
-  // viva é a cena (nem imagem pronta nem rótulo dobrado por baixo; a dela segue por baixo, como sempre); a capa parada
-  // não assina o estado do app (só o rótulo, que é outro componente)
+  // imagem parada (a pronta ou a dela) segue por baixo até e enquanto a viva pinta, e o rótulo é um só, o da viva; a
+  // capa parada não assina o estado do app (só o rótulo, que é outro componente)
   const stillScene = { id: 'beach-Peace', source: 'beach-Peace' };
   appReads = 0;
   const readyCover = coverOf({ readyScene: stillScene, sceneCategory: 'Peace' });
@@ -2733,13 +2871,24 @@ async function main() {
     'a imagem dela sumiu: a cena pronta, com o rótulo'
   );
   goneCover.unmount();
+  // a imagem parada por baixo da camada viva, com o véu de imagem entre as duas (o texto do card legível enquanto a
+  // cena sobe)
+  const stillUnderLayer = (tree) =>
+    !!typed('Image')(tree) &&
+    typed('Image')(tree).props.source === 'beach-Peace' &&
+    !!layerOf(tree) &&
+    layers(tree).indexOf(typed('Image')(tree)) < veilAt(tree) &&
+    veilAt(tree) < layers(tree).indexOf(layerOf(tree));
   const liveReady = coverOf({ readyScene: stillScene, live: true, sceneCategory: 'Peace' });
   assert.ok(
-    layerOf(liveReady) && !typed('Image')(liveReady) && !typed('ReadySceneLabel')(liveReady),
-    'cena viva montada: ela é a cena (sem a pronta parada nem rótulo dobrado por baixo)'
+    stillUnderLayer(liveReady) && !typed('ReadySceneLabel')(liveReady),
+    'cena viva montada: a cena pronta parada fica por baixo até e enquanto ela pinta (sem rótulo dobrado: o da camada viva)'
   );
   const narratedReady = coverOf({ readyScene: stillScene, narration: { text: 'aa', progress: 0, active: false }, sceneCategory: 'Peace' });
-  assert.ok(layerOf(narratedReady) && !typed('Image')(narratedReady) && !typed('ReadySceneLabel')(narratedReady), 'narrando: a cena narrada é a cena');
+  assert.ok(
+    stillUnderLayer(narratedReady) && !typed('ReadySceneLabel')(narratedReady),
+    'narrando: a cena pronta parada fica por baixo da cena narrada (sem rótulo dobrado: o da cena narrada)'
+  );
   personalFiles['k-capa-dela'] = 'file:///document/capa-dela.jpg';
   const herLive = coverOf({ readyScene: stillScene, visualKey: 'k-capa-dela', live: true, sceneCategory: 'Peace' });
   await settle(herLive, typed('Image'), 'imagem dela por baixo da cena viva');

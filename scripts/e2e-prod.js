@@ -414,6 +414,38 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
     // o ▶ começa a voz no MESMO toque: o áudio é destravado ali, antes de qualquer espera (consentimento, rede)
     await tab.$eval('[data-testid="manifestation-story-play"]', (el) => el.scrollIntoView({ block: 'center' }));
     await sleep(180);
+    // nenhum quadro em branco do ▶ até a cena pintar: a cena viva nasce transparente, então a imagem parada (carregada)
+    // fica por baixo enquanto ela monta e sobe. Quadro a quadro (requestAnimationFrame), até o canvas da cena da
+    // história ter pixels: quadro sem a imagem e sem a cena pintada = em branco
+    await tab.evaluate((block) => {
+      const story = document.querySelector(block);
+      const watch = { frames: 0, booting: 0, blank: 0, painted: false };
+      window.__storyFrames = watch;
+      const stillShown = () =>
+        [...story.querySelectorAll('img')].some(
+          (img) => img.complete && img.naturalWidth > 0 && img.getBoundingClientRect().width > 0
+        );
+      const scenePainted = () => {
+        const canvas = story.querySelector('[data-testid="cena-viva"] canvas');
+        if (!canvas || !canvas.width) return false;
+        try {
+          return canvas.getContext('2d').getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data[3] > 0;
+        } catch (_error) {
+          return false;
+        }
+      };
+      const frame = () => {
+        if (scenePainted()) {
+          watch.painted = true;
+          return;
+        }
+        watch.frames += 1;
+        if (story.querySelector('[data-testid="narrated-scene"]')) watch.booting += 1;
+        if (!stillShown()) watch.blank += 1;
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }, STORY);
     const tapAt = await tab.evaluate(() => performance.now());
     await tab.click('[data-testid="manifestation-story-play"]');
     const voiceStart = await (
@@ -430,6 +462,16 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
       tab.waitForSelector(`${SCENE}[data-active="true"]`, { visible: true, timeout: 30000 }),
       'A história não começou a tocar na cena dela'
     );
+    const frames = await (
+      await expect(
+        tab.waitForFunction(() => window.__storyFrames.painted && window.__storyFrames, { timeout: 10000, polling: 50 }),
+        'A cena da história tocou sem pintar o canvas'
+      )
+    ).jsonValue();
+    if (!frames.booting || frames.blank) {
+      throw new Error(`Sua história piscou do ▶ até a cena pintar (quadros sem a imagem parada e sem a cena): ${JSON.stringify(frames)}`);
+    }
+    console.log(`  [história ok] do ▶ à cena pintada sem quadro em branco: a imagem por baixo em ${frames.booting} quadro(s) da cena subindo`);
     const captionStart = await progressNow();
     await risesFrom(captionStart, 'A legenda da história não subiu com a voz');
     await sleep(1200);

@@ -24,8 +24,8 @@ import { useCardImage } from './ShareCard';
  * ainda não tem a sua — a pessoal ou, sem ela, a cena pronta das respostas com o
  * rótulo honesto —, como imagem, sem WebView (a mesma do cartão do compartilhar).
  * Enquanto a pessoal abre, nenhuma: a pronta não pisca para quem tem a sua. Com a
- * cena viva montada (live/narration), ela é a cena e traz o próprio rótulo: por
- * baixo fica só a pessoal, como sempre.
+ * cena viva montada (live/narration), a imagem parada segue por baixo até e
+ * enquanto ela pinta; o rótulo passa a ser o da cena viva.
  *
  * narration { text, progress, active }: a voz tocando — a cena com as palavras
  * surgindo, por cima do véu (ele escureceria a legenda), no lugar da cena do
@@ -70,9 +70,9 @@ export default function GradientCover({
   const liveFailed = failedScene === sceneKey;
   // a voz tocando sempre leva a camada: as palavras aparecem mesmo depois de um erro da cena
   const wantsScene = (live && !liveFailed) || !!narration;
-  // a cena pronta como imagem parada: só sem cena viva por cima (com ela, a viva é a cena)
-  const readyStill = readyShown && !wantsScene;
-  const imaged = !!personalSource || readyStill;
+  // a imagem parada fica por baixo da camada viva: ela nasce transparente e só cobre quando pinta (no app, a WebView
+  // inteira subindo) — sem a imagem, a troca piscava o gradiente
+  const imaged = !!personalSource || readyShown;
   // O 3º stop era branco a 28% e derrubava o contraste do texto branco por cima
   // para 1,06:1 — o título e a duração da visão sumiam no sol (auditoria WCAG,
   // 10/08). Agora o gradiente fecha na própria cor de destaque, mantendo o ar
@@ -137,7 +137,8 @@ export default function GradientCover({
           onFailed={() => setFailedScene(sceneKey)}
         />
       ) : null}
-      {readyStill ? <ReadySceneLabel /> : null}
+      {/* o rótulo da imagem parada só sem camada viva: com ela, o rótulo é o da viva (nunca dois) */}
+      {readyShown && !wantsScene ? <ReadySceneLabel /> : null}
       {icon ? (
         // Selo puramente decorativo: fica fora do leitor de tela para não ler o glifo.
         <View
