@@ -15,8 +15,9 @@ const S = {
 // card segue legível). Narrando: a NarratedScene com as palavras no ritmo da voz (imagem a caminho: as palavras por
 // cima da capa; falha: o painel com o texto inteiro). Cena pronta na tela, depois de pintar: o rótulo honesto numa
 // pílula escura — parada, no respiro do pé do card (abaixo do texto, nunca por cima); narrando, dentro do quadro 4:5
-// da cena. Erro da cena ou imagem que não deu para preparar: onFailed (a capa volta à imagem parada).
-export default function CoverScene({ visualKey, sceneCategory, narration, veil, onFailed }) {
+// da cena. Erro da cena ou imagem que não deu para preparar: onFailed (a capa volta à imagem parada). active=false: a
+// cena parada vira pôster (o quadro onde parou), sem recarregar.
+export default function CoverScene({ visualKey, sceneCategory, narration, active = true, veil, onFailed }) {
   const { t } = useT();
   const narrating = !!narration;
   // narrando, a cena anterior fica até a nova entrar (o player troca de imagem no meio da fala); parada, trocar de
@@ -64,7 +65,7 @@ export default function CoverScene({ visualKey, sceneCategory, narration, veil, 
   if (!uri) return null;
   return (
     <>
-      <CenaViva imageUri={uri} style={styles.scene} onReady={setPainted} onError={fail} />
+      <CenaViva imageUri={uri} active={active} style={styles.scene} onReady={setPainted} onError={fail} />
       {painted === uri ? veil : null}
       {painted === uri && showsReady ? label : null}
     </>

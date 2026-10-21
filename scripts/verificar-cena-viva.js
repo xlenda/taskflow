@@ -2057,7 +2057,8 @@ async function main() {
   // sai enquanto ela toca
   const narrationScreens = {
     'VisionPlayerScreen.js': [/<CoverScene\b/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(lines\.slice\(spokenFrom\)\.join\(' '\), vision\.lang\)/],
-    'ManifestationScreen.js': [/narration=\{\s*narrating\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(lines\.slice\(spokenFrom\)\.join\(' '\), lang\)/],
+    // a manifestação conta a história no vídeo de "Sua história" (a seção 22 prova o comportamento)
+    'ManifestationScreen.js': [/testID="manifestation-story-video"[\s\S]{0,300}\snarration=\{/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(lines\.slice\(spokenFrom\)\.join\(' '\), lang\)/],
     'onboarding/RevealScreen.js': [/captionProgressFromNarration\(\{ progress: narration\.progress \}\)/, /narration\.spokenText\(m\.story, lang\)/],
     'AffirmationsScreen.js': [/narration=\{\s*ownsPlayback\s*\?/, /captionProgressFromNarration\(\{ progress: narrationProgress \}\)/, /spokenText\(currentLoc\.text, current\.speechLang \|\| lang\)/],
     'WakeSequenceScreen.js': [/<NarratedScene\b/, /captionProgressFromBoundary\(/, /captionProgressFromTime\(/, /captionProgressFromNarration\(/],
@@ -2083,8 +2084,6 @@ async function main() {
   assert.match(player, /\{narrating \? null : \(\s*<View\s+style=\{\[\s*styles\.scriptWrap/, 'Player: o roteiro em texto sai enquanto a voz toca');
   assert.match(player, /live=\{isFocused && !narrating && !showsSecondaryVisual && !share\.isOpen\}/, 'Player: a visão aberta anima parada; tocando, só a cena da voz');
   const manifestation = screen('ManifestationScreen.js');
-  assert.match(manifestation, /\{narrating \? null : \(\s*<>\s*<SectionHeading title=\{t\(S\.storyTitle\)\}/, 'Manifestação: a história em texto sai enquanto a voz a conta');
-  assert.match(manifestation, /style=\{\[styles\.heroInner, narrating && styles\.quiet\]\}\s+aria-hidden=\{narrating \|\| undefined\}/, 'Manifestação: o texto da capa sai da tela e do leitor enquanto a voz toca');
   // a legenda é o trecho que a voz está dizendo (o player e a manifestação podem começar de uma frase do meio)
   for (const [name, source] of [
     ['Player', player],
@@ -2366,9 +2365,361 @@ async function main() {
     global.clearInterval = realClearInterval;
   }
 
+  // 22) Manifestação: "Sua história" é um vídeo. Parada: a cena da manifestação (a mesma da capa: a imagem dela ou a
+  //     cena pronta das respostas, com o rótulo honesto) com o COMEÇO da história, parado, e o ▶ por cima. O ▶ começa a
+  //     voz no MESMO toque e as palavras surgem na cena da história no ritmo dela — o único lugar das palavras: a capa
+  //     não as repete e vira pôster parado (uma cena animada por vez). Pausar/continuar são os controles de sempre; o
+  //     play da narrativa em áudio toca o mesmo vídeo (e leva a tela até ele). "Ler o texto" abre e fecha a história
+  //     inteira. Folha do compartilhar aberta: nada anima. Reduzir movimento: palavras sim, animação não.
+  const storySentences = [
+    'Eu acordo com a luz do mar entrando devagar pela janela do quarto.', // 66 letras
+    'O café passa sem pressa e Alex ri comigo na varanda.', // 52: as duas somam 119
+    'Cada passo do dia nasce da calma que eu escolhi viver.', // 54: com ela passaria de 140
+    'À noite eu agradeço o que já mudou em mim.',
+  ];
+  const manifestStory = storySentences.join(' ');
+  const storyOpening = storySentences.slice(0, 2).join(' ');
+  const spokenStory = manifestStory.replace('Alex', 'uma pessoa próxima');
+  const manifestItem = {
+    id: 'm-historia',
+    title: 'Viver perto do mar',
+    intention: 'Uma vida calma perto do mar',
+    affirmation: 'Eu escolho a paz.',
+    story: manifestStory,
+    category: 'Peace',
+    accent: 1,
+    visual: { cacheKey: 'k-historia' },
+    sessions: [],
+    evidence: [],
+    createdAt: '2026-10-01',
+    goalDays: 21,
+  };
+  let manifestState = { manifestations: [manifestItem], anchorSceneId: 'm-historia', morningRitual: {}, practicePlan: {}, profile: {} };
+  const voiceCalls = []; // na ordem dos toques: prime, playPersonal, pause, resume, stop
+  const voiceCallNames = () => voiceCalls.map((call) => (Array.isArray(call) ? call[0] : call));
+  const manifestNarration = {
+    activePlaybackId: null,
+    lastCompletedPlaybackId: null,
+    phase: 'idle',
+    progress: 0,
+    personalNarrationAvailable: true,
+    prime: () => voiceCalls.push('prime'),
+    playPersonal: (request) => {
+      voiceCalls.push(['playPersonal', request]);
+      return new Promise(() => {}); // tocando: o resto chega pelo estado da narração
+    },
+    pause: () => voiceCalls.push('pause'),
+    resume: () => voiceCalls.push('resume'),
+    stop: () => voiceCalls.push('stop'),
+    // a voz da Celeste fala sem os nomes guardados: o dublê troca o nome para o teste ver a diferença
+    spokenText: (text) => text.replace('Alex', 'uma pessoa próxima'),
+  };
+  const manifestFocus = { value: true };
+  const manifestShare = { open: false };
+  const storyScrolls = [];
+  const practiceToggles = [];
+  hosts.ScrollView = () => ({ scrollTo: (options) => storyScrolls.push(options) });
+  const manifestMocks = {
+    ...mocks,
+    'react-native': {
+      ...RN,
+      TextInput: 'TextInput',
+      ScrollView: 'ScrollView',
+      TouchableOpacity: 'TouchableOpacity',
+      ActivityIndicator: 'ActivityIndicator',
+    },
+    '@expo/vector-icons': { Ionicons: 'Ionicons' },
+    '@react-navigation/native': {
+      useNavigation: () => ({ goBack() {}, replace() {}, navigate() {} }),
+      useRoute: () => ({ params: { id: 'm-historia' } }),
+      useIsFocused: () => manifestFocus.value,
+    },
+    'expo-haptics': {
+      impactAsync: () => Promise.resolve(),
+      notificationAsync: () => Promise.resolve(),
+      ImpactFeedbackStyle: {},
+      NotificationFeedbackType: {},
+    },
+    '../ui/kit': { Screen: 'Screen', Header: 'Header', Card: 'Card', pct: (done, total) => (total ? Math.round((100 * done) / total) : 0) },
+    '../ui/theme': coverMocks['../ui/theme'],
+    '../utils/confirm': { confirmAsync: () => Promise.resolve(false) },
+    '../context/AppContext': {
+      useApp: () => ({
+        state: manifestState,
+        togglePractice: (id) => practiceToggles.push(id),
+        toggleBridgeCompletion() {},
+        updateManifestation() {},
+        addEvidence: () => true,
+        removeManifestation() {},
+        saveMorningRitualPreferences() {},
+        savePracticePlan() {},
+        personalVisualStatus: {},
+        ensurePersonalVisual: () => Promise.resolve({ ok: false }),
+      }),
+    },
+    '../constants/content': { categoryMeta: () => ({ icon: 'leaf-outline' }) },
+    '../utils/useT': {
+      useT: () => ({
+        t: (entry, vars = {}) => String((entry && entry.pt) || '').replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? '')),
+        lang: 'pt',
+      }),
+    },
+    '../utils/usePersonalNarration': {
+      usePersonalNarration: () => ({
+        ...manifestNarration,
+        isLoading: manifestNarration.phase === 'loading',
+        isPlaying: manifestNarration.phase === 'playing',
+        isPaused: manifestNarration.phase === 'paused',
+      }),
+    },
+    '../utils/useCloudMediaConsent': { useCloudMediaConsent: () => ({ withCloudMediaConsent: () => Promise.resolve() }) },
+    '../utils/livingMirror': { bridgeDoneOn: () => false, normalizeLivingMirror: () => ({ chapter: 1 }) },
+    '../utils/personalAffirmations': { alarmContentBelongsToManifestation: () => false },
+    '../services/affirmationAlarm': {
+      cancelAffirmationAlarm: () => Promise.resolve({ ok: true }),
+      getAffirmationAlarmCapability: () => Promise.resolve(null),
+    },
+    '../services/practicePlanReminders': { cancelPracticePlanReminders: () => Promise.resolve({ ok: true }) },
+    '../components/AddToWakeButton': esDefault('AddToWakeButton'),
+    '../components/GradientCover': esDefault('GradientCover'),
+    '../components/PrimaryButton': esDefault('PrimaryButton'),
+    '../components/SectionHeading': esDefault('SectionHeading'),
+    '../components/AiContentReportAction': esDefault('AiContentReportAction'),
+    '../components/ShareSheet': { useShareSheet: () => ({ isOpen: manifestShare.open, sheet: null, open() {} }) },
+  };
+  const { default: ManifestationScreen } = loadWith('screens/ManifestationScreen.js', manifestMocks);
+  const manifestScreen = app.mount(ManifestationScreen, {});
+  const byTestID = (testID) => () => manifestScreen.where((node) => node.props.testID === testID);
+  const heroCover = byTestID('manifestation-personal-visual');
+  const storyBlock = byTestID('manifestation-story');
+  const storyCover = byTestID('manifestation-story-video');
+  const storyPlay = byTestID('manifestation-story-play');
+  const readToggle = byTestID('manifestation-story-read');
+  const audioPlay = byTestID('manifestation-audio-play');
+  // procura dentro de um elemento (descendo pelos children)
+  const inside = (parent, test) => {
+    const pending = [].concat(parent ? parent.props.children : []);
+    while (pending.length) {
+      const node = pending.shift();
+      if (Array.isArray(node)) pending.push(...node);
+      else if (node && typeof node === 'object') {
+        if (test(node)) return node;
+        pending.push(...[].concat(node.props.children));
+      }
+    }
+    return null;
+  };
+  const fullStoryShown = () => !!manifestScreen.where((node) => node.type === 'Text' && node.props.children === manifestStory);
+  const playIcon = () => inside(storyPlay(), (node) => node.type === 'Ionicons');
+  const refresh = () => manifestScreen.update({});
+  const narrateAs = (patch) => {
+    Object.assign(manifestNarration, patch);
+    refresh();
+  };
+
+  // parada: a cena da manifestação com o começo da história e o ▶
+  assert.ok(storyCover() && storyCover().type === 'GradientCover', 'Sua história: um vídeo — a cena viva da manifestação no lugar do texto');
+  assert.ok(
+    storyCover().props.visualKey === 'k-historia' &&
+      storyCover().props.visualKey === heroCover().props.visualKey &&
+      storyCover().props.sceneCategory === 'Peace' &&
+      storyCover().props.sceneCategory === heroCover().props.sceneCategory,
+    'a mesma cena da capa: a imagem dela ou, sem ela, a cena pronta das respostas'
+  );
+  assert.deepStrictEqual(
+    storyCover().props.narration,
+    { text: storyOpening, progress: 1, active: false },
+    'parada: a cena com o COMEÇO da história (as primeiras frases inteiras, paradas), sem animar'
+  );
+  assert.ok(
+    inside(storyCover(), (node) => node === storyPlay()) &&
+      storyPlay().props.accessibilityRole === 'button' &&
+      storyPlay().props.accessibilityLabel === 'Ouvir a narrativa' &&
+      playIcon().props.name === 'play',
+    'o ▶ por cima da cena: um botão com nome'
+  );
+  assert.ok(!fullStoryShown(), 'parada: a história inteira fica em "Ler o texto" (fechado)');
+  assert.ok(
+    heroCover().props.live === true && heroCover().props.active !== false && !heroCover().props.narration,
+    'parada: a capa é a cena animada da tela, sem palavras de narração'
+  );
+  // a 1ª frase sozinha já passa de ~140 letras: ela inteira (o começo nunca fica vazio)
+  const longFirst = `${'Eu caminho pela areia clara '.repeat(6).trim()}.`;
+  manifestState = { ...manifestState, manifestations: [{ ...manifestItem, story: `${longFirst} Depois descanso.` }] };
+  refresh();
+  assert.strictEqual(storyCover().props.narration.text, longFirst, '1ª frase longa: o começo é ela inteira');
+  manifestState = { ...manifestState, manifestations: [manifestItem] };
+  refresh();
+
+  // o ▶ começa a voz no MESMO toque: destrava o áudio e pede a história, sem nada esperado antes
+  voiceCalls.length = 0;
+  storyPlay().props.onPress();
+  assert.deepStrictEqual(voiceCallNames(), ['prime', 'playPersonal'], 'o ▶ começa a voz no MESMO toque (nenhum await antes)');
+  const storyRequest = voiceCalls[1][1];
+  assert.ok(
+    storyRequest.text === manifestStory && storyRequest.playbackId === 'manifestation:m-historia' && storyRequest.lang === 'pt',
+    'a voz conta a história inteira desta manifestação'
+  );
+  narrateAs({ activePlaybackId: 'manifestation:m-historia', phase: 'loading', progress: 0 });
+  assert.deepStrictEqual(
+    storyCover().props.narration,
+    { text: spokenStory, progress: 0, active: false },
+    'carregando: a cena espera a voz, nenhuma palavra antes dela'
+  );
+  // tocando: as palavras surgem na cena da história, no ritmo da voz; a capa não as repete e fica parada
+  narrateAs({ phase: 'playing', progress: 0.4 });
+  assert.deepStrictEqual(
+    storyCover().props.narration,
+    { text: spokenStory, progress: 0.4, active: true },
+    'tocando: as palavras que a voz diz surgem na cena da história, no ritmo dela'
+  );
+  assert.ok(!heroCover().props.narration, 'tocando: a capa não repete as palavras');
+  assert.strictEqual(
+    manifestScreen.where((node) => !!node.props.narration && node !== storyCover()),
+    null,
+    'um lugar só para as palavras: a cena da história'
+  );
+  assert.ok(heroCover().props.live === true && heroCover().props.active === false, 'tocando: a capa vira pôster parado (uma cena animada por vez)');
+  // a capa continua capa: o texto dela à vista e no leitor de tela (a voz não está mais nela)
+  const heroQuote = inside(heroCover(), (node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
+  const heroText = heroQuote && inside(heroCover(), (node) => node.type === 'View' && !!inside(node, (child) => child === heroQuote));
+  assert.ok(
+    heroText &&
+      flat(heroText.props.style).opacity !== 0 &&
+      !heroText.props['aria-hidden'] &&
+      heroText.props.importantForAccessibility !== 'no-hide-descendants',
+    'tocando: a afirmação da capa segue à vista e no leitor de tela'
+  );
+  assert.ok(storyPlay().props.accessibilityLabel === 'Pausar a narrativa' && playIcon().props.name === 'pause', 'tocando: o mesmo botão pausa');
+  // pausar e continuar pelo vídeo: os controles de sempre da narração
+  voiceCalls.length = 0;
+  storyPlay().props.onPress();
+  narrateAs({ phase: 'paused' });
+  assert.deepStrictEqual(
+    storyCover().props.narration,
+    { text: spokenStory, progress: 0.4, active: false },
+    'pausada: as palavras ficam onde a voz parou e a cena para'
+  );
+  assert.strictEqual(heroCover().props.active, false, 'pausada: a capa segue parada');
+  storyPlay().props.onPress();
+  assert.deepStrictEqual(voiceCalls, ['pause', 'resume'], 'pausar e continuar pelo vídeo: os controles de sempre');
+  // folha do compartilhar aberta com a voz tocando: nada anima por trás (o gravador é a vez dela)
+  narrateAs({ phase: 'playing' });
+  manifestShare.open = true;
+  refresh();
+  assert.ok(storyCover().props.narration.active === false && heroCover().props.live === false, 'folha aberta: a história e a capa param');
+  manifestShare.open = false;
+  refresh();
+  assert.strictEqual(storyCover().props.narration.active, true, 'folha fechada: a história volta a animar com a voz');
+  // a voz terminou: o começo de novo, parado; a capa volta a animar
+  narrateAs({ activePlaybackId: null, lastCompletedPlaybackId: 'manifestation:m-historia', phase: 'idle', progress: 1 });
+  assert.deepStrictEqual(
+    storyCover().props.narration,
+    { text: storyOpening, progress: 1, active: false },
+    'a voz terminou: o começo da história de novo, parado'
+  );
+  assert.ok(heroCover().props.active !== false && !heroCover().props.narration, 'a voz terminou: a capa volta a ser a cena animada');
+  assert.deepStrictEqual(practiceToggles, ['m-historia'], 'o fim da história registra a prática do dia');
+
+  // o play da narrativa em áudio toca o MESMO vídeo: a voz começa no toque e a tela desce até a história
+  storyBlock().props.onLayout({ nativeEvent: { layout: { x: 0, y: 1480, width: 350, height: 640 } } });
+  voiceCalls.length = 0;
+  storyScrolls.length = 0;
+  audioPlay().props.onPress();
+  assert.deepStrictEqual(voiceCallNames(), ['prime', 'playPersonal'], 'o play da narrativa em áudio começa a voz no mesmo toque');
+  assert.deepStrictEqual(storyScrolls, [{ y: 1480, animated: true }], 'e leva a tela até a história em vídeo, onde as palavras aparecem');
+  narrateAs({ activePlaybackId: 'manifestation:m-historia', lastCompletedPlaybackId: null, phase: 'playing', progress: 0.2 });
+  assert.deepStrictEqual(storyCover().props.narration, { text: spokenStory, progress: 0.2, active: true }, 'o mesmo vídeo conta a história');
+  audioPlay().props.onPress();
+  assert.ok(voiceCalls[voiceCalls.length - 1] === 'pause' && storyScrolls.length === 1, 'pausar pelo áudio: sem rolar a tela');
+  narrateAs({ activePlaybackId: null, phase: 'idle', progress: 0 });
+
+  // "Ler o texto": logo abaixo do vídeo, um botão com estado aberto/fechado; abre e fecha a história inteira
+  const blockParts = [].concat(storyBlock().props.children).flat(Infinity).filter(Boolean);
+  assert.strictEqual(blockParts.indexOf(readToggle()), blockParts.indexOf(storyCover()) + 1, '"Ler o texto" logo abaixo do vídeo');
+  assert.ok(
+    readToggle().props.accessibilityRole === 'button' &&
+      readToggle().props.accessibilityLabel === 'Ler o texto' &&
+      readToggle().props['aria-expanded'] === false &&
+      !fullStoryShown(),
+    '"Ler o texto": um botão, fechado por padrão'
+  );
+  readToggle().props.onPress();
+  manifestScreen.flush();
+  assert.ok(readToggle().props['aria-expanded'] === true && fullStoryShown(), '"Ler o texto" abre a história inteira');
+  readToggle().props.onPress();
+  manifestScreen.flush();
+  assert.ok(readToggle().props['aria-expanded'] === false && !fullStoryShown(), '"Ler o texto" fecha de novo');
+
+  // sem voz pessoal (o app nesta versão): a cena com o começo e "Ler o texto", sem um ▶ que não tocaria nada
+  manifestNarration.personalNarrationAvailable = false;
+  refresh();
+  assert.ok(!storyPlay() && storyCover().props.narration.text === storyOpening && readToggle(), 'sem voz: sem ▶; o começo e o texto ficam');
+  manifestNarration.personalNarrationAvailable = true;
+  // parada com a folha aberta ou fora de foco: a cena da história sai (no app, uma WebView a menos), como a da capa
+  manifestShare.open = true;
+  refresh();
+  assert.strictEqual(storyCover().props.narration, null, 'folha aberta, parada: a cena da história sai');
+  manifestShare.open = false;
+  manifestFocus.value = false;
+  refresh();
+  assert.strictEqual(storyCover().props.narration, null, 'fora de foco: a cena da história sai');
+  manifestFocus.value = true;
+  refresh();
+
+  // a capa parada é pôster de verdade: a mesma cena, sem animar (GradientCover e CoverScene repassam o active)
+  assert.strictEqual(
+    layerOf(coverOf({ live: true, active: false, visualKey: 'k-historia', sceneCategory: 'Peace' })).props.active,
+    false,
+    'capa parada: a camada viva recebe active=false'
+  );
+  assert.notStrictEqual(layerOf(coverOf({ live: true, sceneCategory: 'Peace' })).props.active, false, 'sem active: a capa anima como sempre');
+  const posterScene = sceneOf({ sceneCategory: 'Peace', active: false });
+  await settle(posterScene, liveOf, 'cena da capa parada');
+  assert.strictEqual(liveOf(posterScene).props.active, false, 'pôster: a mesma cena, parada no quadro');
+  posterScene.update({ active: true });
+  assert.notStrictEqual(liveOf(posterScene).props.active, false, 'a voz parou: a capa anima de novo');
+  posterScene.unmount();
+
+  // reduzir movimento com a história tocando: a cena que a tela monta desce pela capa, pela camada viva e pela cena
+  // narrada até o CenaViva do site — imagem parada, as palavras continuam surgindo
+  narrateAs({ activePlaybackId: 'manifestation:m-historia', phase: 'playing', progress: 0.5 });
+  const storyLayer = app.mount(CoverScene, layerOf(coverOf(storyCover().props)).props);
+  await settle(storyLayer, (tree) => typed('NarratedScene')(tree) && typed('NarratedScene')(tree).props.imageUri, 'cena narrada da história');
+  assert.strictEqual(
+    typed('NarratedScene')(storyLayer).props.label?.props.children,
+    READY_LABEL,
+    'sem imagem dela: a cena pronta da história com o rótulo honesto'
+  );
+  const storyNarrated = app.mount(NarratedScene, typed('NarratedScene')(storyLayer).props);
+  storyNarrated.tree.props.onLayout({ nativeEvent: { layout: { width: 350, height: 437.5 } } });
+  storyNarrated.flush();
+  const storyCena = storyNarrated.find('CenaViva').props;
+  global.window = browser;
+  browser.reduce = true;
+  try {
+    const framesBefore = browser.frames.length;
+    const calmStory = site.mount(WebScene, storyCena);
+    await tick();
+    calmStory.flush();
+    assert.ok(
+      storyCena.active === true && calmStory.tree.props.dataSet.active === 'false' && browser.frames.length === framesBefore,
+      'reduzir movimento: a história tocando não anima (imagem parada)'
+    );
+    assert.ok(words(calmStory.find('canvas').props.ref.current.calls).length > 0, 'reduzir movimento: as palavras continuam surgindo');
+    assert.strictEqual(calmStory.tree.props.accessibilityLabel, spokenStory, 'o leitor de tela lê a história inteira que a voz conta');
+    calmStory.unmount();
+  } finally {
+    browser.reduce = false;
+    delete global.window;
+  }
+  storyNarrated.unmount();
+  storyLayer.unmount();
+  manifestScreen.unmount();
+
   console.log(
     'Cena viva aprovada: mime, pedaços, intro estrelas → sol, partículas semeadas, legenda, 9:16, fonte da WebView, ' +
-      'componentes do site e do app, gravador, imagem da cena, cena viva nos cards e narração com palavras'
+      'componentes do site e do app, gravador, imagem da cena, cena viva nos cards, narração com palavras e a história em vídeo'
   );
 }
 

@@ -17,7 +17,8 @@ import CoverScene from './CoverScene';
  * foco recebe live (no app cada cena é uma WebView); a camada viva (CoverScene)
  * só monta então, e só ela assina o estado do app. Sem frase na cena: o texto do
  * card continua sendo o único texto, com o véu por cima. Qualquer erro da cena =
- * a imagem parada enquanto o card mostrar a mesma imagem.
+ * a imagem parada enquanto o card mostrar a mesma imagem. active=false: a cena viva vira pôster parado (a mesma
+ * cena, sem animar), para outra cena da tela ser a única animando.
  *
  * narration { text, progress, active }: a voz tocando — a cena com as palavras
  * surgindo, por cima do véu (ele escureceria a legenda), no lugar da cena do
@@ -38,6 +39,7 @@ export default function GradientCover({
   onVisualError,
   decorative = false,
   live = false,
+  active = true,
   sceneCategory,
   narration,
 }) {
@@ -111,6 +113,7 @@ export default function GradientCover({
           visualKey={visualKey}
           sceneCategory={sceneCategory}
           narration={narration}
+          active={active}
           veil={veil(true)}
           onFailed={() => setFailedScene(sceneKey)}
         />

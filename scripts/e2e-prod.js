@@ -256,6 +256,230 @@ async function assertShareOpenerClear(page, campaign) {
   if (covered.length) throw new Error(`share-open-${campaign} cobre: ${covered.join(', ')}`);
 }
 
+// espião de voz (roda na página): anota quando a fala do aparelho ou um elemento de áudio começa
+function installVoiceSpy() {
+  window.__celesteVoiceStarts = [];
+  const record = (kind) => window.__celesteVoiceStarts.push({ kind, at: performance.now() });
+  if (window.SpeechSynthesis && SpeechSynthesis.prototype.speak) {
+    const speak = SpeechSynthesis.prototype.speak;
+    SpeechSynthesis.prototype.speak = function spiedSpeak(utterance) {
+      record('speech');
+      return speak.call(this, utterance);
+    };
+  }
+  if (window.HTMLMediaElement) {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function spiedPlay(...args) {
+      record('media');
+      return play.apply(this, args);
+    };
+  }
+}
+
+// a voz da Celeste de mentira para a história (a ElevenLabs nunca é chamada): o WAV de prévia de uma narradora com
+// a fala repetida 4× (~20 s), para a voz seguir tocando durante todas as checagens mesmo numa máquina lenta
+const STORY_VOICE = (() => {
+  const preview = fs.readFileSync(path.join(__dirname, '..', 'assets', 'audio', 'previews', 'luma-pt.wav'));
+  if (preview.toString('ascii', 36, 40) !== 'data') throw new Error('Prévia WAV fora do formato esperado');
+  const samples = preview.subarray(44, 44 + preview.readUInt32LE(40));
+  const data = Buffer.concat([samples, samples, samples, samples]);
+  const header = Buffer.from(preview.subarray(0, 44));
+  header.writeUInt32LE(36 + data.length, 4);
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+})();
+
+// sessão anônima de mentira: o teste nunca cria conta no Supabase de verdade
+function storySession() {
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const id = '00000000-0000-4000-8000-0000000000e2';
+  return {
+    access_token: `${part({ alg: 'none', typ: 'JWT' })}.${part({ aud: 'authenticated', role: 'authenticated', sub: id, exp: 4102444800 })}.e2e`,
+    token_type: 'bearer',
+    expires_in: 2147483647,
+    expires_at: 4102444800,
+    refresh_token: 'celeste-e2e-historia',
+    user: { id, aud: 'authenticated', role: 'authenticated', app_metadata: { provider: 'anonymous' }, user_metadata: {}, is_anonymous: true },
+  };
+}
+
+const storyTextShown = (tab, story) =>
+  tab.evaluate(
+    (text) =>
+      [...document.querySelectorAll('div')].some(
+        (node) => node.offsetParent !== null && node.children.length === 0 && node.textContent.replace(/\s+/g, ' ').trim() === text
+      ),
+    story
+  );
+
+// "Sua história" em vídeo, como a usuária nova encontra na Cena-Âncora: parada, a cena com o começo da história e o
+// ▶; o ▶ começa a voz no MESMO toque (o Safari descarta som pedido depois) e as palavras surgem na cena da história,
+// subindo com a voz — nunca na capa, que fica parada (uma cena animada por vez); reduzir movimento para a cena e as
+// palavras seguem; "Ler o texto" abre a história inteira. Numa aba própria, com dublês só para a voz da Celeste e a
+// sessão anônima (nada pago, nenhuma conta real); o resto vai ao site de verdade. O armazenamento volta como estava.
+async function assertStoryVideo(browser, page, runtimeErrors) {
+  const { anchorId, story, storage } = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    const anchor = (saved.manifestations || []).find((item) => item?.id === saved.anchorSceneId);
+    const text = anchor && (typeof anchor.story === 'string' ? anchor.story : anchor.story?.pt);
+    return { anchorId: anchor?.id || '', story: String(text || '').replace(/\s+/g, ' ').trim(), storage: Object.entries(localStorage) };
+  });
+  if (!anchorId || !story) throw new Error('Sem a Cena-Âncora (e a história dela) para abrir em vídeo');
+  const tab = await browser.newPage();
+  tab.on('pageerror', (error) => runtimeErrors.push(`história: ${String(error)}`));
+  await tab.evaluateOnNewDocument(installVoiceSpy);
+  const voiceRequests = [];
+  await tab.setRequestInterception(true);
+  tab.on('request', (request) => {
+    let pathname = '';
+    try {
+      pathname = new globalThis.URL(request.url()).pathname;
+    } catch (_error) {}
+    const respond = (response) => request.respond(response).catch(() => {});
+    if (request.method() === 'POST' && pathname.endsWith('/auth/v1/signup')) {
+      respond({ status: 200, contentType: 'application/json', body: JSON.stringify(storySession()) });
+    } else if (request.method() === 'POST' && pathname === '/api/gerar-audio') {
+      voiceRequests.push(pathname);
+      respond({ status: 200, contentType: 'audio/wav', headers: { 'Cache-Control': 'no-store' }, body: STORY_VOICE });
+    } else if (request.method() === 'POST' && /^\/api\/(?:gerar|traduzir|transformar)-/.test(pathname)) {
+      // imagem, cena e tradução pessoais: nada pago no teste (a cena pronta das respostas continua)
+      respond({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'automated_request_blocked' }) });
+    } else {
+      request.continue().catch(() => {});
+    }
+  });
+  const STORY = '[data-testid="manifestation-story-video"]';
+  const NARRATED = `${STORY} [data-testid="narrated-scene"]`;
+  const SCENE = `${NARRATED} [data-testid="cena-viva"]`;
+  const progressNow = () => tab.$eval(NARRATED, (node) => Number(node.getAttribute('data-progress')));
+  // espera com o motivo da falha dito (sem ele, um TimeoutError não diz qual promessa da história quebrou)
+  const expect = (waiting, failure) =>
+    waiting.catch((error) => {
+      throw new Error(`${failure} (${String(error).slice(0, 120)})`);
+    });
+  // a legenda da voz sobe (abaixo de 1: o começo parado da história tem progress 1)
+  const risesFrom = (from, failure) =>
+    expect(
+      tab.waitForFunction(
+        (selector, value) => {
+          const progress = Number(document.querySelector(selector)?.getAttribute('data-progress'));
+          return progress > value && progress < 1;
+        },
+        { timeout: 10000, polling: 100 },
+        NARRATED,
+        from
+      ),
+      failure
+    );
+  try {
+    await tab.goto(new globalThis.URL(`/m/${anchorId}`, URL).toString(), { waitUntil: 'networkidle2', timeout: 60000 });
+    await expect(tab.waitForSelector(SCENE, { visible: true, timeout: 30000 }), 'Sua história sem a cena da manifestação');
+    await expect(
+      tab.waitForFunction(
+        (selector) => (document.querySelector(selector)?.textContent || '').includes('Cena inspirada nas suas respostas'),
+        { timeout: 20000, polling: 200 },
+        STORY
+      ),
+      'Sua história sem o rótulo honesto da cena pronta'
+    );
+    const stopped = await tab.evaluate((scene) => ({
+      opening: document.querySelector(scene)?.getAttribute('aria-label') || '',
+      active: document.querySelector(scene)?.getAttribute('data-active'),
+      play: document.querySelector('[data-testid="manifestation-story-play"]')?.getAttribute('aria-label') || '',
+      read: document.querySelector('[data-testid="manifestation-story-read"]')?.getAttribute('aria-expanded'),
+    }), SCENE);
+    if (
+      !stopped.opening ||
+      !story.startsWith(stopped.opening) ||
+      stopped.opening.length >= story.length ||
+      stopped.active !== 'false' ||
+      stopped.play !== 'Ouvir a narrativa' ||
+      stopped.read !== 'false' ||
+      (await storyTextShown(tab, story))
+    ) {
+      throw new Error(`Sua história parada sem a cena com o começo e o ▶: ${JSON.stringify({ ...stopped, story: story.length })}`);
+    }
+    // o ▶ começa a voz no MESMO toque: o áudio é destravado ali, antes de qualquer espera (consentimento, rede)
+    await tab.$eval('[data-testid="manifestation-story-play"]', (el) => el.scrollIntoView({ block: 'center' }));
+    await sleep(180);
+    const tapAt = await tab.evaluate(() => performance.now());
+    await tab.click('[data-testid="manifestation-story-play"]');
+    const voiceStart = await (
+      await expect(
+        tab.waitForFunction((since) => window.__celesteVoiceStarts.find((start) => start.at >= since) || false, { timeout: 5000, polling: 20 }, tapAt),
+        'A voz da história não começou no toque do ▶'
+      )
+    ).jsonValue();
+    const voiceDelay = Math.round(voiceStart.at - tapAt);
+    if (voiceDelay > 1000) throw new Error(`A voz da história começou ${voiceDelay} ms depois do ▶ (máximo 1 s)`);
+    // usuária nova: a voz da Celeste pede a permissão da nuvem uma vez
+    await waitAndClick(tab, 'Ativar voz e imagens', 15000);
+    await expect(
+      tab.waitForSelector(`${SCENE}[data-active="true"]`, { visible: true, timeout: 30000 }),
+      'A história não começou a tocar na cena dela'
+    );
+    const captionStart = await progressNow();
+    await risesFrom(captionStart, 'A legenda da história não subiu com a voz');
+    await sleep(1200);
+    const captionLater = await progressNow();
+    const playing = await tab.evaluate((scene) => ({
+      pause: document.querySelector('[data-testid="manifestation-story-play"]')?.getAttribute('aria-label') || '',
+      activeScenes: document.querySelectorAll('[data-testid="cena-viva"][data-active="true"]').length,
+      activeInStory: document.querySelectorAll(`${scene}[data-active="true"]`).length,
+      wordsInHero: !!document.querySelector('[data-testid="manifestation-personal-visual"] [data-testid="narrated-scene"]'),
+      label: document.querySelector(scene)?.getAttribute('aria-label') || '',
+    }), SCENE);
+    if (
+      !(captionLater > captionStart) ||
+      playing.pause !== 'Pausar a narrativa' ||
+      playing.activeScenes !== 1 ||
+      playing.activeInStory !== 1 ||
+      playing.wordsInHero ||
+      playing.label.length <= stopped.opening.length ||
+      !voiceRequests.length
+    ) {
+      throw new Error(`História sem palavras subindo com a voz na cena dela: ${JSON.stringify({ captionStart, captionLater, ...playing, label: playing.label.length, voice: voiceRequests.length })}`);
+    }
+    await (await tab.$(STORY)).screenshot({ path: path.join(SHOT_DIR, 'historia-video.png') });
+    console.log(`  [história ok] voz começou ${voiceDelay} ms após o ▶; legenda ${captionStart} → ${captionLater} na cena da história; capa parada`);
+    // reduzir movimento com a voz tocando: nenhuma cena anima e as palavras continuam subindo
+    await tab.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    await expect(
+      tab.waitForFunction(() => !document.querySelector('[data-testid="cena-viva"][data-active="true"]'), { timeout: 10000, polling: 100 }),
+      'Reduzir movimento: a cena da história seguiu animando'
+    );
+    // parada porque o movimento foi reduzido, não porque a voz acabou
+    const stillPlaying = await tab.$eval('[data-testid="manifestation-story-play"]', (node) => node.getAttribute('aria-label'));
+    if (stillPlaying !== 'Pausar a narrativa') throw new Error('A voz da história acabou antes da checagem de reduzir movimento');
+    await risesFrom(await progressNow(), 'Reduzir movimento: as palavras pararam de seguir a voz');
+    await tab.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+    console.log('  [história ok] reduzir movimento: cena parada, palavras seguindo a voz');
+    // "Ler o texto": a história inteira, que até aqui ficou guardada
+    if (await storyTextShown(tab, story)) throw new Error('A história inteira apareceu antes de "Ler o texto"');
+    await clickTestId(tab, 'manifestation-story-read');
+    await expect(
+      tab.waitForFunction(
+        () => document.querySelector('[data-testid="manifestation-story-read"]')?.getAttribute('aria-expanded') === 'true',
+        { timeout: 10000, polling: 100 }
+      ),
+      '"Ler o texto" não abriu'
+    );
+    if (!(await storyTextShown(tab, story))) throw new Error('"Ler o texto" não mostrou a história inteira');
+    console.log(`  [história ok] "Ler o texto" abre a história inteira (${story.length} letras)`);
+  } catch (error) {
+    await tab.screenshot({ path: path.join(SHOT_DIR, 'historia-falha.png') }).catch(() => {});
+    throw error;
+  } finally {
+    await tab.close().catch(() => {});
+    await page
+      .evaluate((entries) => {
+        localStorage.clear();
+        entries.forEach(([key, value]) => localStorage.setItem(key, value));
+      }, storage)
+      .catch(() => {}); // um erro aqui não esconde o erro da história
+  }
+}
+
 (async () => {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -331,25 +555,8 @@ async function assertShareOpenerClear(page, campaign) {
     }
   });
   // Espião de voz: anota quando a fala do aparelho ou um elemento de áudio começa,
-  // para provar que a 3ª estrela do despertar inicia a voz dentro do toque.
-  await page.evaluateOnNewDocument(() => {
-    window.__celesteVoiceStarts = [];
-    const record = (kind) => window.__celesteVoiceStarts.push({ kind, at: performance.now() });
-    if (window.SpeechSynthesis && SpeechSynthesis.prototype.speak) {
-      const speak = SpeechSynthesis.prototype.speak;
-      SpeechSynthesis.prototype.speak = function spiedSpeak(utterance) {
-        record('speech');
-        return speak.call(this, utterance);
-      };
-    }
-    if (window.HTMLMediaElement) {
-      const play = HTMLMediaElement.prototype.play;
-      HTMLMediaElement.prototype.play = function spiedPlay(...args) {
-        record('media');
-        return play.apply(this, args);
-      };
-    }
-  });
+  // para provar que a 3ª estrela do despertar (e o ▶ da história) inicia a voz dentro do toque.
+  await page.evaluateOnNewDocument(installVoiceSpy);
   // Espião do compartilhar (gancho do teste): o navigator.share descreve o que recebeu — imagem decodificada (largura,
   // altura, cores, data URL), vídeo (tipo, tamanho, nome) —, o texto do envio e se o toque ainda valia como gesto
   await page.evaluateOnNewDocument(() => {
@@ -1234,6 +1441,7 @@ async function assertShareOpenerClear(page, campaign) {
   );
   if (anchorOpener) throw new Error('Manifestação que não é a Cena-Âncora compartilha como ancora');
   await assertShare(page, 'afirmacao');
+  await assertStoryVideo(browser, page, runtimeErrors);
 
   if (fontErrors.length) {
     throw new Error(`FONTE DOS ÍCONES quebrada em produção: ${fontErrors[0]}`);

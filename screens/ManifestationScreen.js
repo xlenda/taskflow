@@ -111,6 +111,7 @@ const S = {
   },
 
   storyTitle: { en: 'Your story', pt: 'Sua história' },
+  readText: { en: 'Read the text', pt: 'Ler o texto' },
   visualPreparing: { en: 'Preparing your image', pt: 'Preparando sua imagem' },
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
@@ -192,6 +193,15 @@ const splitNarration = (text) =>
     .split(/(?<=[.!?\u2026])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+
+// o começo da história na cena parada: as primeiras frases inteiras até ~140 letras (ao menos uma)
+const storyStart = (sentences) => {
+  let text = sentences[0] || '';
+  for (let i = 1; i < sentences.length && text.length + 1 + sentences[i].length <= 140; i++) {
+    text += ` ${sentences[i]}`;
+  }
+  return text;
+};
 
 const estimateSeconds = (text) => {
   const words = String(text || '')
@@ -296,7 +306,7 @@ export default function ManifestationScreen() {
   const playing = ownsPlayback && (narrationLoading || narrationPlaying);
   const narrationActive =
     ownsPlayback && (narrationLoading || narrationPlaying || narrationPaused);
-  // a voz desta manifestação (carregando, tocando, pausada ou pronta): a capa vira a cena com as palavras
+  // a voz desta manifestação (carregando, tocando, pausada ou pronta): "Sua história" conta, com as palavras
   const narrating = ownsPlayback;
   const audioOn = personalNarrationAvailable && lines.length > 0;
 
@@ -323,6 +333,9 @@ export default function ManifestationScreen() {
   const [releaseError, setReleaseError] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
+  const scrollRef = useRef(null);
+  const storyYRef = useRef(0);
   const requestEpochRef = useRef(0);
   const playbackStartedRef = useRef(false);
   const manualStopRef = useRef(false);
@@ -795,9 +808,25 @@ export default function ManifestationScreen() {
     ? t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
     : t(S.hintEyes);
 
+  // "Sua história" em vídeo: parada, a cena com o começo da história; tocando, as palavras que a voz diz, no ritmo
+  // dela. É o único lugar das palavras: a capa não as repete e fica parada (uma cena animada por vez).
+  const storyScene = {
+    text: narrating ? spokenText(lines.slice(spokenFrom).join(' '), lang) : storyStart(lines),
+    progress: narrating ? captionProgressFromNarration({ progress: narrationProgress }) : 1,
+    active: narrating && narrationPlaying && !share.isOpen,
+  };
+
+  // o play da narrativa em áudio toca a MESMA história em vídeo: a voz começa no toque e a tela desce até ela
+  const playFromAudioCard = () => {
+    const starts = !playing;
+    togglePlay();
+    if (starts) scrollRef.current?.scrollTo({ y: storyYRef.current, animated: true });
+  };
+
   return (
     <Screen scroll={false} padded={false}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -911,33 +940,19 @@ export default function ManifestationScreen() {
             ) : null}
           </Card>
         ) : (
+          // a capa continua capa: a história em vídeo, mais abaixo, é quem conta com as palavras; enquanto ela toca, a
+          // capa vira pôster parado (uma cena animada por vez)
           <GradientCover
             testID="manifestation-personal-visual"
             visualKey={item.visual?.cacheKey}
             live={isFocused && !share.isOpen}
+            active={!narrating && !share.isOpen}
             sceneCategory={item.category}
-            narration={
-              narrating
-                ? {
-                    // o trecho que a voz está dizendo, como ela diz (sem os nomes guardados)
-                    text: spokenText(lines.slice(spokenFrom).join(' '), lang),
-                    progress: captionProgressFromNarration({ progress: narrationProgress }),
-                    active: narrationPlaying && !share.isOpen,
-                  }
-                : null
-            }
             accent={item.accent}
             radius={28}
             style={styles.hero}
           >
-            {/* a voz tocando: a cena conta a história; o que está escrito na capa sai da tela e do leitor
-                de tela (o tamanho fica, nada pula) */}
-            <View
-              style={[styles.heroInner, narrating && styles.quiet]}
-              aria-hidden={narrating || undefined}
-              accessibilityElementsHidden={narrating}
-              importantForAccessibility={narrating ? 'no-hide-descendants' : 'auto'}
-            >
+            <View style={styles.heroInner}>
               <View style={[styles.badge, { backgroundColor: alpha('#FFFFFF', 0.28) }]}>
                 <Ionicons name={meta.icon} size={13} color="#FFFFFF" />
                 <Text style={styles.badgeText}>{categoryLabel(item.category, lang)}</Text>
@@ -1041,8 +1056,9 @@ export default function ManifestationScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  testID="manifestation-audio-play"
                   activeOpacity={0.85}
-                  onPress={togglePlay}
+                  onPress={playFromAudioCard}
                   accessibilityRole="button"
                   accessibilityLabel={playing ? t(S.pause) : t(S.listen)}
                   style={[styles.playBtn, { backgroundColor: color }]}
@@ -1223,15 +1239,56 @@ export default function ManifestationScreen() {
           ))}
         </Card>
 
-        {/* enquanto a voz conta a história, as palavras dela estão na capa: o texto volta quando ela para */}
-        {narrating ? null : (
-          <>
-            <SectionHeading title={t(S.storyTitle)} />
+        {/* "Sua história" é um vídeo: a cena da manifestação (a mesma da capa) com o começo da história e o ▶; no
+            toque a voz conta e as palavras surgem na cena. Parada com a folha aberta ou fora de foco, a cena sai
+            (no app, uma WebView a menos), como a da capa. O texto inteiro fica em "Ler o texto". */}
+        <View
+          testID="manifestation-story"
+          onLayout={(event) => {
+            storyYRef.current = event.nativeEvent.layout.y;
+          }}
+        >
+          <SectionHeading title={t(S.storyTitle)} />
+          <GradientCover
+            testID="manifestation-story-video"
+            visualKey={item.visual?.cacheKey}
+            sceneCategory={item.category}
+            narration={narrating || (isFocused && !share.isOpen) ? storyScene : null}
+            accent={item.accent}
+            radius={28}
+            style={styles.storyVideo}
+          >
+            {audioOn ? (
+              <TouchableOpacity
+                testID="manifestation-story-play"
+                activeOpacity={0.85}
+                onPress={togglePlay}
+                accessibilityRole="button"
+                accessibilityLabel={playing ? t(S.pause) : t(S.listen)}
+                style={[styles.storyPlay, playing && styles.storyPlaying]}
+              >
+                <Ionicons name={playing ? 'pause' : 'play'} size={playing ? 22 : 30} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : null}
+          </GradientCover>
+          <TouchableOpacity
+            testID="manifestation-story-read"
+            activeOpacity={0.7}
+            onPress={() => setStoryOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel={t(S.readText)}
+            aria-expanded={storyOpen}
+            style={styles.readRow}
+          >
+            <Text style={[styles.readText, { color }]}>{t(S.readText)}</Text>
+            <Ionicons name={storyOpen ? 'chevron-up' : 'chevron-down'} size={16} color={color} />
+          </TouchableOpacity>
+          {storyOpen ? (
             <Card style={[styles.card, { backgroundColor: th.surface }]}>
               <Text style={[styles.story, { color: th.text }]}>{item.story}</Text>
             </Card>
-          </>
-        )}
+          ) : null}
+        </View>
 
         <AiContentReportAction
           contentType="scene"
@@ -1291,8 +1348,30 @@ const styles = StyleSheet.create({
   navBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   hero: { minHeight: 320, padding: 24, marginTop: 8 },
   heroInner: { flex: 1, minHeight: 272, alignItems: 'flex-start', justifyContent: 'flex-end' },
-  // escondido sem mudar o tamanho; o botão de imagem que mora ali também não recebe toque
-  quiet: { opacity: 0, pointerEvents: 'none' },
+  // o vídeo da história no quadro 4:5 da cena (a legenda mora no pé dele), sem passar de 420 de largura
+  storyVideo: {
+    width: '100%',
+    maxWidth: 420,
+    aspectRatio: 4 / 5,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ▶ no meio, longe da legenda (pé do quadro) e do rótulo da cena pronta (canto de baixo)
+  storyPlay: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(8,16,28,0.55)',
+  },
+  // tocando: o pausar sai do caminho das palavras, no canto de cima
+  storyPlaying: { position: 'absolute', top: 14, right: 14, width: 48, height: 48, borderRadius: 24 },
+  readRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  readText: { fontSize: 14.5, lineHeight: 20, fontWeight: '700', marginRight: 6 },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
