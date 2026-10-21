@@ -24,7 +24,9 @@ import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import AddToWakeButton from '../components/AddToWakeButton';
 import GradientCover from '../components/GradientCover';
+import PrimaryButton from '../components/PrimaryButton';
 import SectionHeading from '../components/SectionHeading';
+import { useShareSheet } from '../components/ShareSheet';
 
 const GAP = 14;
 const PLAYBACK_PREFIX = 'visions:';
@@ -67,6 +69,8 @@ const S = {
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   visualActivate: { en: 'Enable my personal image', pt: 'Ativar minha imagem pessoal' },
   all: { en: 'All', pt: 'Todas' },
+  share: { en: 'Share this vision', pt: 'Compartilhar esta visão' },
+  shareKind: { en: '{category} vision', pt: 'Visão de {category}' },
 };
 
 const CAT = {
@@ -113,6 +117,7 @@ export default function VisionsScreen() {
     stop: stopNarration,
   } = usePersonalNarration();
   const { withCloudMediaConsent } = useCloudMediaConsent();
+  const share = useShareSheet();
   const [index, setIndex] = useState(0);
   const [filter, setFilter] = useState('All');
   const [audioFailedId, setAudioFailedId] = useState(null);
@@ -555,6 +560,24 @@ export default function VisionsScreen() {
               accent={visibleVision.accent}
               style={styles.wakeButton}
             />
+            {/* a visão em foco, fora do card: nada por cima do texto nem do rótulo da cena pronta */}
+            <PrimaryButton
+              testID="share-open-visao"
+              label={t(S.share)}
+              icon="share-social-outline"
+              accent={visibleVision.accent}
+              variant="ghost"
+              onPress={() =>
+                share.open({
+                  campaign: 'visao',
+                  phrase: visibleVision.title,
+                  kindLabel: t(S.shareKind, { category: catLabel(visibleVision.category) }),
+                  visualKey: visibleVision.visualKey,
+                  category: visibleVision.category,
+                })
+              }
+              style={styles.shareButton}
+            />
 
             <View style={styles.dots}>
               {visions.map((vision, dotIndex) => (
@@ -664,6 +687,7 @@ export default function VisionsScreen() {
         )}
         <View style={styles.bottomSpace} />
       </ScrollView>
+      {share.sheet}
     </Screen>
   );
 }
@@ -749,6 +773,7 @@ const styles = StyleSheet.create({
   },
   visualRetryText: { fontSize: 12.5, lineHeight: 18, fontWeight: '700', marginLeft: 7 },
   wakeButton: { marginTop: 16 },
+  shareButton: { marginTop: 4 },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 },
   dot: { height: 7, borderRadius: 4, marginHorizontal: 3 },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 84, padding: 12, borderRadius: 20, marginBottom: 12 },

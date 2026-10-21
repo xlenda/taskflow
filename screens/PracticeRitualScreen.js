@@ -17,6 +17,7 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import GradientCover from '../components/GradientCover';
+import { useShareSheet } from '../components/ShareSheet';
 import { useT } from '../utils/useT';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { todayISO } from '../utils/date';
@@ -126,6 +127,7 @@ const S = {
     en: 'The preview worked. Save or activate your Celeste Plan to use these choices during the day.',
   },
   finish: { pt: 'Voltar para o início', en: 'Return Home' },
+  share: { pt: 'Compartilhar a prática', en: 'Share the practice' },
   previewFinish: { pt: 'Voltar ao Plano Celeste', en: 'Return to Celeste Plan' },
   missingTitle: { pt: 'Prática não encontrada', en: 'Practice not found' },
   missingBody: {
@@ -158,6 +160,7 @@ export default function PracticeRitualScreen() {
   const { t, lang } = useT();
   const { state, completePracticePlanSlot } = useApp();
   const narration = usePersonalNarration();
+  const share = useShareSheet();
   const sessionRef = useRef(0);
   const narrationEpochRef = useRef(0);
   const narrationSessionIdRef = useRef(
@@ -694,12 +697,32 @@ export default function PracticeRitualScreen() {
           </Text>
           <Text style={[styles.completePrivacy, { color: theme.textMuted }]}>{t(S.privacy)}</Text>
         </Card>
+        {/* só a prática de verdade: o teste do Plano não é "Prática concluída" */}
+        {isPreviewSession ? null : (
+          <Button
+            testID="share-open-pratica"
+            variant="soft"
+            icon="share-social-outline"
+            label={t(S.share)}
+            onPress={() =>
+              share.open({
+                campaign: 'pratica',
+                phrase: affirmationText,
+                kindLabel: t(S.done),
+                visualKey: vision?.visualKey,
+                category: vision?.category,
+              })
+            }
+            style={styles.actionButton}
+          />
+        )}
         <Button
           icon={isPreviewSession ? 'calendar-outline' : 'home-outline'}
           label={t(isPreviewSession ? S.previewFinish : S.finish)}
           onPress={finishNavigation}
           style={styles.actionButton}
         />
+        {share.sheet}
       </Screen>
     );
   }

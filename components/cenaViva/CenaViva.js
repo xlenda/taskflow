@@ -201,6 +201,7 @@ export default function CenaViva({
           originWhitelist={['*']}
           javaScriptEnabled
           allowsInlineMediaPlayback
+          setSupportMultipleWindows={false}
           scrollEnabled={false}
           onMessage={onMessage}
           onContentProcessDidTerminate={() => lost(generation)}

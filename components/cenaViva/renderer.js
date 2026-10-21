@@ -666,20 +666,24 @@ export function installCenaViva(root) {
 
   // grava o vídeo compartilhável: 9:16 com a intro, legenda progressiva e assinatura. Cartão final: a legenda completa
   // em 85% (6,8 s de 8 s), a janela se dissolve na frase inteira ajustada e ela fica parada com o Traço Celeste e o
-  // link até o fim; clipe curto demais para isso (até 2,4 s) não tem cartão final (progress = t / duração)
+  // link até o fim; clipe curto demais para isso (até 2,4 s) não tem cartão final (progress = t / duração).
+  // signal (AbortSignal, opcional): a folha fechou — o laço para na hora, a câmera do canvas é solta e a promessa
+  // rejeita com recorder_cancelled (reabrir não empilha gravações escondidas)
   function recordVideo(params) {
-    const { image, phrase, linkText, durationMs = 8000, width = 720, height = 1280, fps = 30 } = params || {};
+    const { image, phrase, linkText, signal, durationMs = 8000, width = 720, height = 1280, fps = 30 } = params || {};
+    const failure = (code) => {
+      const error = new Error(code);
+      error.code = code;
+      return error;
+    };
+    if (signal && signal.aborted) return Promise.reject(failure('recorder_cancelled'));
     const Recorder = root.MediaRecorder;
     const canvas = makeCanvas(width, height);
     const mimeType =
       Recorder && Recorder.isTypeSupported && canvas && canvas.captureStream
         ? pickRecorderMime((mime) => Recorder.isTypeSupported(mime))
         : null;
-    if (!mimeType) {
-      const error = new Error('recorder_unsupported');
-      error.code = 'recorder_unsupported';
-      return Promise.reject(error);
-    }
+    if (!mimeType) return Promise.reject(failure('recorder_unsupported'));
     // fora da tela, mas no documento: canvas solto pode não gerar quadros em alguns navegadores
     const host = root.document.body;
     if (host) {
@@ -699,12 +703,15 @@ export function installCenaViva(root) {
       const finish = (error) => {
         if (done) return;
         done = true;
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', cancel);
         if (stream) stream.getTracks().forEach((track) => track.stop());
         renderer.destroy();
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
         if (error) reject(error);
         else resolve({ blob: new root.Blob(chunks, { type: mimeType }), mimeType });
       };
+      const cancel = () => finish(failure('recorder_cancelled'));
+      if (signal && signal.addEventListener) signal.addEventListener('abort', cancel);
       try {
         paint(0); // o 1º quadro já está pronto quando o gravador liga
         // sem teto: o laço abaixo já pinta a `fps`; captureStream(30) com o jitter do relógio descartava ~7% dos

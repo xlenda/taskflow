@@ -26,6 +26,7 @@ import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
 import GradientCover from '../components/GradientCover';
+import { useShareSheet } from '../components/ShareSheet';
 import { useTheme } from '../ui/theme';
 import { useT } from '../utils/useT';
 import { accentAt, alpha } from '../utils/colors';
@@ -46,6 +47,8 @@ import {
 
 const S = {
   title: { pt: 'Meus sonhos', en: 'My dreams' },
+  share: { pt: 'Compartilhar', en: 'Share' },
+  shareKind: { pt: 'Do seu sonho', en: 'From your dream' },
   subtitle: {
     pt: 'Receba uma reflexão construtiva e uma afirmação só sua.',
     en: 'Receive a constructive reflection and an affirmation of your own.',
@@ -242,6 +245,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
     removeDreamRitual,
   } = useApp();
   const narration = usePersonalNarration();
+  const share = useShareSheet();
   const alarmVisible = mode === 'combined' && RELEASE_FEATURES.affirmationAlarm;
   const cloudDreamEnabled =
     RELEASE_FEATURES.paidCloudProcessing &&
@@ -1484,6 +1488,22 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                           <Text style={[styles.resultButtonText, { color: accentAt(theme, 2) }]}>{usingResultForWake ? t(S.usedTomorrow) : t(S.useTomorrow)}</Text>
                         </Pressable>
                       ) : null}
+                      <Pressable
+                        testID="share-open-sonho"
+                        accessibilityRole="button"
+                        onPress={() =>
+                          share.open({
+                            campaign: 'sonho',
+                            phrase: result.affirmation,
+                            kindLabel: t(S.shareKind),
+                            visualKey: currentDreamEntry?.visual?.cacheKey,
+                          })
+                        }
+                        style={({ pressed }) => [styles.resultButton, { backgroundColor: alpha(theme.accent, 0.1) }, pressed && styles.pressed]}
+                      >
+                        <Ionicons name="share-social-outline" size={18} color={theme.accent} />
+                        <Text style={[styles.resultButtonText, { color: theme.accent }]}>{t(S.share)}</Text>
+                      </Pressable>
                     </View>
                     {wakeFullFor && wakeFullFor === entryId ? (
                       <Text accessibilityLiveRegion="polite" style={[styles.warningText, { color: theme.warning }]}>
@@ -1637,6 +1657,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {share.sheet}
     </SafeAreaView>
   );
 }

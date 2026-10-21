@@ -146,6 +146,86 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   console.log(`  [chips ok] ${screen}`);
 }
 
+// Compartilhar: abre pelo share-open-<campanha>, confere a prévia e o que chegou no navigator.share (espião do teste,
+// não do app): o cartão 9:16 de verdade (decodificado, não vazio) e o vídeo mp4, cada um no mesmo gesto do toque e
+// com o link exato da campanha (só utm)
+async function assertShare(page, campaign, { saveCard = false } = {}) {
+  const expected = (medium) =>
+    `https://celeste-jet-two.vercel.app/?utm_source=compartilhar&utm_medium=${medium}&utm_campaign=${campaign}`;
+  const linkOf = (text) => (String(text || '').match(/https:\/\/\S+/) || [''])[0];
+  const sent = (kind) =>
+    page.waitForFunction((wanted) => window.__celesteShares.find((entry) => entry.kind === wanted) || false, {
+      timeout: 20000,
+      polling: 100,
+    }, kind);
+  await page.evaluate(() => {
+    window.__celesteShares = [];
+  });
+  await clickTestId(page, `share-open-${campaign}`);
+  await page.waitForSelector('[data-testid="share-sheet-preview"]', { visible: true, timeout: 15000 });
+  if (await page.evaluate(() => window.__celesteShares.length)) throw new Error(`${campaign}: algo saiu antes do toque`);
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('[data-testid="share-image"]');
+      return !!button && button.getAttribute('aria-disabled') !== 'true' && button.getAttribute('aria-label') === 'Compartilhar imagem';
+    },
+    { timeout: 30000, polling: 200 }
+  );
+  await clickTestId(page, 'share-image');
+  const image = await (await sent('image')).jsonValue();
+  if (
+    !/^image\/(jpeg|png)$/.test(image.type) ||
+    image.width * 16 !== image.height * 9 ||
+    image.width < 720 ||
+    image.colors < 12
+  ) {
+    throw new Error(`${campaign}: cartão não é uma imagem 9:16 de verdade: ${JSON.stringify({ ...image, dataUrl: undefined })}`);
+  }
+  if (!image.activated) throw new Error(`${campaign}: a imagem foi compartilhada fora do gesto`);
+  if (linkOf(image.text) !== expected('imagem')) throw new Error(`${campaign}: link da imagem errado: ${image.text}`);
+  // o vídeo grava desde que a folha abriu; pronto, o toque compartilha o mp4
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="share-video"]')?.getAttribute('aria-label') === 'Compartilhar vídeo',
+    { timeout: 45000, polling: 250 }
+  );
+  await clickTestId(page, 'share-video');
+  const video = await (await sent('video')).jsonValue();
+  if (video.type !== 'video/mp4' || video.size < 50 * 1024 || !new RegExp(`^celeste-share-${campaign}-\\d+\\.mp4$`).test(video.name)) {
+    throw new Error(`${campaign}: vídeo inválido: ${JSON.stringify(video)}`);
+  }
+  if (!video.activated) throw new Error(`${campaign}: o vídeo foi compartilhado fora do gesto`);
+  if (linkOf(video.text) !== expected('video')) throw new Error(`${campaign}: link do vídeo errado: ${video.text}`);
+  if (saveCard) {
+    fs.writeFileSync(path.join(SHOT_DIR, `share-card-${campaign}.jpg`), Buffer.from(image.dataUrl.split(',')[1], 'base64'));
+  }
+  await clickTestId(page, 'share-sheet-close');
+  await page.waitForSelector('[data-testid="share-sheet"]', { hidden: true, timeout: 10000 });
+  console.log(
+    `  [compartilhar ok] ${campaign}: cartão ${image.width}×${image.height} ${image.type}, vídeo ${Math.round(video.size / 1024)} KB ${video.type}, links utm exatos`
+  );
+}
+
+// o botão de compartilhar fica fora do card: não cobre a cena (o texto do card mora nela) nem o rótulo da cena pronta
+async function assertShareOpenerClear(page, campaign) {
+  const covered = await page.evaluate((id) => {
+    const button = document.querySelector(`[data-testid="${id}"]`);
+    if (!button) return ['botão ausente'];
+    const b = button.getBoundingClientRect();
+    const hit = (r) => r.width > 0 && r.height > 0 && b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
+    const found = [];
+    document.querySelectorAll('[data-testid="cena-viva"], [data-testid="reveal-cena-viva"]').forEach((node) => {
+      if (hit(node.getBoundingClientRect())) found.push(node.getAttribute('data-testid'));
+    });
+    [...document.querySelectorAll('div, span')]
+      .filter((node) => node.children.length === 0 && node.textContent.trim() === 'Cena inspirada nas suas respostas')
+      .forEach((node) => {
+        if (hit(node.getBoundingClientRect())) found.push('rótulo da cena pronta');
+      });
+    return found;
+  }, `share-open-${campaign}`);
+  if (covered.length) throw new Error(`share-open-${campaign} cobre: ${covered.join(', ')}`);
+}
+
 (async () => {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -239,6 +319,50 @@ async function assertChips(page, labels, screen, timeout = 30000) {
         return play.apply(this, args);
       };
     }
+  });
+  // Espião do compartilhar (gancho do teste): o navigator.share descreve o que recebeu — imagem decodificada (largura,
+  // altura, cores, data URL), vídeo (tipo, tamanho, nome) —, o texto do envio e se o toque ainda valia como gesto
+  await page.evaluateOnNewDocument(() => {
+    window.__celesteShares = [];
+    const describe = async (file, text, activated) => {
+      const entry = { name: file.name, type: file.type, size: file.size, text, activated, kind: 'file' };
+      if (/^image\//.test(file.type)) {
+        const bitmap = await createImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext('2d');
+        context.drawImage(bitmap, 0, 0);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        const colors = new Set();
+        for (let i = 0; i < pixels.length && colors.size < 64; i += 4 * 4099) {
+          colors.add(`${pixels[i] >> 3},${pixels[i + 1] >> 3},${pixels[i + 2] >> 3}`);
+        }
+        const dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+        Object.assign(entry, { kind: 'image', width: bitmap.width, height: bitmap.height, colors: colors.size, dataUrl });
+      } else if (/^video\//.test(file.type)) {
+        entry.kind = 'video';
+      }
+      return entry;
+    };
+    const share = function spiedShare(data) {
+      const activated = !!(navigator.userActivation && navigator.userActivation.isActive);
+      const files = (data && data.files) || [];
+      const text = (data && data.text) || '';
+      return Promise.all(files.map((file) => describe(file, text, activated))).then((entries) => {
+        if (!files.length) window.__celesteShares.push({ kind: 'text', text, activated });
+        entries.forEach((entry) => window.__celesteShares.push(entry));
+      });
+    };
+    Object.defineProperty(Navigator.prototype, 'share', { configurable: true, value: share });
+    Object.defineProperty(Navigator.prototype, 'canShare', {
+      configurable: true,
+      value: (data) => !!data && Array.isArray(data.files) && data.files.length > 0,
+    });
   });
   const fontErrors = [];
   const runtimeErrors = [];
@@ -459,6 +583,9 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   await (await page.$('[data-testid="reveal-cena-viva"]')).screenshot({ path: path.join(SHOT_DIR, 'reveal-cena-viva.png') });
   await waitForText(page, 'Ter mais paz e equilíbrio');
   await waitForText(page, 'Sua ponte para hoje');
+  // Compartilhar a Cena-Âncora: o botão fica fora da cena e do rótulo; cartão e vídeo com a cena pronta
+  await assertShareOpenerClear(page, 'ancora');
+  await assertShare(page, 'ancora', { saveCard: true });
   // A URL carrega o id e anchorOpenedAt persiste: F5 retoma a cena aberta sem
   // pedir o ritual de novo nem adivinhar outra história.
   await sleep(700);
@@ -533,6 +660,7 @@ async function assertChips(page, labels, screen, timeout = 30000) {
       throw new Error('Pratica do Plano no site nao foi registrada como concluida');
     });
   console.log('  [plano ok] ativou no site, abriu pela Home e registrou a pratica');
+  await assertShare(page, 'pratica');
   await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
   await waitForHome(page, 30000);
 
@@ -809,6 +937,8 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     throw new Error('Cena pronta do sonho sem o rótulo "Cena inspirada nas suas respostas"');
   });
   console.log('  [cena viva ok] sonho: cena pronta com o rótulo honesto');
+  await assertShareOpenerClear(page, 'sonho');
+  await assertShare(page, 'sonho');
   const matchingDreams = await page.evaluate((report) => {
     const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
     return entries.filter((entry) => entry.dream === report).length;
@@ -956,12 +1086,16 @@ async function assertChips(page, labels, screen, timeout = 30000) {
     console.log(`  [cena viva ok] ${where}: 1 card animado de ${scenes.length} cena(s), cena pronta pintada e rotulada`);
   };
   await assertOneLiveCard('Afirmações');
+  await assertShareOpenerClear(page, 'afirmacao');
+  await assertShare(page, 'afirmacao', { saveCard: true });
   await waitAndClick(page, 'Dos seus sonhos');
   await waitForText(page, personalDeck.dreamAffirmation, 20000);
   await assertOneLiveCard('Afirmações (sonho)');
   await waitAndClick(page, 'Visões');
   await waitForText(page, 'Deslize até a visão', 20000);
   await assertOneLiveCard('Visões');
+  await assertShareOpenerClear(page, 'visao');
+  await assertShare(page, 'visao');
   // "Reduzir movimento": imagem parada, nenhuma cena animando
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
   await page.waitForFunction(

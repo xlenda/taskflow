@@ -35,6 +35,7 @@ import {
 } from './constants/cloudConsent';
 import { RELEASE_FEATURES } from './constants/releaseFeatures';
 import { initCelesteBotProtection } from './utils/botProtection';
+import { sweepShareCache } from './utils/shareContent';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 import NarrationPlaybackControls from './components/NarrationPlaybackControls';
 import {
@@ -953,6 +954,9 @@ const linking = {
 
 export default function App() {
   React.useEffect(() => {
+    // vídeo/cartão do compartilhar que ficou no cache: o Android mata o app enquanto ela está no WhatsApp e o prazo
+    // de 90 s depois do envio nunca dispara (aviso de privacidade: o arquivo é removido depois do compartilhamento)
+    if (Platform.OS !== 'web') sweepShareCache();
     configureDailyRitualNotifications();
     if (RELEASE_FEATURES.practicePlan) configurePracticePlanNotifications();
     // Last on purpose: the foreground handler is global and only this one adds sound (wake-up only).

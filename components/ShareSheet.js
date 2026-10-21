@@ -15,11 +15,22 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { APP_NAME, APP_URL } from '../constants/brand';
 import { tr } from '../constants/i18n';
+import { useApp } from '../context/AppContext';
 import { acquirePersonalVisual } from '../services/personalVisualStorage';
 import { useTheme } from '../ui/theme';
 import { alpha } from '../utils/colors';
-import { createAffirmationShareFile, isShareCancellation, shareAffirmationCard } from '../utils/shareAffirmationCard';
-import { discardShareFile, shareUrl, shareVideoFile, sweepShareCache } from '../utils/shareContent';
+import { pickReadyScene } from '../utils/readyScene';
+import { createAffirmationShareFile, isShareCancellation } from '../utils/shareAffirmationCard';
+import {
+  SHARE_CAMPAIGNS,
+  captureShareImage,
+  discardShareFile,
+  shareFileBase,
+  shareUrl,
+  shareVideoFile,
+  sweepShareCache,
+} from '../utils/shareContent';
+import { useT } from '../utils/useT';
 import CenaVivaRecorder from './cenaViva/CenaVivaRecorder';
 import { imageUriForCenaViva } from './cenaViva/imageSource';
 import PrimaryButton from './PrimaryButton';
@@ -32,6 +43,11 @@ const S = {
     pt: 'Confira antes de enviar. A imagem e o vídeo levam o Traço Celeste e o link.',
   },
   close: { en: 'Close', pt: 'Fechar' },
+  readyScene: { en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' },
+  invalid: {
+    en: 'This content could not be prepared for sharing.',
+    pt: 'Não deu para preparar este conteúdo para compartilhar.',
+  },
   image: { en: 'Share image', pt: 'Compartilhar imagem' },
   imagePreparing: { en: 'Preparing the image…', pt: 'Preparando a imagem…' },
   imageUnavailable: { en: 'Image unavailable in this browser', pt: 'Imagem indisponível neste navegador' },
@@ -55,6 +71,10 @@ const S = {
   webmWarning: {
     en: 'This browser only records WebM video, which WhatsApp does not open. The image opens anywhere.',
     pt: 'Este navegador só grava vídeo WebM, que o WhatsApp não abre. A imagem abre em qualquer lugar.',
+  },
+  webmWarningDevice: {
+    en: 'This device only records WebM video, which WhatsApp does not open. The image opens anywhere.',
+    pt: 'Este aparelho só grava vídeo WebM, que o WhatsApp não abre. A imagem abre em qualquer lugar.',
   },
   link: { en: 'Share link', pt: 'Compartilhar link' },
   downloaded: {
@@ -83,14 +103,30 @@ export default function ShareSheet({ visible, onClose, content }) {
   return <SharePanel key={session} content={content} onClose={onClose} />;
 }
 
+// A tela abre a folha por aqui: open({ campaign, phrase, kindLabel, visualKey, category }) monta o content — sem
+// imagem pessoal, a cena pronta das respostas (lugar dos sonhos × categoria), a mesma do card — e sheet é o elemento
+// que a tela põe na árvore. O botão share-open-<campaign> é da tela, no estilo dela, fora do card.
+export function useShareSheet() {
+  const { state } = useApp();
+  const { lang } = useT();
+  const [content, setContent] = useState(null);
+  const dreamLocation = state && state.profile ? state.profile.dreamLocation : undefined;
+  const open = ({ category, visualKey, ...rest }) =>
+    setContent({ ...rest, visualKey: visualKey || null, readyScene: pickReadyScene({ dreamLocation, category }), lang });
+  return { open, sheet: <ShareSheet visible={!!content} content={content} onClose={() => setContent(null)} /> };
+}
+
 // Prévia do cartão 9:16 primeiro; o vídeo de 8 s começa a gravar quando a folha abre e só vai no toque. No site, o
 // arquivo já pronto vai no próprio toque (navigator.share sem await antes); sem ele pronto, o toque mostra o
-// andamento e o envio fica para o próximo toque.
+// andamento e o envio fica para o próximo toque. Conteúdo que não dá para compartilhar (campanha fora da lista, sem
+// cena pronta, sem frase) mostra o aviso e nada grava: nenhum toque chega ao shareUrl.
 function SharePanel({ content, onClose }) {
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
   const web = Platform.OS === 'web';
   const t = (field) => tr(field, content.lang);
+  const valid =
+    SHARE_CAMPAIGNS.includes(content.campaign) && !!content.readyScene && !!String(content.phrase || '').trim();
   const captureRef = useRef(null); // site: o cartão em 360×640 fora da tela (a miniatura reduzida não serve)
   const previewRef = useRef(null); // app: a própria prévia é capturada em 1080×1920
   const recorderRef = useRef(null);
@@ -101,6 +137,7 @@ function SharePanel({ content, onClose }) {
   const [shot, setShot] = useState(0);
   const [cardFile, setCardFile] = useState(null);
   const [cardFailed, setCardFailed] = useState(false);
+  const [readyShown, setReadyShown] = useState(false); // a prévia mostra a cena pronta (sem imagem pessoal)
   const [video, setVideo] = useState({ state: 'recording' }); // recording | ready | unsupported | failed | spent
   const [attempt, setAttempt] = useState(0);
   const [asked, setAsked] = useState(false);
@@ -111,6 +148,7 @@ function SharePanel({ content, onClose }) {
 
   // grava ao abrir, com a imagem pessoal ou a cena pronta das respostas (a mesma do cartão)
   useEffect(() => {
+    if (!valid) return undefined;
     let alive = true;
     let personal = null;
     if (!web && attempt === 0) sweepShareCache(); // o app pode ter morrido no meio de um compartilhar
@@ -121,9 +159,15 @@ function SharePanel({ content, onClose }) {
         return;
       }
       personal = found;
+      setReadyShown(!found);
       const imageUri = await imageUriForCenaViva({ personalUri: found ? found.uri : null, readyScene: content.readyScene });
       if (!alive) return;
-      const recorded = await recorderRef.current.record({ imageUri, phrase: content.phrase, linkText: APP_URL });
+      const recorded = await recorderRef.current.record({
+        imageUri,
+        phrase: content.phrase,
+        linkText: APP_URL,
+        campaign: content.campaign,
+      });
       if (!alive) {
         discardShareFile(recorded.uri);
         return;
@@ -148,13 +192,13 @@ function SharePanel({ content, onClose }) {
     []
   );
 
-  // site: o JPEG do cartão fica pronto antes do toque (padrão da tela de Afirmações)
+  // site: o JPEG do cartão fica pronto antes do toque (padrão da tela de Afirmações), com o nome do compartilhar
   useEffect(() => {
-    if (!web || !cardReady) return undefined;
+    if (!web || !valid || !cardReady) return undefined;
     let alive = true;
     setCardFile(null);
     setCardFailed(false);
-    createAffirmationShareFile({ viewRef: captureRef })
+    createAffirmationShareFile({ viewRef: captureRef, fileName: shareFileBase(content.campaign) })
       .then((file) => alive && setCardFile(file))
       .catch(() => alive && setCardFailed(true));
     return () => {
@@ -193,17 +237,20 @@ function SharePanel({ content, onClose }) {
 
   const imageReady = cardReady && (!web || !!cardFile);
   const shareImage = () => {
-    if (busy || !imageReady) return;
+    if (!valid || busy || !imageReady) return;
     const link = shareUrl('imagem', content.campaign);
+    const text = `${APP_NAME} — ${link}`;
     const sharing = web
-      ? shareVideoFile({ file: cardFile, mimeType: 'image/jpeg', title: t(S.title), text: `${APP_NAME} — ${link}` })
-      : shareAffirmationCard({ viewRef: previewRef, title: t(S.title) });
+      ? shareVideoFile({ file: cardFile, mimeType: 'image/jpeg', title: t(S.title), text })
+      : captureShareImage({ viewRef: previewRef, campaign: content.campaign }).then((image) =>
+          shareVideoFile({ uri: image.uri, mimeType: image.mimeType, title: t(S.title), text })
+        );
     setMedium('imagem');
     track(sharing, link);
   };
 
   const shareVideo = () => {
-    if (busy) return;
+    if (!valid || busy) return;
     if (video.state === 'failed' || video.state === 'spent') {
       setAsked(false);
       setVideo({ state: 'recording' });
@@ -234,6 +281,7 @@ function SharePanel({ content, onClose }) {
 
   // o expo-sharing não leva texto junto do arquivo: o link vai por aqui (no site, se não der, copia)
   const shareLink = async () => {
+    if (!valid || busy) return;
     const message = `“${content.phrase}” — ${APP_NAME}\n${shareUrl(medium, content.campaign)}`;
     setNotice(null);
     try {
@@ -248,10 +296,6 @@ function SharePanel({ content, onClose }) {
     } catch (_error) {
       setNotice({ kind: 'manual', text: message });
     }
-  };
-
-  const close = () => {
-    if (!busy) onClose();
   };
 
   const webm = video.state === 'ready' && video.mimeType === 'video/webm';
@@ -274,9 +318,9 @@ function SharePanel({ content, onClose }) {
   const muted = { color: theme.textMuted };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        {web ? (
+        {web && valid ? (
           <View pointerEvents="none" accessible={false} aria-hidden style={styles.captureHost}>
             <ShareCard
               ref={captureRef}
@@ -300,11 +344,11 @@ function SharePanel({ content, onClose }) {
               <Text style={[styles.title, { color: theme.text }]}>{t(S.title)}</Text>
               <Text style={[styles.body, muted]}>{t(S.body)}</Text>
             </View>
+            {/* fechar vale até com um compartilhar pendurado (seletor que nunca responde não prende a folha) */}
             <TouchableOpacity
               testID="share-sheet-close"
               activeOpacity={0.72}
-              disabled={busy}
-              onPress={close}
+              onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel={t(S.close)}
               style={[styles.close, { backgroundColor: alpha(theme.textMuted, 0.1) }]}
@@ -313,80 +357,96 @@ function SharePanel({ content, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <View testID="share-sheet-preview" style={[styles.preview, { width: previewWidth, height: previewHeight }]}>
-            <ShareCard
-              ref={web ? undefined : previewRef}
-              {...card}
-              onLayout={web ? undefined : () => setLaidOut(true)}
-              onVisualReady={web ? undefined : onVisualReady}
-              onVisualError={web ? undefined : () => setVisualReady(true)}
-              style={{
-                position: 'absolute',
-                left: (previewWidth - SHARE_CARD_LAYOUT_SIZE.width) / 2,
-                top: (previewHeight - SHARE_CARD_LAYOUT_SIZE.height) / 2,
-                transform: [{ scale: previewWidth / SHARE_CARD_LAYOUT_SIZE.width }],
-              }}
-            />
-          </View>
+          {valid ? (
+            <>
+              <View testID="share-sheet-preview" style={[styles.preview, { width: previewWidth, height: previewHeight }]}>
+                <ShareCard
+                  ref={web ? undefined : previewRef}
+                  {...card}
+                  onLayout={web ? undefined : () => setLaidOut(true)}
+                  onVisualReady={web ? undefined : onVisualReady}
+                  onVisualError={web ? undefined : () => setVisualReady(true)}
+                  style={{
+                    position: 'absolute',
+                    left: (previewWidth - SHARE_CARD_LAYOUT_SIZE.width) / 2,
+                    top: (previewHeight - SHARE_CARD_LAYOUT_SIZE.height) / 2,
+                    transform: [{ scale: previewWidth / SHARE_CARD_LAYOUT_SIZE.width }],
+                  }}
+                />
+                {/* rótulo honesto só na prévia: por cima dela, fora do cartão capturado e do vídeo */}
+                {readyShown ? (
+                  <Text testID="share-sheet-ready-label" style={styles.readyLabel}>
+                    {t(S.readyScene)}
+                  </Text>
+                ) : null}
+              </View>
 
-          {webm ? (
-            <Text testID="share-video-webm-warning" accessibilityLiveRegion="polite" style={[styles.status, muted]}>
-              {t(S.webmWarning)}
-            </Text>
-          ) : null}
-          {video.state === 'unsupported' || video.state === 'failed' ? (
-            <Text testID="share-video-unavailable" accessibilityLiveRegion="polite" style={[styles.status, muted]}>
-              {t(video.state === 'unsupported' ? S.videoUnsupported : S.videoFailed)}
-            </Text>
-          ) : null}
-          {asked && video.state === 'recording' ? (
-            <View testID="share-video-progress" accessibilityLiveRegion="polite" style={styles.progress}>
-              <ActivityIndicator size="small" color={theme.textMuted} />
-              <Text style={[styles.progressText, muted]}>{t(S.videoProgress)}</Text>
-            </View>
-          ) : null}
-          {notice ? (
-            <View testID="share-sheet-notice" accessibilityLiveRegion="polite" style={styles.notice}>
-              <Text style={[styles.status, muted]}>{t(NOTICES[notice.kind])}</Text>
-              {notice.text ? (
-                <Text selectable style={[styles.noticeText, { color: theme.text }]}>
-                  {notice.text}
+              {webm ? (
+                <Text testID="share-video-webm-warning" accessibilityLiveRegion="polite" style={[styles.status, muted]}>
+                  {t(web ? S.webmWarning : S.webmWarningDevice)}
                 </Text>
               ) : null}
-            </View>
-          ) : null}
+              {video.state === 'unsupported' || video.state === 'failed' ? (
+                <Text testID="share-video-unavailable" accessibilityLiveRegion="polite" style={[styles.status, muted]}>
+                  {t(video.state === 'unsupported' ? S.videoUnsupported : S.videoFailed)}
+                </Text>
+              ) : null}
+              {asked && video.state === 'recording' ? (
+                <View testID="share-video-progress" accessibilityLiveRegion="polite" style={styles.progress}>
+                  <ActivityIndicator size="small" color={theme.textMuted} />
+                  <Text style={[styles.progressText, muted]}>{t(S.videoProgress)}</Text>
+                </View>
+              ) : null}
+              {notice ? (
+                <View testID="share-sheet-notice" accessibilityLiveRegion="polite" style={styles.notice}>
+                  <Text style={[styles.status, muted]}>{t(NOTICES[notice.kind])}</Text>
+                  {notice.text ? (
+                    <Text selectable style={[styles.noticeText, { color: theme.text }]}>
+                      {notice.text}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
 
-          <PrimaryButton
-            testID="share-image"
-            label={imageLabel}
-            icon="image-outline"
-            disabled={busy || !imageReady}
-            onPress={shareImage}
-            style={styles.button}
-          />
-          <PrimaryButton
-            testID="share-video"
-            label={videoLabel}
-            icon="videocam-outline"
-            variant={video.state === 'ready' && !webm ? 'solid' : 'soft'}
-            disabled={busy || video.state === 'unsupported'}
-            onPress={shareVideo}
-            style={styles.button}
-          />
-          <TouchableOpacity
-            testID="share-link"
-            activeOpacity={0.72}
-            onPress={shareLink}
-            accessibilityRole="button"
-            accessibilityLabel={t(S.link)}
-            style={styles.link}
-          >
-            <Ionicons name="link-outline" size={18} color={theme.textMuted} />
-            <Text style={[styles.linkText, muted]}>{t(S.link)}</Text>
-          </TouchableOpacity>
+              <PrimaryButton
+                testID="share-image"
+                label={imageLabel}
+                icon="image-outline"
+                disabled={busy || !imageReady}
+                onPress={shareImage}
+                style={styles.button}
+              />
+              <PrimaryButton
+                testID="share-video"
+                label={videoLabel}
+                icon="videocam-outline"
+                variant={video.state === 'ready' && !webm ? 'solid' : 'soft'}
+                disabled={busy || video.state === 'unsupported'}
+                onPress={shareVideo}
+                style={styles.button}
+              />
+              <TouchableOpacity
+                testID="share-link"
+                activeOpacity={0.72}
+                disabled={busy}
+                onPress={shareLink}
+                accessibilityRole="button"
+                accessibilityLabel={t(S.link)}
+                accessibilityState={{ disabled: busy }}
+                style={[styles.link, busy && styles.dimmed]}
+              >
+                <Ionicons name="link-outline" size={18} color={theme.textMuted} />
+                <Text style={[styles.linkText, muted]}>{t(S.link)}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text testID="share-sheet-invalid" accessibilityLiveRegion="polite" style={[styles.status, muted]}>
+              {t(S.invalid)}
+            </Text>
+          )}
         </ScrollView>
       </View>
-      <CenaVivaRecorder ref={recorderRef} />
+      {valid ? <CenaVivaRecorder ref={recorderRef} /> : null}
     </Modal>
   );
 }
@@ -407,6 +467,20 @@ const styles = StyleSheet.create({
   body: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   close: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   preview: { alignSelf: 'center', overflow: 'hidden', borderRadius: 20 },
+  // no alto da prévia (o cartão deixa o topo livre), pequeno e legível sobre a imagem
+  readyLabel: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    fontSize: 10.5,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
   // o alvo do site fica fora da viewport, mas com os 360×640 sem transformação (a captura não rasteriza a miniatura)
   captureHost: {
     position: 'absolute',
@@ -422,5 +496,6 @@ const styles = StyleSheet.create({
   noticeText: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6 },
   button: { marginTop: 12 },
   link: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  dimmed: { opacity: 0.45 },
   linkText: { fontSize: 14, lineHeight: 20, fontWeight: '700', marginLeft: 6 },
 });

@@ -24,6 +24,7 @@ import CelestialTrace from '../../components/CelestialTrace';
 import CenaViva from '../../components/cenaViva/CenaViva';
 import { imageUriForCenaViva } from '../../components/cenaViva/imageSource';
 import NarratorSelector from '../../components/NarratorSelector';
+import { useShareSheet } from '../../components/ShareSheet';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 import { captionProgressFromNarration } from '../../utils/captionProgress';
 import { maybeRequestStoreReview } from '../../utils/storeReview';
@@ -62,6 +63,8 @@ const S = {
   visualRetry: { en: 'Try the image again', pt: 'Tentar a imagem novamente' },
   personalScene: { en: 'Created for you', pt: 'Criada para você' },
   readyScene: { en: 'Scene inspired by your answers', pt: 'Cena inspirada nas suas respostas' },
+  share: { en: 'Share my Anchor Scene', pt: 'Compartilhar minha Cena-Âncora' },
+  shareKind: { en: 'Anchor Scene', pt: 'Cena-Âncora' },
   identity: { en: 'The identity you practise', pt: 'A identidade que você pratica' },
   bridge: { en: 'Your bridge to today', pt: 'Sua ponte para hoje' },
   bridgeNote: {
@@ -104,6 +107,7 @@ export default function RevealScreen({ navigation, route }) {
   const narration = usePersonalNarration();
   const { withCloudMediaConsent } = useCloudMediaConsent();
   const { t } = useT();
+  const share = useShareSheet();
   const [audioFailed, setAudioFailed] = useState(false);
   const [bridgeDraft, setBridgeDraft] = useState('');
   const [bridgeInputHeight, setBridgeInputHeight] = useState(BRIDGE_MIN_HEIGHT);
@@ -344,6 +348,25 @@ export default function RevealScreen({ navigation, route }) {
                   </Text>
                 </>
               ) : null}
+              {/* depois da cena e do rótulo, nunca por cima: o cartão e o vídeo usam a mesma imagem */}
+              <Pressable
+                testID="share-open-ancora"
+                accessibilityRole="button"
+                accessibilityLabel={t(S.share)}
+                onPress={() =>
+                  share.open({
+                    campaign: 'ancora',
+                    phrase: m.affirmation,
+                    kindLabel: t(S.shareKind),
+                    visualKey: m.visual?.cacheKey,
+                    category: m.category,
+                  })
+                }
+                style={({ pressed }) => [styles.visualAction, pressed && styles.pressed]}
+              >
+                <Ionicons name="share-social-outline" size={19} color={ONB.badgeText} />
+                <Text style={styles.visualActionText}>{t(S.share)}</Text>
+              </Pressable>
               {m.visual?.cacheKey ? null : visualPhase === 'pending' ? (
                 <View
                   testID="reveal-personal-visual-pending"
@@ -506,6 +529,7 @@ export default function RevealScreen({ navigation, route }) {
           ) : null}
         </Animated.View>
       </ScrollView>
+      {share.sheet}
     </OnbScreen>
   );
 }

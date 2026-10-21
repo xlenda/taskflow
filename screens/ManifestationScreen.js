@@ -38,10 +38,13 @@ import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
 import SectionHeading from '../components/SectionHeading';
 import AiContentReportAction from '../components/AiContentReportAction';
+import { useShareSheet } from '../components/ShareSheet';
 
 // Dicionário local da tela (padrão useT: t(S.chave) / t(S.chave, { vars })).
 const S = {
   screenTitle: { en: 'Manifestation', pt: 'Manifestação' },
+  share: { en: 'Share', pt: 'Compartilhar' },
+  shareAnchor: { en: 'Anchor Scene', pt: 'Cena-Âncora' },
   gone: { en: 'This manifestation is no longer here.', pt: 'Esta manifestação não está mais aqui.' },
   goBack: { en: 'Go back', pt: 'Voltar' },
 
@@ -219,6 +222,7 @@ export default function ManifestationScreen() {
   const { t, lang } = useT();
   const navigation = useNavigation();
   const route = useRoute();
+  const share = useShareSheet();
   // Regra única: toda marcação/desmarcação de prática passa pelo togglePractice
   // do contexto (mesmo caminho da Home) — quem confirma é quem chama.
   const {
@@ -1074,6 +1078,24 @@ export default function ManifestationScreen() {
         </Card>
 
         <AddToWakeButton {...wakeTarget} accent={item.accent} style={styles.wakeButton} />
+        {/* fora da capa: nada por cima da afirmação nem do rótulo da cena pronta */}
+        <PrimaryButton
+          testID={`share-open-${wakeTarget.campaign}`}
+          label={t(S.share)}
+          icon="share-social-outline"
+          accent={item.accent}
+          variant="ghost"
+          onPress={() =>
+            share.open({
+              campaign: wakeTarget.campaign,
+              phrase: item.affirmation,
+              kindLabel: wakeTarget.kind === 'anchor' ? t(S.shareAnchor) : categoryLabel(item.category, lang),
+              visualKey: item.visual?.cacheKey,
+              category: item.category,
+            })
+          }
+          style={styles.shareButton}
+        />
 
         {completed ? (
           // Ciclo fechado: celebração no lugar do botão — sem cobrar check-in
@@ -1244,6 +1266,7 @@ export default function ManifestationScreen() {
         ) : null}
         <View style={styles.bottomSpace} />
       </ScrollView>
+      {share.sheet}
     </Screen>
   );
 }
@@ -1382,6 +1405,7 @@ const styles = StyleSheet.create({
   doneBannerText: { fontSize: 15.5, fontWeight: '700', marginLeft: 8 },
   practiceButton: { marginTop: 10 },
   wakeButton: { marginTop: 10 },
+  shareButton: { marginTop: 4 },
   inputLabel: { fontSize: 12, fontWeight: '800', marginTop: 14, textTransform: 'uppercase', letterSpacing: 0.7 },
   input: {
     minHeight: 50,

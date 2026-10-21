@@ -227,11 +227,12 @@ function fakeCanvas(width, height, stamp) {
       return true;
     },
   });
-  const tracks = [{ stop() {} }];
+  const tracks = [{ stopped: false, stop() { this.stopped = true; } }];
   return {
     width,
     height,
     calls,
+    tracks,
     getContext: (type) => (type === '2d' ? ctx : null),
     captureStream: () => ({ getTracks: () => tracks }),
   };
@@ -283,6 +284,7 @@ async function main() {
     useWindowDimensions: () => ({ width: 390, height: 844 }),
   };
   const disk = new Map();
+  const device = { full: false, writes: [] };
   class DeviceFile {
     constructor(...parts) {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
@@ -296,8 +298,10 @@ async function main() {
     create() {
       disk.set(this.uri, '');
     }
-    write(content) {
+    write(content, options) {
+      if (device.full) throw new Error('ENOSPC: disco cheio');
       disk.set(this.uri, content);
+      device.writes.push({ uri: this.uri, options });
     }
     delete() {
       if (!disk.has(this.uri)) throw new Error('arquivo inexistente');
@@ -327,8 +331,10 @@ async function main() {
   const viewShot = {
     __esModule: true,
     default: 'ViewShot',
+    base64: '/9j/2Q==',
     captureRef: (ref, options) => {
       captures.push({ ref, options });
+      if (options.result === 'base64') return Promise.resolve(viewShot.base64);
       return Promise.resolve(options.result === 'tmpfile' ? '/tmp/celeste-afirmacao.jpg' : 'data:image/jpeg;base64,/9j/2Q==');
     },
     releaseCapture: () => {},
@@ -341,7 +347,19 @@ async function main() {
   };
 
   // 1) link compartilhado: exatamente o das Global Constraints, só utm (nenhum dado pessoal cabe nele)
-  const { shareUrl, shareVideoFile, sweepShareCache, discardShareFile } = loadWith('utils/shareContent.js', baseMocks);
+  const {
+    shareUrl,
+    shareVideoFile,
+    sweepShareCache,
+    discardShareFile,
+    shareFileBase,
+    captureShareImage,
+    SHARE_CAMPAIGNS,
+  } = loadWith('utils/shareContent.js', baseMocks);
+  assert.deepStrictEqual(SHARE_CAMPAIGNS, CAMPAIGNS, 'as 5 campanhas combinadas');
+  // todo arquivo do compartilhar se chama celeste-share-<campanha>-<ms>: a limpeza acha pelo nome (e pela idade)
+  assert.strictEqual(shareFileBase('visao', 1700000000000), 'celeste-share-visao-1700000000000');
+  assert.throws(() => shareFileBase('../x', 1), 'campanha fora da lista não vira nome de arquivo');
   assert.strictEqual(
     shareUrl('video', 'visao'),
     'https://celeste-jet-two.vercel.app/?utm_source=compartilhar&utm_medium=video&utm_campaign=visao'
@@ -362,9 +380,13 @@ async function main() {
   // 2) cartão final do vídeo (8 s, 30 fps): a legenda completa em 85% (6,8 s); a janela que rola se dissolve em
   //    0,3 s na frase inteira ajustada, que fica parada com a assinatura e o link até o fim
   const { installCenaViva } = loadWith('components/cenaViva/renderer.js', {});
-  async function recordVideo(phrase) {
+  // abortAt: a folha fecha quando o relógio chega nele (AbortController do gravador); preAborted: já cancelada
+  async function recordVideo(phrase, { abortAt, preAborted } = {}) {
     let clock = 0;
     const made = [];
+    const controller = new AbortController();
+    if (preAborted) controller.abort();
+    const cancellable = abortAt != null || preAborted;
     class Recorder {
       static isTypeSupported(mime) {
         return mime === 'video/mp4';
@@ -394,14 +416,35 @@ async function main() {
       performance: { now: () => clock },
       setTimeout(fn, ms) {
         clock += ms; // relógio exato: cada quadro sai 1/30 s depois do anterior
+        if (abortAt != null && clock >= abortAt && !controller.signal.aborted) controller.abort();
         setImmediate(fn);
       },
       requestAnimationFrame: () => 0,
       cancelAnimationFrame: () => {},
     };
     installCenaViva(studio);
-    const video = await studio.CenaViva.recordVideo({ image, phrase, linkText: LINK_TEXT });
-    return { video, frames: framesOf(made[0].calls) };
+    let video = null;
+    let error = null;
+    try {
+      video = await studio.CenaViva.recordVideo({
+        image,
+        phrase,
+        linkText: LINK_TEXT,
+        ...(cancellable ? { signal: controller.signal } : {}),
+      });
+    } catch (caught) {
+      if (!cancellable) throw caught;
+      error = caught;
+    }
+    for (let i = 0; i < 20; i++) await tick(); // quadros atrasados teriam tempo de pintar
+    const canvas = made[0];
+    return {
+      video,
+      error,
+      canvases: made.length,
+      frames: canvas ? framesOf(canvas.calls) : [],
+      tracksStopped: !!canvas && canvas.tracks.every((track) => track.stopped),
+    };
   }
   const base = Math.round(720 * 0.058); // tamanho cheio da legenda no 720
   const captionOf = (frame) => frame.words.filter((word) => word.caption);
@@ -457,6 +500,14 @@ async function main() {
       .every((f) => captionOf(f).map((w) => w.text).join(' ') === 'Eu escolho a paz' && captionOf(f).every((w) => w.alpha === 1)),
     'frase curta inteira e opaca no cartão final'
   );
+  // a folha fechou no meio (AbortController): o laço para de pintar na hora, a câmera do canvas é solta e a promessa
+  // rejeita com recorder_cancelled — reabrir a folha não empilha gravações escondidas de 720×1280
+  const stopped = await recordVideo('Eu escolho a paz', { abortAt: 1000 });
+  assert.strictEqual(stopped.error && stopped.error.code, 'recorder_cancelled', 'cancelada: recorder_cancelled');
+  assert.ok(stopped.frames.length > 5 && stopped.frames.every((frame) => frame.t < 1000), 'nenhum quadro depois de cancelar');
+  assert.ok(stopped.tracksStopped, 'cancelada: solta a câmera do canvas');
+  const never = await recordVideo('Eu escolho a paz', { preAborted: true });
+  assert.ok(never.error && never.error.code === 'recorder_cancelled' && never.canvases === 0, 'já cancelada: nem começa');
 
   // 3) site: navigator.share chamado JÁ (antes de shareVideoFile devolver: nenhum await entre o toque e o share),
   //    com o arquivo e o link no texto; cancelar = cancelled; sem compartilhar arquivo = baixa e copia o link
@@ -569,32 +620,75 @@ async function main() {
     await assert.rejects(shareVideoFile({ uri: shareUri, mimeType: 'video/mp4', title: 'x' }), /Activity not found/);
     assert.ok(!disk.has(shareUri), 'falhou: o vídeo sai do cache do mesmo jeito');
     sharing.outcome = () => Promise.resolve();
-    // nunca apaga o que não é vídeo do compartilhar
-    const foreign = 'file:///document/visual-anchor.jpg';
-    disk.set(foreign, 'imagem pessoal');
-    discardShareFile(foreign);
-    discardShareFile('file:///cache/xceleste-share-1.mp4');
+    // apaga o que é do compartilhar — vídeo e cartão, com ou sem campanha, e o cartão de versões antigas
+    // (view-shot: celeste-afirmacao<dígitos>.jpg) —; nunca outro arquivo
+    for (const ours of [
+      'file:///cache/celeste-share-visao-1700000000000.jpg',
+      'file:///cache/celeste-share-sonho-1700000000000.png',
+      'file:///cache/celeste-share-ancora-1700000000000.mp4',
+      'file:///cache/celeste-share-1700000000000.webm',
+      'file:///cache/celeste-afirmacao8123456789012345678.jpg',
+    ]) {
+      disk.set(ours, 'x');
+      discardShareFile(ours);
+      assert.ok(!disk.has(ours), `${ours} sai do cache`);
+    }
+    const foreign = [
+      'file:///document/visual-anchor.jpg',
+      'file:///cache/xceleste-share-1.mp4',
+      'file:///cache/celeste-share-visao.jpg',
+      'file:///cache/celeste-share-visao-1.gif',
+      'file:///cache/scene-7.jpg',
+    ];
+    foreign.forEach((uri) => disk.set(uri, 'de outro'));
+    foreign.forEach((uri) => discardShareFile(uri));
     discardShareFile(undefined);
-    assert.ok(disk.has(foreign), 'apagar só toca em celeste-share-<ts>.mp4|webm');
-    disk.delete(foreign);
+    assert.ok(foreign.every((uri) => disk.has(uri)), 'apagar só toca nos arquivos do compartilhar');
+    foreign.forEach((uri) => disk.delete(uri));
   } finally {
     global.setTimeout = originalTimeout;
   }
 
-  // 5) ao abrir de novo: vídeos que ficaram para trás (o app morreu no meio) saem; os de menos de 90 s ficam (o app
-  //    de destino pode estar lendo); nada que não seja vídeo do compartilhar é tocado
+  // 5) ao abrir o app e ao abrir a folha: o que ficou para trás (o app morreu no meio) sai — vídeo e cartão de mais de
+  //    90 s e o cartão de versões antigas; os de menos de 90 s ficam (o app de destino pode estar lendo); o resto fica
   const now = 1_800_000_000_000;
   const stale = `file:///cache/celeste-share-${now - 91000}.mp4`;
   const staleWebm = `file:///cache/celeste-share-${now - 3600000}.webm`;
+  const staleCard = `file:///cache/celeste-share-afirmacao-${now - 95000}.jpg`;
+  const legacyCard = 'file:///cache/celeste-afirmacao1234567890123.jpg';
   const fresh = `file:///cache/celeste-share-${now - 1000}.mp4`;
+  const freshCard = `file:///cache/celeste-share-visao-${now - 2000}.png`;
   const other = 'file:///cache/scene-7.jpg';
-  [stale, staleWebm, fresh, other, 'file:///cache/xceleste-share-1.mp4'].forEach((uri) => disk.set(uri, 'x'));
+  const kept = [fresh, freshCard, other, 'file:///cache/xceleste-share-1.mp4'];
+  [stale, staleWebm, staleCard, legacyCard, ...kept].forEach((uri) => disk.set(uri, 'x'));
   sweepShareCache(now);
-  assert.ok(!disk.has(stale) && !disk.has(staleWebm), 'vídeos velhos saem do cache');
-  assert.ok(disk.has(fresh) && disk.has(other) && disk.has('file:///cache/xceleste-share-1.mp4'), 'o resto fica');
+  assert.ok(![stale, staleWebm, staleCard, legacyCard].some((uri) => disk.has(uri)), 'vídeos e cartões velhos saem do cache');
+  assert.ok(kept.every((uri) => disk.has(uri)), 'os recentes e o resto ficam');
   cacheDir.broken = true;
   sweepShareCache(now); // cache ilegível não derruba a folha
   cacheDir.broken = false;
+  disk.clear();
+
+  // 5b) app: o cartão vira JPEG no cache do próprio app com o nome do compartilhar — sem o arquivo temporário do
+  //     view-shot, que no Android cai no cache externo quando ele tem mais espaço (fora do alcance da limpeza)
+  RN.Platform.OS = 'android';
+  const cardTarget = { current: { host: true } };
+  viewShot.base64 = 'QUJDRA==';
+  const shot = await captureShareImage({ viewRef: cardTarget, campaign: 'ancora' });
+  assert.match(shot.uri, /^file:\/\/\/cache\/celeste-share-ancora-\d+\.jpg$/, 'cartão no cache do app, com o nome do compartilhar');
+  assert.strictEqual(shot.mimeType, 'image/jpeg');
+  assert.strictEqual(disk.get(shot.uri), 'QUJDRA==', 'o JPEG gravado é o da captura');
+  assert.deepStrictEqual(device.writes.pop(), { uri: shot.uri, options: { encoding: 'base64' } });
+  const shotOptions = captures[captures.length - 1].options;
+  assert.deepStrictEqual(
+    [shotOptions.result, shotOptions.width, shotOptions.height, shotOptions.format],
+    ['base64', 1080, 1920, 'jpg'],
+    'captura 1080×1920 em base64, sem arquivo do view-shot'
+  );
+  device.full = true;
+  await assert.rejects(captureShareImage({ viewRef: cardTarget, campaign: 'visao' }), /ENOSPC/);
+  device.full = false;
+  assert.ok(![...disk.keys()].some((uri) => uri.includes('celeste-share-visao-')), 'disco cheio: nada pela metade no cache');
   disk.clear();
 
   // 6) cartão 9:16: a imagem pessoal; sem ela, a cena pronta das respostas (a mesma do vídeo); sem as duas, o
@@ -611,6 +705,7 @@ async function main() {
   const recorders = [];
   const app = fakeReact({
     ViewShot: () => ({ snapshot: true }),
+    WebView: () => ({ injectJavaScript() {} }),
     ShareCard: (props) => ({ card: props.testID || 'share-card' }),
     CenaVivaRecorder: () => {
       const recorder = { jobs: [] };
@@ -680,30 +775,24 @@ async function main() {
   assert.ok(released.includes('late'), 'chegou depois de fechar: a imagem é solta');
   assert.strictEqual(imageOf(app.mount(ShareCard, { phrase: 'aa', kindLabel: 'bb' })), null, 'sem as duas: o gradiente');
 
-  // o cartão de afirmação é o ShareCard (mesmas exportações, constantes e testIDs: a tela de Afirmações não muda)
-  const affirmationModule = loadWith('components/AffirmationShareCard.js', uiMocks);
-  assert.deepStrictEqual({ ...affirmationModule.AFFIRMATION_SHARE_LAYOUT_SIZE }, { width: 360, height: 640 });
-  assert.strictEqual(affirmationModule.AFFIRMATION_SHARE_ASPECT_RATIO, 9 / 16);
-  const affirmationRef = { current: null };
-  const onLayout = () => {};
-  const affirmationCard = app.mount(
-    affirmationModule.default,
-    { affirmation: { text: '  Eu sigo com presença  ' }, categoryLabel: 'Da sua intenção', accent: 2, visualKey: 'v-1', onLayout, onVisualReady, onVisualError, style: { opacity: 1 } },
-    affirmationRef
-  );
-  const inner = affirmationCard.tree;
-  assert.strictEqual(inner.type.name, 'ShareCard', 'AffirmationShareCard embrulha o ShareCard');
-  assert.strictEqual(inner.props.ref, affirmationRef, 'a ref da captura chega ao cartão');
-  assert.deepStrictEqual(
-    { ...inner.props, ref: undefined },
-    { phrase: 'Eu sigo com presença', kindLabel: 'Da sua intenção', accent: 2, visualKey: 'v-1', testID: 'affirmation-share-card', onLayout, onVisualReady, onVisualError, style: { opacity: 1 }, ref: undefined },
-    'frase, rótulo, cor, imagem, testID e avisos passam inteiros'
-  );
-  assert.strictEqual(app.mount(affirmationModule.default, { affirmation: 'aa', testID: 'affirmation-share-capture-card' }).tree.props.testID, 'affirmation-share-capture-card');
-  const innerCard = app.mount(inner.type, { ...inner.props, ref: undefined });
-  for (const id of ['affirmation-share-card', 'affirmation-share-card-brand', 'affirmation-share-card-category', 'affirmation-share-card-affirmation', 'affirmation-share-card-url']) {
-    assert.ok(innerCard.byId(id), `testID ${id} continua no cartão de afirmação`);
+  // a frase sempre cabe: a fonte desce por faixas de comprimento e as linhas travam no que cabe acima da assinatura
+  // (420 px dos 640); passou disso, reticências — nunca invade o Traço Celeste nem o link
+  const PHRASE_BOX = 420;
+  const phraseFit = (length) => {
+    const node = app.mount(ShareCard, { ...cardProps, phrase: 'palavra '.repeat(length / 8) }).byId('share-card-affirmation');
+    const style = Object.assign({}, ...[].concat(node.props.style).filter(Boolean));
+    return { size: style.fontSize, line: style.lineHeight, lines: node.props.numberOfLines };
+  };
+  let previousSize = Infinity;
+  for (const length of [16, 120, 200, 300, 600, 2000]) {
+    const fit = phraseFit(length);
+    assert.ok(fit.lines > 0 && fit.lines * fit.line <= PHRASE_BOX, `${length} letras: ${fit.lines} linhas de ${fit.line} px cabem`);
+    assert.ok(fit.size <= previousSize, `${length} letras: a fonte só desce`);
+    previousSize = fit.size;
   }
+  assert.ok(phraseFit(600).size < phraseFit(300).size, 'frase longa demais: uma fonte menor ainda');
+  // regressão do cartão real (E2E): a afirmação de 165 letras a 30 px saía cortada nas 10 linhas
+  assert.ok(phraseFit(165).size <= 23, 'afirmação de 165 letras: fonte de no máximo 23 px (cabe inteira)');
 
   // 7) folha no site: a prévia do cartão aparece antes de qualquer envio; o vídeo começa a gravar ao abrir (com a
   //    cena pronta quando não há imagem pessoal); tocar antes de ele ficar pronto só mostra o andamento; pronto, o
@@ -719,14 +808,24 @@ async function main() {
       }),
     },
   };
+  const appState = { profile: { dreamLocation: 'Na praia ou no litoral' } };
+  const pickCalls = [];
   const sheetMocks = {
     ...uiMocks,
     'expo-asset': assetModule,
     './ShareCard': { __esModule: true, default: 'ShareCard', SHARE_CARD_LAYOUT_SIZE: cardModule.SHARE_CARD_LAYOUT_SIZE },
     './PrimaryButton': { __esModule: true, default: 'PrimaryButton' },
     './cenaViva/CenaVivaRecorder': { __esModule: true, default: 'CenaVivaRecorder' },
+    '../context/AppContext': { useApp: () => ({ state: appState }) },
+    '../utils/useT': { useT: () => ({ t: (field) => field.pt, lang: 'pt' }) },
+    '../utils/readyScene': {
+      pickReadyScene: (input) => {
+        pickCalls.push(input);
+        return { id: `beach-${input.category || 'Peace'}`, source: 11, place: 'beach', category: input.category || 'Peace' };
+      },
+    },
   };
-  const { default: ShareSheet } = loadWith('components/ShareSheet.js', sheetMocks);
+  const { default: ShareSheet, useShareSheet } = loadWith('components/ShareSheet.js', sheetMocks);
   const content = { campaign: 'visao', phrase: 'Eu vivo com calma', kindLabel: 'Visão', visualKey: null, readyScene, lang: 'pt' };
   const closes = [];
   assert.strictEqual(app.mount(ShareSheet, { visible: false, onClose() {}, content }).tree, null, 'fechada: nada montado');
@@ -759,10 +858,19 @@ async function main() {
       await recordingStarted(sheet);
       assert.deepStrictEqual(
         lastRecorder().jobs[0].params,
-        { imageUri: '/assets/scene-7.jpg', phrase: 'Eu vivo com calma', linkText: LINK_TEXT },
-        'vídeo gravado ao abrir, com a cena pronta das respostas (sem imagem pessoal)'
+        { imageUri: '/assets/scene-7.jpg', phrase: 'Eu vivo com calma', linkText: LINK_TEXT, campaign: 'visao' },
+        'vídeo gravado ao abrir, com a cena pronta das respostas (sem imagem pessoal) e o nome da campanha'
       );
       assert.ok(!seen.shared.length && !sharing.calls.length, 'abrir não envia nada: a prévia vem antes');
+      // rótulo honesto da cena pronta só na PRÉVIA: por cima dela, fora do cartão capturado e do vídeo
+      const readyLabel = sheet.byId('share-sheet-ready-label');
+      assert.ok(readyLabel && textOf(readyLabel) === 'Cena inspirada nas suas respostas', 'prévia com a cena pronta: rótulo honesto');
+      assert.ok(descendants(sheet.byId('share-sheet-preview')).includes(readyLabel), 'o rótulo fica na prévia');
+      assert.ok(
+        cardIn(sheet.byId('share-sheet-preview')).props.children === undefined &&
+          sheet.byId('share-capture-card').props.children === undefined,
+        'o rótulo nunca entra no cartão capturado'
+      );
       const videoButton = () => sheet.byId('share-video');
       assert.match(videoButton().props.label, /Preparando o vídeo/);
       videoButton().props.onPress();
@@ -793,7 +901,10 @@ async function main() {
       assert.strictEqual(captures[captures.length - 1].ref, captureCard.props.ref, 'captura o cartão em tamanho real, não a miniatura');
       imageButton().props.onPress();
       assert.strictEqual(seen.shared.length, 2, 'imagem: navigator.share no mesmo toque');
-      assert.ok(seen.shared[1].files[0].type === 'image/jpeg' && /\.jpg$/.test(seen.shared[1].files[0].name), 'JPEG do cartão');
+      assert.ok(
+        seen.shared[1].files[0].type === 'image/jpeg' && /^celeste-share-visao-\d+\.jpg$/.test(seen.shared[1].files[0].name),
+        'JPEG do cartão com o nome do compartilhar da campanha'
+      );
       assert.strictEqual(seen.shared[1].text, `Celeste — ${shareUrl('imagem', 'visao')}`, 'link de imagem da campanha');
       await settle(sheet, () => !imageButton().props.disabled, 'imagem compartilhada');
       await sheet.byId('share-link').props.onPress();
@@ -816,7 +927,7 @@ async function main() {
       const webm = new File([new Uint8Array(90000)], 'celeste-share-3.webm', { type: 'video/webm' });
       lastRecorder().jobs[0].resolve({ file: webm, mimeType: 'video/webm' });
       await settle(sheet, () => sheet.byId('share-video-webm-warning'), 'aviso de webm');
-      assert.match(textOf(sheet.byId('share-video-webm-warning')), /WhatsApp/, 'avisa que o WhatsApp não abre');
+      assert.match(textOf(sheet.byId('share-video-webm-warning')), /navegador.*WhatsApp/, 'site: o navegador grava webm, o WhatsApp não abre');
       assert.match(sheet.byId('share-video').props.label, /WebM/, 'webm nunca vai calado como se fosse mp4');
       assert.strictEqual(sheet.byId('share-video').props.variant, 'soft', 'o vídeo webm sai do destaque');
       sheet.byId('share-capture-card').props.onLayout();
@@ -858,9 +969,102 @@ async function main() {
       lookups.get('visual-anchor').resolve({ uri: 'blob:anchor', release: () => released.push('anchor') });
       await recordingStarted(sheet);
       assert.strictEqual(lastRecorder().jobs[0].params.imageUri, 'blob:anchor', 'com imagem pessoal, o vídeo usa ela');
+      assert.strictEqual(sheet.byId('share-sheet-ready-label'), null, 'imagem pessoal: sem o rótulo da cena pronta');
       sheet.unmount();
       assert.ok(released.includes('anchor'), 'fechou: a imagem pessoal é solta');
     });
+  }
+  {
+    // compartilhar em andamento não prende a folha: fechar continua valendo e o link espera
+    const { globals } = browser({ share: () => new Promise(() => {}) });
+    await withGlobals(globals, async () => {
+      const sheet = openSheet({ ...content, campaign: 'visao' });
+      await recordingStarted(sheet);
+      lastRecorder().jobs[0].resolve({ file: new File([new Uint8Array(70000)], 'v.mp4', { type: 'video/mp4' }), mimeType: 'video/mp4' });
+      await settle(sheet, () => /Compartilhar vídeo$/.test(sheet.byId('share-video').props.label), 'vídeo pronto');
+      sheet.byId('share-video').props.onPress();
+      sheet.flush();
+      assert.ok(sheet.byId('share-link').props.disabled, 'enviando: o link espera');
+      assert.ok(!sheet.byId('share-sheet-close').props.disabled, 'enviando: fechar continua valendo');
+      sheet.byId('share-sheet-close').props.onPress();
+      assert.deepStrictEqual(closes.splice(0), ['visao'], 'fechou mesmo com o compartilhar pendurado');
+      sheet.unmount();
+    });
+  }
+  {
+    // avisos: baixou e copiou / baixou e mostra o link para colar / link copiado / texto para copiar à mão
+    const noticeOf = (sheet) => textOf(sheet.byId('share-sheet-notice'));
+    const imageReady = async (sheet) => {
+      sheet.byId('share-capture-card').props.onLayout();
+      sheet.byId('share-capture-card').props.onVisualReady();
+      await settle(sheet, () => !sheet.byId('share-image').props.disabled, 'cartão pronto');
+    };
+    const desktop = browser({ canShare: false });
+    await withGlobals(desktop.globals, async () => {
+      const sheet = openSheet({ ...content, campaign: 'ancora' });
+      await imageReady(sheet);
+      sheet.byId('share-image').props.onPress();
+      await settle(sheet, () => sheet.byId('share-sheet-notice'), 'aviso do download');
+      assert.match(noticeOf(sheet), /Arquivo baixado e link copiado/, 'baixou e copiou');
+      assert.deepStrictEqual(desktop.seen.copied, [`Celeste — ${shareUrl('imagem', 'ancora')}`]);
+      sheet.unmount();
+    });
+    const blocked = browser({ canShare: false, clipboard: () => Promise.reject(new Error('sem foco')) });
+    await withGlobals(blocked.globals, async () => {
+      const sheet = openSheet({ ...content, campaign: 'ancora' });
+      await imageReady(sheet);
+      sheet.byId('share-image').props.onPress();
+      await settle(sheet, () => sheet.byId('share-sheet-notice'), 'aviso sem cópia');
+      assert.ok(
+        /Cole este link/.test(noticeOf(sheet)) && noticeOf(sheet).endsWith(shareUrl('imagem', 'ancora')),
+        'não copiou: mostra o link para colar'
+      );
+      // link sem compartilhar no navegador: copia; sem área de transferência, o texto para copiar à mão
+      RN.Share.share = () => Promise.reject(new Error('Share is not supported in this browser'));
+      await sheet.byId('share-link').props.onPress();
+      sheet.flush();
+      assert.match(noticeOf(sheet), /Compartilhar não funciona aqui/, 'sem compartilhar nem área de transferência: à mão');
+      assert.ok(noticeOf(sheet).includes(`“Eu vivo com calma” — Celeste\n${shareUrl('imagem', 'ancora')}`), 'com o texto inteiro');
+      sheet.unmount();
+    });
+    await withGlobals(browser().globals, async () => {
+      const sheet = openSheet({ ...content, campaign: 'sonho' });
+      await sheet.byId('share-link').props.onPress();
+      sheet.flush();
+      assert.match(noticeOf(sheet), /Link copiado/, 'sem compartilhar: o link vai para a área de transferência');
+      RN.Share.share = () => Promise.reject(Object.assign(new Error('Share canceled'), { name: 'AbortError' }));
+      await sheet.byId('share-link').props.onPress();
+      sheet.flush();
+      assert.strictEqual(sheet.byId('share-sheet-notice'), null, 'desistiu do link: nada de aviso');
+      sheet.unmount();
+    });
+    RN.Share.share = (payload) => {
+      linkShares.push(payload);
+      return Promise.resolve({ action: 'sharedAction' });
+    };
+  }
+  {
+    // conteúdo inválido (campanha fora da lista, sem cena pronta, sem frase): estado indisponível, nada grava e
+    // nenhum toque chama shareUrl (que lança)
+    const jobsBefore = recorders.reduce((total, recorder) => total + recorder.jobs.length, 0);
+    for (const broken of [
+      { ...content, campaign: 'promo' },
+      { ...content, readyScene: undefined },
+      { ...content, phrase: '   ' },
+    ]) {
+      const sheet = openSheet(broken);
+      await tick();
+      sheet.flush();
+      assert.ok(sheet.byId('share-sheet-invalid'), `inválido (${JSON.stringify(broken.campaign)}): avisa`);
+      assert.ok(
+        !sheet.byId('share-image') && !sheet.byId('share-video') && !sheet.byId('share-link'),
+        'inválido: sem botões de enviar'
+      );
+      sheet.byId('share-sheet-close').props.onPress();
+      sheet.unmount();
+    }
+    closes.splice(0);
+    assert.strictEqual(recorders.reduce((total, recorder) => total + recorder.jobs.length, 0), jobsBefore, 'inválido: nada grava');
   }
 
   // 8) folha no app: limpa vídeos velhos ao abrir; a cena vai como data URI; o vídeo vai pelo expo-sharing com o
@@ -879,6 +1083,7 @@ async function main() {
     assert.ok(!disk.has(old) && disk.has(recent), 'ao abrir: vídeos velhos do compartilhar saem do cache');
     await recordingStarted(sheet);
     assert.strictEqual(lastRecorder().jobs[0].params.imageUri, 'data:image/jpeg;base64,b64(file:///cache/scene-7.jpg)', 'app: a cena pronta vai como data URI');
+    assert.strictEqual(lastRecorder().jobs[0].params.campaign, 'sonho', 'app: o vídeo leva o nome da campanha');
     const videoUri = `file:///cache/celeste-share-${nowMs}.mp4`;
     disk.set(videoUri, 'mp4');
     lastRecorder().jobs[0].resolve({ uri: videoUri, mimeType: 'video/mp4' });
@@ -900,7 +1105,27 @@ async function main() {
     await settle(quitting, () => /Compartilhar vídeo$/.test(quitting.byId('share-video').props.label), 'vídeo não enviado');
     quitting.unmount();
     assert.ok(!disk.has(unsent), 'fechou sem compartilhar: o vídeo sai do cache na hora');
-    // imagem no app: a própria prévia é capturada na hora (1080×1920) e vai como image/jpeg
+    // fechou NO MEIO da gravação e ela terminou depois: o vídeo que chegou sai do cache na hora
+    const leaving = openSheet({ ...content, campaign: 'visao' });
+    await recordingStarted(leaving);
+    const late = lastRecorder().jobs[0];
+    leaving.unmount();
+    const lateUri = `file:///cache/celeste-share-visao-${nowMs + 2}.mp4`;
+    disk.set(lateUri, 'mp4');
+    late.resolve({ uri: lateUri, mimeType: 'video/mp4' });
+    for (let i = 0; i < 5; i++) await tick();
+    assert.ok(!disk.has(lateUri), 'gravação que terminou depois de fechar: sai do cache');
+    // webm no app: o aviso fala do aparelho (não de navegador)
+    const webmApp = openSheet({ ...content, campaign: 'ancora' });
+    await recordingStarted(webmApp);
+    const webmUri = `file:///cache/celeste-share-ancora-${nowMs + 3}.webm`;
+    disk.set(webmUri, 'webm');
+    lastRecorder().jobs[0].resolve({ uri: webmUri, mimeType: 'video/webm' });
+    await settle(webmApp, () => webmApp.byId('share-video-webm-warning'), 'aviso de webm no app');
+    assert.match(textOf(webmApp.byId('share-video-webm-warning')), /aparelho.*WhatsApp/, 'app: o aparelho grava webm');
+    webmApp.unmount();
+    // imagem no app: a própria prévia vira JPEG no cache do app (celeste-share-<campanha>-<ms>.jpg), vai como
+    // image/jpeg e sai do cache depois, como o vídeo
     const imageSheet = openSheet({ ...content, campaign: 'afirmacao' });
     const appCard = cardIn(imageSheet.byId('share-sheet-preview'));
     assert.ok(!imageSheet.byId('share-capture-card'), 'app: sem cartão escondido (a prévia é a captura)');
@@ -909,14 +1134,201 @@ async function main() {
     await settle(imageSheet, () => !imageSheet.byId('share-image').props.disabled, 'cartão pronto no app');
     sharing.calls.length = 0;
     imageSheet.byId('share-image').props.onPress();
-    await settle(imageSheet, () => sharing.calls.length === 1, 'imagem no app');
-    assert.deepStrictEqual(sharing.calls[0][0], 'file:///tmp/celeste-afirmacao.jpg');
-    assert.strictEqual(sharing.calls[0][1].mimeType, 'image/jpeg');
+    await settle(imageSheet, () => sharing.calls.length === 1 && appTimers.length === 1, 'imagem no app');
+    const [cardUri, cardOptions] = sharing.calls[0];
+    assert.match(cardUri, /^file:\/\/\/cache\/celeste-share-afirmacao-\d+\.jpg$/, 'cartão no cache do app com o nome do compartilhar');
+    assert.deepStrictEqual(cardOptions, { mimeType: 'image/jpeg', dialogTitle: 'Compartilhar' });
     assert.strictEqual(captures[captures.length - 1].ref, appCard.props.ref, 'captura a prévia');
+    assert.ok(disk.has(cardUri), 'Android: o cartão fica enquanto o app de destino lê');
+    appTimers.pop()();
+    assert.ok(!disk.has(cardUri), '…e sai do cache 90 s depois');
     imageSheet.unmount();
   } finally {
     global.setTimeout = originalTimeout;
   }
+
+  // 9) useShareSheet: a tela abre a folha com o content pronto — sem imagem pessoal, a cena pronta das respostas
+  //    (lugar dos sonhos da pessoa × categoria do conteúdo); a folha fala o idioma do app
+  let opener = null;
+  const screenHost = app.mount(() => {
+    opener = useShareSheet();
+    return opener.sheet;
+  }, {});
+  assert.ok(screenHost.tree.type === ShareSheet && screenHost.tree.props.visible === false, 'folha fechada até a tela abrir');
+  opener.open({ campaign: 'visao', phrase: 'Minha casa perto do mar', kindLabel: 'Visão de Amor', visualKey: undefined, category: 'Love' });
+  screenHost.flush();
+  assert.deepStrictEqual(
+    screenHost.tree.props.content,
+    {
+      campaign: 'visao',
+      phrase: 'Minha casa perto do mar',
+      kindLabel: 'Visão de Amor',
+      visualKey: null,
+      readyScene: { id: 'beach-Love', source: 11, place: 'beach', category: 'Love' },
+      lang: 'pt',
+    },
+    'content da tela: cena pronta das respostas e idioma do app'
+  );
+  assert.deepStrictEqual(pickCalls.pop(), { dreamLocation: 'Na praia ou no litoral', category: 'Love' }, 'lugar dos sonhos × categoria');
+  assert.strictEqual(screenHost.tree.props.visible, true);
+  screenHost.tree.props.onClose();
+  screenHost.flush();
+  assert.strictEqual(screenHost.tree.props.visible, false, 'fechar some com a folha');
+
+  // 10) as 7 telas: cada uma monta a folha (useShareSheet + share.sheet) e tem o botão share-open-<campanha> que
+  //     abre o conteúdo dela; Afirmações trocou a prévia antiga pela folha (imagem + vídeo + link)
+  const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+  const SCREENS = [
+    ['screens/VisionsScreen.js', /testID="share-open-visao"/, /share\.open\(\{\s*campaign: 'visao'/],
+    ['screens/VisionPlayerScreen.js', /testID="share-open-visao"/, /share\.open\(\{\s*campaign: 'visao'/],
+    ['screens/onboarding/RevealScreen.js', /testID="share-open-ancora"/, /share\.open\(\{\s*campaign: 'ancora'/],
+    // a Cena-Âncora é ancora; outra manifestação compartilha a afirmação dela (a mesma escolha do despertar)
+    ['screens/ManifestationScreen.js', /testID=\{`share-open-\$\{wakeTarget\.campaign\}`\}/, /share\.open\(\{\s*campaign: wakeTarget\.campaign/],
+    ['screens/PracticeRitualScreen.js', /testID="share-open-pratica"/, /share\.open\(\{\s*campaign: 'pratica'/],
+    ['screens/MorningRitualScreen.js', /testID="share-open-sonho"/, /share\.open\(\{\s*campaign: 'sonho'/],
+    ['screens/AffirmationsScreen.js', /testID="share-open-afirmacao"/, /share\.open\(\{\s*campaign: 'afirmacao'/],
+  ];
+  for (const [file, button, opens] of SCREENS) {
+    const code = read(file);
+    assert.ok(/const share = useShareSheet\(\);/.test(code), `${file}: usa useShareSheet`);
+    assert.ok(/\{share\.sheet\}/.test(code), `${file}: monta a folha`);
+    assert.ok(button.test(code), `${file}: botão share-open-<campanha>`);
+    assert.ok(opens.test(code), `${file}: o botão abre o conteúdo da campanha certa`);
+    // só pelo useShareSheet (que sempre põe a cena pronta das respostas) e só com campanha da lista
+    assert.ok(!/<ShareSheet\b/.test(code), `${file}: a folha vem do useShareSheet (cena pronta garantida)`);
+    for (const [, campaign] of code.matchAll(/share\.open\(\{\s*campaign: '([^']*)'/g)) {
+      assert.ok(SHARE_CAMPAIGNS.includes(campaign), `${file}: campanha ${campaign} fora da lista`);
+    }
+  }
+  const manifestation = read('screens/ManifestationScreen.js');
+  assert.ok(
+    /anchorSceneId\s*\?\s*\{ kind: 'anchor', id: `anchor:\$\{saved\.id\}`, campaign: 'ancora' \}\s*: \{ kind: 'affirmation', id: `manifestation:\$\{saved\.id\}`, campaign: 'afirmacao' \}/.test(manifestation),
+    'Manifestação: Cena-Âncora = ancora, outra = afirmacao'
+  );
+  const affirmationsScreen = read('screens/AffirmationsScreen.js');
+  assert.ok(!/AffirmationShareCard|shareTextFallback|<Modal/.test(affirmationsScreen), 'Afirmações: a prévia antiga saiu');
+  assert.ok(/onShare=\{openShare\}/.test(affirmationsScreen), 'Afirmações: o ícone do card abre a mesma folha');
+
+  // 11) auditoria Play R2: as WebViews da cena viva (exibir e gravar) não abrem janela nova
+  RN.AccessibilityInfo = { isReduceMotionEnabled: () => Promise.resolve(false), addEventListener: () => ({ remove() {} }) };
+  RN.AppState = { currentState: 'active', addEventListener: () => ({ remove() {} }) };
+  const webviewMocks = { ...uiMocks, 'react-native-webview': { WebView: 'WebView' } };
+  const { default: SceneView } = loadWith('components/cenaViva/CenaViva.js', webviewMocks);
+  const sceneView = app.mount(SceneView, { imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa' });
+  await settle(sceneView, () => sceneView.find('WebView'), 'WebView da cena');
+  assert.strictEqual(sceneView.find('WebView').props.setSupportMultipleWindows, false, 'cena viva: sem janela nova');
+  sceneView.unmount();
+  const { default: RecorderView } = loadWith('components/cenaViva/CenaVivaRecorder.js', webviewMocks);
+  const recorderRef = { current: null };
+  const recorderView = app.mount(RecorderView, {}, recorderRef);
+  const pendingRecording = recorderRef.current.record({ imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa', linkText: 'x' });
+  pendingRecording.catch(() => {});
+  recorderView.flush();
+  assert.strictEqual(recorderView.find('WebView').props.setSupportMultipleWindows, false, 'gravador: sem janela nova');
+  recorderView.unmount();
+  await assert.rejects(pendingRecording, (error) => error.code === 'recorder_cancelled');
+
+  // 12) gravadores: o arquivo leva o nome da campanha (a limpeza acha) e o mime com codecs vira o mime limpo, com a
+  //     extensão certa; campanha estranha não vira nome. No site, fechar a folha cancela a gravação de verdade
+  const nativeRef = { current: null };
+  const nativeRecorder = app.mount(RecorderView, {}, nativeRef);
+  const deliver = (data) => nativeRecorder.find('WebView').props.onMessage({ nativeEvent: { data: JSON.stringify(data) } });
+  const recordNative = async (campaign, mimeType) => {
+    const pending = nativeRef.current.record({ imageUri: 'data:image/jpeg;base64,QUJD', phrase: 'aa', linkText: 'x', campaign });
+    nativeRecorder.flush();
+    deliver({ type: 'chunk', index: 0, total: 1, data: 'QUJD' });
+    deliver({ type: 'done', mimeType });
+    return pending;
+  };
+  const namedVideo = await recordNative('visao', 'video/mp4;codecs=avc1.42E01E');
+  assert.match(namedVideo.uri, /^file:\/\/\/cache\/celeste-share-visao-\d+\.mp4$/, 'app: celeste-share-<campanha>-<ms>.mp4');
+  assert.ok(namedVideo.mimeType === 'video/mp4' && disk.get(namedVideo.uri) === 'QUJD', 'app: mime sem codecs, vídeo inteiro');
+  assert.match((await recordNative('../x', 'video/webm;codecs=vp9')).uri, /^file:\/\/\/cache\/celeste-share-\d+\.webm$/);
+  nativeRecorder.unmount();
+  disk.clear();
+  function webStudio(supports) {
+    let clock = 0;
+    const made = [];
+    class FakeImage {
+      set src(value) {
+        setImmediate(() => {
+          Object.assign(this, { width: 720, height: 900, naturalWidth: 720, naturalHeight: 900 });
+          if (this.onload) this.onload();
+        });
+      }
+    }
+    class Recorder {
+      static isTypeSupported(mime) {
+        return supports(mime);
+      }
+      constructor() {
+        this.state = 'inactive';
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable({ data: new Blob(['mp4']) });
+        this.onstop();
+      }
+    }
+    const studioWindow = {
+      Image: FakeImage,
+      File,
+      Blob,
+      MediaRecorder: Recorder,
+      document: {
+        createElement() {
+          const canvas = fakeCanvas(0, 0, () => clock);
+          made.push(canvas);
+          return canvas;
+        },
+      },
+      performance: { now: () => clock },
+      setTimeout(fn, ms) {
+        clock += ms;
+        setImmediate(fn);
+      },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: () => {},
+    };
+    return { made, window: studioWindow };
+  }
+  const { default: WebRecorderView } = loadWith('components/cenaViva/CenaVivaRecorder.web.js', webviewMocks);
+  try {
+    const webRef = { current: null };
+    const webRecorder = app.mount(WebRecorderView, {}, webRef);
+    global.window = webStudio((mime) => mime === 'video/mp4;codecs=avc1.42E01E').window;
+    const webVideo = await webRef.current.record({ imageUri: 'blob:scene', phrase: 'aa', linkText: 'x', campaign: 'ancora' });
+    assert.ok(
+      /^celeste-share-ancora-\d+\.mp4$/.test(webVideo.file.name) && webVideo.file.type === 'video/mp4' && webVideo.mimeType === 'video/mp4',
+      'site: File com o nome da campanha e o mime limpo'
+    );
+    const studio = webStudio(() => true);
+    global.window = studio.window;
+    const cancelling = webRef.current.record({ imageUri: 'blob:scene', phrase: 'aa', linkText: 'x', campaign: 'ancora' });
+    cancelling.catch(() => {});
+    for (let i = 0; i < 40; i++) await tick();
+    const paintedBefore = framesOf(studio.made[0].calls).length;
+    assert.ok(paintedBefore > 5, 'gravando');
+    webRecorder.unmount();
+    await assert.rejects(cancelling, (error) => error.code === 'recorder_cancelled');
+    for (let i = 0; i < 40; i++) await tick();
+    assert.strictEqual(framesOf(studio.made[0].calls).length, paintedBefore, 'site: fechou, o laço da gravação parou');
+    assert.ok(studio.made[0].tracks.every((track) => track.stopped), 'site: fechou, a câmera do canvas foi solta');
+  } finally {
+    delete global.window;
+  }
+
+  // 13) o app limpa o cache do compartilhar ao abrir — o Android mata o app enquanto ela está no WhatsApp e o prazo de
+  //     90 s nunca dispara —, além de ao abrir a folha
+  const appSource = read('App.js');
+  assert.ok(/import \{ sweepShareCache \} from '\.\/utils\/shareContent';/.test(appSource), 'App importa a limpeza');
+  assert.ok(
+    /export default function App\(\) \{\s*React\.useEffect\(\(\) => \{[\s\S]{0,500}?if \(Platform\.OS !== 'web'\) sweepShareCache\(\);/.test(appSource),
+    'App: limpa o cache do compartilhar ao abrir (app nativo)'
+  );
 
   // player da visão: narrando, o texto inteiro da reserva (sem cena) rola — o palco por cima deixa toque e rolagem
   // passarem (box-none) e o selo da categoria sai, para não cobrir a 1ª linha

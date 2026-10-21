@@ -1,11 +1,9 @@
 import { PixelRatio, Platform } from 'react-native';
-import * as Sharing from 'expo-sharing';
-import { captureRef, releaseCapture } from 'react-native-view-shot';
+import { captureRef } from 'react-native-view-shot';
 
-import { APP_NAME } from '../constants/brand';
-
+// Captura do cartão 9:16 do compartilhar (ShareCard). O envio mora em utils/shareContent.js: no site o JPEG vira
+// File aqui; no app a captura volta em base64 e o shareContent grava no cache do app com o nome do compartilhar.
 export const AFFIRMATION_SHARE_CAPTURE_SIZE = Object.freeze({ width: 1080, height: 1920 });
-export const AFFIRMATION_SHARE_FILE_NAME = 'celeste-afirmacao.jpg';
 export const AFFIRMATION_SHARE_STATUS = Object.freeze({
   SHARED: 'shared',
   DOWNLOADED: 'downloaded',
@@ -33,12 +31,12 @@ const shareError = (code, message) => {
 };
 
 const safeJpegName = (value) => {
-  const normalized = String(value || AFFIRMATION_SHARE_FILE_NAME)
+  const normalized = String(value || 'celeste-share.jpg')
     .replace(/[\\/]+/g, '-')
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^\.+/, '')
     .slice(0, 96);
-  const base = normalized || 'celeste-afirmacao.jpg';
+  const base = normalized || 'celeste-share.jpg';
   return /\.jpe?g$/i.test(base) ? base.replace(/\.jpeg$/i, '.jpg') : `${base}.jpg`;
 };
 
@@ -60,7 +58,6 @@ const captureOptions = (result) => {
     format: 'jpg',
     quality: 0.94,
     result,
-    fileName: 'celeste-afirmacao',
   };
 };
 
@@ -69,6 +66,14 @@ const ensureCaptureTarget = (viewRef) => {
     throw shareError('SHARE_CARD_NOT_READY', 'O cartao de compartilhamento ainda nao esta pronto.');
   }
 };
+
+// o cartão em JPEG 1080×1920 depois de pintado: 'data-uri' no site, 'base64' no app (nunca o arquivo temporário do
+// view-shot, que no Android pode cair no cache externo, fora do alcance da limpeza do compartilhar)
+export async function captureShareCard(viewRef, result) {
+  ensureCaptureTarget(viewRef);
+  await waitForPaint();
+  return captureRef(viewRef, captureOptions(result));
+}
 
 const dataUriToJpegFile = (dataUri, fileName) => {
   if (typeof File !== 'function' || typeof atob !== 'function') {
@@ -98,7 +103,7 @@ const isJpegFile = (file) =>
 
 /**
  * No navegador, aceita um File JPEG ja preparado ou captura o ViewShot e gera
- * um novo File. A tela pode pre-capturar para preservar a ativacao do gesto.
+ * um novo File. A folha pre-captura para preservar a ativacao do gesto.
  */
 export async function createAffirmationShareFile({ viewRef, file, fileName } = {}) {
   if (Platform.OS !== 'web') {
@@ -110,123 +115,6 @@ export async function createAffirmationShareFile({ viewRef, file, fileName } = {
     }
     return file;
   }
-  ensureCaptureTarget(viewRef);
-  await waitForPaint();
-  const dataUri = await captureRef(viewRef, captureOptions('data-uri'));
+  const dataUri = await captureShareCard(viewRef, 'data-uri');
   return dataUriToJpegFile(dataUri, fileName);
-}
-
-const downloadFile = (file, fileName) => {
-  if (
-    typeof document === 'undefined' ||
-    typeof URL === 'undefined' ||
-    typeof URL.createObjectURL !== 'function'
-  ) {
-    throw shareError('WEB_DOWNLOAD_UNAVAILABLE', 'Este navegador nao permite baixar a imagem.');
-  }
-  const objectUrl = URL.createObjectURL(file);
-  const anchor = document.createElement('a');
-  anchor.href = objectUrl;
-  anchor.download = safeJpegName(fileName);
-  anchor.rel = 'noopener';
-  anchor.setAttribute('aria-hidden', 'true');
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-};
-
-const shareOnWeb = async ({ viewRef, file, fileName, title }) => {
-  const jpeg = await createAffirmationShareFile({ viewRef, file, fileName });
-  const nav = typeof navigator === 'undefined' ? null : navigator;
-  const payload = { files: [jpeg], title };
-  let canShareFile = false;
-
-  if (nav && typeof nav.share === 'function' && typeof nav.canShare === 'function') {
-    try {
-      canShareFile = nav.canShare({ files: [jpeg] }) === true;
-    } catch (_error) {
-      canShareFile = false;
-    }
-  }
-
-  if (canShareFile) {
-    try {
-      await nav.share(payload);
-      return { status: AFFIRMATION_SHARE_STATUS.SHARED, file: jpeg };
-    } catch (error) {
-      if (isShareCancellation(error)) {
-        return { status: AFFIRMATION_SHARE_STATUS.CANCELLED, file: jpeg };
-      }
-      // Falha de suporte/permissao cai no download; cancelamento nunca cai aqui.
-    }
-  }
-
-  downloadFile(jpeg, fileName);
-  return { status: AFFIRMATION_SHARE_STATUS.DOWNLOADED, file: jpeg };
-};
-
-const shareOnNative = async ({ viewRef, title }) => {
-  ensureCaptureTarget(viewRef);
-  await waitForPaint();
-  let temporaryUri = null;
-  let handedToShareSheet = false;
-  const releaseTemporaryCapture = () => {
-    if (!temporaryUri) return;
-    try {
-      releaseCapture(temporaryUri);
-    } catch (_error) {
-      // O sistema ja recebeu a imagem; limpeza temporaria e best effort.
-    }
-  };
-  try {
-    temporaryUri = await captureRef(viewRef, captureOptions('tmpfile'));
-    const available = await Sharing.isAvailableAsync();
-    if (!available) {
-      throw shareError('NATIVE_SHARE_UNAVAILABLE', 'O compartilhamento nao esta disponivel.');
-    }
-    const shareUri = /^[a-z][a-z0-9+.-]*:\/\//i.test(temporaryUri)
-      ? temporaryUri
-      : `file://${temporaryUri}`;
-    handedToShareSheet = true;
-    await Sharing.shareAsync(shareUri, {
-      dialogTitle: title,
-      mimeType: 'image/jpeg',
-      UTI: 'public.jpeg',
-    });
-    return { status: AFFIRMATION_SHARE_STATUS.SHARED };
-  } catch (error) {
-    if (isShareCancellation(error)) {
-      return { status: AFFIRMATION_SHARE_STATUS.CANCELLED };
-    }
-    throw error;
-  } finally {
-    if (temporaryUri) {
-      // Alguns apps Android leem o FileProvider somente depois que o chooser
-      // fecha. O atraso preserva o arquivo durante essa leitura e o remove ao
-      // voltar ao app; nos demais casos a limpeza continua imediata.
-      if (Platform.OS === 'android' && handedToShareSheet) {
-        setTimeout(releaseTemporaryCapture, 90_000);
-      } else {
-        releaseTemporaryCapture();
-      }
-    }
-  }
-};
-
-/**
- * Compartilha o cartao em JPEG 1080x1920. No web, `file` e opcional e permite
- * usar uma captura antecipada; no nativo a captura temporaria sempre e limpa.
- */
-export async function shareAffirmationCard({
-  viewRef,
-  file,
-  fileName = AFFIRMATION_SHARE_FILE_NAME,
-  title = APP_NAME,
-} = {}) {
-  if (Platform.OS === 'web') {
-    return shareOnWeb({ viewRef, file, fileName: safeJpegName(fileName), title });
-  }
-  return shareOnNative({ viewRef, title });
 }

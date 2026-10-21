@@ -17,11 +17,24 @@ const GOLD = '#F2B25C';
 // o arco do Traço Celeste (CelestialTrace: 46,112 · centro,45 · direita,112) em miniatura, numa caixa de 46×22
 const TRACE = [{ x: 5, y: 16 }, { x: 23, y: 5 }, { x: 41, y: 16 }];
 
-const typeForLength = (length) => {
-  if (length > 260) return styles.phraseCompact;
-  if (length > 170) return styles.phraseSmall;
-  if (length > 95) return styles.phraseMedium;
-  return styles.phraseLarge;
+// a frase sempre cabe: a maior fonte em que ela cabe nas linhas acima da assinatura (420 px de altura × 295 px de
+// largura nos 640 do cartão), e as linhas travam nisso — passou até da menor, reticências; nunca invade o Traço
+// Celeste nem o link. Cabe = linhas × letras por linha, com o itálico serifado a ~0,64 da fonte por letra e 85% da
+// linha aproveitada (quebra de palavras): conservador de propósito — no cartão real (E2E) 165 letras a 30 px não
+// cabiam nas 10 linhas
+const PHRASE_BOX = { width: 295, height: 420 };
+const PHRASE_TIERS = [
+  { fontSize: 38, lineHeight: 50 },
+  { fontSize: 30, lineHeight: 40 },
+  { fontSize: 23, lineHeight: 32 },
+  { fontSize: 17, lineHeight: 24 },
+  { fontSize: 14, lineHeight: 20 },
+];
+const linesIn = (tier) => Math.floor(PHRASE_BOX.height / tier.lineHeight);
+const capacity = (tier) => linesIn(tier) * (PHRASE_BOX.width / (0.64 * tier.fontSize)) * 0.85;
+const phraseFit = (length) => {
+  const tier = PHRASE_TIERS.find((candidate) => capacity(candidate) >= length) || PHRASE_TIERS[PHRASE_TIERS.length - 1];
+  return { style: { fontSize: tier.fontSize, lineHeight: tier.lineHeight }, lines: linesIn(tier) };
 };
 
 // imagem do cartão: a pessoal (visualKey) ou, sem ela, a cena pronta das respostas — a mesma do vídeo; sem as duas,
@@ -76,6 +89,7 @@ const ShareCard = forwardRef(function ShareCard(
   const [a, b] = gradientPair(theme, accent);
   const source = useCardImage(visualKey, readyScene);
   const text = String(phrase || '').trim();
+  const fit = phraseFit(text.length + 2); // + as aspas
 
   return (
     <ViewShot ref={ref} onLayout={onLayout} style={[styles.frame, style]}>
@@ -115,7 +129,13 @@ const ShareCard = forwardRef(function ShareCard(
             <Text maxFontSizeMultiplier={1} testID={`${testID}-category`} style={styles.kind}>
               {String(kindLabel || '').trim().toUpperCase()}
             </Text>
-            <Text maxFontSizeMultiplier={1} testID={`${testID}-affirmation`} style={[styles.phrase, typeForLength(text.length)]}>
+            <Text
+              maxFontSizeMultiplier={1}
+              numberOfLines={fit.lines}
+              ellipsizeMode="tail"
+              testID={`${testID}-affirmation`}
+              style={[styles.phrase, fit.style]}
+            >
               {`“${text}”`}
             </Text>
           </View>
@@ -214,10 +234,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
   },
-  phraseLarge: { fontSize: 38, lineHeight: 50 },
-  phraseMedium: { fontSize: 30, lineHeight: 40 },
-  phraseSmall: { fontSize: 23, lineHeight: 32 },
-  phraseCompact: { fontSize: 17, lineHeight: 24 },
   footer: { alignItems: 'center' },
   signatureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   mark: { width: 46, height: 22, marginRight: 9 },

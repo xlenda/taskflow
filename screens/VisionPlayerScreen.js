@@ -29,6 +29,7 @@ import CoverScene from '../components/CoverScene';
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
 import AiContentReportAction from '../components/AiContentReportAction';
+import { useShareSheet } from '../components/ShareSheet';
 
 const S = {
   pageTitle: { en: 'Visions', pt: 'Visões' },
@@ -72,6 +73,8 @@ const S = {
   cancel: { en: 'Cancel', pt: 'Cancelar' },
   saveChanges: { en: 'Save', pt: 'Salvar' },
   nextUp: { en: 'Next up', pt: 'Próximo' },
+  share: { en: 'Share this vision', pt: 'Compartilhar esta visão' },
+  shareKind: { en: '{category} vision', pt: 'Visão de {category}' },
   openNext: { en: 'Open next vision', pt: 'Abrir próxima visão' },
   missingTitle: { en: 'This vision is no longer here', pt: 'Esta visão não está mais aqui' },
   missingBody: {
@@ -277,6 +280,7 @@ function PersonalVisionPlayer({
     ? 280
     : Math.min(440, Math.max(400, Math.round(Math.min(winW || 390, 720) * 0.64)));
   const isFocused = useIsFocused();
+  const share = useShareSheet();
   const color = accentAt(th, vision.accent);
   const isSaved = state.savedVisions.includes(vision.id);
   const catLabel = CAT[vision.category] ? t(CAT[vision.category]) : String(vision.category || '');
@@ -985,6 +989,24 @@ function PersonalVisionPlayer({
           lang={vision.lang}
         />
 
+        <PrimaryButton
+          testID="share-open-visao"
+          label={t(S.share)}
+          icon="share-social-outline"
+          accent={vision.accent}
+          variant="ghost"
+          onPress={() =>
+            share.open({
+              campaign: 'visao',
+              phrase: vision.title,
+              kindLabel: t(S.shareKind, { category: catLabel }),
+              visualKey: primaryVisualKey,
+              category: vision.category,
+            })
+          }
+          style={styles.shareButton}
+        />
+
         {completed ? (
           <>
             <View style={[styles.doneBox, { backgroundColor: alpha(color, 0.12) }]}>
@@ -1028,6 +1050,7 @@ function PersonalVisionPlayer({
         )}
         <View style={styles.bottomSpace} />
       </ScrollView>
+      {share.sheet}
     </Screen>
   );
 }
@@ -1166,5 +1189,6 @@ const styles = StyleSheet.create({
   nextEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '800', textTransform: 'uppercase' },
   nextTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700', marginTop: 3 },
   finishButton: { marginTop: 22 },
+  shareButton: { marginTop: 16 },
   bottomSpace: { height: 40 },
 });
