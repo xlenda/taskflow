@@ -28,6 +28,8 @@ const COPY = {
     resume: 'Resume narration',
     stop: 'Stop and close audio',
     stopHint: 'Stops the current narration and closes the player',
+    deviceVoice: 'Device voice',
+    deviceNotice: 'Your chosen voice is unavailable right now. Your device voice is reading.',
   },
   pt: {
     loading: 'Preparando áudio',
@@ -40,6 +42,8 @@ const COPY = {
     resume: 'Continuar narração',
     stop: 'Parar e fechar o áudio',
     stopHint: 'Interrompe a narração atual e fecha o player',
+    deviceVoice: 'Voz do aparelho',
+    deviceNotice: 'A voz escolhida não está disponível agora. Quem lê é a voz do aparelho.',
   },
 };
 
@@ -69,7 +73,10 @@ export default function NarrationPlaybackControls() {
   const progressPercent = Math.round(progress * 100);
   const elapsed = formatTime(narration.elapsedTime);
   const total = narration.totalDuration > 0 ? formatTime(narration.totalDuration) : '--:--';
-  const estimatedPrefix = narration.chunkCount > 1 ? '≈' : '';
+  // The Celeste voice could not play and the device voice reads instead: said out loud, never silent. Its time is
+  // an estimate and it keeps its own pace, so no speed choices here.
+  const deviceVoice = narration.voice === 'device';
+  const estimatedPrefix = narration.chunkCount > 1 || deviceVoice ? '≈' : '';
 
   const togglePlayback = useCallback(() => {
     if (narration.isPlaying) narration.pause();
@@ -89,6 +96,8 @@ export default function NarrationPlaybackControls() {
     ? copy.ready
     : narration.isPaused
     ? copy.paused
+    : deviceVoice
+    ? copy.deviceVoice
     : copy.playing;
 
   return (
@@ -176,6 +185,16 @@ export default function NarrationPlaybackControls() {
           </View>
         </View>
 
+        {deviceVoice ? (
+          <Text
+            testID="narration-device-voice-notice"
+            accessibilityLiveRegion="polite"
+            style={[styles.deviceNotice, { color: theme.textMuted }]}
+          >
+            {copy.deviceNotice}
+          </Text>
+        ) : null}
+
         <View
           testID="narration-progress"
           accessibilityRole="progressbar"
@@ -200,6 +219,7 @@ export default function NarrationPlaybackControls() {
           />
         </View>
 
+        {deviceVoice ? null : (
         <View style={styles.speedRow}>
           <Text style={[styles.speedLabel, { color: theme.textMuted }]}>{copy.speed}</Text>
           <View
@@ -239,6 +259,7 @@ export default function NarrationPlaybackControls() {
             })}
           </View>
         </View>
+        )}
       </View>
     </View>
   );
@@ -321,6 +342,11 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  deviceNotice: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 17,
   },
   progressTrack: {
     height: 4,

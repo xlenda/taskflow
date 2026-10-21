@@ -2038,7 +2038,7 @@ async function main() {
       }),
     },
     '../constants/narrators': { DEFAULT_NARRATOR_ID: 'aurora' },
-    '../constants/releaseFeatures': { RELEASE_FEATURES: { paidCloudProcessing: true } },
+    '../constants/releaseFeatures': { RELEASE_FEATURES: { cloudNarration: true, paidCloudProcessing: true } },
     './useCloudMediaConsent': {
       useCloudMediaConsent: () => ({ ensureCloudMediaConsent: async () => ({ ok: true, profile: voiceProfile }) }),
     },
@@ -2152,6 +2152,7 @@ async function main() {
     '../components/CelestialTrace': esDefault('CelestialTrace'),
     '../components/PrimaryButton': esDefault('PrimaryButton'),
     '../components/NarratedScene': esDefault('NarratedScene'),
+    '../components/AiContentReportAction': esDefault('AiContentReportAction'),
     '../context/AppContext': { useApp: () => ({ state: appState }) },
     '../ui/theme': { useTheme: () => ({ ...coverMocks['../ui/theme'].useTheme(), surfaceAlt: '#EAEEF5' }) },
     '../utils/useCloudMediaConsent': { hasUnifiedCloudMediaConsent: () => cloudVoice },

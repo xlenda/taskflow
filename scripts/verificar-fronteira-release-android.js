@@ -16,6 +16,8 @@ const releaseFeaturesForPlatform = new Function(
   `${executableFeatureSource}\nreturn releaseFeaturesForPlatform;`
 )({ env: {} });
 
+// Android (21/10): the Celeste voice joins the boundary on purpose (cloudNarration, verified by Play Integrity on
+// the server); images, cloud scenes, dreams and the Living Mirror (paidCloudProcessing) stay website-only.
 assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   androidStoreBoundary: true,
   publicCommunity: false,
@@ -23,6 +25,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
+  cloudNarration: true,
   paidCloudProcessing: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
@@ -32,6 +35,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
   wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
+  cloudNarration: true,
   paidCloudProcessing: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
@@ -41,6 +45,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
   wakeSequence: true,
   practicePlan: true,
   onDevicePracticeSpeech: true,
+  cloudNarration: true,
   paidCloudProcessing: false,
 });
 for (const platformOS of ['ios', 'web']) {
@@ -51,6 +56,7 @@ for (const platformOS of ['ios', 'web']) {
     wakeSequence: true,
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'ios',
+    cloudNarration: platformOS === 'web',
     paidCloudProcessing: platformOS === 'web',
   });
 }
@@ -117,17 +123,34 @@ assert.ok(
     alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()'),
   'Without AlarmKit the wake-up must schedule and cancel only ordinary reminders'
 );
+// Only the voice crosses the Android boundary: scenes stay on the device, the Profile control and the consent
+// speak only of the voice, and every other cloud path in the provider still needs paidCloudProcessing.
+const cloudMediaConsent = read('utils/useCloudMediaConsent.js');
 assert.ok(
   home.includes('if (!RELEASE_FEATURES.paidCloudProcessing)') &&
-    profile.includes('RELEASE_FEATURES.paidCloudProcessing ? (') &&
+    /!RELEASE_FEATURES\.cloudNarration &&\s*\(currentProfile\.cloudConsentVersion/.test(home) &&
+    (profile.match(/RELEASE_FEATURES\.cloudNarration \? \(/g) || []).length === 2 &&
+    profile.includes('const voiceOnlyCloud = !RELEASE_FEATURES.paidCloudProcessing;') &&
+    profile.includes('(!RELEASE_FEATURES.cloudNarration ||') &&
+    cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : VOICE_ONLY_COPY)[lang]') &&
     !onboardingFlow.includes("id: 'cloudPersonalization'") &&
     onboarding.includes('cloudConsentVersion: null') &&
     onboarding.includes('cloudPersonalization: false'),
-  'Native store builds must not offer cloud processing that the API boundary rejects'
+  'Native store builds offer only the voice in the cloud, with a voice-only consent and control'
+);
+assert.ok(
+  /function cloudMediaConsent\(profile\) \{\s*return RELEASE_FEATURES\.paidCloudProcessing && hasCurrentAdultCloudConsent\(profile\);/.test(
+    context
+  ) &&
+    (context.match(/hasCurrentAdultCloudConsent\(/g) || []).length === 1 &&
+    context.includes("!RELEASE_FEATURES.paidCloudProcessing && status?.phase === 'consent_required' ? null : status") &&
+    /const cloudDreamEnabled =\s*RELEASE_FEATURES\.paidCloudProcessing &&/.test(morning),
+  'Android voice consent must not open cloud scenes, images, translations, dreams or the Living Mirror'
 );
 assert.ok(
   personalNarration.includes("error: 'personal_narration_unavailable'") &&
-    personalNarration.includes('personalNarrationAvailable: RELEASE_FEATURES.paidCloudProcessing') &&
+    personalNarration.includes('if (!RELEASE_FEATURES.cloudNarration)') &&
+    personalNarration.includes('personalNarrationAvailable: RELEASE_FEATURES.cloudNarration') &&
     affirmations.includes('personalNarrationAvailable && !!current') &&
     manifestation.includes('personalNarrationAvailable && lines.length > 0') &&
     dailyRitual.includes("error: 'personal_narration_unavailable'") &&
@@ -135,7 +158,7 @@ assert.ok(
     visions.includes('{personalNarrationAvailable ? (') &&
     visionPlayer.includes('personalNarrationAvailable && total > 0') &&
     reveal.includes('{narration.personalNarrationAvailable ? ('),
-  'Native store builds must not show paid narration controls or request voice consent'
+  'Narration controls follow the voice boundary (cloudNarration); the Living Mirror stays website-only'
 );
 assert.ok(
   morning.includes("const alarmVisible = mode === 'combined' && RELEASE_FEATURES.affirmationAlarm") &&
@@ -291,3 +314,7 @@ for (const profile of ['preview', 'production']) {
 }
 
 console.log('Fronteira Android v1 verificada: pratica local e lembrete do despertar ativos; audio em segundo plano e alarmes exatos bloqueados.');
+
+// The voice on Android by behavior (platform 'android', mocked server): chosen voice, honest device-voice fallback,
+// AI-content report on every narration surface, images still off. Its failure fails this gate too.
+require('./verificar-vozes-android');

@@ -35,6 +35,7 @@ import {
 } from '../constants/legal';
 import { deleteAllAiContentReports } from '../services/aiContentReports';
 import NarratorSelector from '../components/NarratorSelector';
+import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { isUnder18Age } from './onboarding/flow';
 
 const S = {
@@ -82,6 +83,16 @@ const S = {
     pt: 'Confirme que você tem 18 anos ou mais e use este controle único para permitir que o Celeste envie somente os dados necessários aos recursos opcionais que você solicitar. A Anthropic gera textos de cenas personalizadas, com a OpenAI como alternativa. Se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Gemini poderá gerar a cena; o Gemini também traduz textos, cria imagens e interpreta sonhos que você escolher enviar. A ElevenLabs narra o texto selecionado sob demanda. As solicitações passam pelo backend do Celeste. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar todo novo processamento em nuvem quando quiser.',
   },
   geminiConfirmAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
+  // Android: the only cloud feature in the app is the voice, so the control speaks only of it.
+  voiceCloudTitle: { en: "Celeste's voice in the cloud", pt: 'Voz da Celeste na nuvem' },
+  voiceCloudOn: {
+    en: 'ElevenLabs creates the voice you chose, only when you ask to listen. The text goes to our server and to ElevenLabs only to create the audio. No images are created in the app.',
+    pt: 'A ElevenLabs cria a voz que você escolheu, só quando você pede para ouvir. O texto vai ao nosso servidor e à ElevenLabs só para gerar o áudio. Nenhuma imagem é criada no app.',
+  },
+  voiceCloudOff: {
+    en: 'Off: no text goes to the cloud. When you tap Listen, Celeste asks first.',
+    pt: 'Desligada: nenhum texto vai para a nuvem. Ao tocar em Ouvir, a Celeste pergunta antes.',
+  },
   geminiUnder18: {
     en: 'Cloud processing is unavailable for profiles marked Under 18. New content is created on this device.',
     pt: 'O processamento em nuvem não está disponível para perfis marcados como Menos de 18. Novos conteúdos são criados neste aparelho.',
@@ -353,6 +364,7 @@ export default function ProfileScreen({ navigation }) {
   const setTheme = useSetTheme();
   const { t, lang } = useT();
   const { state, loading, setName, setLang, setMood, setNarrator, saveProfile } = useApp();
+  const { ensureCloudMediaConsent } = useCloudMediaConsent();
   const [nameDraft, setNameDraft] = useState('');
   const [savedName, setSavedName] = useState(false);
   const [document, setDocument] = useState(null);
@@ -375,7 +387,7 @@ export default function ProfileScreen({ navigation }) {
       (profile.cloudPersonalization === true ||
         profile.cloudNarrationConsent === true ||
         profile.cloudDreamConsent === true) &&
-      (!RELEASE_FEATURES.paidCloudProcessing ||
+      (!RELEASE_FEATURES.cloudNarration ||
         !hasCurrentAdultCloudConsent(profile) ||
         isUnder18Age(profile.age))
     ) {
@@ -440,20 +452,32 @@ export default function ProfileScreen({ navigation }) {
   const canSaveName = !!cleanName && cleanName !== state.name;
   const under18 = isUnder18Age(state.profile && state.profile.age);
   const cloudPartiallyEnabled =
-    RELEASE_FEATURES.paidCloudProcessing &&
+    RELEASE_FEATURES.cloudNarration &&
     !under18 &&
     hasCurrentAdultCloudConsent(state.profile) &&
     (state.profile?.cloudPersonalization === true ||
       state.profile?.cloudNarrationConsent === true ||
       state.profile?.cloudDreamConsent === true);
   const cloudEnabled =
-    RELEASE_FEATURES.paidCloudProcessing &&
+    RELEASE_FEATURES.cloudNarration &&
     !under18 &&
     state.profile &&
     state.profile.cloudPersonalization === true &&
     hasCurrentAdultCloudConsent(state.profile) &&
     state.profile.cloudNarrationConsent === true &&
     state.profile.cloudDreamConsent === true;
+  const voiceOnlyCloud = !RELEASE_FEATURES.paidCloudProcessing;
+  const cloudNote = under18
+    ? S.geminiUnder18
+    : voiceOnlyCloud
+      ? cloudEnabled
+        ? S.voiceCloudOn
+        : S.voiceCloudOff
+      : cloudEnabled
+        ? S.geminiOn
+        : cloudPartiallyEnabled
+          ? S.geminiPartial
+          : S.geminiOff;
 
   const saveDisplayName = () => {
     if (!canSaveName) return;
@@ -465,7 +489,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const changeCloudPersonalization = async (nextValue) => {
-    if (nextValue && !RELEASE_FEATURES.paidCloudProcessing) return;
+    if (nextValue && !RELEASE_FEATURES.cloudNarration) return;
     if (!nextValue) {
       saveProfile({
         cloudConsentVersion: CLOUD_CONSENT_VERSION,
@@ -486,6 +510,11 @@ export default function ProfileScreen({ navigation }) {
         cloudDreamConsent: false,
       });
       tap();
+      return;
+    }
+    if (voiceOnlyCloud) {
+      // Android: the same voice-only request as "Listen".
+      if ((await ensureCloudMediaConsent()).ok) success();
       return;
     }
     const allowed = await confirmAsync({
@@ -690,7 +719,7 @@ export default function ProfileScreen({ navigation }) {
                 })}
               </View>
 
-              {RELEASE_FEATURES.paidCloudProcessing ? (
+              {RELEASE_FEATURES.cloudNarration ? (
                 <View style={[styles.preferenceBlock, { borderTopColor: theme.border }]}>
                   <Text style={[styles.preferenceLabel, { color: theme.text }]}>{t(S.narrator)}</Text>
                   <Text style={[styles.preferenceNote, { color: theme.textMuted }]}>
@@ -749,20 +778,12 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
 
-              {RELEASE_FEATURES.paidCloudProcessing ? (
+              {RELEASE_FEATURES.cloudNarration ? (
                 <Pressable
                   testID="profile-gemini-switch"
                   accessibilityRole="switch"
-                  accessibilityLabel={t(S.geminiTitle)}
-                  accessibilityHint={t(
-                    under18
-                      ? S.geminiUnder18
-                      : cloudEnabled
-                        ? S.geminiOn
-                        : cloudPartiallyEnabled
-                          ? S.geminiPartial
-                          : S.geminiOff
-                  )}
+                  accessibilityLabel={t(voiceOnlyCloud ? S.voiceCloudTitle : S.geminiTitle)}
+                  accessibilityHint={t(cloudNote)}
                   accessibilityState={{ checked: cloudEnabled, disabled: under18 }}
                   disabled={under18}
                   onPress={() => changeCloudPersonalization(!cloudEnabled)}
@@ -774,18 +795,10 @@ export default function ProfileScreen({ navigation }) {
                   ]}
                 >
                   <View style={styles.geminiCopy}>
-                    <Text style={[styles.settingTitle, { color: theme.text }]}>{t(S.geminiTitle)}</Text>
-                    <Text style={[styles.settingNote, { color: theme.textMuted }]}>
-                      {t(
-                        under18
-                          ? S.geminiUnder18
-                          : cloudEnabled
-                            ? S.geminiOn
-                            : cloudPartiallyEnabled
-                              ? S.geminiPartial
-                              : S.geminiOff
-                      )}
+                    <Text style={[styles.settingTitle, { color: theme.text }]}>
+                      {t(voiceOnlyCloud ? S.voiceCloudTitle : S.geminiTitle)}
                     </Text>
+                    <Text style={[styles.settingNote, { color: theme.textMuted }]}>{t(cloudNote)}</Text>
                   </View>
                   <Switch
                     accessibilityElementsHidden

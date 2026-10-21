@@ -25,6 +25,7 @@ import { selectDailyRitual, dailyRitualNarration } from '../utils/dailyRitual';
 import { bridgeDoneOn, livingMirrorStatus } from '../utils/livingMirror';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { accentAt, alpha } from '../utils/colors';
+import AiContentReportAction from '../components/AiContentReportAction';
 import PrimaryButton from '../components/PrimaryButton';
 import {
   cancelDailyRitualReminder,
@@ -591,6 +592,15 @@ export default function DailyRitualScreen() {
             ) : null}
           </View>
         ) : null}
+
+        {/* the affirmation the voice reads can be reported here */}
+        <AiContentReportAction
+          contentType="affirmation"
+          contentRef={`affirmation:${ritual.id}:${ritual.lang || lang}`}
+          content={ritual.affirmation}
+          generation={sourceManifestation?.generation || { source: 'daily-ritual' }}
+          lang={ritual.lang || lang}
+        />
       </View>
 
       <View style={[styles.reminderSection, { borderColor: theme.border, backgroundColor: theme.surface }]}>

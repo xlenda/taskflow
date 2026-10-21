@@ -14,6 +14,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from 'expo-audio';
+import * as Speech from 'expo-speech';
 
 import {
   clearNarrationAudioMemoryCache,
@@ -21,12 +22,19 @@ import {
   requestNarrationAudio,
   splitNarrationText,
 } from '../services/generateNarrationAudio';
+import { CHARS_PER_SECOND } from '../utils/captionProgress';
 
 const NarrationCtx = createContext(null);
 let nativeFileSequence = 0;
 let playbackSequence = 0;
 let narrationAudioModePromise = null;
 const WEB_PLAY_START_TIMEOUT_MS = 1800;
+// App only: what the Celeste voice could not say (the server refused the request, the network failed, the spend
+// guard said no, the file would not play) the device voice reads, never silently: `voice` turns 'device' and the
+// global player says so. The website keeps its "read the text" notices; a stop, an invalid text and a narrator
+// sample never fall back.
+const DEVICE_VOICE_RATE = 0.9;
+const NO_DEVICE_VOICE = new Set(['audio_cancelled', 'text_invalid']);
 
 const NARRATION_AUDIO_MODE = Object.freeze({
   playsInSilentMode: true,
@@ -230,6 +238,9 @@ export function NarrationProvider({ children }) {
   const [lastCompletedPlaybackId, setLastCompletedPlaybackId] = useState(null);
   const [playbackRate, setPlaybackRateState] = useState(1);
   const [webProgress, setWebProgress] = useState({ currentTime: 0, duration: 0 });
+  // which voice the active narration uses ('cloud' | 'device'), and the device voice's clock (no audio file to time)
+  const [voice, setVoice] = useState(null);
+  const [deviceClock, setDeviceClock] = useState({ currentTime: 0, duration: 0 });
   const [chunkProgress, setChunkProgress] = useState({
     index: 0,
     count: 0,
@@ -251,6 +262,7 @@ export function NarrationProvider({ children }) {
   const requestEpochRef = useRef(0);
   const playbackRateRef = useRef(1);
   const mountedRef = useRef(true);
+  const deviceSpeechRef = useRef(null); // the device utterance speaking now
 
   const ensureWebAudio = useCallback(() => {
     if (Platform.OS !== 'web' || typeof Audio === 'undefined') return null;
@@ -334,6 +346,14 @@ export function NarrationProvider({ children }) {
     if (controller) controller.abort();
   }, []);
 
+  const silenceDevice = useCallback(() => {
+    const utterance = deviceSpeechRef.current;
+    if (!utterance) return;
+    deviceSpeechRef.current = null;
+    utterance.settle('audio_cancelled');
+    Speech.stop().catch(() => {});
+  }, []);
+
   const blessWebAudio = useCallback(() => {
     if (Platform.OS !== 'web') return Promise.resolve(true);
     const audio = ensureWebAudio();
@@ -391,13 +411,15 @@ export function NarrationProvider({ children }) {
       if (controller) controller.abort();
       releaseSource();
       releaseUnlockSource();
+      silenceDevice();
       webUnlockingRef.current = false;
       setPhase('error');
       setError(code);
+      setVoice(null);
       setActiveNarratorId(null);
       setActivePlaybackId(null);
     },
-    [isCurrentSequence, releaseSource, releaseUnlockSource]
+    [isCurrentSequence, releaseSource, releaseUnlockSource, silenceDevice]
   );
 
   const finishSequence = useCallback(
@@ -411,6 +433,7 @@ export function NarrationProvider({ children }) {
       webUnlockingRef.current = false;
       setPhase('idle');
       setError(null);
+      setVoice(null);
       setActiveNarratorId(null);
       setActivePlaybackId(null);
       setLastCompletedPlaybackId(completedId);
@@ -423,6 +446,106 @@ export function NarrationProvider({ children }) {
       });
     },
     [isCurrentSequence, releaseSource, releaseUnlockSource]
+  );
+
+  // The device voice reads chunk `index` from character `from`. It resolves when the voice starts (null) or with
+  // the reason it did not; the end of the chunk moves on to the next one, and the last ends the narration like the
+  // Celeste voice does.
+  const speakDevice = useCallback(
+    (sequence, index, from = 0) =>
+      new Promise((resolve) => {
+        const chunk = sequence.chunks[index];
+        const rate = DEVICE_VOICE_RATE * playbackRateRef.current;
+        const duration = chunk.length / (CHARS_PER_SECOND * rate);
+        const startAt = (from / chunk.length) * duration;
+        let settled = false;
+        const settle = (failure) => {
+          if (settled) return;
+          settled = true;
+          resolve(failure);
+        };
+        const utterance = { startedAt: 0, words: false, startAt, duration, settle };
+        deviceSpeechRef.current = utterance;
+        sequence.index = index;
+        sequence.resumeAt = { index, from }; // Continue starts here (the last word the voice reported)
+        const live = () => deviceSpeechRef.current === utterance && isCurrentSequence(sequence);
+        const fail = () => {
+          if (!live()) return settle('audio_cancelled');
+          deviceSpeechRef.current = null;
+          failSequence(sequence, 'device_voice_failed');
+          return settle('device_voice_failed');
+        };
+        setChunkProgress({
+          index,
+          count: sequence.chunks.length,
+          completedWeight: sequence.weightOffsets[index],
+          currentWeight: sequence.chunkWeights[index],
+          totalWeight: sequence.totalWeight,
+        });
+        setDeviceClock({ currentTime: startAt, duration });
+        setPhase('loading');
+        try {
+          Speech.speak(chunk.slice(from), {
+            language: sequence.request.lang === 'en' ? 'en-US' : 'pt-BR',
+            rate,
+            onStart: () => {
+              if (!live()) return settle('audio_cancelled');
+              utterance.startedAt = Date.now();
+              setPhase('playing');
+              return settle(null);
+            },
+            onBoundary: (event) => {
+              if (!live() || !event || event.name === 'sentence') return;
+              const at = from + (Number(event.charIndex) || 0);
+              const spoken = Math.min(chunk.length, at + (Number(event.charLength) || 0));
+              utterance.words = true;
+              sequence.resumeAt = { index, from: at };
+              setDeviceClock({ currentTime: (spoken / chunk.length) * duration, duration });
+            },
+            onDone: () => {
+              if (!live()) return;
+              deviceSpeechRef.current = null;
+              if (index + 1 < sequence.chunks.length) speakDevice(sequence, index + 1, 0);
+              else finishSequence(sequence);
+            },
+            onError: fail,
+          });
+        } catch (_error) {
+          fail();
+        }
+      }),
+    [failSequence, finishSequence, isCurrentSequence]
+  );
+
+  const startDeviceVoice = useCallback(
+    (sequence, index) => {
+      sequence.device = true;
+      const controller = requestRef.current;
+      requestRef.current = null;
+      if (controller) controller.abort();
+      releaseSource();
+      setError(null);
+      setVoice('device');
+      return speakDevice(sequence, index);
+    },
+    [releaseSource, speakDevice]
+  );
+
+  // Resolves null when the device voice took over, or the failure the narration ended with.
+  const failOrSpeak = useCallback(
+    (sequence, code, index) => {
+      if (
+        Platform.OS !== 'web' &&
+        sequence.request.mode === 'personal' &&
+        !sequence.device &&
+        !NO_DEVICE_VOICE.has(code)
+      ) {
+        return startDeviceVoice(sequence, index);
+      }
+      failSequence(sequence, code);
+      return Promise.resolve(code);
+    },
+    [failSequence, startDeviceVoice]
   );
 
   const requestChunk = useCallback((sequence, index) => {
@@ -530,12 +653,12 @@ export function NarrationProvider({ children }) {
       try {
         await playChunk(sequence, nextIndex);
       } catch (playError) {
-        if (isCurrentSequence(sequence)) failSequence(sequence, errorCode(playError));
+        if (isCurrentSequence(sequence)) failOrSpeak(sequence, errorCode(playError), nextIndex);
       } finally {
         if (isCurrentSequence(sequence)) sequence.advancing = false;
       }
     },
-    [failSequence, finishSequence, isCurrentSequence, playChunk]
+    [failOrSpeak, finishSequence, isCurrentSequence, playChunk]
   );
 
   webEndedHandlerRef.current = () => {
@@ -561,10 +684,12 @@ export function NarrationProvider({ children }) {
       cancelRequest();
       releaseSource();
       releaseUnlockSource();
+      silenceDevice();
       webUnlockingRef.current = false;
       if (mountedRef.current) {
         setPhase('idle');
         setError(null);
+        setVoice(null);
         setActiveNarratorId(null);
         setActivePlaybackId(null);
         setLastCompletedPlaybackId(null);
@@ -578,7 +703,7 @@ export function NarrationProvider({ children }) {
       }
       return true;
     },
-    [cancelRequest, releaseSource, releaseUnlockSource]
+    [cancelRequest, releaseSource, releaseUnlockSource, silenceDevice]
   );
 
   const prime = useCallback(() => {
@@ -624,10 +749,12 @@ export function NarrationProvider({ children }) {
         cancelRequest();
         releaseSource();
         releaseUnlockSource();
+        silenceDevice();
         webUnlockingRef.current = false;
         if (mountedRef.current) {
           setPhase('error');
           setError(code);
+          setVoice(null);
           setActiveNarratorId(null);
           setActivePlaybackId(null);
           setLastCompletedPlaybackId(null);
@@ -646,6 +773,7 @@ export function NarrationProvider({ children }) {
       requestEpochRef.current = epoch;
       cancelRequest();
       sequenceRef.current = null;
+      silenceDevice();
       const hasPrimedWebAudio =
         Platform.OS === 'web' &&
         webUnlockingRef.current &&
@@ -687,6 +815,7 @@ export function NarrationProvider({ children }) {
       requestRef.current = controller;
       setPhase('loading');
       setError(null);
+      setVoice('cloud');
       setActiveNarratorId(request.narratorId);
       setActivePlaybackId(playbackId);
       setLastCompletedPlaybackId(null);
@@ -703,26 +832,24 @@ export function NarrationProvider({ children }) {
         if (!isCurrentSequence(sequence)) {
           return { ok: false, error: 'audio_cancelled', playbackId };
         }
-        return { ok: true, playbackId, ready: Boolean(playback && playback.ready) };
+        return { ok: true, playbackId, ready: Boolean(playback && playback.ready), voice: 'cloud' };
       } catch (requestError) {
-        const code = errorCode(requestError);
-        const wasCurrent = isCurrentSequence(sequence);
-        if (wasCurrent) failSequence(sequence, code);
-        return {
-          ok: false,
-          error: wasCurrent ? code : 'audio_cancelled',
-          playbackId,
-        };
+        if (!isCurrentSequence(sequence)) return { ok: false, error: 'audio_cancelled', playbackId };
+        const failure = await failOrSpeak(sequence, errorCode(requestError), 0);
+        return failure
+          ? { ok: false, error: failure, playbackId }
+          : { ok: true, playbackId, ready: false, voice: 'device' };
       }
     },
     [
       blessWebAudio,
       cancelRequest,
-      failSequence,
+      failOrSpeak,
       isCurrentSequence,
       playChunk,
       releaseSource,
       releaseUnlockSource,
+      silenceDevice,
     ]
   );
 
@@ -786,6 +913,14 @@ export function NarrationProvider({ children }) {
   );
 
   const pause = useCallback(() => {
+    const deviceSequence = sequenceRef.current;
+    if (deviceSequence && deviceSequence.device) {
+      // Android speech cannot pause: it stops, and Continue speaks again from the last word it reported.
+      if (!deviceSpeechRef.current) return false;
+      silenceDevice();
+      setPhase('paused');
+      return true;
+    }
     if (!sourceRef.current) return false;
     try {
       if (Platform.OS === 'web') {
@@ -802,11 +937,16 @@ export function NarrationProvider({ children }) {
       if (sequence) failSequence(sequence, 'audio_playback_failed');
       return false;
     }
-  }, [failSequence, player]);
+  }, [failSequence, player, silenceDevice]);
 
   const resume = useCallback(async () => {
-    if (!sourceRef.current) return false;
     const sequence = sequenceRef.current;
+    if (sequence && sequence.device) {
+      if (deviceSpeechRef.current || !sequence.resumeAt) return false;
+      speakDevice(sequence, sequence.resumeAt.index, sequence.resumeAt.from);
+      return true;
+    }
+    if (!sourceRef.current) return false;
     try {
       if (Platform.OS === 'web') {
         const audio = webAudioRef.current;
@@ -834,7 +974,7 @@ export function NarrationProvider({ children }) {
       if (sequence) failSequence(sequence, errorCode(playError));
       return false;
     }
-  }, [failSequence, isCurrentSequence, player]);
+  }, [failSequence, isCurrentSequence, player, speakDevice]);
 
   const setPlaybackRate = useCallback(
     (rate) => {
@@ -888,7 +1028,7 @@ export function NarrationProvider({ children }) {
     if (!sequence) return;
     const playbackState = String(status.playbackState || '').toLowerCase();
     if (playbackState === 'failed') {
-      failSequence(sequence, 'audio_playback_failed');
+      failOrSpeak(sequence, 'audio_playback_failed', Math.max(0, sequence.index));
       return;
     }
     if (status.playing) {
@@ -903,7 +1043,23 @@ export function NarrationProvider({ children }) {
       sequence.nativePlayingIndex = null;
       advanceChunk(sequence.index);
     }
-  }, [advanceChunk, failSequence, status.didJustFinish, status.playbackState, status.playing]);
+  }, [advanceChunk, failOrSpeak, status.didJustFinish, status.playbackState, status.playing]);
+
+  // The device voice's clock: the words it reports (onBoundary) or, on engines that report none (common on
+  // Android), the time since it began at its pace. The captions and the player follow it.
+  useEffect(() => {
+    if (voice !== 'device' || phase !== 'playing') return undefined;
+    const timer = setInterval(() => {
+      const utterance = deviceSpeechRef.current;
+      if (!utterance || utterance.words || !utterance.startedAt) return;
+      const spokenFor = (Date.now() - utterance.startedAt) / 1000;
+      setDeviceClock({
+        currentTime: Math.min(utterance.duration, utterance.startAt + spokenFor),
+        duration: utterance.duration,
+      });
+    }, 250);
+    return () => clearInterval(timer);
+  }, [phase, voice]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -915,6 +1071,7 @@ export function NarrationProvider({ children }) {
       cancelPrepare();
       releaseSource();
       releaseUnlockSource();
+      silenceDevice();
       const audio = webAudioRef.current;
       if (audio) {
         audio.onplaying = null;
@@ -926,14 +1083,18 @@ export function NarrationProvider({ children }) {
       }
       webAudioRef.current = null;
     };
-  }, [cancelPrepare, cancelRequest, releaseSource, releaseUnlockSource]);
+  }, [cancelPrepare, cancelRequest, releaseSource, releaseUnlockSource, silenceDevice]);
 
   const value = useMemo(
     () => {
-      const localTime = Platform.OS === 'web'
+      const localTime = voice === 'device'
+        ? deviceClock.currentTime
+        : Platform.OS === 'web'
         ? webProgress.currentTime
         : Number(status.currentTime) || 0;
-      const localDuration = Platform.OS === 'web'
+      const localDuration = voice === 'device'
+        ? deviceClock.duration
+        : Platform.OS === 'web'
         ? webProgress.duration
         : Number(status.duration) || 0;
       const aggregate = aggregatePlaybackMetrics(chunkProgress, localTime, localDuration);
@@ -941,6 +1102,7 @@ export function NarrationProvider({ children }) {
       return {
         phase,
         error,
+        voice,
         activeNarratorId,
         activePlaybackId,
         playbackId: activePlaybackId,
@@ -980,6 +1142,8 @@ export function NarrationProvider({ children }) {
       chunkProgress.currentWeight,
       chunkProgress.index,
       chunkProgress.totalWeight,
+      deviceClock.currentTime,
+      deviceClock.duration,
       error,
       lastCompletedPlaybackId,
       pause,
@@ -995,6 +1159,7 @@ export function NarrationProvider({ children }) {
       status.currentTime,
       status.duration,
       stop,
+      voice,
       webProgress.currentTime,
       webProgress.duration,
     ]

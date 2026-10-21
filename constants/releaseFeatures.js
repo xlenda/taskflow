@@ -30,6 +30,11 @@ export function releaseFeaturesForPlatform(
     // offered only on Android and Apple builds.
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'android' || platformOS === 'ios',
+    // The Celeste voice (the narrator she picks) on the website and on Android
+    // alike. Android requests pass the server only with a verified Play
+    // Integrity token; otherwise the device voice reads with an honest notice.
+    cloudNarration: platformOS === 'web' || platformOS === 'android',
+    // Images, cloud scenes, dreams and the Living Mirror stay website-only.
     paidCloudProcessing: platformOS === 'web',
   });
 }

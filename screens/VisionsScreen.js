@@ -23,6 +23,7 @@ import { useCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { personalJourneyItemsForState } from '../utils/personalJourney';
 
 import AddToWakeButton from '../components/AddToWakeButton';
+import AiContentReportAction from '../components/AiContentReportAction';
 import GradientCover from '../components/GradientCover';
 import PrimaryButton from '../components/PrimaryButton';
 import SectionHeading from '../components/SectionHeading';
@@ -577,6 +578,15 @@ export default function VisionsScreen() {
                 })
               }
               style={styles.shareButton}
+            />
+            {/* a história gerada da visão em foco (a que o ▶ do card toca) pode ser denunciada, como no player */}
+            <AiContentReportAction
+              contentType="vision"
+              contentRef={`vision:${visibleVision.id}:${visibleVision.lang}`}
+              content={visibleVision.generatedStory}
+              visualRef={visibleVision.visualKey}
+              generation={{ source: 'journey-suite' }}
+              lang={visibleVision.lang}
             />
 
             <View style={styles.dots}>

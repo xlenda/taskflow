@@ -16,6 +16,12 @@ const integrationPaths = [
   path.join(root, 'screens', 'VisionPlayerScreen.js'),
   path.join(root, 'screens', 'AffirmationsScreen.js'),
   path.join(root, 'screens', 'MorningRitualScreen.js'),
+  // toda tela onde a voz gerada toca (no Android também) oferece a denúncia
+  path.join(root, 'screens', 'onboarding', 'RevealScreen.js'),
+  path.join(root, 'screens', 'VisionsScreen.js'),
+  path.join(root, 'screens', 'WakeSequenceScreen.js'),
+  path.join(root, 'screens', 'DailyRitualScreen.js'),
+  path.join(root, 'screens', 'PracticeRitualScreen.js'),
 ];
 
 const serviceSource = fs.readFileSync(servicePath, 'utf8');
@@ -86,7 +92,7 @@ assert.ok(
 integrationPaths.forEach((screenPath) => {
   const source = fs.readFileSync(screenPath, 'utf8');
   assert.ok(
-    source.includes("import AiContentReportAction from '../components/AiContentReportAction'"),
+    /import AiContentReportAction from '(?:\.\.\/)+components\/AiContentReportAction'/.test(source),
     `${path.basename(screenPath)} precisa importar a acao de denuncia`
   );
   assert.ok(source.includes('<AiContentReportAction'), `${path.basename(screenPath)} precisa expor a acao`);

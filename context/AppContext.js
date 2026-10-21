@@ -105,6 +105,12 @@ export const CELESTE_BACKUP_MAX_BYTES = 8 * 1024 * 1024;
 const CELESTE_BACKUP_RESTORE_POLICY = 'replace-local-device-data';
 const AppCtx = createContext(null);
 
+// Scene text, images, translations and the Living Mirror in the cloud: only where they exist (the website). In the
+// Android app the same consent opens only the voice (RELEASE_FEATURES.cloudNarration, usePersonalNarration).
+function cloudMediaConsent(profile) {
+  return RELEASE_FEATURES.paidCloudProcessing && hasCurrentAdultCloudConsent(profile);
+}
+
 function settleWithin(promise, timeoutMs) {
   return new Promise((resolve) => {
     let settled = false;
@@ -861,7 +867,10 @@ export function AppProvider({ children }) {
   const writerRef = useRef(null);
   stateRef.current = state;
 
-  const setPersonalVisualPhase = useCallback((id, nextStatus) => {
+  const setPersonalVisualPhase = useCallback((id, status) => {
+    // Without cloud images (the app) there is nothing to enable: no "Enable my personal image" action.
+    const nextStatus =
+      !RELEASE_FEATURES.paidCloudProcessing && status?.phase === 'consent_required' ? null : status;
     setPersonalVisualStatus((current) => {
       if (!nextStatus) {
         if (!Object.prototype.hasOwnProperty.call(current, id)) return current;
@@ -1115,7 +1124,7 @@ export function AppProvider({ children }) {
       !hydratedRef.current ||
       isKnownMinor(state.profile) ||
       state.profile?.cloudPersonalization !== true ||
-      !hasCurrentAdultCloudConsent(state.profile)
+      !cloudMediaConsent(state.profile)
     ) return;
 
     const generationEpoch = generationEpochRef.current;
@@ -1170,7 +1179,7 @@ export function AppProvider({ children }) {
       !hydratedRef.current ||
       isKnownMinor(state.profile) ||
       state.profile?.cloudPersonalization !== true ||
-      !hasCurrentAdultCloudConsent(state.profile)
+      !cloudMediaConsent(state.profile)
     ) return;
     const generationEpoch = generationEpochRef.current;
     if (
@@ -1576,7 +1585,7 @@ export function AppProvider({ children }) {
       if (
         isKnownMinor(profile) ||
         profile.cloudPersonalization !== true ||
-        !hasCurrentAdultCloudConsent(profile)
+        !cloudMediaConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(id);
         setPersonalVisualPhase(id, {
@@ -1811,7 +1820,7 @@ export function AppProvider({ children }) {
       if (
         isKnownMinor(profile) ||
         profile.cloudPersonalization !== true ||
-        !hasCurrentAdultCloudConsent(profile)
+        !cloudMediaConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(statusId);
         setPersonalVisualPhase(statusId, {
@@ -2038,7 +2047,7 @@ export function AppProvider({ children }) {
       if (
         isKnownMinor(profile) ||
         profile.cloudPersonalization !== true ||
-        !hasCurrentAdultCloudConsent(profile)
+        !cloudMediaConsent(profile)
       ) {
         personalVisualFailuresRef.current.delete(statusId);
         setPersonalVisualPhase(statusId, {
@@ -2208,7 +2217,7 @@ export function AppProvider({ children }) {
     const canUseCloud =
       !isKnownMinor(profile) &&
       profile.cloudPersonalization === true &&
-      hasCurrentAdultCloudConsent(profile);
+      cloudMediaConsent(profile);
     if (canUseCloud) {
       // The hydration upgrade effect sees the local item in the next render.
       // Mark this epoch before it can start a duplicate paid request.
@@ -2337,7 +2346,7 @@ export function AppProvider({ children }) {
     if (
       isKnownMinor(snapshot.profile) ||
       snapshot.profile?.cloudPersonalization !== true ||
-      !hasCurrentAdultCloudConsent(snapshot.profile)
+      !cloudMediaConsent(snapshot.profile)
     ) {
       return { ok: false, error: 'cloud_consent_required' };
     }
@@ -3558,7 +3567,7 @@ export function AppProvider({ children }) {
       !snapshot ||
       isKnownMinor(snapshot.profile) ||
       snapshot.profile.cloudPersonalization !== true ||
-      !hasCurrentAdultCloudConsent(snapshot.profile)
+      !cloudMediaConsent(snapshot.profile)
     ) {
       return;
     }
@@ -3581,7 +3590,7 @@ export function AppProvider({ children }) {
         latest.lang !== nextLang ||
         isKnownMinor(latest.profile) ||
         latest.profile.cloudPersonalization !== true ||
-        !hasCurrentAdultCloudConsent(latest.profile)
+        !cloudMediaConsent(latest.profile)
       ) {
         return;
       }

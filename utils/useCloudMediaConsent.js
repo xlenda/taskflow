@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import { CLOUD_CONSENT_VERSION, hasCurrentAdultCloudConsent } from '../constants/cloudConsent';
+import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { useApp } from '../context/AppContext';
 import { isUnder18Age } from '../screens/onboarding/flow';
 import { confirmAsync } from './confirm';
@@ -18,6 +19,24 @@ const COPY = {
     message:
       'Celeste uses ElevenLabs to create the voice you choose and Google Gemini to create personal images. Only when you ask, the necessary text, language, selected voice, and visual context are sent. This also enables the personalized cloud features described in the Privacy Policy. Your content is not public. By continuing, you confirm that you are 18 or older. You can turn this off in Profile.',
     confirm: 'Enable voice and images',
+    cancel: 'Not now',
+  },
+};
+
+// Android: only the voice goes to the cloud (images stay on the website), so the request names only the voice.
+const VOICE_ONLY_COPY = {
+  pt: {
+    title: 'Ativar a voz da Celeste?',
+    message:
+      'A Celeste usa a ElevenLabs para criar a voz que você escolher. Somente quando você pedir para ouvir, o texto, o idioma e a voz selecionada vão ao nosso servidor e à ElevenLabs, só para gerar o áudio. Nenhuma imagem é criada no app. O conteúdo não fica público. Ao continuar, você confirma que tem 18 anos ou mais. Você pode desativar em Perfil.',
+    confirm: 'Ativar a voz',
+    cancel: 'Agora não',
+  },
+  en: {
+    title: "Enable Celeste's voice?",
+    message:
+      'Celeste uses ElevenLabs to create the voice you choose. Only when you ask to listen, the text, language and selected voice go to our server and to ElevenLabs, only to create the audio. No images are created in the app. Your content is not public. By continuing, you confirm that you are 18 or older. You can turn this off in Profile.',
+    confirm: 'Enable the voice',
     cancel: 'Not now',
   },
 };
@@ -52,7 +71,7 @@ export function useCloudMediaConsent() {
       return { ok: true, profile };
     }
 
-    const copy = COPY[lang];
+    const copy = (RELEASE_FEATURES.paidCloudProcessing ? COPY : VOICE_ONLY_COPY)[lang];
     const accepted = await confirmAsync({
       title: copy.title,
       message: copy.message,

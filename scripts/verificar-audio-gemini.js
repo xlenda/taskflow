@@ -706,8 +706,11 @@ async function main() {
     'amostras antigas de voz continuam versionadas'
   );
   for (const source of [contextSource, serviceSource]) {
-    assert.doesNotMatch(source, /elevenlabs|ELEVENLABS|expo-speech/i);
+    assert.doesNotMatch(source, /elevenlabs|ELEVENLABS/i);
   }
+  // A voz do aparelho só existe como reserva anunciada do player (verificar-privacidade-voz.js e
+  // verificar-vozes-android.js); o serviço de pedido nunca fala sozinho.
+  assert.doesNotMatch(serviceSource, /expo-speech/i);
   for (const source of [contextSource, serviceSource, apiSource]) {
     assert.doesNotMatch(source, /\bsk_[a-z0-9_-]{20,}/i);
     assert.doesNotMatch(source, /console\.(?:log|warn|error)/);

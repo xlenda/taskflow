@@ -20,7 +20,7 @@ export function usePersonalNarration() {
   const narratorId = state?.narration?.narratorId || DEFAULT_NARRATOR_ID;
 
   const ensureConsent = useCallback(async () => {
-    if (!RELEASE_FEATURES.paidCloudProcessing) {
+    if (!RELEASE_FEATURES.cloudNarration) {
       return { ok: false, error: 'personal_narration_unavailable' };
     }
     return ensureCloudMediaConsent();
@@ -79,7 +79,7 @@ export function usePersonalNarration() {
   return {
     ...narration,
     narratorId,
-    personalNarrationAvailable: RELEASE_FEATURES.paidCloudProcessing,
+    personalNarrationAvailable: RELEASE_FEATURES.cloudNarration,
     playPersonal,
     preparePersonal,
     spokenText,

@@ -24,6 +24,7 @@ import CelestialTrace from '../../components/CelestialTrace';
 import CenaViva from '../../components/cenaViva/CenaViva';
 import { imageUriForCenaViva } from '../../components/cenaViva/imageSource';
 import NarratorSelector from '../../components/NarratorSelector';
+import AiContentReportAction from '../../components/AiContentReportAction';
 import { useShareSheet } from '../../components/ShareSheet';
 import { DEFAULT_NARRATOR_ID, isNarratorId } from '../../constants/narrators';
 import { captionProgressFromNarration } from '../../utils/captionProgress';
@@ -477,6 +478,15 @@ export default function RevealScreen({ navigation, route }) {
                 {/* sempre em texto: no canvas uma afirmação longa mostra só as últimas 3 linhas */}
                 <Text style={styles.affirmation}>“{m.affirmation}”</Text>
               </View>
+              {/* a história gerada (a que a voz conta) pode ser denunciada aqui mesmo, como na manifestação */}
+              <AiContentReportAction
+                contentType="scene"
+                contentRef={`manifestation:${m.id}:${lang}`}
+                content={m.story}
+                visualRef={m.visual?.contentFingerprint || m.visual?.cacheKey}
+                generation={m.generation}
+                lang={lang}
+              />
 
               <View style={styles.processBlock}>
                 <Text style={styles.sectionLabel}>{t(S.identity)}</Text>

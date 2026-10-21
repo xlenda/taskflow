@@ -268,8 +268,12 @@ async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
         signal.addEventListener('abort', onExternalAbort, { once: true });
       })
       : null;
+    // One serialization: on Android the Play Integrity token is bound to these exact bytes.
+    const payload = JSON.stringify(body);
     const operation = (async () => {
-      const authorization = fetchImpl ? {} : await celestePaidApiHeaders({ signal: requestSignal });
+      const authorization = fetchImpl
+        ? {}
+        : await celestePaidApiHeaders({ signal: requestSignal, operation: 'audio', body: payload });
       if (externallyCancelled || (signal && signal.aborted)) {
         throw new NarrationRequestError('audio_cancelled');
       }
@@ -281,7 +285,7 @@ async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
         headers: { 'Content-Type': 'application/json', ...authorization },
         cache: 'no-store',
         signal: requestSignal,
-        body: JSON.stringify(body),
+        body: payload,
       });
       if (!response || !response.ok) throw await responseError(response || {});
       const contentType = response.headers && response.headers.get
@@ -314,6 +318,10 @@ async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
       throw new NarrationRequestError(
         externallyCancelled || (signal && signal.aborted) ? 'audio_cancelled' : 'audio_timeout'
       );
+    }
+    // The app could not get the Google verification for this request: the same refusal the server would give.
+    if (error && error.code === 'native_attestation_required') {
+      throw new NarrationRequestError('native_attestation_required', 403);
     }
     throw new NarrationRequestError('audio_unavailable');
   } finally {

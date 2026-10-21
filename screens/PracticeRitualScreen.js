@@ -16,6 +16,7 @@ import { Button, Card, EmptyState, Header, Screen } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
 import { RELEASE_FEATURES } from '../constants/releaseFeatures';
+import AiContentReportAction from '../components/AiContentReportAction';
 import GradientCover from '../components/GradientCover';
 import { useShareSheet } from '../components/ShareSheet';
 import { useT } from '../utils/useT';
@@ -811,6 +812,15 @@ export default function PracticeRitualScreen() {
           {t(S.visionAudioFailed)}
         </Text>
       ) : null}
+      {/* the generated vision (the one the voice reads) can be reported here, like in the vision player */}
+      <AiContentReportAction
+        contentType="vision"
+        contentRef={`vision:${vision.id}:${visionLang}`}
+        content={vision.generatedStory || visionText}
+        visualRef={vision.visualKey}
+        generation={{ source: 'journey-suite' }}
+        lang={visionLang}
+      />
       {!visionStepComplete ? (
         <View style={styles.visionAlternative}>
           <Text style={[styles.visionAlternativeLabel, { color: theme.textMuted }]}>

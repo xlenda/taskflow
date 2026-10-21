@@ -135,7 +135,88 @@ const narrationContextSource = fs.readFileSync(narrationContextPath, 'utf8');
 assert.match(narrationContextSource, /requestNarrationAudio/, 'Cloud narration must use the private server facade');
 assert.match(narrationContextSource, /playPreview/, 'Shared player lacks bundled preview support');
 assert.match(narrationContextSource, /playPersonal/, 'Shared player lacks personal narration support');
-assert.doesNotMatch(narrationContextSource, /expo-speech/, 'Cloud narration silently falls back to a device voice');
+
+// In the app a device voice may read what the Celeste voice could not (server refusal, network, spend cap), but
+// never silently: the context marks it (voice: 'device') only off the website, and the global player says so.
+// scripts/verificar-vozes-android.js proves the whole fallback by behavior.
+function renderPlaybackControls(narration) {
+  const filename = path.join(ROOT, 'components', 'NarrationPlaybackControls.js');
+  const element = (type, props) => ({ type, props: props || {} });
+  const hooks = { useState: (value) => [value, () => {}], useCallback: (fn) => fn };
+  const mocks = {
+    react: { __esModule: true, default: hooks, ...hooks },
+    'react/jsx-runtime': { jsx: element, jsxs: element, Fragment: 'Fragment' },
+    'react-native': {
+      ActivityIndicator: 'ActivityIndicator',
+      Pressable: 'Pressable',
+      StyleSheet: { create: (styles) => styles },
+      Text: 'Text',
+      View: 'View',
+    },
+    '@expo/vector-icons': { Ionicons: 'Ionicons' },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
+    '../context/AppContext': { useApp: () => ({ state: { lang: 'pt' } }) },
+    '../context/NarrationContext': { NARRATION_PLAYBACK_RATES: [1], useNarration: () => narration },
+    '../ui/theme': { useTheme: () => ({}) },
+  };
+  const compiled = transformSync(fs.readFileSync(filename, 'utf8'), {
+    filename,
+    presets: ['babel-preset-expo'],
+    sourceType: 'module',
+  }).code;
+  const loaded = new Module(filename, module);
+  loaded.filename = filename;
+  loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+  const originalLoad = Module._load;
+  Module._load = (request, parent, isMain) =>
+    Object.prototype.hasOwnProperty.call(mocks, request) ? mocks[request] : originalLoad(request, parent, isMain);
+  try {
+    loaded._compile(compiled, filename);
+  } finally {
+    Module._load = originalLoad;
+  }
+  const nodes = (node) =>
+    Array.isArray(node)
+      ? node.flatMap(nodes)
+      : node && typeof node === 'object'
+        ? [node, ...nodes(node.props.children)]
+        : [];
+  return nodes(loaded.exports.default({}));
+}
+const playingNarration = {
+  activePlaybackId: 'reveal:m1',
+  isPlaying: true,
+  progress: 0.2,
+  elapsedTime: 3,
+  totalDuration: 30,
+  chunkCount: 1,
+  playbackRate: 1,
+};
+const deviceVoiceNotice = renderPlaybackControls({ ...playingNarration, voice: 'device' }).find(
+  (node) => node.props.testID === 'narration-device-voice-notice'
+);
+assert.ok(
+  deviceVoiceNotice && /voz do aparelho/i.test(String(deviceVoiceNotice.props.children)),
+  'Cloud narration silently falls back to a device voice'
+);
+assert.ok(
+  !renderPlaybackControls({ ...playingNarration, voice: 'cloud' }).some(
+    (node) => node.props.testID === 'narration-device-voice-notice'
+  ),
+  'The Celeste voice must not be announced as the device voice'
+);
+if (/expo-speech/.test(narrationContextSource)) {
+  assert.match(
+    narrationContextSource,
+    /setVoice\('device'\)/,
+    'Cloud narration silently falls back to a device voice'
+  );
+  assert.match(
+    narrationContextSource,
+    /Platform\.OS !== 'web' &&\s*sequence\.request\.mode === 'personal'/,
+    'The website and narrator samples never fall back to a device voice'
+  );
+}
 
 // No screen may import one of the old generic content decks.
 const forbiddenDecks = new Set(['AFFIRMATIONS', 'VISIONS', 'FOR_YOU', 'TRENDING']);

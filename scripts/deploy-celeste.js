@@ -78,6 +78,7 @@ const STATIC_GATES = [
   ['scripts/verificar-cena-viva.js', 'Cena viva (renderizador, video e cards) falhou'],
   ['scripts/verificar-compartilhar.js', 'Compartilhar imagem e video falhou'],
   ['scripts/verificar-despertar-sequencia.js', 'Despertar em sequencia falhou'],
+  ['scripts/verificar-vozes-android.js', 'Vozes da Celeste no Android (voz escolhida, aviso da voz do aparelho, denuncia) falharam'],
 ];
 
 function assert(condition, message) {

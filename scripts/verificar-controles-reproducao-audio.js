@@ -55,6 +55,9 @@ function loadContextInternals(source) {
       useAudioPlayer: () => ({}),
       useAudioPlayerStatus: () => ({}),
     },
+    // the announced device-voice fallback (scripts/verificar-vozes-android.js exercises it)
+    'expo-speech': { speak: () => {}, stop: async () => {} },
+    '../utils/captionProgress': { CHARS_PER_SECOND: 14 },
     '../services/generateNarrationAudio': {
       clearNarrationAudioMemoryCache: () => {},
       normalizeNarrationText: (value) => String(value || '').trim(),

@@ -15,6 +15,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Speech from 'expo-speech';
 
+import AiContentReportAction from '../components/AiContentReportAction';
 import CelestialTrace from '../components/CelestialTrace';
 import PrimaryButton from '../components/PrimaryButton';
 import NarratedScene from '../components/NarratedScene';
@@ -106,8 +107,8 @@ export default function WakeSequenceScreen() {
   // The 4:5 scene stays under half the window height, keeping the controls on screen.
   const sceneSize = { maxWidth: Math.min(420, Math.round(useWindowDimensions().height * 0.38)) };
   const items = useMemo(() => wakeSequenceItemsForState(state, lang), [state, lang]);
-  // Site: the Celeste voice when she already allowed the cloud; otherwise (and
-  // always in the app) the device voice.
+  // Website and Android: the Celeste voice when she already allowed it (refused by the server, the narration reads
+  // with the device voice and says so); otherwise, and always on iPhone, the device voice.
   const cloudVoice = narration.personalNarrationAvailable && hasUnifiedCloudMediaConsent(state?.profile);
 
   const [index, setIndex] = useState(null);
@@ -556,6 +557,19 @@ export default function WakeSequenceScreen() {
         {current.kind === 'affirmation' || (currentScene && phase === 'playing' && !voiceFailed) ? null : (
           <Text selectable style={[styles.story, { color: theme.text }]}>{current.text}</Text>
         )}
+        {/* what the voice is saying can be reported here, with the same references as its own screen */}
+        <AiContentReportAction
+          contentType={current.kind === 'anchor' ? 'scene' : current.kind}
+          contentRef={
+            current.kind === 'anchor'
+              ? `manifestation:${current.manifestationId}:${current.lang}`
+              : `${current.kind}:${current.id}:${current.lang}`
+          }
+          content={current.text}
+          visualRef={current.visualKey}
+          generation={{ source: 'wake-sequence' }}
+          lang={current.lang}
+        />
       </View>
     );
   }

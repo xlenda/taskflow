@@ -247,12 +247,15 @@ export default function HomeScreen() {
       cloudConsentVersion = null;
       cloudPersonalization = false;
       cloudAdultConfirmed = false;
+      // The scene is created on the device. Only a build with no cloud at all clears what is left: on Android the
+      // saved consent is the one for the voice and it stays.
       if (
-        currentProfile.cloudConsentVersion ||
-        currentProfile.cloudPersonalization === true ||
-        currentProfile.cloudAdultConfirmed === true ||
-        currentProfile.cloudNarrationConsent === true ||
-        currentProfile.cloudDreamConsent === true
+        !RELEASE_FEATURES.cloudNarration &&
+        (currentProfile.cloudConsentVersion ||
+          currentProfile.cloudPersonalization === true ||
+          currentProfile.cloudAdultConfirmed === true ||
+          currentProfile.cloudNarrationConsent === true ||
+          currentProfile.cloudDreamConsent === true)
       ) {
         saveProfile({
           cloudConsentVersion: null,
