@@ -241,6 +241,19 @@ for (const filename of displayFiles) {
   });
 }
 
+// Screens that read with their own device voice when the Celeste voice she allowed did not play (wake-up, practice)
+// say so too; scripts/verificar-vozes-android.js proves it by behavior.
+for (const filename of displayFiles) {
+  const source = fs.readFileSync(filename, 'utf8');
+  if (!/\bplayPersonal\s*\(/.test(source) || !/from\s+['"]expo-speech['"]/.test(source)) continue;
+  assert.match(
+    source,
+    /testID="[a-z]+-device-voice-notice"/,
+    `${relative(filename)} silently swaps the Celeste voice for the device voice`
+  );
+  assert.match(source, /Quem lê é a voz do aparelho/, `${relative(filename)} must say the device voice is reading`);
+}
+
 const affirmationsSource = read('screens/AffirmationsScreen.js');
 const visionsSource = read('screens/VisionsScreen.js');
 const visionPlayerSource = read('screens/VisionPlayerScreen.js');

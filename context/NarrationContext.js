@@ -34,6 +34,9 @@ const WEB_PLAY_START_TIMEOUT_MS = 1800;
 // global player says so. The website keeps its "read the text" notices; a stop, an invalid text and a narrator
 // sample never fall back.
 const DEVICE_VOICE_RATE = 0.9;
+// An engine that never reports a start (nor an error) would leave the player "loading" forever: past this, the
+// narration ends as device_voice_failed and the screen offers the text.
+const DEVICE_VOICE_START_TIMEOUT_MS = 8000;
 const NO_DEVICE_VOICE = new Set(['audio_cancelled', 'text_invalid']);
 
 const NARRATION_AUDIO_MODE = Object.freeze({
@@ -459,9 +462,11 @@ export function NarrationProvider({ children }) {
         const duration = chunk.length / (CHARS_PER_SECOND * rate);
         const startAt = (from / chunk.length) * duration;
         let settled = false;
+        let startDeadline = null;
         const settle = (failure) => {
           if (settled) return;
           settled = true;
+          clearTimeout(startDeadline);
           resolve(failure);
         };
         const utterance = { startedAt: 0, words: false, startAt, duration, settle };
@@ -484,6 +489,11 @@ export function NarrationProvider({ children }) {
         });
         setDeviceClock({ currentTime: startAt, duration });
         setPhase('loading');
+        startDeadline = setTimeout(() => {
+          if (settled) return;
+          Speech.stop().catch(() => {});
+          fail();
+        }, DEVICE_VOICE_START_TIMEOUT_MS);
         try {
           Speech.speak(chunk.slice(from), {
             language: sequence.request.lang === 'en' ? 'en-US' : 'pt-BR',

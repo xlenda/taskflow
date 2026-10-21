@@ -34,7 +34,10 @@ export function releaseFeaturesForPlatform(
     // alike. Android requests pass the server only with a verified Play
     // Integrity token; otherwise the device voice reads with an honest notice.
     cloudNarration: platformOS === 'web' || platformOS === 'android',
-    // Images, cloud scenes, dreams and the Living Mirror stay website-only.
+    // Images, cloud scenes, dreams and the Living Mirror stay website-only. If a
+    // future Android build turns this on, bump CLOUD_CONSENT_VERSION
+    // (constants/cloudConsent.js, used by utils/useCloudMediaConsent.js): the
+    // consent Android users gave (VOICE_ONLY_COPY) named only the voice.
     paidCloudProcessing: platformOS === 'web',
   });
 }

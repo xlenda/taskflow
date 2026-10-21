@@ -60,6 +60,10 @@ const S = {
     pt: 'A narração não tocou neste aparelho. Sua visão continua disponível para leitura.',
     en: 'Narration did not play on this device. Your vision remains available to read.',
   },
+  deviceVoice: {
+    pt: 'A voz escolhida não está disponível agora. Quem lê é a voz do aparelho.',
+    en: 'Your chosen voice is unavailable right now. Your device voice is reading.',
+  },
   visionDone: {
     pt: 'Visão concluída. Agora repita a afirmação duas vezes.',
     en: 'Vision complete. Now repeat the affirmation twice.',
@@ -265,6 +269,8 @@ export default function PracticeRitualScreen() {
   const [localNarrating, setLocalNarrating] = useState(false);
   const [visionRequesting, setVisionRequesting] = useState(false);
   const [visionAudioFailed, setVisionAudioFailed] = useState(false);
+  // She allowed the Celeste voice, it did not play and the device voice reads instead: said on screen, never silent.
+  const [deviceInsteadOfCeleste, setDeviceInsteadOfCeleste] = useState(false);
   const [visionStepComplete, setVisionStepComplete] = useState(completedAlready);
 
   const stopOwnedLocalSpeech = useCallback(async () => {
@@ -485,6 +491,7 @@ export default function PracticeRitualScreen() {
     if (!narration.error || !cloudPlaybackStartedRef.current) return;
     stopOwnedCloudNarration();
     setVisionRequesting(false);
+    setDeviceInsteadOfCeleste(true);
     speakVisionLocally(narrationEpochRef.current);
   }, [narration.error, speakVisionLocally, stopOwnedCloudNarration]);
 
@@ -498,6 +505,7 @@ export default function PracticeRitualScreen() {
     const epoch = narrationEpochRef.current + 1;
     narrationEpochRef.current = epoch;
     setVisionAudioFailed(false);
+    setDeviceInsteadOfCeleste(false);
     setVisionRequesting(true);
     // Sem esperar: o Safari do iPhone só toca áudio iniciado no mesmo toque.
     Speech.stop().catch(() => {});
@@ -529,12 +537,14 @@ export default function PracticeRitualScreen() {
         if (cloudPlaybackIdRef.current === attemptPlaybackId) cloudPlaybackIdRef.current = null;
         narration.stop(attemptPlaybackId);
         setVisionRequesting(false);
+        setDeviceInsteadOfCeleste(true);
         speakVisionLocally(epoch);
         return;
       }
       if (cloudPlaybackIdRef.current === attemptPlaybackId) cloudPlaybackIdRef.current = null;
       setVisionRequesting(false);
       if (result?.error === 'audio_cancelled') return;
+      setDeviceInsteadOfCeleste(true);
     }
 
     speakVisionLocally(epoch);
@@ -810,6 +820,14 @@ export default function PracticeRitualScreen() {
       {visionAudioFailed ? (
         <Text accessibilityRole="alert" style={[styles.visionAudioError, { color: theme.warning }]}>
           {t(S.visionAudioFailed)}
+        </Text>
+      ) : deviceInsteadOfCeleste && localNarrating ? (
+        <Text
+          testID="practice-device-voice-notice"
+          accessibilityLiveRegion="polite"
+          style={[styles.visionAudioError, { color: theme.textMuted }]}
+        >
+          {t(S.deviceVoice)}
         </Text>
       ) : null}
       {/* the generated vision (the one the voice reads) can be reported here, like in the vision player */}

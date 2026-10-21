@@ -70,6 +70,10 @@ const S = {
     pt: 'A voz não tocou neste aparelho. O texto continua aqui para você ler.',
     en: 'The voice did not play on this device. The text stays here for you to read.',
   },
+  deviceVoice: {
+    pt: 'A voz escolhida não está disponível agora. Quem lê é a voz do aparelho.',
+    en: 'Your chosen voice is unavailable right now. Your device voice is reading.',
+  },
   retryVoice: { pt: 'Tocar de novo', en: 'Play again' },
   doneTitle: { pt: 'Seu despertar terminou', en: 'Your wake-up is complete' },
   doneBody: {
@@ -115,6 +119,9 @@ export default function WakeSequenceScreen() {
   const [phase, setPhase] = useState('idle'); // idle | playing | paused | done | stopped
   const [traceDone, setTraceDone] = useState(false);
   const [voiceFailed, setVoiceFailed] = useState(false);
+  // She allowed the Celeste voice, it did not play and the device voice reads instead: the screen says so, never a
+  // silent swap (the narration's own fallback says it in the global player; this one is the screen's).
+  const [deviceInsteadOfCeleste, setDeviceInsteadOfCeleste] = useState(false);
   // Paused mid-item with a voice that cannot resume: Continue replays the item, so it says so.
   const [restartOnResume, setRestartOnResume] = useState(false);
   // How much of the item the voice has said (0..1), and the text it is saying (the Celeste voice leaves saved
@@ -230,6 +237,7 @@ export default function WakeSequenceScreen() {
     cloudIdRef.current = null;
     cloudBrokenRef.current = true;
     latest.current.narration.stop(playbackId);
+    setDeviceInsteadOfCeleste(true);
     const item = latest.current.items[positionRef.current];
     if (item) speakWithDevice(item, epoch);
   }
@@ -250,6 +258,8 @@ export default function WakeSequenceScreen() {
     setPhase('playing');
     setVoiceFailed(false);
     setSpoken(0);
+    // after a break the next items keep the device voice, so the notice stays; a new try with Celeste clears it
+    setDeviceInsteadOfCeleste(Boolean(latest.current.cloudVoice && cloudBrokenRef.current));
     if (latest.current.cloudVoice && !cloudBrokenRef.current) {
       // Silent utterance in this same tap: unlocks the device voice so a later
       // fallback can speak on the iPhone without asking for another tap.
@@ -535,6 +545,12 @@ export default function WakeSequenceScreen() {
               onPress={() => retryWithCeleste(positionRef.current)}
               style={styles.noticeAction}
             />
+          </View>
+        ) : deviceInsteadOfCeleste ? (
+          <View accessibilityLiveRegion="polite" style={[styles.notice, { backgroundColor: theme.surfaceAlt }]}>
+            <Text testID="wake-device-voice-notice" style={[styles.noticeText, { color: theme.text }]}>
+              {t(S.deviceVoice)}
+            </Text>
           </View>
         ) : null}
         <View style={styles.controls}>

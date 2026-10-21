@@ -248,6 +248,15 @@ async function main() {
   const iosFlags = flagsFor('ios');
   platform.OS = 'android';
   await section('1) bandeiras', () => {
+    // o aceite que o Android pediu (VOICE_ONLY_COPY) só falava da voz: ligar o resto da nuvem paga lá exige uma
+    // versão nova do aceite, senão quem aceitou só a voz ficaria com imagens e cenas na nuvem sem ter aceitado
+    if (androidFlags.paidCloudProcessing) {
+      assert.notStrictEqual(
+        CLOUD_CONSENT_VERSION,
+        'celeste-cloud-processors-v2',
+        'Android com a nuvem paga ligada: suba CLOUD_CONSENT_VERSION (o aceite do Android só falava da voz)'
+      );
+    }
     assert.strictEqual(androidFlags.cloudNarration, true, 'Android: a voz da Celeste na nuvem existe');
     assert.strictEqual(androidFlags.paidCloudProcessing, false, 'Android: imagens e o resto da nuvem paga seguem fora');
     assert.strictEqual(webFlags.cloudNarration, true, 'site: a voz da Celeste continua');
@@ -596,6 +605,41 @@ async function main() {
     assert.strictEqual(failed.ok, false, 'nenhuma voz tocou: o resultado não finge');
     assert.strictEqual(voice().phase, 'error');
 
+    // d2) motor de voz do aparelho que nunca diz que começou (nem que falhou): passado o prazo, a narração acaba em
+    //     device_voice_failed (a tela mostra o aviso de ler o texto) em vez de ficar "carregando" para sempre
+    const realSetTimeout = global.setTimeout;
+    const realClearTimeout = global.clearTimeout;
+    const timeouts = new Map();
+    let timeoutIds = 0;
+    global.setTimeout = (fn, ms) => {
+      timeoutIds += 1;
+      timeouts.set(timeoutIds, { fn, ms });
+      return timeoutIds;
+    };
+    global.clearTimeout = (id) => timeouts.delete(id);
+    try {
+      before = speeches.length;
+      const stopsBeforeMute = speechStops.length;
+      pending = personal('O motor de voz nunca começa a ler esta frase.', 'vision:motor-mudo');
+      await until(() => speeches.length === before + 1, 'voz do aparelho pedida a um motor mudo');
+      flushVoice();
+      assert.strictEqual(voice().phase, 'loading', 'esperando o motor começar');
+      const startDeadlines = [...timeouts.values()].filter((timer) => timer.ms === 8000);
+      assert.strictEqual(startDeadlines.length, 1, 'a voz do aparelho tem 8 s para começar');
+      startDeadlines[0].fn();
+      const mute = await pending;
+      flushVoice();
+      assert.deepStrictEqual([mute.ok, mute.error], [false, 'device_voice_failed'], 'o toque não fica preso em "carregando"');
+      assert.deepStrictEqual([voice().phase, voice().error], ['error', 'device_voice_failed']);
+      assert.strictEqual(speechStops.length, stopsBeforeMute + 1, 'o motor mudo é mandado parar');
+      speeches[before].options.onStart(); // um início atrasado não ressuscita a narração
+      flushVoice();
+      assert.strictEqual(voice().phase, 'error', 'início atrasado depois do prazo não toca');
+    } finally {
+      global.setTimeout = realSetTimeout;
+      global.clearTimeout = realClearTimeout;
+    }
+
     // e) a voz da Celeste quebrou no meio (2º trecho recusado): a do aparelho lê o resto
     server = async () => response(200, { body: waveBytes() });
     // mais de 800 letras: dois trechos (o servidor gera até 800 por pedido)
@@ -655,6 +699,7 @@ async function main() {
   const savedProfiles = [];
   let answer = true;
   const voiceRequests = [];
+  let voiceResult = null; // what the narration answers next (null: the Celeste voice plays)
   const narrationDouble = {
     phase: 'idle',
     activePlaybackId: null,
@@ -662,7 +707,7 @@ async function main() {
     stop() {},
     playPersonal: async (request) => {
       voiceRequests.push(request);
-      return { ok: true, playbackId: request.playbackId, voice: 'cloud' };
+      return voiceResult || { ok: true, playbackId: request.playbackId, voice: 'cloud' };
     },
   };
   const appState = {
@@ -936,10 +981,13 @@ async function main() {
       manifestationId: 'm1',
     };
     voiceRequests.length = 0;
+    let wakeProfile = consentedProfile;
+    let wakeItems = [wakeItem];
+    const wakeSpeeches = [];
     const { default: WakeSequenceScreen } = loadWith('screens/WakeSequenceScreen.js', {
       ...screenBase,
       ...realHook('../'),
-      'expo-speech': { speak() {}, stop: () => Promise.resolve() },
+      'expo-speech': { speak: (text) => wakeSpeeches.push(text), stop: () => Promise.resolve() },
       'expo-keep-awake': { activateKeepAwakeAsync: () => Promise.resolve(), deactivateKeepAwake() {} },
       '@react-navigation/native': {
         useIsFocused: () => true,
@@ -951,20 +999,24 @@ async function main() {
       '../components/AiContentReportAction': esDefault('AiContentReportAction'),
       '../components/cenaViva/imageSource': { imageUriForCenaViva: async () => 'scene.jpg' },
       '../constants/brand': { SERIF: 'serif' },
-      '../context/AppContext': { useApp: () => ({ state: { ...appState, profile: consentedProfile } }) },
+      '../context/AppContext': { useApp: () => ({ state: { ...appState, profile: wakeProfile } }) },
       '../ui/theme': { useTheme: () => theme },
       '../utils/colors': { accentAt: () => '#123456', alpha: () => '#123456' },
       '../utils/readyScene': { pickReadyScene: () => ({ id: 'beach-Peace' }) },
       '../utils/useCloudMediaConsent': { hasUnifiedCloudMediaConsent: (profileValue) => profileValue?.cloudNarrationConsent === true },
       '../utils/usePersonalVisual': { usePersonalVisual: () => null },
       '../utils/useT': { useT: () => ({ t: ptOnly, lang: 'pt' }) },
-      '../utils/wakeSequence': { wakeSequenceItemsForState: () => [wakeItem] },
+      '../utils/wakeSequence': { wakeSequenceItemsForState: () => wakeItems },
     });
-    const wake = app.mount(WakeSequenceScreen, {});
-    const trace = wake.where((node) => node.type === 'CelestialTrace');
-    trace.props.onFinalStar();
-    trace.props.onComplete();
-    wake.flush();
+    const startWake = () => {
+      const screen = app.mount(WakeSequenceScreen, {});
+      const trace = screen.where((node) => node.type === 'CelestialTrace');
+      trace.props.onFinalStar();
+      trace.props.onComplete();
+      screen.flush();
+      return screen;
+    };
+    const wake = startWake();
     await until(() => voiceRequests.length === 1, 'Android com o aceite: o despertar usa a voz da Celeste', () => wake.flush());
     const wakeReport = wake.where((node) => node.type === 'AiContentReportAction');
     assert.ok(wakeReport, 'o despertar tem a denúncia de conteúdo de IA');
@@ -973,7 +1025,134 @@ async function main() {
       ['scene', story, 'manifestation:m1:pt'],
       'a denúncia leva o que a voz está dizendo'
     );
+    assert.ok(!wake.byTestID('wake-device-voice-notice'), 'voz da Celeste tocando: sem aviso de voz do aparelho');
     wake.unmount();
+
+    // com o aceite, a voz da Celeste não tocou (aqui: a sessão de áudio falhou) e a voz do aparelho lê: a tela diz,
+    // nunca uma troca calada da voz que ela escolheu (regra do portão de privacidade da voz)
+    const deviceVoiceNotice = 'A voz escolhida não está disponível agora. Quem lê é a voz do aparelho.';
+    voiceResult = { ok: false, error: 'audio_session_unavailable' };
+    wakeSpeeches.length = 0;
+    const secondWakeItem = { kind: 'affirmation', id: 'a2', title: 'Afirmação', text: 'Eu escolho a calma.', lang: 'pt' };
+    wakeItems = [wakeItem, secondWakeItem];
+    const swappedWake = startWake();
+    await until(() => wakeSpeeches.includes(story), 'despertar: a voz do aparelho assume', () => swappedWake.flush());
+    assert.strictEqual(
+      textOf(swappedWake.byTestID('wake-device-voice-notice')),
+      deviceVoiceNotice,
+      'despertar: a troca para a voz do aparelho é dita na tela'
+    );
+    // depois da quebra os próximos itens seguem na voz do aparelho: o aviso continua
+    swappedWake.byTestID('wake-next').props.onPress();
+    swappedWake.flush();
+    assert.ok(wakeSpeeches.includes(secondWakeItem.text), 'despertar: o próximo item segue na voz do aparelho');
+    assert.ok(swappedWake.byTestID('wake-device-voice-notice'), 'despertar: o próximo item na voz do aparelho mantém o aviso');
+    swappedWake.unmount();
+    voiceResult = null;
+    wakeItems = [wakeItem];
+    // sem o aceite o despertar sempre leu com a voz do aparelho: não houve troca, então não há aviso
+    wakeProfile = { age: '25-34' };
+    wakeSpeeches.length = 0;
+    const localWake = startWake();
+    await until(() => wakeSpeeches.includes(story), 'despertar sem aceite: voz do aparelho', () => localWake.flush());
+    assert.ok(!localWake.byTestID('wake-device-voice-notice'), 'despertar sem aceite: nada foi trocado, sem aviso');
+    localWake.unmount();
+
+    // 4f) prática do Plano Celeste: igual ao despertar
+    const visionStory = 'Eu caminho pela praia ao amanhecer e respiro devagar.';
+    const practiceAffirmations = [{ id: 'aff-1', text: 'Eu escolho a calma.', lang: 'pt' }];
+    const practiceVisions = [{ id: 'vision-1', title: 'Praia', story: visionStory, lang: 'pt', category: 'Peace' }];
+    const practicePlanValue = {
+      slots: [{ id: 'slot-1', enabled: true, affirmationId: 'aff-1', visionId: 'vision-1' }],
+      receipts: [],
+    };
+    let practiceProfile = consentedProfile;
+    const practiceSpeeches = [];
+    let practiceSpeech = null; // the options of the last device-voice reading (onDone ends it)
+    const { default: PracticeRitualScreen } = loadWith('screens/PracticeRitualScreen.js', {
+      ...screenBase,
+      ...realHook('../'),
+      'expo-speech': {
+        speak: (text, options) => {
+          practiceSpeech = options;
+          practiceSpeeches.push(text);
+        },
+        stop: () => Promise.resolve(),
+        maxSpeechInputLength: 4000,
+      },
+      '@react-navigation/native': {
+        useIsFocused: () => true,
+        useNavigation: () => ({ canGoBack: () => true, goBack() {}, navigate() {}, replace() {} }),
+        useRoute: () => ({ params: { slotId: 'slot-1' } }),
+      },
+      '../ui/kit': { Button: 'Button', Card: 'Card', EmptyState: 'EmptyState', Header: 'Header', Screen: 'Screen' },
+      '../ui/theme': { useTheme: () => theme },
+      '../context/AppContext': {
+        useApp: () => ({ state: { ...appState, profile: practiceProfile }, completePracticePlanSlot: () => true }),
+      },
+      '../constants/releaseFeatures': { RELEASE_FEATURES: androidFlags },
+      '../components/AiContentReportAction': esDefault('AiContentReportAction'),
+      '../components/GradientCover': esDefault('GradientCover'),
+      '../components/ShareSheet': { useShareSheet: () => ({ isOpen: false, sheet: null, open() {} }) },
+      '../utils/useT': { useT: () => ({ t: ptOnly, lang: 'pt' }) },
+      '../utils/date': { todayISO: () => '2026-10-21' },
+      '../utils/personalAffirmations': { personalAffirmationsForState: () => practiceAffirmations },
+      '../utils/personalJourney': { personalVisionOptionsForState: () => practiceVisions },
+      '../utils/useCloudMediaConsent': { hasUnifiedCloudMediaConsent: (profileValue) => profileValue?.cloudNarrationConsent === true },
+      '../utils/practicePlan': { normalizePracticePlan: () => practicePlanValue, practiceContentFingerprint: () => 'fp-1' },
+      '../utils/speechMatch': { evaluateSpeechMatch: () => ({ score: 0 }) },
+      '../services/practiceSpeech': {
+        cancel: async () => {},
+        getCapability: async () => ({}),
+        recognize: async () => ({}),
+        requestPermission: async () => ({}),
+      },
+      '../services/practicePlanReminders': { snoozePracticePlanReminder: async () => ({ ok: true }) },
+    });
+    const listenToVision = async () => {
+      const screen = app.mount(PracticeRitualScreen, {});
+      await screen.byTestID('practice-play-full-vision').props.onPress();
+      screen.flush();
+      return screen;
+    };
+    voiceRequests.length = 0;
+    const cloudPractice = await listenToVision();
+    assert.strictEqual(voiceRequests.length, 1, 'prática com o aceite: pede a voz da Celeste');
+    assert.deepStrictEqual(practiceSpeeches, [], 'prática: com a voz da Celeste a do aparelho fica calada');
+    assert.ok(!cloudPractice.byTestID('practice-device-voice-notice'), 'prática com a voz da Celeste: sem aviso');
+    // a narração quebra no meio: a voz do aparelho lê a visão, com o aviso
+    narrationDouble.error = 'device_voice_failed';
+    await until(() => practiceSpeeches.includes(visionStory), 'prática: quebra no meio', () => cloudPractice.flush());
+    assert.ok(cloudPractice.byTestID('practice-device-voice-notice'), 'prática: a troca no meio da narração é dita na tela');
+    delete narrationDouble.error;
+    cloudPractice.unmount();
+    // a voz da Celeste ficou pronta mas não começou sozinha (navegador sem o toque): a do aparelho lê, com o aviso
+    practiceSpeeches.length = 0;
+    voiceResult = { ok: true, ready: true, voice: 'cloud' };
+    const readyPractice = await listenToVision();
+    assert.deepStrictEqual(practiceSpeeches, [visionStory], 'prática: voz pronta sem início, a do aparelho lê');
+    assert.ok(readyPractice.byTestID('practice-device-voice-notice'), 'prática: essa troca também é dita na tela');
+    readyPractice.unmount();
+    practiceSpeeches.length = 0;
+    voiceResult = { ok: false, error: 'audio_session_unavailable' };
+    const swappedPractice = await listenToVision();
+    assert.deepStrictEqual(practiceSpeeches, [visionStory], 'prática: a voz do aparelho lê a visão');
+    assert.strictEqual(
+      textOf(swappedPractice.byTestID('practice-device-voice-notice')),
+      deviceVoiceNotice,
+      'prática: a troca para a voz do aparelho é dita na tela'
+    );
+    practiceSpeech.onDone();
+    swappedPractice.flush();
+    assert.ok(!swappedPractice.byTestID('practice-device-voice-notice'), 'prática: a voz do aparelho terminou, o aviso sai');
+    swappedPractice.unmount();
+    voiceResult = null;
+    practiceProfile = { age: '25-34' };
+    practiceSpeeches.length = 0;
+    const localPractice = await listenToVision();
+    assert.deepStrictEqual(practiceSpeeches, [visionStory], 'prática sem aceite: voz do aparelho');
+    assert.ok(!localPractice.byTestID('practice-device-voice-notice'), 'prática sem aceite: nada foi trocado, sem aviso');
+    localPractice.unmount();
 
     // 4e) criar uma manifestação no Android: a cena nasce no aparelho e o aceite da voz continua (no iPhone, sem nuvem
     //     nenhuma, o que sobrou sai como antes)
