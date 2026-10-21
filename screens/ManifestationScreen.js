@@ -914,7 +914,7 @@ export default function ManifestationScreen() {
           <GradientCover
             testID="manifestation-personal-visual"
             visualKey={item.visual?.cacheKey}
-            live={isFocused}
+            live={isFocused && !share.isOpen}
             sceneCategory={item.category}
             narration={
               narrating
@@ -922,7 +922,7 @@ export default function ManifestationScreen() {
                     // o trecho que a voz está dizendo, como ela diz (sem os nomes guardados)
                     text: spokenText(lines.slice(spokenFrom).join(' '), lang),
                     progress: captionProgressFromNarration({ progress: narrationProgress }),
-                    active: narrationPlaying,
+                    active: narrationPlaying && !share.isOpen,
                   }
                 : null
             }

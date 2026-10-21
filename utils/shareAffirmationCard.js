@@ -94,26 +94,11 @@ const dataUriToJpegFile = (dataUri, fileName) => {
   });
 };
 
-const isJpegFile = (file) =>
-  typeof File === 'function' &&
-  file instanceof File &&
-  typeof file.name === 'string' &&
-  file.type === 'image/jpeg' &&
-  /\.jpe?g$/i.test(file.name);
-
-/**
- * No navegador, aceita um File JPEG ja preparado ou captura o ViewShot e gera
- * um novo File. A folha pre-captura para preservar a ativacao do gesto.
- */
-export async function createAffirmationShareFile({ viewRef, file, fileName } = {}) {
+// No navegador: captura o cartão e devolve o File JPEG. A folha captura antes do toque para o envio sair no próprio
+// gesto.
+export async function createAffirmationShareFile({ viewRef, fileName } = {}) {
   if (Platform.OS !== 'web') {
     throw shareError('WEB_ONLY', 'A criacao de File e exclusiva do navegador.');
-  }
-  if (file) {
-    if (!isJpegFile(file)) {
-      throw shareError('INVALID_SHARE_FILE', 'O arquivo de compartilhamento precisa ser JPEG.');
-    }
-    return file;
   }
   const dataUri = await captureShareCard(viewRef, 'data-uri');
   return dataUriToJpegFile(dataUri, fileName);

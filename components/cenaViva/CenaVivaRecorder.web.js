@@ -1,8 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 
+import { shareFilePrefix } from '../../utils/shareContent';
 import { installCenaViva } from './renderer';
-
-const CAMPAIGN = /^[a-z]+$/; // só o nome de uma campanha vira parte do nome do arquivo
 
 const recorderError = (code) => {
   const error = new Error(code);
@@ -21,8 +20,7 @@ async function recordFile({ imageUri, phrase, linkText, campaign }, signal) {
   if (signal.aborted) throw recorderError('recorder_cancelled');
   const video = await installCenaViva(window).recordVideo({ image, phrase, linkText, signal });
   const mimeType = video.mimeType.split(';')[0];
-  const prefix = CAMPAIGN.test(String(campaign || '')) ? `celeste-share-${campaign}` : 'celeste-share';
-  const name = `${prefix}-${Date.now()}.${mimeType === 'video/mp4' ? 'mp4' : 'webm'}`;
+  const name = `${shareFilePrefix(campaign)}-${Date.now()}.${mimeType === 'video/mp4' ? 'mp4' : 'webm'}`;
   return { file: new window.File([video.blob], name, { type: mimeType }), mimeType };
 }
 

@@ -105,6 +105,21 @@ async function clickTestId(page, testId, timeout = 30000) {
   console.log(`  [click] ${testId}`);
 }
 
+// o mesmo testID pode existir numa tela escondida da pilha (share-open-visao em Visões e no player): clica no que está
+// à vista
+async function clickVisibleTestId(page, testId, timeout = 30000) {
+  const handle = await page.waitForFunction(
+    (id) => [...document.querySelectorAll(`[data-testid="${id}"]`)].find((node) => node.getClientRects().length > 0) || false,
+    { timeout, polling: 200 },
+    testId
+  );
+  const element = handle.asElement();
+  await element.evaluate((node) => node.scrollIntoView({ block: 'center', inline: 'center' }));
+  await sleep(180);
+  await element.click();
+  console.log(`  [click] ${testId}`);
+}
+
 async function pressTestId(page, testId, timeout = 30000) {
   const selector = `[data-testid="${testId}"]`;
   await page.waitForSelector(selector, { visible: true, timeout });
@@ -146,9 +161,10 @@ async function assertChips(page, labels, screen, timeout = 30000) {
   console.log(`  [chips ok] ${screen}`);
 }
 
-// Compartilhar: abre pelo share-open-<campanha>, confere a prévia e o que chegou no navigator.share (espião do teste,
-// não do app): o cartão 9:16 de verdade (decodificado, não vazio) e o vídeo mp4, cada um no mesmo gesto do toque e
-// com o link exato da campanha (só utm)
+// Compartilhar: abre pelo share-open-<campanha> (o que está à vista), confere a prévia e o que chegou no
+// navigator.share (espião do teste, não do app): o cartão JPEG 1080×1920 de verdade (decodificado, não vazio), o
+// vídeo mp4 e o link sozinho, cada um no mesmo gesto do toque e com o link exato da campanha (só utm; o link sozinho
+// conta como imagem, mesmo depois do vídeo). Com a folha aberta nenhuma cena anima por trás (o gravador é a vez dela).
 async function assertShare(page, campaign, { saveCard = false } = {}) {
   const expected = (medium) =>
     `https://celeste-jet-two.vercel.app/?utm_source=compartilhar&utm_medium=${medium}&utm_campaign=${campaign}`;
@@ -158,12 +174,20 @@ async function assertShare(page, campaign, { saveCard = false } = {}) {
       timeout: 20000,
       polling: 100,
     }, kind);
+  const nothingLiveBehind = async (moment) => {
+    const live = await page.$$eval(
+      '[data-testid="cena-viva"][data-active="true"], [data-testid="reveal-cena-viva"][data-active="true"]',
+      (nodes) => nodes.length
+    );
+    if (live) throw new Error(`${campaign}: ${live} cena(s) animando por trás da folha (${moment})`);
+  };
   await page.evaluate(() => {
     window.__celesteShares = [];
   });
-  await clickTestId(page, `share-open-${campaign}`);
+  await clickVisibleTestId(page, `share-open-${campaign}`);
   await page.waitForSelector('[data-testid="share-sheet-preview"]', { visible: true, timeout: 15000 });
   if (await page.evaluate(() => window.__celesteShares.length)) throw new Error(`${campaign}: algo saiu antes do toque`);
+  await nothingLiveBehind('folha aberta');
   await page.waitForFunction(
     () => {
       const button = document.querySelector('[data-testid="share-image"]');
@@ -173,13 +197,9 @@ async function assertShare(page, campaign, { saveCard = false } = {}) {
   );
   await clickTestId(page, 'share-image');
   const image = await (await sent('image')).jsonValue();
-  if (
-    !/^image\/(jpeg|png)$/.test(image.type) ||
-    image.width * 16 !== image.height * 9 ||
-    image.width < 720 ||
-    image.colors < 12
-  ) {
-    throw new Error(`${campaign}: cartão não é uma imagem 9:16 de verdade: ${JSON.stringify({ ...image, dataUrl: undefined })}`);
+  // spec §8: JPEG 1080×1920 (não só "9:16 de 720 px ou mais")
+  if (image.type !== 'image/jpeg' || image.width !== 1080 || image.height !== 1920 || image.colors < 12) {
+    throw new Error(`${campaign}: cartão não é um JPEG 1080×1920 de verdade: ${JSON.stringify({ ...image, dataUrl: undefined })}`);
   }
   if (!image.activated) throw new Error(`${campaign}: a imagem foi compartilhada fora do gesto`);
   if (linkOf(image.text) !== expected('imagem')) throw new Error(`${campaign}: link da imagem errado: ${image.text}`);
@@ -188,6 +208,7 @@ async function assertShare(page, campaign, { saveCard = false } = {}) {
     () => document.querySelector('[data-testid="share-video"]')?.getAttribute('aria-label') === 'Compartilhar vídeo',
     { timeout: 45000, polling: 250 }
   );
+  await nothingLiveBehind('vídeo gravado');
   await clickTestId(page, 'share-video');
   const video = await (await sent('video')).jsonValue();
   if (video.type !== 'video/mp4' || video.size < 50 * 1024 || !new RegExp(`^celeste-share-${campaign}-\\d+\\.mp4$`).test(video.name)) {
@@ -195,13 +216,22 @@ async function assertShare(page, campaign, { saveCard = false } = {}) {
   }
   if (!video.activated) throw new Error(`${campaign}: o vídeo foi compartilhado fora do gesto`);
   if (linkOf(video.text) !== expected('video')) throw new Error(`${campaign}: link do vídeo errado: ${video.text}`);
+  // logo depois do vídeo, o link sozinho: utm_medium=imagem
+  await page.waitForFunction(() => document.querySelector('[data-testid="share-link"]')?.getAttribute('aria-disabled') !== 'true', {
+    timeout: 15000,
+    polling: 100,
+  });
+  await clickTestId(page, 'share-link');
+  const link = await (await sent('text')).jsonValue();
+  if (!link.activated) throw new Error(`${campaign}: o link foi compartilhado fora do gesto`);
+  if (linkOf(link.text) !== expected('imagem')) throw new Error(`${campaign}: link sozinho errado (depois do vídeo): ${link.text}`);
   if (saveCard) {
     fs.writeFileSync(path.join(SHOT_DIR, `share-card-${campaign}.jpg`), Buffer.from(image.dataUrl.split(',')[1], 'base64'));
   }
   await clickTestId(page, 'share-sheet-close');
   await page.waitForSelector('[data-testid="share-sheet"]', { hidden: true, timeout: 10000 });
   console.log(
-    `  [compartilhar ok] ${campaign}: cartão ${image.width}×${image.height} ${image.type}, vídeo ${Math.round(video.size / 1024)} KB ${video.type}, links utm exatos`
+    `  [compartilhar ok] ${campaign}: cartão ${image.width}×${image.height} ${image.type}, vídeo ${Math.round(video.size / 1024)} KB ${video.type}, links utm exatos, nada animando por trás`
   );
 }
 
@@ -1110,6 +1140,24 @@ async function assertShareOpenerClear(page, campaign) {
   console.log(`  [cena viva ok] reduzir movimento: ${stillScenes.length} cena(s) parada(s), nenhuma animando`);
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   await assertOneLiveCard('Visões (movimento de volta)');
+  // o player da visão em foco (tocando no card, como ela abriria): o compartilhar de lá também chega certo (visao)
+  const focusedVisionTitle = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    const anchor = (saved.manifestations || []).find((item) => item?.id === saved.anchorSceneId);
+    return anchor?.journeySuiteByLang?.pt?.visions?.[0]?.title || '';
+  });
+  if (!focusedVisionTitle) throw new Error('Visão em foco sem título para abrir o player');
+  const focusedVisionCard = await page.waitForFunction(
+    (title) =>
+      [...document.querySelectorAll('[role="button"]')].find(
+        (node) => node.getAttribute('aria-label') === title && node.getClientRects().length > 0
+      ) || false,
+    { timeout: 15000, polling: 200 },
+    focusedVisionTitle
+  );
+  await focusedVisionCard.asElement().click();
+  await page.waitForSelector('[data-testid="vision-player-stage"]', { visible: true, timeout: 20000 });
+  await assertShare(page, 'visao');
   await waitAndClick(page, 'Manifestar');
   await waitForHome(page, 20000);
 
@@ -1166,6 +1214,26 @@ async function assertShareOpenerClear(page, campaign) {
     return saved.manifestations?.some((item) => Array.isArray(item.sessions) && item.sessions.length > 0);
   });
   if (!retriedPracticePersisted) throw new Error('A nova tentativa sumiu com a pratica pendente');
+
+  // Manifestação: a Cena-Âncora compartilha como ancora; outra manifestação, como afirmacao (a mesma escolha do
+  // despertar). A desta tela é a Cena-Âncora do onboarding; a outra entra como cópia dela com outro id.
+  await assertShare(page, 'ancora');
+  const otherManifestationId = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+    const anchor = (saved.manifestations || []).find((item) => item?.id === saved.anchorSceneId);
+    if (!anchor) return null;
+    const other = { ...anchor, id: 'e2e-outra-manifestacao', origin: 'e2e', title: 'Outra manifestação' };
+    localStorage.setItem('@stella_state_v2', JSON.stringify({ ...saved, manifestations: [...saved.manifestations, other] }));
+    return other.id;
+  });
+  if (!otherManifestationId) throw new Error('Sem a Cena-Âncora para copiar como outra manifestação');
+  await page.goto(new globalThis.URL(`/m/${otherManifestationId}`, URL).toString(), { waitUntil: 'networkidle2', timeout: 60000 });
+  await waitForText(page, 'Outra manifestação', 30000);
+  const anchorOpener = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="share-open-ancora"]')].some((node) => node.getClientRects().length > 0)
+  );
+  if (anchorOpener) throw new Error('Manifestação que não é a Cena-Âncora compartilha como ancora');
+  await assertShare(page, 'afirmacao');
 
   if (fontErrors.length) {
     throw new Error(`FONTE DOS ÍCONES quebrada em produção: ${fontErrors[0]}`);

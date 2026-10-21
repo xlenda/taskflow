@@ -1428,7 +1428,7 @@ export default function MorningRitualScreen({ route, mode = 'dreams' }) {
                         respostas. Decorativa: o texto do sonho segue logo abaixo. */}
                     <GradientCover
                       testID="dream-cena-viva"
-                      live={focused}
+                      live={focused && !share.isOpen}
                       visualKey={currentDreamEntry?.visual?.cacheKey}
                       accent={1}
                       radius={18}

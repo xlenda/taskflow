@@ -24,6 +24,7 @@ import { createAffirmationShareFile, isShareCancellation } from '../utils/shareA
 import {
   SHARE_CAMPAIGNS,
   captureShareImage,
+  discardAfterShare,
   discardShareFile,
   shareFileBase,
   shareUrl,
@@ -105,7 +106,8 @@ export default function ShareSheet({ visible, onClose, content }) {
 
 // A tela abre a folha por aqui: open({ campaign, phrase, kindLabel, visualKey, category }) monta o content — sem
 // imagem pessoal, a cena pronta das respostas (lugar dos sonhos × categoria), a mesma do card — e sheet é o elemento
-// que a tela põe na árvore. O botão share-open-<campaign> é da tela, no estilo dela, fora do card.
+// que a tela põe na árvore. O botão share-open-<campaign> é da tela, no estilo dela, fora do card. isOpen: a tela
+// para a cena viva do card por trás enquanto a folha grava (no Android seriam duas WebViews e o vídeo sairia picado).
 export function useShareSheet() {
   const { state } = useApp();
   const { lang } = useT();
@@ -113,7 +115,11 @@ export function useShareSheet() {
   const dreamLocation = state && state.profile ? state.profile.dreamLocation : undefined;
   const open = ({ category, visualKey, ...rest }) =>
     setContent({ ...rest, visualKey: visualKey || null, readyScene: pickReadyScene({ dreamLocation, category }), lang });
-  return { open, sheet: <ShareSheet visible={!!content} content={content} onClose={() => setContent(null)} /> };
+  return {
+    open,
+    isOpen: !!content,
+    sheet: <ShareSheet visible={!!content} content={content} onClose={() => setContent(null)} />,
+  };
 }
 
 // Prévia do cartão 9:16 primeiro; o vídeo de 8 s começa a gravar quando a folha abre e só vai no toque. No site, o
@@ -130,7 +136,8 @@ function SharePanel({ content, onClose }) {
   const captureRef = useRef(null); // site: o cartão em 360×640 fora da tela (a miniatura reduzida não serve)
   const previewRef = useRef(null); // app: a própria prévia é capturada em 1080×1920
   const recorderRef = useRef(null);
-  const videoRef = useRef(null); // vídeo gravado e ainda não entregue (app: o arquivo no cache)
+  const videoRef = useRef(null); // o vídeo gravado (app: o arquivo no cache, que fica até a folha fechar)
+  const handedRef = useRef(false); // o vídeo já foi entregue a um seletor (outro app pode estar lendo)
   const loadedRef = useRef(false);
   const [laidOut, setLaidOut] = useState(false);
   const [visualReady, setVisualReady] = useState(false);
@@ -138,11 +145,10 @@ function SharePanel({ content, onClose }) {
   const [cardFile, setCardFile] = useState(null);
   const [cardFailed, setCardFailed] = useState(false);
   const [readyShown, setReadyShown] = useState(false); // a prévia mostra a cena pronta (sem imagem pessoal)
-  const [video, setVideo] = useState({ state: 'recording' }); // recording | ready | unsupported | failed | spent
+  const [video, setVideo] = useState({ state: 'recording' }); // recording | ready | unsupported | failed
   const [attempt, setAttempt] = useState(0);
   const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [medium, setMedium] = useState('imagem'); // formato do último envio: o link vai com a utm dele
   const [notice, setNotice] = useState(null);
   const cardReady = laidOut && visualReady;
 
@@ -160,7 +166,14 @@ function SharePanel({ content, onClose }) {
       }
       personal = found;
       setReadyShown(!found);
-      const imageUri = await imageUriForCenaViva({ personalUri: found ? found.uri : null, readyScene: content.readyScene });
+      let imageUri;
+      try {
+        imageUri = await imageUriForCenaViva({ personalUri: found ? found.uri : null, readyScene: content.readyScene });
+      } catch (_error) {
+        // a imagem da cena não sai neste aparelho: gravar de novo falharia igual — fica só o cartão, avisado uma vez
+        if (alive) setVideo({ state: 'unsupported' });
+        return;
+      }
       if (!alive) return;
       const recorded = await recorderRef.current.record({
         imageUri,
@@ -184,10 +197,13 @@ function SharePanel({ content, onClose }) {
     };
   }, [attempt]);
 
-  // fechou com um vídeo que nunca foi entregue a outro app: sai do cache já (o entregue, o shareVideoFile apaga)
+  // fechou: o vídeo sai do cache — na hora se nunca saiu da folha; entregue a outro app, no prazo de leitura dele
   useEffect(
     () => () => {
-      if (videoRef.current) discardShareFile(videoRef.current.uri);
+      const recorded = videoRef.current;
+      if (!recorded) return;
+      if (handedRef.current) discardAfterShare(recorded.uri);
+      else discardShareFile(recorded.uri);
     },
     []
   );
@@ -245,13 +261,12 @@ function SharePanel({ content, onClose }) {
       : captureShareImage({ viewRef: previewRef, campaign: content.campaign }).then((image) =>
           shareVideoFile({ uri: image.uri, mimeType: image.mimeType, title: t(S.title), text })
         );
-    setMedium('imagem');
     track(sharing, link);
   };
 
   const shareVideo = () => {
     if (!valid || busy) return;
-    if (video.state === 'failed' || video.state === 'spent') {
+    if (video.state === 'failed') {
       setAsked(false);
       setVideo({ state: 'recording' });
       setAttempt((n) => n + 1);
@@ -263,26 +278,24 @@ function SharePanel({ content, onClose }) {
     }
     const recorded = videoRef.current;
     const link = shareUrl('video', content.campaign);
+    // app: o arquivo fica com a folha (seletor cancelado ou outro envio não gravam 8 s de novo); ela apaga ao fechar
+    handedRef.current = true;
     const sharing = shareVideoFile({
       file: recorded.file,
       uri: recorded.uri,
       mimeType: recorded.mimeType,
       title: t(S.title),
       text: `${APP_NAME} — ${link}`,
+      keepFile: true,
     });
-    setMedium('video');
-    if (!web) {
-      // entregue ao seletor: o shareVideoFile apaga o arquivo depois; outro envio grava de novo
-      videoRef.current = null;
-      setVideo({ state: 'spent' });
-    }
     track(sharing, link);
   };
 
-  // o expo-sharing não leva texto junto do arquivo: o link vai por aqui (no site, se não der, copia)
+  // o expo-sharing não leva texto junto do arquivo: o link vai por aqui (no site, se não der, copia); só o link, sem
+  // arquivo, conta como imagem (a utm só conhece imagem|video)
   const shareLink = async () => {
     if (!valid || busy) return;
-    const message = `“${content.phrase}” — ${APP_NAME}\n${shareUrl(medium, content.campaign)}`;
+    const message = `“${content.phrase}” — ${APP_NAME}\n${shareUrl('imagem', content.campaign)}`;
     setNotice(null);
     try {
       await Share.share({ message });
@@ -305,7 +318,6 @@ function SharePanel({ content, onClose }) {
     ready: webm ? t(S.videoWebm) : t(S.video),
     unsupported: t(S.videoUnavailable),
     failed: t(S.videoAgain),
-    spent: t(S.videoAgain),
   }[video.state];
   const card = {
     phrase: content.phrase,

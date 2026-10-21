@@ -415,7 +415,7 @@ export default function AffirmationsScreen() {
             <AffirmationCard
               affirmation={currentLoc}
               // só o card da vez existe: ele leva a cena viva enquanto a aba está aberta
-              live={isFocused && current.id === liveCardId}
+              live={isFocused && current.id === liveCardId && !share.isOpen}
               cover={isFocused}
               sceneCategory={current.category}
               // "Ouvir": a cena com a frase (o texto que a voz fala) surgindo palavra por palavra no ritmo dela
@@ -424,7 +424,7 @@ export default function AffirmationsScreen() {
                   ? {
                       text: spokenText(currentLoc.text, current.speechLang || lang),
                       progress: captionProgressFromNarration({ progress: narrationProgress }),
-                      active: playingAudio,
+                      active: playingAudio && !share.isOpen,
                     }
                   : null
               }

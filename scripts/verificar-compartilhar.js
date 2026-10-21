@@ -353,6 +353,7 @@ async function main() {
     sweepShareCache,
     discardShareFile,
     shareFileBase,
+    shareFilePrefix,
     captureShareImage,
     SHARE_CAMPAIGNS,
   } = loadWith('utils/shareContent.js', baseMocks);
@@ -360,6 +361,11 @@ async function main() {
   // todo arquivo do compartilhar se chama celeste-share-<campanha>-<ms>: a limpeza acha pelo nome (e pela idade)
   assert.strictEqual(shareFileBase('visao', 1700000000000), 'celeste-share-visao-1700000000000');
   assert.throws(() => shareFileBase('../x', 1), 'campanha fora da lista não vira nome de arquivo');
+  // o prefixo dos gravadores: o mesmo nome, sem lançar — campanha fora da lista (mesmo só letras) fica de fora
+  assert.strictEqual(shareFilePrefix('visao'), 'celeste-share-visao');
+  for (const odd of ['promo', '../x', undefined, null, 7]) {
+    assert.strictEqual(shareFilePrefix(odd), 'celeste-share', `prefixo sem campanha para ${String(odd)}`);
+  }
   assert.strictEqual(
     shareUrl('video', 'visao'),
     'https://celeste-jet-two.vercel.app/?utm_source=compartilhar&utm_medium=video&utm_campaign=visao'
@@ -620,6 +626,14 @@ async function main() {
     await assert.rejects(shareVideoFile({ uri: shareUri, mimeType: 'video/mp4', title: 'x' }), /Activity not found/);
     assert.ok(!disk.has(shareUri), 'falhou: o vídeo sai do cache do mesmo jeito');
     sharing.outcome = () => Promise.resolve();
+    // keepFile: o vídeo da folha fica para outro envio (seletor cancelado) — quem apaga é a folha, ao fechar
+    for (const os of ['android', 'ios']) {
+      RN.Platform.OS = os;
+      disk.set(shareUri, 'video');
+      await shareVideoFile({ uri: shareUri, mimeType: 'video/mp4', title: 'x', keepFile: true });
+      assert.ok(disk.has(shareUri) && !timers.length, `${os}: keepFile não apaga nem agenda nada`);
+    }
+    disk.delete(shareUri);
     // apaga o que é do compartilhar — vídeo e cartão, com ou sem campanha, e o cartão de versões antigas
     // (view-shot: celeste-afirmacao<dígitos>.jpg) —; nunca outro arquivo
     for (const ours of [
@@ -773,7 +787,15 @@ async function main() {
   lookups.get('visual-late').resolve({ uri: 'blob:late', release: () => released.push('late') });
   await tick();
   assert.ok(released.includes('late'), 'chegou depois de fechar: a imagem é solta');
-  assert.strictEqual(imageOf(app.mount(ShareCard, { phrase: 'aa', kindLabel: 'bb' })), null, 'sem as duas: o gradiente');
+  const bare = app.mount(ShareCard, { phrase: 'aa', kindLabel: 'bb' });
+  assert.strictEqual(imageOf(bare), null, 'sem as duas: o gradiente');
+  // o véu do texto branco vale também sem imagem (o gradiente da marca de vários temas é claro demais sozinho)
+  const veilOf = (card) => ({
+    veil: card.all('View').some((node) => [].concat(node.props.style).some((s) => s && s.backgroundColor === cardModule.SHARE_CARD_VEIL.image)),
+    shades: card.all('LinearGradient').filter((node) => node.props.colors === cardModule.SHARE_CARD_VEIL.gradient.colors).length,
+  });
+  assert.deepStrictEqual(veilOf(bare), { veil: true, shades: 1 }, 'sem imagem: o mesmo véu e o mesmo degradê do cartão com imagem');
+  assert.deepStrictEqual(veilOf(plain), { veil: true, shades: 1 }, 'com a cena pronta: véu e degradê');
 
   // a frase sempre cabe: a fonte desce por faixas de comprimento e as linhas travam no que cabe acima da assinatura
   // (420 px dos 640); passou disso, reticências — nunca invade o Traço Celeste nem o link
@@ -797,14 +819,17 @@ async function main() {
   // 7) folha no site: a prévia do cartão aparece antes de qualquer envio; o vídeo começa a gravar ao abrir (com a
   //    cena pronta quando não há imagem pessoal); tocar antes de ele ficar pronto só mostra o andamento; pronto, o
   //    toque chama navigator.share no mesmo instante com o arquivo e o link do formato; webm = aviso + cartão
+  // a cena 13 não sai deste aparelho (recurso que falha sempre)
   const assetModule = {
     Asset: {
       fromModule: (source) => ({
         downloadAsync: () =>
-          Promise.resolve({
-            uri: `/assets/scene-${source}.jpg`,
-            localUri: RN.Platform.OS === 'web' ? `/assets/scene-${source}.jpg` : `file:///cache/scene-${source}.jpg`,
-          }),
+          source === 13
+            ? Promise.reject(new Error('recurso ausente'))
+            : Promise.resolve({
+                uri: `/assets/scene-${source}.jpg`,
+                localUri: RN.Platform.OS === 'web' ? `/assets/scene-${source}.jpg` : `file:///cache/scene-${source}.jpg`,
+              }),
       }),
     },
   };
@@ -889,6 +914,13 @@ async function main() {
         'vídeo + link de vídeo da campanha'
       );
       await settle(sheet, () => !videoButton().props.disabled, 'compartilhado');
+      // o link vai sempre com utm_medium=imagem (a spec só conhece imagem|video), mesmo logo depois de enviar o vídeo
+      await sheet.byId('share-link').props.onPress();
+      assert.deepStrictEqual(
+        linkShares.pop(),
+        { message: `“Eu vivo com calma” — Celeste\n${shareUrl('imagem', 'visao')}` },
+        'link depois do vídeo: o link da imagem (utm_medium=imagem)'
+      );
       // imagem: o JPEG do cartão em tamanho real é capturado antes do toque (fora da tela) e vai no mesmo toque
       const imageButton = () => sheet.byId('share-image');
       assert.ok(imageButton().props.disabled, 'imagem espera o cartão ficar pronto');
@@ -911,7 +943,7 @@ async function main() {
       assert.deepStrictEqual(
         linkShares.pop(),
         { message: `“Eu vivo com calma” — Celeste\n${shareUrl('imagem', 'visao')}` },
-        'link: a frase e o link do último formato enviado'
+        'link: a frase e o link da imagem'
       );
       sheet.byId('share-sheet-close').props.onPress();
       assert.deepStrictEqual(closes.splice(0), ['visao'], 'fechar avisa a tela');
@@ -1090,12 +1122,24 @@ async function main() {
     await settle(sheet, () => /Compartilhar vídeo$/.test(sheet.byId('share-video').props.label), 'vídeo pronto no app');
     sharing.calls.length = 0;
     sheet.byId('share-video').props.onPress();
-    await settle(sheet, () => sharing.calls.length === 1 && appTimers.length === 1, 'expo-sharing');
+    await settle(sheet, () => sharing.calls.length === 1 && !sheet.byId('share-video').props.disabled, 'expo-sharing');
     assert.deepStrictEqual(sharing.calls[0], [videoUri, { mimeType: 'video/mp4', dialogTitle: 'Compartilhar' }], 'expo-sharing com o mime do vídeo');
-    assert.ok(disk.has(videoUri), 'Android: o arquivo fica enquanto o app de destino lê');
+    // o vídeo fica com a folha aberta: seletor cancelado (ou um 2º envio) usa o mesmo arquivo, sem gravar 8 s de novo
+    assert.ok(disk.has(videoUri) && appTimers.length === 0, 'entregue: o arquivo fica enquanto a folha está aberta');
+    assert.match(sheet.byId('share-video').props.label, /Compartilhar vídeo$/, 'entregue: o mesmo vídeo segue pronto');
+    sharing.outcome = () => Promise.reject(Object.assign(new Error('User cancelled'), { code: 'ERR_CANCELLED' }));
+    sheet.byId('share-video').props.onPress();
+    await settle(sheet, () => sharing.calls.length === 2 && !sheet.byId('share-video').props.disabled, 'seletor cancelado');
+    sharing.outcome = () => Promise.resolve();
+    assert.ok(
+      sharing.calls[1][0] === videoUri && lastRecorder().jobs.length === 1 && disk.has(videoUri),
+      'seletor cancelado: o mesmo arquivo vai de novo, sem regravar'
+    );
+    sheet.unmount();
+    // fechou depois de entregar: no Android o app de destino ainda pode estar lendo — o mesmo prazo do envio
+    assert.ok(disk.has(videoUri) && appTimers.length === 1, 'fechou depois de entregar: o Android espera o app de destino ler');
     appTimers.pop()();
     assert.ok(!disk.has(videoUri), '…e sai do cache 90 s depois');
-    sheet.unmount();
     // fechou sem compartilhar: o vídeo gravado sai do cache na hora
     const quitting = openSheet({ ...content, campaign: 'afirmacao' });
     await recordingStarted(quitting);
@@ -1124,6 +1168,19 @@ async function main() {
     await settle(webmApp, () => webmApp.byId('share-video-webm-warning'), 'aviso de webm no app');
     assert.match(textOf(webmApp.byId('share-video-webm-warning')), /aparelho.*WhatsApp/, 'app: o aparelho grava webm');
     webmApp.unmount();
+    // a imagem da cena não sai neste aparelho (falha que se repete): só o cartão, avisado uma vez — nada de "gravar de
+    // novo" que falharia igual
+    const jobsBeforeBroken = recorders.reduce((total, recorder) => total + recorder.jobs.length, 0);
+    const brokenImage = openSheet({ ...content, campaign: 'pratica', readyScene: { ...readyScene, source: 13 } });
+    await settle(brokenImage, () => brokenImage.byId('share-video-unavailable'), 'imagem da cena que não sai');
+    assert.match(
+      textOf(brokenImage.byId('share-video-unavailable')),
+      /não grava o vídeo.*imagem continua pronta/,
+      'imagem que não sai: avisa uma vez, o cartão segue pronto'
+    );
+    assert.ok(brokenImage.byId('share-video').props.disabled, 'imagem que não sai: sem "gravar de novo" (falharia igual)');
+    assert.strictEqual(recorders.reduce((total, recorder) => total + recorder.jobs.length, 0), jobsBeforeBroken, 'nada gravado');
+    brokenImage.unmount();
     // imagem no app: a própria prévia vira JPEG no cache do app (celeste-share-<campanha>-<ms>.jpg), vai como
     // image/jpeg e sai do cache depois, como o vídeo
     const imageSheet = openSheet({ ...content, campaign: 'afirmacao' });
@@ -1155,8 +1212,11 @@ async function main() {
     return opener.sheet;
   }, {});
   assert.ok(screenHost.tree.type === ShareSheet && screenHost.tree.props.visible === false, 'folha fechada até a tela abrir');
+  assert.strictEqual(opener.isOpen, false, 'fechada: a cena viva do card segue animando');
   opener.open({ campaign: 'visao', phrase: 'Minha casa perto do mar', kindLabel: 'Visão de Amor', visualKey: undefined, category: 'Love' });
   screenHost.flush();
+  // aberta, a tela pausa a cena do card por trás: no Android seriam duas WebViews enquanto o gravador grava
+  assert.strictEqual(opener.isOpen, true, 'aberta: isOpen (o card por trás vira pôster parado)');
   assert.deepStrictEqual(
     screenHost.tree.props.content,
     {
@@ -1174,6 +1234,7 @@ async function main() {
   screenHost.tree.props.onClose();
   screenHost.flush();
   assert.strictEqual(screenHost.tree.props.visible, false, 'fechar some com a folha');
+  assert.strictEqual(opener.isOpen, false, 'fechou: a cena viva do card volta');
 
   // 10) as 7 telas: cada uma monta a folha (useShareSheet + share.sheet) e tem o botão share-open-<campanha> que
   //     abre o conteúdo dela; Afirmações trocou a prévia antiga pela folha (imagem + vídeo + link)
@@ -1198,6 +1259,13 @@ async function main() {
     assert.ok(!/<ShareSheet\b/.test(code), `${file}: a folha vem do useShareSheet (cena pronta garantida)`);
     for (const [, campaign] of code.matchAll(/share\.open\(\{\s*campaign: '([^']*)'/g)) {
       assert.ok(SHARE_CAMPAIGNS.includes(campaign), `${file}: campanha ${campaign} fora da lista`);
+    }
+    // folha aberta = a cena viva do card por trás para (pôster parado): toda condição live/active da tela tem
+    // !share.isOpen — inclusive a da cena narrada, que anima mesmo sem live
+    const sceneConditions = code.split('\n').filter((line) => /\blive=\{|\bactive=\{|\bactive: (?!\{)/.test(line));
+    assert.ok(sceneConditions.length > 0, `${file}: tem cena viva`);
+    for (const line of sceneConditions) {
+      assert.ok(line.includes('!share.isOpen'), `${file}: a cena para com a folha aberta (${line.trim()})`);
     }
   }
   const manifestation = read('screens/ManifestationScreen.js');
@@ -1243,7 +1311,12 @@ async function main() {
   const namedVideo = await recordNative('visao', 'video/mp4;codecs=avc1.42E01E');
   assert.match(namedVideo.uri, /^file:\/\/\/cache\/celeste-share-visao-\d+\.mp4$/, 'app: celeste-share-<campanha>-<ms>.mp4');
   assert.ok(namedVideo.mimeType === 'video/mp4' && disk.get(namedVideo.uri) === 'QUJD', 'app: mime sem codecs, vídeo inteiro');
-  assert.match((await recordNative('../x', 'video/webm;codecs=vp9')).uri, /^file:\/\/\/cache\/celeste-share-\d+\.webm$/);
+  const oddVideo = await recordNative('../x', 'video/webm;codecs=vp9');
+  assert.match(oddVideo.uri, /^file:\/\/\/cache\/celeste-share-\d+\.webm$/);
+  // o nome sai do mesmo prefixo do cartão (shareFilePrefix): só campanha da lista entra, mesmo uma palavra qualquer
+  const promoVideo = await recordNative('promo', 'video/mp4');
+  assert.match(promoVideo.uri, /^file:\/\/\/cache\/celeste-share-\d+\.mp4$/, 'app: campanha fora da lista fica fora do nome');
+  const producedUris = [namedVideo.uri, oddVideo.uri, promoVideo.uri];
   nativeRecorder.unmount();
   disk.clear();
   function webStudio(supports) {
@@ -1305,6 +1378,9 @@ async function main() {
       /^celeste-share-ancora-\d+\.mp4$/.test(webVideo.file.name) && webVideo.file.type === 'video/mp4' && webVideo.mimeType === 'video/mp4',
       'site: File com o nome da campanha e o mime limpo'
     );
+    const promoWeb = await webRef.current.record({ imageUri: 'blob:scene', phrase: 'aa', linkText: 'x', campaign: 'promo' });
+    assert.match(promoWeb.file.name, /^celeste-share-\d+\.mp4$/, 'site: campanha fora da lista fica fora do nome');
+    producedUris.push(`file:///cache/${webVideo.file.name}`, `file:///cache/${promoWeb.file.name}`);
     const studio = webStudio(() => true);
     global.window = studio.window;
     const cancelling = webRef.current.record({ imageUri: 'blob:scene', phrase: 'aa', linkText: 'x', campaign: 'ancora' });
@@ -1320,6 +1396,19 @@ async function main() {
   } finally {
     delete global.window;
   }
+  // a limpeza acha o que os TRÊS produtores nomeiam (um prefixo só): o cartão do app (captureShareImage), o vídeo do
+  // app (gravador nativo) e o do site (File do gravador web), com e sem campanha
+  producedUris.push((await captureShareImage({ viewRef: cardTarget, campaign: 'pratica' })).uri);
+  producedUris.forEach((uri) => disk.set(uri, 'x'));
+  sweepShareCache(Date.now());
+  assert.ok(producedUris.every((uri) => disk.has(uri)), 'recém-criados (menos de 90 s): ficam');
+  sweepShareCache(Date.now() + 91000);
+  assert.deepStrictEqual(
+    producedUris.filter((uri) => disk.has(uri)),
+    [],
+    'mais de 90 s: a limpeza acha o nome que cada produtor dá (cartão, vídeo do app, vídeo do site)'
+  );
+  disk.clear();
 
   // 13) o app limpa o cache do compartilhar ao abrir — o Android mata o app enquanto ela está no WhatsApp e o prazo de
   //     90 s nunca dispara —, além de ao abrir a folha

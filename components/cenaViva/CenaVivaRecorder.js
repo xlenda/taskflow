@@ -3,17 +3,17 @@ import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { File, Paths } from 'expo-file-system';
 
+import { shareFilePrefix } from '../../utils/shareContent';
 import { cenaVivaHtml, scriptJson } from './CenaViva';
 import { installCenaViva } from './renderer';
 
 // App: grava o vídeo numa WebView oculta (2×2 px) com o MESMO renderizador. A ponte não aguenta ~4 MB de uma
 // vez: a página manda { type: 'chunk', index, total, data } (base64 em pedaços de 512 KB) e { type: 'done',
-// mimeType }; aqui os pedaços são remontados e gravados em Paths.cache/celeste-share-<campanha>-<ts>.mp4|webm
-// (sem campanha, celeste-share-<ts>): o nome que a limpeza do compartilhar procura.
+// mimeType }; aqui os pedaços são remontados e gravados em Paths.cache/<shareFilePrefix>-<ts>.mp4|webm: o nome que
+// a limpeza do compartilhar procura.
 const { joinChunks } = installCenaViva({});
 const TIMEOUT_MS = 30000; // 8 s de gravação + abrir a WebView + devolver os pedaços, com folga
 const EXTENSIONS = { 'video/mp4': 'mp4', 'video/webm': 'webm' };
-const CAMPAIGN = /^[a-z]+$/; // só o nome de uma campanha vira parte do nome do arquivo
 
 const recorderError = (code) => {
   const error = new Error(code);
@@ -66,7 +66,7 @@ export function collectVideo(job, message) {
   const total = Number.isInteger(job.total) && job.total > 0 && job.total <= 1000 ? job.total : 0;
   const parts = Array.from({ length: total }, (_, i) => job.parts[i]);
   if (!extension || !total || parts.some((part) => typeof part !== 'string')) throw recorderError('recorder_error');
-  const file = new File(Paths.cache, `${job.prefix || 'celeste-share'}-${Date.now()}.${extension}`);
+  const file = new File(Paths.cache, `${job.prefix || shareFilePrefix()}-${Date.now()}.${extension}`);
   try {
     file.create({ overwrite: true });
     file.write(joinChunks(parts), { encoding: 'base64' });
@@ -89,8 +89,7 @@ const CenaVivaRecorder = forwardRef(function CenaVivaRecorder(_props, ref) {
       record({ imageUri, phrase, linkText, campaign }) {
         if (job.current) return Promise.reject(recorderError('recorder_busy'));
         return new Promise((resolve, reject) => {
-          const prefix = CAMPAIGN.test(String(campaign || '')) ? `celeste-share-${campaign}` : 'celeste-share';
-          const current = { parts: [], total: 0, prefix };
+          const current = { parts: [], total: 0, prefix: shareFilePrefix(campaign) };
           current.finish = (error, video) => {
             if (job.current !== current) return;
             clearTimeout(current.timer);

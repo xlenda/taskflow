@@ -338,7 +338,7 @@ export default function RevealScreen({ navigation, route }) {
                           }
                         : undefined
                     }
-                    active={!narrating || playingAudio}
+                    active={(!narrating || playingAudio) && !share.isOpen}
                     onReady={(uri) => setShown(uri)}
                     onError={() => dropScene(scene.source)}
                     style={styles.cenaViva}

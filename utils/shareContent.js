@@ -17,8 +17,8 @@ export function shareUrl(medium, campaign) {
   return `${APP_URL}/?utm_source=compartilhar&utm_medium=${medium}&utm_campaign=${campaign}`;
 }
 
-// arquivo do compartilhar no cache do app: celeste-share-<campanha>-<ms>.<ext> (vídeo dos gravadores, cartão do
-// captureShareImage); sem campanha, celeste-share-<ms>.<ext>
+// arquivo do compartilhar no cache do app: <shareFilePrefix>-<ms>.<ext> — celeste-share-<campanha>-<ms> ou, sem
+// campanha, celeste-share-<ms> (vídeo dos gravadores, cartão do captureShareImage)
 const SHARE_FILE = /(?:^|\/)celeste-share-(?:[a-z]+-)?(\d+)\.(?:mp4|webm|jpg|png)$/;
 // cartão das versões que usavam o arquivo temporário do view-shot: nenhuma versão atual cria esse nome
 const LEGACY_CARD = /(?:^|\/)celeste-afirmacao\d*\.jpg$/;
@@ -31,10 +31,16 @@ const shareError = (code) => {
   return error;
 };
 
-// nome (sem extensão) de todo arquivo do compartilhar: a campanha vem da lista, nunca do conteúdo
+// prefixo de todo arquivo do compartilhar (cartão e vídeo do app e do site): a campanha só entra se for da lista,
+// nunca texto do conteúdo; sem lançar — os gravadores gravam mesmo sem campanha
+export function shareFilePrefix(campaign) {
+  return SHARE_CAMPAIGNS.includes(campaign) ? `celeste-share-${campaign}` : 'celeste-share';
+}
+
+// nome (sem extensão) do cartão: aqui a campanha é obrigatória
 export function shareFileBase(campaign, now = Date.now()) {
   if (!SHARE_CAMPAIGNS.includes(campaign)) throw new Error('share_campanha_invalida');
-  return `celeste-share-${campaign}-${now}`;
+  return `${shareFilePrefix(campaign)}-${now}`;
 }
 
 // apaga um arquivo do compartilhar — nunca outro; falha de disco não derruba a tela (a próxima limpeza tenta)
@@ -46,6 +52,12 @@ export function discardShareFile(uri) {
   } catch (_error) {
     // segue: sweepShareCache limpa na próxima abertura
   }
+}
+
+// depois de entregue a outro app: no Android ele pode ler só depois que o seletor fecha (prazo); no iPhone, já
+export function discardAfterShare(uri) {
+  if (Platform.OS === 'android') setTimeout(() => discardShareFile(uri), ANDROID_GRACE_MS);
+  else discardShareFile(uri);
 }
 
 // ao abrir o app e a folha: o que ficou para trás (o app morreu no meio do compartilhar) sai do cache — os de menos de
@@ -127,8 +139,9 @@ function shareOnWeb({ file, title, text }) {
 
 // o expo-sharing só leva o arquivo (Android EXTRA_STREAM, iPhone [url]): o link vai desenhado no cartão/vídeo e
 // pelo "Compartilhar link" da folha. O arquivo (vídeo ou cartão) é temporário e sai do cache depois (aviso de
-// privacidade); se o app morrer antes, a limpeza da abertura apaga.
-async function shareOnNative({ uri, mimeType, title }) {
+// privacidade); se o app morrer antes, a limpeza da abertura apaga. keepFile: quem chamou apaga (o vídeo da folha
+// fica para outro envio enquanto ela está aberta).
+async function shareOnNative({ uri, mimeType, title, keepFile }) {
   try {
     if (!(await Sharing.isAvailableAsync())) throw shareError('NATIVE_SHARE_UNAVAILABLE');
     await Sharing.shareAsync(uri, { mimeType, dialogTitle: title });
@@ -137,15 +150,14 @@ async function shareOnNative({ uri, mimeType, title }) {
     if (isShareCancellation(error)) return { status: STATUS.CANCELLED };
     throw error;
   } finally {
-    if (Platform.OS === 'android') setTimeout(() => discardShareFile(uri), ANDROID_GRACE_MS);
-    else discardShareFile(uri);
+    if (!keepFile) discardAfterShare(uri);
   }
 }
 
 // Compartilha um arquivo pronto — o vídeo da cena viva ou o JPEG do cartão (site: { file }, pelo caminho síncrono;
 // app: { uri } no cache, de captureShareImage ou do gravador). Devolve { status: 'shared'|'downloaded'|'cancelled' }
 // (+ linkCopied).
-export function shareVideoFile({ file, uri, mimeType, title, text } = {}) {
+export function shareVideoFile({ file, uri, mimeType, title, text, keepFile } = {}) {
   if (Platform.OS === 'web') return shareOnWeb({ file, title, text });
-  return shareOnNative({ uri, mimeType, title });
+  return shareOnNative({ uri, mimeType, title, keepFile });
 }

@@ -101,8 +101,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   aceita afirmação, visão, Cena-Âncora, frase de sonho ou frase própria e pede
   permissão de Alarmes.
 - Compartilhar: abrir uma afirmação, visão ou a Cena-Âncora, tocar em Compartilhar,
-  conferir a prévia da imagem ou do vídeo de 8 segundos e enviar pela folha de
-  compartilhamento do sistema.
+  conferir a prévia do cartão e enviar a imagem ou o vídeo de 8 segundos pela folha
+  de compartilhamento do sistema.
 - Avaliação: depois da revelação da Cena-Âncora, a janela padrão de avaliação da
   Google Play pode aparecer uma vez; não há pergunta antes nem botão próprio.
 - Privacidade: `Perfil > Privacidade e dados`.

@@ -395,7 +395,7 @@ export default function VisionsScreen() {
                     <GradientCover
                       accent={vision.accent}
                       visualKey={vision.visualKey}
-                      live={isFocused && vision.id === liveVisionId}
+                      live={isFocused && vision.id === liveVisionId && !share.isOpen}
                       sceneCategory={vision.category}
                       radius={28}
                       style={[styles.slide, { height: CARD_H }]}

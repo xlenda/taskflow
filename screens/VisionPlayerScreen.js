@@ -770,7 +770,7 @@ function PersonalVisionPlayer({
           <GradientCover
             accent={vision.accent}
             visualKey={primaryVisualKey}
-            live={isFocused && !narrating && !showsSecondaryVisual}
+            live={isFocused && !narrating && !showsSecondaryVisual && !share.isOpen}
             sceneCategory={vision.category}
             radius={0}
             style={StyleSheet.absoluteFillObject}
@@ -800,7 +800,7 @@ function PersonalVisionPlayer({
               narration={{
                 text: spokenText(lines.slice(spokenFrom).join(' '), vision.lang),
                 progress: captionProgressFromNarration({ progress: narrationProgress }),
-                active: narrationPlaying,
+                active: narrationPlaying && !share.isOpen,
               }}
             />
           ) : null}

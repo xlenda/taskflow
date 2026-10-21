@@ -804,6 +804,9 @@ async function main() {
     'react-native-webview': { WebView: 'WebView' },
     'expo-file-system': { File: DeviceFile, Paths: { cache: { uri: 'file:///cache' } } },
     'expo-asset': assetModule,
+    // os gravadores tiram o nome do arquivo de utils/shareContent (shareFilePrefix), que traz o envio junto
+    'expo-sharing': {},
+    'react-native-view-shot': { captureRef: () => Promise.reject(new Error('sem captura neste portão')) },
   };
   const message = (data) => ({ nativeEvent: { data: JSON.stringify(data) } });
 
@@ -1740,16 +1743,17 @@ async function main() {
   );
   assert.strictEqual(app.mount(AffirmationCard, { affirmation: { text: 'aa' } }).find('GradientCover'), null, 'fora de foco e sem imagem: card liso de sempre');
 
-  // um card animado por vez: só o card em foco recebe live (no app cada cena é uma WebView de até ~3,4 MB)
+  // um card animado por vez: só o card em foco recebe live (no app cada cena é uma WebView de até ~3,4 MB); com a
+  // folha do compartilhar aberta, nem ele (o gravador é a outra WebView)
   const screen = (name) => fs.readFileSync(path.join(root, 'screens', name), 'utf8');
   const liveProps = (source) => source.match(/\slive=\{[^}]*\}/g) || [];
   const cardScreens = {
-    'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused && current\.id === liveCardId\}/,
-    'VisionsScreen.js': /<GradientCover[^>]*?\slive=\{isFocused && vision\.id === liveVisionId\}/,
+    'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused && current\.id === liveCardId && !share\.isOpen\}/,
+    'VisionsScreen.js': /<GradientCover[^>]*?\slive=\{isFocused && vision\.id === liveVisionId && !share\.isOpen\}/,
     'HomeScreen.js': /testID="open-anchor-scene"[\s\S]{0,700}<GradientCover[^>]*?\slive=\{isFocused\}/,
-    'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused\}/,
-    'PracticeRitualScreen.js': /<GradientCover\s+testID="practice-vision-visual"[^>]*?\slive=\{isFocused\}/,
-    'MorningRitualScreen.js': /<GradientCover\s+testID="dream-cena-viva"[^>]*?\slive=\{focused\}/,
+    'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused && !share\.isOpen\}/,
+    'PracticeRitualScreen.js': /<GradientCover\s+testID="practice-vision-visual"[^>]*?\slive=\{isFocused && !share\.isOpen\}/,
+    'MorningRitualScreen.js': /<GradientCover\s+testID="dream-cena-viva"[^>]*?\slive=\{focused && !share\.isOpen\}/,
   };
   for (const [name, pattern] of Object.entries(cardScreens)) {
     const source = screen(name);
@@ -2014,7 +2018,7 @@ async function main() {
   assert.match(player, /<CoverScene\s+visualKey=\{activeVisualKey\}/, 'Player: a cena narrada troca para a 2ª imagem no ponto do cruzamento');
   assert.match(player, /narrating \? null : \(\s*<Animated\.Text\s+testID="vision-player-caption"/, 'Player: a frase parada sai enquanto a voz toca');
   assert.match(player, /\{narrating \? null : \(\s*<View\s+style=\{\[\s*styles\.scriptWrap/, 'Player: o roteiro em texto sai enquanto a voz toca');
-  assert.match(player, /live=\{isFocused && !narrating && !showsSecondaryVisual\}/, 'Player: a visão aberta anima parada; tocando, só a cena da voz');
+  assert.match(player, /live=\{isFocused && !narrating && !showsSecondaryVisual && !share\.isOpen\}/, 'Player: a visão aberta anima parada; tocando, só a cena da voz');
   const manifestation = screen('ManifestationScreen.js');
   assert.match(manifestation, /\{narrating \? null : \(\s*<>\s*<SectionHeading title=\{t\(S\.storyTitle\)\}/, 'Manifestação: a história em texto sai enquanto a voz a conta');
   assert.match(manifestation, /style=\{\[styles\.heroInner, narrating && styles\.quiet\]\}\s+aria-hidden=\{narrating \|\| undefined\}/, 'Manifestação: o texto da capa sai da tela e do leitor enquanto a voz toca');

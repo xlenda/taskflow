@@ -13,6 +13,14 @@ import { alpha, gradientPair } from '../utils/colors';
 export const SHARE_CARD_ASPECT_RATIO = 9 / 16;
 export const SHARE_CARD_LAYOUT_SIZE = Object.freeze({ width: 360, height: 640 });
 
+// véu de legibilidade (o texto é branco): um escuro uniforme e um degradê vertical, com ou sem imagem (a imagem que
+// falhou deixa o gradiente da marca, claro demais em vários temas). Medido nas 42 cenas prontas e no gradiente de
+// cada tema por scripts/contraste-cartao-compartilhar.js: todo texto do cartão passa de 4,5:1 nos 10% mais claros
+export const SHARE_CARD_VEIL = Object.freeze({
+  image: 'rgba(5,12,22,0.34)',
+  gradient: { colors: ['rgba(4,10,18,0.18)', 'rgba(4,10,18,0.56)', 'rgba(4,10,18,0.30)'], locations: [0, 0.52, 1] },
+});
+
 const GOLD = '#F2B25C';
 // o arco do Traço Celeste (CelestialTrace: 46,112 · centro,45 · direita,112) em miniatura, numa caixa de 46×22
 const TRACE = [{ x: 5, y: 16 }, { x: 23, y: 5 }, { x: 41, y: 16 }];
@@ -111,18 +119,15 @@ const ShareCard = forwardRef(function ShareCard(
             style={StyleSheet.absoluteFillObject}
           />
         ) : null}
-        {/* véu de legibilidade: o mesmo do GradientCover (texto branco passa de 4,5:1 até na cena de centro claro) */}
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, source ? styles.veilImage : styles.veilPlain]} />
-        {source ? (
-          <LinearGradient
-            pointerEvents="none"
-            colors={['rgba(4,10,18,0.10)', 'rgba(4,10,18,0.56)', 'rgba(4,10,18,0.30)']}
-            locations={[0, 0.52, 1]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-        ) : null}
+        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.veil]} />
+        <LinearGradient
+          pointerEvents="none"
+          colors={SHARE_CARD_VEIL.gradient.colors}
+          locations={SHARE_CARD_VEIL.gradient.locations}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
 
         <View pointerEvents="none" style={styles.safeArea}>
           <View style={styles.center}>
@@ -196,8 +201,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#759ACE',
   },
   cover: { flex: 1 },
-  veilImage: { backgroundColor: 'rgba(5,12,22,0.34)' },
-  veilPlain: { backgroundColor: 'rgba(20,30,50,0.22)' },
+  veil: { backgroundColor: SHARE_CARD_VEIL.image },
   safeArea: {
     flex: 1,
     paddingHorizontal: '9%',
@@ -210,9 +214,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: '7%',
   },
+  // rótulo e link brancos inteiros (texto de 11 px: a 86% ficavam abaixo de 4,5:1 nas cenas de céu claro)
   kind: {
     minHeight: 18,
-    color: 'rgba(255,255,255,0.86)',
+    color: '#FFFFFF',
     fontSize: 11,
     lineHeight: 16,
     fontWeight: '800',
@@ -255,7 +260,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   url: {
-    color: 'rgba(255,255,255,0.86)',
+    color: '#FFFFFF',
     fontSize: 11,
     lineHeight: 16,
     fontWeight: '700',
