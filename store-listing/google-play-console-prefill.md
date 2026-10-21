@@ -15,7 +15,10 @@ escolhas sem evidência continuam pendentes.
 
 Não reutilize estas respostas para o site ou para o iOS. A v1 Android tem uma
 fronteira mais restrita: não oferece Comunidade pública, conta visível,
-compras, anúncios, despertador nem geração/narração paga em nuvem.
+compras, anúncios, despertador nem geração paga de cena, imagem, sonho ou
+tradução em nuvem. Desde 21/10, a única exceção é a narração com a voz
+escolhida (ElevenLabs): só depois do consentimento adulto e só quando o servidor
+confirma a verificação Play Integrity; sem isso, toca a voz do aparelho com aviso.
 
 ## 1. Escopo técnico auditado
 
@@ -25,18 +28,19 @@ compras, anúncios, despertador nem geração/narração paga em nuvem.
 |---|---|---|
 | Comunidade pública | Não aparece | `constants/releaseFeatures.js`, `App.js` e `screens/HomeScreen.js` |
 | Conta, cadastro ou login visível | Não existe | não há fluxo de autenticação para a pessoa; o app funciona localmente |
-| Sessão técnica | Sim, somente ao enviar uma denúncia | `services/aiContentReports.js` cria uma sessão anônima Supabase sem nome, e-mail ou senha; a exclusão apenas consulta a sessão existente e não cria outra |
+| Sessão técnica | Sim, ao enviar uma denúncia ou pedir a voz em nuvem | `services/aiContentReports.js` e `services/celesteApiSession.js` criam uma sessão anônima Supabase sem nome, e-mail ou senha; ela autoriza o pedido e aplica os limites de gasto; a exclusão apenas consulta a sessão existente e não cria outra |
 | Anúncios | Não | nenhum SDK de anúncios identificado em `package.json` |
 | Compras ou assinaturas | Não | nenhum SDK de billing nem produto ativo identificado |
 | Despertador Android | Não aparece e não entra no binário | módulo autoligado apenas para Apple; permissões de alarme exato bloqueadas em `app.json` |
 | Lembrete comum | Sim, opcional | `expo-notifications`; não é despertador nem alarme exato |
 | Plano Celeste | Sim, opcional | um a quatro lembretes comuns; imagem e texto da visão ou Cena-Âncora visíveis; narração completa iniciada por toque; depois, duas repetições da afirmação para registrar a prática |
 | Microfone | Sim, somente após toque | `RECORD_AUDIO` atende ao reconhecimento no dispositivo do Plano Celeste; sem fallback para nuvem e com conclusão manual acessível |
-| Síntese de voz da visão | Sim, somente após toque | `expo-speech` usa o sintetizador do sistema; não acrescenta permissão sensível, não usa ElevenLabs nesta v1 e não deve ser descrito como necessariamente offline sem validar a engine/voz do aparelho |
+| Narração (voz) | Sim, somente após toque | com consentimento adulto e Play Integrity confirmado no servidor, a voz escolhida vem da ElevenLabs pelo backend (Vercel); caso contrário, `expo-speech` usa o sintetizador do sistema, sem permissão sensível nova, e não deve ser descrito como necessariamente offline sem validar a engine/voz do aparelho |
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
-| APIs pagas de cena, tradução, imagem, sonho e voz | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
+| APIs pagas de cena, tradução, imagem e sonho | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
+| API de voz (ElevenLabs) | Liberada no Android desde 21/10, com trava | o servidor só aceita o pedido nativo com token Play Integrity verificado no Google (pacote, `PLAY_RECOGNIZED`, `MEETS_DEVICE_INTEGRITY`, hash do pedido, token recente) e teto diário próprio; sem isso, 403 `native_attestation_required` |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
-| Denúncia de conteúdo gerado | Sim, dentro do app | quatro telas enviam somente a saída gerada escolhida (ou referência visual) pelo gateway; o Perfil oferece exclusão confirmada; migrations `013`/`014` limitam retenção a 180 dias e fecham a RPC legada |
+| Denúncia de conteúdo gerado | Sim, dentro do app | as telas de conteúdo gerado, e toda tela onde a voz da ElevenLabs toca, enviam somente a saída gerada escolhida (ou referência visual) pelo gateway; o Perfil oferece exclusão confirmada; migrations `013`/`014` limitam retenção a 180 dias e fecham a RPC legada |
 | Conteúdo público criado por usuários | Não | Comunidade e seus deep links ficam fora da v1 Android |
 | Dados principais da prática | Locais | AsyncStorage; backup automático Android desativado em `app.json`; exportação manual produz JSON legível pela folha de compartilhamento |
 
@@ -54,14 +58,15 @@ foram removidos. As políticas da Comunidade continuam desabilitadas por padrão
 A configuração e as dependências instaladas fixam SDK 57 com
 `compileSdk`/`targetSdk` 36, package `com.celesteapp.affirmations` e `versionCode` local 1.
 Um novo prebuild a partir da árvore final ainda precisa confirmar o autolinking
-de `CelestePracticeSpeech` e `expo-speech`, `RECORD_AUDIO`, a consulta ao serviço
+de `CelestePracticeSpeech`, `expo-speech` e `@expo/app-integrity`, `RECORD_AUDIO`, a consulta ao serviço
 TTS e a ausência de alarme exato, overlay, armazenamento legado e foreground
 service. O AAB final deve repetir essa inspeção antes do envio.
 
 ### Ainda não comprovado sem o AAB final
 
 - manifest final, permissões e SDKs efetivamente empacotados;
-- presença das variáveis públicas Supabase no perfil EAS `production`;
+- presença das variáveis públicas Supabase e de
+  `EXPO_PUBLIC_PLAY_INTEGRITY_PROJECT_NUMBER` no perfil EAS `production`;
 - funcionamento da denúncia, da notificação e do armazenamento no AAB instalado
   em um Android físico;
 - funcionamento do Plano Celeste com imagem e texto da visão ou Cena-Âncora e a
@@ -71,8 +76,10 @@ service. O AAB final deve repetir essa inspeção antes do envio.
   local disponível/ausente, conclusão manual, cancelamento e adiamento;
 - comportamento do sintetizador com e sem rede, voz instalada/indisponível e
   inspeção de tráfego para identificar se a engine padrão transmite o texto;
-- tráfego de rede do binário confirmando que, fora uma denúncia escolhida pela
-  pessoa, nenhuma API paga é contatada;
+- tráfego de rede do binário confirmando que, fora uma denúncia ou um pedido de
+  voz autorizado pela pessoa, nenhuma API paga é contatada;
+- voz da ElevenLabs no app instalado pela trilha interna (Play Integrity
+  aprovado) e voz do aparelho com aviso fora da Play ou sem internet;
 - screenshots capturados desse mesmo build.
 
 ## 2. Configuração principal da ficha
@@ -105,12 +112,14 @@ growth`, `Mindfulness`, `Journal`, `Meditation` e `Well-being`.
 - Nota opcional para revisão:
 
 > A versão Android não exige cadastro nem login. Conclua o onboarding; a primeira
-> Cena-Âncora é criada automaticamente no aparelho, com a nuvem desligada. O
-> Plano Celeste usa lembretes comuns, mostra imagem e texto e narra a visão pelo
-> sintetizador do sistema somente depois de um toque. Após a narração, pode
-> pedir o microfone somente quando você tocar para iniciar as duas repetições. A
-> Comunidade, o despertador exato e os recursos pagos em nuvem não fazem parte
-> desta versão.
+> Cena-Âncora é criada automaticamente no aparelho, com a nuvem desligada. Ao
+> tocar para ouvir, a Celeste pede uma vez a confirmação de 18+ e a permissão da
+> voz em nuvem; com ela, o texto escolhido é narrado com a voz de IA da
+> ElevenLabs; sem ela, pelo sintetizador do sistema. O Plano Celeste usa
+> lembretes comuns, mostra imagem e texto e narra a visão somente depois de um
+> toque. Após a narração, pode pedir o microfone somente quando você tocar para
+> iniciar as duas repetições. A Comunidade, o despertador exato e a geração de
+> imagens ou textos em nuvem não fazem parte desta versão.
 
 ### Ads
 
@@ -154,7 +163,12 @@ Responder pelo build Android, não por recursos existentes no site ou no iOS:
 - acesso irrestrito à web: **Não**;
 - compras de bens digitais: **Não**;
 - conteúdo personalizado/gerado: **Sim**, se o questionário atual fizer essa
-  pergunta; existe denúncia dentro do app;
+  pergunta; no Android a IA gera somente a voz da narração, a partir do texto da
+  própria pessoa; existe denúncia dentro do app;
+- compartilhamento de dados pessoais com terceiros: responder igual ao Data
+  Safety (seção 4): **Não** se Vercel, ElevenLabs, Supabase e Google forem
+  confirmados como prestadores de serviço; **Sim** se a titular marcar
+  "compartilhado" lá;
 - a classificação final é calculada pelo IARC e não deve ser escolhida
   manualmente.
 
@@ -162,9 +176,15 @@ Responder pelo build Android, não por recursos existentes no site ou no iOS:
 
 - Se o formulário perguntar se o produto apresenta conteúdo gerado ou
   personalizado: **Sim**.
+- Se perguntar se o app gera conteúdo com IA: **Sim**. Desde 21/10, o Android
+  gera voz de narração com IA (ElevenLabs) a partir do texto da própria pessoa,
+  depois do consentimento adulto; imagens e textos do Android continuam locais.
+  Isso coloca o app na política de conteúdo gerado por IA, que exige denúncia
+  "without needing to exit the app": o botão fica em toda tela onde essa voz toca.
 - Caminho de denúncia para o revisor: concluir o onboarding, abrir uma Cena-
-  Âncora, visão, afirmação ou resultado de sonho, tocar em **Denunciar este
-  conteúdo de IA**, escolher o motivo e enviar.
+  Âncora, visão, afirmação ou resultado de sonho (ou qualquer tela onde a voz
+  gerada toque), tocar em **Denunciar este conteúdo de IA**, escolher o motivo e
+  enviar.
 - A denúncia acontece sem sair do app e informa o conteúdo exato que será
   enviado: somente a saída gerada (ou referência visual), motivo, nota opcional
   e metadados mínimos, com identificador pseudônimo antiabuso.
@@ -178,13 +198,17 @@ Responder pelo build Android, não por recursos existentes no site ou no iOS:
 Para os assets enviados à ficha, declarar individualmente o uso de IA quando
 aplicável. O inventário atual registra que o ícone Celeste v2 foi criado com
 OpenAI ImageGen e que a feature graphic deriva desse ícone. Screenshots
-compostos que incluam esse material também precisam ser avaliados pela titular.
+compostos que incluam esse material também precisam ser avaliados pela titular,
+assim como as capturas com cenas prontas (FLUX) e qualquer vídeo de prévia com
+voz da ElevenLabs.
 
 ## 4. Data Safety — preenchimento conservador da v1
 
 O Google define coleta como transmissão para fora do aparelho e exige declarar
 dados pseudônimos. Portanto, **não** marcar “nenhum dado coletado”: ao enviar
-uma denúncia, o app grava a evidência no Supabase para moderação.
+uma denúncia, o app grava a evidência no Supabase para moderação; desde 21/10,
+ao pedir a voz em nuvem, o texto escolhido também sai do aparelho para virar
+áudio.
 
 O Plano Celeste pede `RECORD_AUDIO`, mas o fluxo de reconhecimento não transmite
 áudio ou transcrição para fora do aparelho. A afirmação permanece visível; após
@@ -194,21 +218,24 @@ descarta áudio e texto reconhecido e guarda apenas um recibo local sem a
 transcrição. Assim, esse fluxo de entrada, isoladamente, não acrescenta `Audio
 files` nem um novo tipo coletado ao Data Safety.
 
-A narração de saída é separada: ElevenLabs permanece bloqueada na v1 Android e
-`expo-speech` entrega o texto da visão ao sintetizador escolhido pelo sistema.
-A biblioteca não adiciona uma nova permissão sensível, mas a engine ou voz pode
-usar rede. Antes de preencher o console, confirmar no AAB e no tráfego se o texto
-fica no aparelho. Se houver transmissão, reavaliar `Other user-generated
-content`, processamento efêmero, compartilhamento e finalidade.
+A narração de saída é separada do microfone. Com consentimento adulto e Play
+Integrity confirmado no servidor, o texto que a pessoa pediu para ouvir, o idioma
+e a voz vão pelo backend (Vercel) à ElevenLabs; esse texto entra em `Other
+user-generated content` (tabela abaixo). O backend da Celeste não grava o texto:
+o registro de limite guarda só a sessão anônima, o id do pedido, a operação e um
+hash da origem de rede. Sem consentimento ou verificação, `expo-speech` entrega o
+texto ao sintetizador escolhido pelo sistema; a biblioteca não adiciona uma nova
+permissão sensível, mas a engine ou voz pode usar rede. Antes de preencher o
+console, confirmar no AAB e no tráfego se esse caminho mantém o texto no aparelho.
 
 ### Data collection and security
 
 | Pergunta | Resposta preparada | Condição |
 |---|---|---|
-| Does your app collect or share required user data types? | **Sim** | comprovado pelo fluxo de denúncia |
+| Does your app collect or share required user data types? | **Sim** | fluxos de denúncia e de voz em nuvem |
 | Is all collected user data encrypted in transit? | **Sim** | o endpoint Supabase usado no smoke de produção é HTTPS; reconfirmar no tráfego do AAB que ele aponta para o mesmo projeto |
 | Do you provide a way for users to request deletion of their data? | **Sim** | ação confirmada no Perfil exclui todas as linhas de denúncia vinculadas ao `reporter_id` atual; não é exclusão de conta |
-| Is data shared? | **Não** | somente se o contrato da titular confirmar que Supabase atua como prestador que processa dados em seu nome; caso contrário, marcar **Sim** |
+| Is data shared? | **Não** | somente se os contratos/termos da titular confirmarem que Supabase, Vercel, ElevenLabs e Google (Play Integrity) atuam como prestadores que processam dados em seu nome e sob suas instruções; caso contrário, marcar **Sim** para o tipo afetado |
 
 O reset no app apaga os registros locais, mas não apaga uma denúncia já enviada.
 Ele não deve ser apresentado como mecanismo de exclusão dos dados remotos. A
@@ -220,28 +247,45 @@ sessão técnica anônima pode permanecer para prevenção de abuso.
 
 | Categoria > tipo | Coletado | Compartilhado | Efêmero | Obrigatório | Finalidades |
 |---|---:|---:|---:|---:|---|
-| Personal info > **User IDs** | Sim | Não* | Não | Não; a pessoa escolhe denunciar | App functionality; Fraud prevention, security, and compliance |
+| Personal info > **User IDs** | Sim | Não* | Não | Não; a pessoa escolhe denunciar ou ligar a voz | App functionality; Fraud prevention, security, and compliance |
 | App activity > **Other user-generated content** | Sim | Não* | Não | Não | App functionality; Fraud prevention, security, and compliance |
 | App activity > **Other actions** | Sim | Não* | Não | Não | App functionality; Fraud prevention, security, and compliance |
+| Device or other IDs (decisão da titular) | Sim | Não* | Não | Não | Fraud prevention, security, and compliance |
 
 `*` A resposta “não compartilhado” usa a exceção de service provider do Google
 e depende da confirmação contratual da titular.
 
 O que cada linha representa:
 
-- **User IDs:** UUID pseudônimo criado pelo Supabase Auth e guardado como
-  `reporter_id`; ele autoriza, limita e deduplica denúncias.
-- **Other user-generated content:** nota opcional digitada pela pessoa e o
-  conteúdo gerado que ela escolheu encaminhar para análise.
-- **Other actions:** tipo do conteúdo e motivo escolhido no diálogo de denúncia.
+- **User IDs:** UUID pseudônimo criado pelo Supabase Auth, guardado como
+  `reporter_id` nas denúncias e usado no registro de limite dos pedidos de voz;
+  ele autoriza, limita e deduplica.
+- **Other user-generated content:** nota opcional digitada pela pessoa, o
+  conteúdo gerado que ela escolheu encaminhar para análise e, desde 21/10, o
+  texto que ela pediu para ouvir (enviado à ElevenLabs para virar voz).
+- **Other actions:** tipo do conteúdo e motivo escolhido no diálogo de denúncia,
+  e o pedido de narração registrado no limite de gasto.
+- **Device or other IDs:** verificação Play Integrity. O token sai do aparelho e
+  o Google o confere; o resultado que o servidor recebe traz selos (app
+  reconhecido, aparelho certificado), não um identificador do aparelho ou da
+  pessoa. O Google informa que, para gerar o token, a Play coleta dados do app e
+  do aparelho (inclusive certificado de atestação) e não os repassa a terceiros
+  (https://developer.android.com/google/play/integrity/terms). Marcar é a opção
+  conservadora; não marcar é defensável porque essa coleta é feita pela própria
+  Play, sob os termos da Google Play.
 
-Para os três tipos:
+Para todos os tipos marcados:
 
 - `Collected`: **Yes**;
 - `Shared`: **No**, sob a condição contratual acima;
-- `Processed ephemerally`: **No**, pois a tabela de moderação retém o registro;
-- `Retention`: no máximo **180 dias** para as linhas de denúncia;
-- `Required or optional`: **Users can choose whether this data is collected**;
+- `Processed ephemerally`: **No**, pois a tabela de moderação retém o registro e
+  não há como provar que ElevenLabs e Google descartam o dado na hora;
+- `Retention`: no máximo **180 dias** para as linhas de denúncia; o texto da voz
+  não é gravado pelo backend, e a retenção da ElevenLabs segue o aviso de prazo
+  externo da política;
+- `Required or optional`: **Users can choose whether this data is collected**:
+  a voz em nuvem só liga com o consentimento e, sem ele, o app funciona com a
+  voz do aparelho; a denúncia também é escolha da pessoa;
 - não selecionar Analytics, Advertising or marketing, Personalization,
   Developer communications ou Account management como finalidade.
 
@@ -252,12 +296,15 @@ mas `content_text` guarda o texto gerado que a pessoa viu e escolheu denunciar.
 Esse texto local pode repetir cidade, trabalho, relacionamento, desejo de
 saúde/finanças ou nomes de filhos e pessoas importantes. A normalização da
 denúncia não remove esses trechos; o diálogo mostra uma prévia para a pessoa.
+O mesmo vale para o texto enviado à ElevenLabs para virar voz: é o texto da
+tela, e as afirmações locais de sonho podem citar até dois nomes de filhos ou
+pessoas importantes (`utils/dreamToAffirmation.js`).
 
 Antes de enviar o Data Safety, a titular precisa decidir, com base no AAB e na
 orientação jurídica aplicável, se **Other user-generated content** cobre o
-texto opaco de moderação ou se também deve selecionar `Name`, `Other info`,
+texto opaco de moderação e da voz ou se também deve selecionar `Name`, `Other info`,
 `Approximate location`, `Health info`, `Other financial info` e `Contacts`
-quando esses dados puderem aparecer no conteúdo denunciado. Não marcar esses
+quando esses dados puderem aparecer no conteúdo denunciado ou narrado. Não marcar esses
 tipos como ausentes sem fazer essa análise.
 
 Não há campos nem fluxos intencionais para:
@@ -269,17 +316,19 @@ Não há campos nem fluxos intencionais para:
   reconhecimento local e efêmero do Plano Celeste;
 - histórico de busca, lista de apps instalados;
 - crash logs, diagnostics ou outros dados de desempenho;
-- Device or other IDs.
+- Device or other IDs fora da verificação Play Integrity descrita acima;
+- `Audio`: a voz gerada pela ElevenLabs não é gravação da pessoa e o áudio
+  devolvido fica só em cache privado no aparelho.
 
 `Contacts` na lista acima significa acesso ao catálogo de contatos do sistema.
-Nomes digitados manualmente que reapareçam no texto denunciado continuam
-sujeitos à decisão de classificação do parágrafo anterior.
+Nomes digitados manualmente que reapareçam no texto denunciado ou narrado
+continuam sujeitos à decisão de classificação do parágrafo anterior.
 
 O SDK pode transmitir IP e user-agent como parte normal de HTTPS. Não selecionar
 localização apenas pela existência do IP; selecionar localização se o contrato,
 logs ou configuração mostrarem que o IP é usado para inferi-la. Reavaliar a
-lista caso analytics, crash reporting, Play Integrity ou outro SDK seja
-adicionado ao AAB.
+lista caso analytics, crash reporting ou outro SDK seja adicionado ao AAB; a
+Play Integrity (`@expo/app-integrity`) já está avaliada acima desde 21/10.
 
 ## 5. Health Apps Declaration
 
@@ -305,16 +354,18 @@ adicionado ao AAB.
 
 A versão Android não possui um campo remoto dedicado a dados de saúde.
 Respostas do onboarding, sonhos e registros de prática permanecem locais; um
-conteúdo gerado escolhido para denúncia pode, porém, mencionar um desejo de
-saúde. Classificar esse caso conforme a seção Data Safety.
+conteúdo gerado escolhido para denúncia, ou o texto enviado para virar voz,
+pode, porém, mencionar um desejo de saúde. Classificar esse caso conforme a
+seção Data Safety.
 
 ## 6. Metadados e imagens específicos da v1 Android
 
-Os arquivos em `pt-BR/google-play` e `en-US/google-play` não prometem voz
-escolhida, narração paga, geração em nuvem, Comunidade pública nem despertador.
-A narração por sintetizador do sistema no Plano Celeste não altera essa
-fronteira e só deve ser anunciada depois do teste do AAB em aparelho real.
-Os textos e materiais Apple permanecem inalterados.
+Desde 21/10, os arquivos em `pt-BR/google-play` e `en-US/google-play` citam
+ouvir a história, as visões e as afirmações na voz escolhida, criada com IA com
+autorização, só ao tocar para ouvir e com internet (sem conexão, voz do
+aparelho). Eles não prometem geração de imagem ou texto em nuvem, Comunidade
+pública nem despertador exato. Os textos e materiais Apple permanecem
+inalterados.
 
 Os rascunhos visuais da Google Play seguem o plano `googlePlayV1` de
 `screenshots.json`: o screenshot 2 mostra os controles de privacidade, o
@@ -330,20 +381,10 @@ final e manter `nativeScreenshots` como pendente até essa evidência existir.
 
 ## 7. Acesso para revisão
 
-Texto preparado para o campo de notas, se aparecer:
+Texto preparado para o campo de notas, se aparecer (o mesmo de
+`review-notes.md`, atualizado em 21/10):
 
-> No sign-in or review credentials are required. On first launch, select a
-> language and complete onboarding. The first Anchor Scene is created on the
-> device automatically, with cloud processing off. To test Celeste Plan, open it
-> from Home, select a vision or Anchor Scene and an affirmation, and enable an
-> ordinary reminder. Confirm that the image and text remain visible, tap Listen
-> to full vision, and wait for narration to finish. Then tap to start the
-> microphone and read the visible affirmation twice. Microphone audio and
-> transcripts are not retained or uploaded; Not now, Snooze 10 min and an accessible manual
-> completion remain available. Community, the exact personal-content alarm, purchases,
-> ads and paid cloud generation are not included in this Android release. To test
-> in-app AI content reporting, open a generated scene, vision, affirmation or
-> dream result, tap “Report this AI content”, select a reason and submit.
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images or text with AI. Its only AI feature is voice narration: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice. The first time, a dialog asks the user to confirm they are 18 or older and to allow the cloud voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts these requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the device's built-in voice plays with a notice. Reporting: on every screen where the AI voice plays, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
 
 ## 8. O que somente a titular pode preencher ou confirmar
 
@@ -352,11 +393,12 @@ Texto preparado para o campo de notas, se aparecer:
 3. país, endereço e telefone exigidos pela conta Play;
 4. preço **gratuito**, países de distribuição e forma de rollout;
 5. seleção final de público **18 anos ou mais**;
-6. contrato/DPA e papel do Supabase como service provider, subprocessadores e
-   prazo de retenção da sessão técnica e registros próprios do provedor (as
-   linhas de denúncia já têm limite máximo de 180 dias);
+6. contrato/DPA e papel de Supabase, Vercel e ElevenLabs como service providers,
+   subprocessadores e prazo de retenção da sessão técnica e registros próprios
+   de cada provedor (as linhas de denúncia já têm limite máximo de 180 dias);
 7. classificação Data Safety do conteúdo derivado que pode aparecer numa
-   denúncia;
+   denúncia ou no texto enviado para virar voz, e a marcação (ou não) de
+   `Device or other IDs` pela Play Integrity;
 8. comprovantes de uso comercial da Celi, vídeo, ícone e demais assets;
 9. declaração individual de IA para cada asset enviado ao Play Console;
 10. rotina e responsável por analisar as denúncias recebidas;
@@ -369,7 +411,12 @@ Texto preparado para o campo de notas, se aparecer:
     áudio/transcrição do microfone e usa somente lembretes comuns e reconhecimento
     local quando suportado;
 14. confirmação, por tráfego do AAB e termos da engine efetiva, se o sintetizador
-    do sistema processa o texto da visão apenas no aparelho ou usa rede.
+    do sistema processa o texto da visão apenas no aparelho ou usa rede;
+15. configuração da Play Integrity (projeto do Google Cloud vinculado, chave na
+    Vercel e número do projeto no EAS), conforme
+    `docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`, e teste da voz pela trilha interna;
+16. plano pago da ElevenLabs: pelos termos registrados em `asset-rights.md`, o
+    plano grátis não permite uso comercial.
 
 ## Fontes oficiais consultadas
 
@@ -380,3 +427,5 @@ Texto preparado para o campo de notas, se aparecer:
 - [Google Play — conteúdo gerado por IA](https://support.google.com/googleplay/android-developer/answer/13985936?hl=en)
 - [Google Play — declaração de assets gerados por IA](https://support.google.com/googleplay/android-developer/answer/17262077?hl=en)
 - [Google Play — requisito de teste para contas pessoais novas](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en)
+- [Play Integrity — termos e dados (Data safety)](https://developer.android.com/google/play/integrity/terms)
+- [Play Integrity — veredictos](https://developer.android.com/google/play/integrity/verdicts)

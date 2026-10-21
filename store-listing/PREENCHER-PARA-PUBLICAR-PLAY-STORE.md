@@ -73,6 +73,8 @@ informar o D-U-N-S diretamente no Play Console.
 ### 4. Privacidade e Data Safety
 
 - O Supabase está contratado para processar dados somente em nome da Celeste, como prestador de serviço: `SIM` / `NÃO` / `NÃO SEI`
+- A ElevenLabs (voz) e a Vercel (servidor) também atuam somente em nome da Celeste, como prestadoras de serviço: `SIM` / `NÃO` / `NÃO SEI`
+- A conta da ElevenLabs está em plano pago (o grátis não permite uso comercial): `SIM` / `NÃO`
 - Prazo máximo das linhas de denúncia: **180 dias**. A retenção da sessão técnica
   anônima e dos registros próprios do Supabase continua sujeita ao contrato ativo.
 - Exclusão disponível: **Perfil → Excluir denúncias de conteúdo de IA enviadas**,
@@ -119,12 +121,13 @@ Também autorizo marcar individualmente no Play Console os assets criados ou edi
 - Microfone: iniciado por toque e processado localmente no Plano Celeste; áudio e transcrição não devem sair do aparelho nem ser guardados
 - Narração diurna: imagem e texto permanecem visíveis; a narração completa começa
   somente após toque e, ao terminar, libera as duas repetições. A alternativa
-  acessível permite confirmar a leitura integral quando o áudio não está disponível. Na v1 Android,
-  `expo-speech` usa o sintetizador do sistema sem acrescentar permissão sensível;
-  a engine pode usar rede e precisa ser validada no AAB final
+  acessível permite confirmar a leitura integral quando o áudio não está disponível. No Android
+  (desde 21/10), com o consentimento de nuvem e a verificação Play Integrity, toca a voz
+  escolhida da ElevenLabs; sem isso, `expo-speech` usa o sintetizador do sistema sem
+  acrescentar permissão sensível; a engine pode usar rede e precisa ser validada no AAB final
 - Binário: a inclusão de `expo-speech` exige gerar um novo AAB e um novo build
   iOS; atualizar apenas o site/Vercel não acrescenta o módulo aos apps instalados
-- Data Safety básico: UUID pseudônimo, conteúdo escolhido para denúncia e ações da denúncia; coleta opcional, não efêmera, para funcionalidade e segurança
+- Data Safety básico: UUID pseudônimo, texto enviado para virar voz, conteúdo escolhido para denúncia e ações (denúncia e pedido de voz); coleta opcional, não efêmera, para funcionalidade e segurança; detalhes em `google-play-console-prefill.md`
 
 As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 
@@ -137,6 +140,9 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 - Digitar códigos de autenticação e aceitar termos diretamente no Play Console.
 - Confirmar nome legal, público-alvo, territórios, retenção contratual dos provedores, direitos dos materiais e declarações de privacidade.
 - Manter uma rotina real de análise das denúncias recebidas.
+- Configurar a Play Integrity (projeto do Google Cloud vinculado, chave na Vercel
+  e número do projeto no EAS) seguindo `docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`,
+  sem copiar a chave para este arquivo, para o chat ou para o repositório.
 - Instalar e aprovar o build final em um Android físico antes do lançamento público.
 
 ## Atenção ao prazo de verificação Android

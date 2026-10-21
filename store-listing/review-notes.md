@@ -18,6 +18,13 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   sonhos usam Google Gemini; narracoes neurais sob demanda usam ElevenLabs.
 - Esses processadores so sao usados depois de confirmacao adulta e ativação do
   controle único de processamento em nuvem.
+- No Android (desde 21/10), o único recurso em nuvem é a narração com a voz
+  escolhida: depois do consentimento adulto, o texto que a pessoa pediu para
+  ouvir, o idioma e a voz vão pelo backend (Vercel) à ElevenLabs. O servidor só
+  aceita o pedido com a verificação Play Integrity aprovada; sem ela, sem
+  internet ou sem consentimento, toca a voz do aparelho com aviso. Imagens,
+  cenas, sonhos e traduções em nuvem continuam só no site.
+- Toda tela do Android onde a voz gerada toca tem `Denunciar este conteúdo de IA`.
 - O app nao apresenta afirmacoes ou sonhos como previsao, diagnostico ou garantia.
 
 ## Dados locais
@@ -45,10 +52,10 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   e pode sofrer atraso do sistema. Ele nao bloqueia o aparelho.
 - A imagem e o texto da visão ou Cena-Âncora ficam visíveis durante a prática.
   A narração completa começa somente quando a pessoa toca em ouvir. Se o
-  consentimento de nuvem já estiver ativo e a plataforma oferecer esse recurso,
-  a Celeste pode usar ElevenLabs; caso contrário, usa o sintetizador do sistema
-  ou navegador, que não deve ser descrito como necessariamente offline sem
-  validação do ambiente.
+  consentimento de nuvem já estiver ativo (no Android, também com a verificação
+  Play Integrity aprovada), a Celeste pode usar ElevenLabs; caso contrário, usa
+  o sintetizador do sistema ou navegador, que não deve ser descrito como
+  necessariamente offline sem validação do ambiente.
 - Depois da narração, ou da confirmação acessível de leitura integral da visão,
   a afirmação permanece visível e são liberadas duas
   repetições, com progresso `1/2` e `2/2`. O microfone começa somente após outro
@@ -69,8 +76,13 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
    nuvem desligada e sem pergunta de consentimento no onboarding.
 3. Abrir a Cena-Âncora, a Ponte de Hoje e o Ritual de Um Minuto.
 4. Em Sonhos, registrar um relato curto e gerar a afirmacao local.
-5. Em Perfil, conferir privacidade e reset. O Android não gera conteúdo com IA e
-   não mostra controles de voz nem de nuvem; a voz é a do aparelho.
+5. Em Perfil, conferir privacidade, reset e `Voz da narração`. No Android, o único
+   conteúdo gerado com IA é a voz (ElevenLabs), criada a partir do texto da própria
+   pessoa depois do consentimento adulto; imagens e outros recursos em nuvem não
+   aparecem. Tocar para ouvir uma afirmação, visão ou a história; na primeira vez,
+   confirmar 18+ e permitir a voz; conferir a voz escolhida e o botão
+   `Denunciar este conteúdo de IA` na mesma tela. Fora da Play (sem a verificação
+   Play Integrity) ou sem internet, toca a voz do aparelho com aviso.
 6. Abrir o Plano Celeste pela Inicio, escolher uma visao ou Cena-Âncora e uma afirmacao e
    testar um lembrete comum.
 7. Conferir a imagem e o texto, tocar em `Ouvir visão completa` e esperar a
@@ -81,8 +93,10 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 
 ## Caminhos de teste
 
-- Voz (somente no site; no Android a voz é a do aparelho): `Perfil > Voz da narração`;
-  escolher um narrador e tocar a prévia.
+- Voz: `Perfil > Voz da narração`; escolher um narrador e tocar a prévia (amostra
+  incluída no app, sem nuvem). No Android, a voz escolhida toca em afirmações,
+  visões, história/Cena-Âncora, ritual e despertar depois do consentimento; sem a
+  verificação Play Integrity ou sem internet, toca a voz do aparelho com aviso.
 - Cena: `Manifestar > abrir manifestacao > Sua narrativa em audio`.
 - Sonhos: `Inicio > Conte seu sonho`; escrever, escolher sentimento e tema e
   tocar `Transformar em afirmacao`.
@@ -96,8 +110,9 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   as regras do respectivo fornecedor e deve ser validado no binário final.
 - Meu despertar: `Inicio > Meu despertar`; adicionar a Cena-Âncora, uma visão ou
   afirmação, escolher o horário e ligar o lembrete. No Android é uma notificação
-  comum com som, sem alarme exato, que abre a sequência; a voz do aparelho toca
-  depois de um toque. No iPhone compatível, o despertador do sistema usa AlarmKit,
+  comum com som, sem alarme exato, que abre a sequência; depois de um toque, toca
+  a voz escolhida (ou a do aparelho, sem consentimento, internet ou verificação).
+  No iPhone compatível, o despertador do sistema usa AlarmKit,
   aceita afirmação, visão, Cena-Âncora, frase de sonho ou frase própria e pede
   permissão de Alarmes.
 - Compartilhar: abrir uma afirmação, visão ou a Cena-Âncora, tocar em Compartilhar,
@@ -106,6 +121,15 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 - Avaliação: depois da revelação da Cena-Âncora, a janela padrão de avaliação da
   Google Play pode aparecer uma vez; não há pergunta antes nem botão próprio.
 - Privacidade: `Perfil > Privacidade e dados`.
+- Denunciar: em qualquer tela onde a voz gerada toca, `Denunciar este conteúdo de IA`,
+  escolher o motivo e enviar, sem sair do app.
 - Denúncias: `Perfil > Excluir denúncias de conteúdo de IA enviadas`.
 - Backup: `Jornada > Cópia de segurança`; no app, conferir a share sheet.
 - Reset: `Jornada > Recomeçar minha jornada`.
+
+## Nota em inglês para o revisor (Play Console > Acesso ao app)
+
+Texto atualizado em 21/10, o mesmo da auditoria
+`docs/AUDITORIA-PLAY-STORE-2026-10-20.md`:
+
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images or text with AI. Its only AI feature is voice narration: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice. The first time, a dialog asks the user to confirm they are 18 or older and to allow the cloud voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts these requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the device's built-in voice plays with a notice. Reporting: on every screen where the AI voice plays, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.

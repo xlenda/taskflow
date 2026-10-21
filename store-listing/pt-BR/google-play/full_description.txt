@@ -24,9 +24,13 @@ TRÊS ESTRELAS, UMA CENA VIVA
 
 Acenda as três estrelas do Traço Celeste e sua Cena-Âncora ganha vida: as estrelas viram sol, a luz dourada se espalha e sua afirmação aparece sobre uma cena inspirada nas suas respostas.
 
+NA VOZ QUE VOCÊ ESCOLHER
+
+Escolha uma voz de narração e ouça com ela sua história, visões e afirmações. Com sua autorização, a voz é criada com IA a partir do seu próprio texto, só quando você toca para ouvir, e precisa de internet. Sem conexão, toca a voz do próprio aparelho.
+
 PARA OUVIR AO ACORDAR
 
-Em Meu despertar, você monta a sua sequência: até seis itens entre sua Cena-Âncora, visões e afirmações, na ordem que quiser. No horário e nos dias que você escolher, um lembrete com som chega ao seu celular, às vezes com alguns minutos de atraso. Ao abrir, você acende as três estrelas e a sequência toca com a voz do próprio aparelho: sem leitura, sem microfone, só ouvir.
+Em Meu despertar, você monta a sua sequência: até seis itens entre sua Cena-Âncora, visões e afirmações, na ordem que quiser. No horário e nos dias que você escolher, um lembrete com som chega ao seu celular, às vezes com alguns minutos de atraso. Ao abrir, você acende as três estrelas e a sequência toca na voz que você escolheu: sem leitura, sem microfone, só ouvir.
 
 SUA JORNADA, UM DIA DE CADA VEZ
 
@@ -39,6 +43,7 @@ Compartilhe uma afirmação, uma visão ou sua Cena-Âncora como imagem vertical
 COM A CELESTE, VOCÊ PODE:
 
 - criar Cena-Âncora, história e afirmação personalizadas;
+- ouvir sua história e afirmações na voz que escolher;
 - praticar em um ritual diário de um minuto;
 - seguir uma jornada pessoal de 21 dias;
 - escolher e editar sua Ponte de Hoje;

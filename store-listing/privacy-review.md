@@ -10,7 +10,8 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 | Cena personalizada | respostas selecionadas | backend Celeste e Anthropic; OpenAI como failover; Gemini somente se nenhum dos dois estiver configurado e o processamento aprovado estiver disponível | gerar Cena-Âncora e capítulos do Espelho Vivo | controle único de nuvem com confirmação adulta; uma chamada de texto por vez |
 | Traducao | cena salva e idioma de destino | backend Celeste e Google Gemini | traduzir a cena solicitada | controle único de nuvem; fallback local neutro |
 | Imagem personalizada | contexto visual reduzido | backend Celeste e Google Gemini | criar a imagem da cena, visão ou afirmação | controle único de nuvem; imagem privada no aparelho |
-| Narracao | texto final, idioma e narrador | backend Celeste e ElevenLabs TTS | devolver audio solicitado | play manual e controle único de nuvem |
+| Narracao | texto final, idioma e narrador | backend Celeste e ElevenLabs TTS | devolver audio solicitado | play manual e controle único de nuvem; no Android (desde 21/10), também verificação Play Integrity |
+| Verificação Play Integrity (Android) | token do pedido, preso por hash, sem o texto | backend Celeste e Google Play Integrity | confirmar app oficial da Play em aparelho certificado; prevenir abuso | só existe no pedido de voz autorizado; sem confirmação, voz do aparelho com aviso |
 | Sonho em nuvem | transcricao, sentimento, tema e contexto reduzido | backend Celeste e Google Gemini | interpretar o sonho e criar reflexao e afirmacao | controle único de nuvem; fallback local |
 | Espelho Vivo | cena anterior e progresso estruturado | backend Celeste e Anthropic; OpenAI somente como failover | criar novo capitulo | acao explicita; rastros completos ficam fora |
 | Pratica local | manifestacoes, sonhos e historico | aparelho | continuidade do produto | edicao, exclusao e reset local |
@@ -29,6 +30,8 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 - A retenção das linhas de denúncia é limitada a 180 dias; confirmar separadamente
   a retenção da sessão técnica anônima e dos registros próprios do Supabase.
 - Logs operacionais, IP, protecao contra abuso e prazos de retencao na Vercel.
+- Play Integrity no Android: o Google descreve os dados que a Play trata para
+  gerar e conferir o token em https://developer.android.com/google/play/integrity/terms.
 - Qualquer analytics, crash reporting ou attribution adicionado ao build nativo.
 - Permissoes de notificacao, microfone/reconhecimento de fala e AlarmKit.
 - No Plano Celeste, `RECORD_AUDIO` nao significa coleta: confirmar no binario e

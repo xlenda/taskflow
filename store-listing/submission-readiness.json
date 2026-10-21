@@ -4,7 +4,7 @@
     "nativeApiAccess": {
       "ready": true,
       "evidence": "services/celesteApiSession.js; scripts/verificar-fronteira-api-nativa.js; docs/android-store-v1-boundary.md",
-      "note": "Android v1 uses the local path and blocks paid cloud API calls fail-closed with native_attestation_required before creating a session or contacting the backend."
+      "note": "Android v1 uses the local path and blocks paid scene, image, dream and translation calls fail-closed with native_attestation_required before creating a session or contacting the backend. Since 2026-10-21, cloud narration (ElevenLabs) is the only exception: the server accepts a native voice request only after adult consent and a Play Integrity token verified with Google (docs/superpowers/plans/2026-10-21-celeste-vozes-elevenlabs-android.md, task V2); otherwise it returns native_attestation_required and the app plays the device voice with a notice."
     },
     "nativeScreenshots": {
       "ready": false,
@@ -14,12 +14,12 @@
     "nativeFeatureValidation": {
       "ready": false,
       "evidence": null,
-      "note": "The generated Android prebuild passed autolinking with target SDK 36 and excluded the alarm module and forbidden permissions. Because expo-speech was added, a new prebuild and signed binary are required. The final AAB still needs physical-device validation of the ordinary reminder; visible image and text; full narration started only by a tap and completed, or full reading confirmed through the accessible alternative, before two repetitions are unlocked; system TTS with and without network; on-device recognition; AI reporting; storage; network traffic; and final packaged permissions. System or browser TTS must not be described as always offline until the effective engine is verified."
+      "note": "The generated Android prebuild passed autolinking with target SDK 36 and excluded the alarm module and forbidden permissions. Because expo-speech was added, a new prebuild and signed binary are required. The final AAB still needs physical-device validation of the ordinary reminder; visible image and text; full narration started only by a tap and completed, or full reading confirmed through the accessible alternative, before two repetitions are unlocked; system TTS with and without network; the chosen ElevenLabs voice through Play Integrity on the internal track and the device-voice notice outside Google Play; on-device recognition; AI reporting; storage; network traffic; and final packaged permissions. System or browser TTS must not be described as always offline until the effective engine is verified."
     },
     "aiContentReporting": {
       "ready": true,
       "evidence": "components/AiContentReportAction.js; services/aiContentReports.js; supabase/migrations/011_ai_content_reports.sql; scripts/verificar-denuncia-ia.js; scripts/verificar-denuncia-ia-live.js",
-      "note": "The in-app report flow is integrated on four generated-content surfaces. Supabase migrations 001-011 are synchronized in production; a live anonymous report succeeded and its report and test user were removed."
+      "note": "The in-app report flow is integrated on the generated-content surfaces and, on Android since 2026-10-21, on every surface where the ElevenLabs voice plays (task V1 of the 2026-10-21 voice plan). Supabase migrations 001-011 are synchronized in production; a live anonymous report succeeded and its report and test user were removed."
     },
     "communityReleaseBoundary": {
       "ready": true,

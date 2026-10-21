@@ -16,16 +16,19 @@ O que já foi corrigido no código e o que continua com você. As seções abaix
 | R1 Avaliação logo depois da Cena-Âncora | **Mantido** por decisão do Lenda (não é violação) | — |
 | R2 WebView | **Parcial:** `setSupportMultipleWindows={false}` nas duas WebViews; filtro de navegação adiado porque só dá para testar em aparelho | 4493b7b |
 | R3 Público 18+ | **Console — você** | — |
-| R4 Privacidade e notas ao revisor | **Corrigido:** política v1.5.0 de 20/10 e notas atualizadas | 57f7a9f, 2f76feb |
-| R5 Denúncia de IA em mais telas | **Adiado:** o Android não gera conteúdo com IA | — |
+| R4 Privacidade e notas ao revisor | **Corrigido:** política v1.6.0 de 21/10 (voz da ElevenLabs no Android) e notas ao revisor atualizadas | 57f7a9f, 2f76feb, docs de 21/10 |
+| R5 Denúncia de IA em mais telas | **Agora obrigatório:** desde 21/10 o Android gera voz com IA; o botão entra em toda tela onde essa voz toca (tarefa V1 do plano de 21/10) | — |
 | R6/R7 Supabase | **Painel — você:** limite de login anônimo, avisos de segurança e migrations 013/014 | — |
 | R8 npm audit | Sem ação: são ferramentas de build | — |
 | R9 Vídeo de abertura pela internet | **Adiado** (opcional) | — |
-| R10 Direitos e IA dos materiais | **Registrado.** Falta confirmar se a ElevenLabs estava em plano pago em 27/08 | 57f7a9f |
+| R10 Direitos e IA dos materiais | **Registrado.** Falta confirmar se a ElevenLabs estava em plano pago em 27/08; com a voz no Android, a conta precisa estar em plano pago (o grátis não permite uso comercial) | 57f7a9f |
 | R11 Botão "Restaurar" | **Removido** | 57f7a9f |
 | R12 Target 36, 16 KB e permissões | Conferir no Explorador de pacotes depois do 1º upload | — |
 | Revisão final: cena viva e vídeo no Android release | **Corrigido:** no AAB a cena pronta não chegava à animação | 9a2a383 |
 | Revisão final: despertar parava quando a tela apagava | **Corrigido:** a tela fica acesa enquanto a voz fala, sem permissão nova | 9a2a383 |
+| Vozes da ElevenLabs no Android (sua decisão de 21/10) | **Textos prontos:** política v1.6.0, ficha, nota ao revisor, Data safety e declarações de IA. **Falta você:** configurar a Play Integrity (`docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`) e testar a voz pela trilha interna | docs de 21/10 |
+
+**Atenção (21/10):** o Android passou a gerar voz com IA. Nas seções abaixo, frases como "não usa IA no Android", "o Android não gera conteúdo com IA" e "Play Integrity não necessário na v1" descrevem a versão auditada em 20/10. O que vale agora é esta tabela e a seção "O que o Lenda faz no Play Console".
 
 - **Versão auditada:** commit `411d645` da branch `feat/despertar-compartilhar-cena-viva`. A branch ainda está em construção e não tem cópia no GitHub.
 - **O que eu conferi:**
@@ -345,7 +348,7 @@ Vale corrigir antes se for barato.
 
 ## O que o Lenda faz no Play Console
 
-O passo 0 é seu. Os passos 2 a 4 só valem depois de B2 e B3 corrigidos.
+O passo 0 é seu. Os passos 2 a 4 só valem depois de B2 e B3 corrigidos. O passo 7 (Play Integrity, para a voz no Android) vem logo depois de criar o app.
 
 ### 0. Conta
 Concluir o D-U-N-S e a verificação da organização.
@@ -377,39 +380,49 @@ Concluir o D-U-N-S e a verificação da organização.
 - **Respostas:**
   - violência, sexo, palavrões, drogas e apostas: **Não**;
   - pessoas conversam ou trocam conteúdo dentro do app: **Não**;
-  - compartilha dados pessoais com terceiros: **Não**;
+  - compartilha dados pessoais com terceiros: **Não**. A ElevenLabs (voz), a Vercel (servidor), o Supabase (sessão) e o Google (Play Integrity) só processam em nosso nome. Se no Data safety você marcar "compartilhado", responda **Sim** aqui também, para as duas respostas baterem;
   - compartilha localização: **Não**;
   - compras digitais: **Não**;
   - acesso livre à internet: **Não**.
-- **Se perguntar sobre IA:**
-  - "o app gera conteúdo com IA?" → **Não**, na versão Android;
-  - "contém conteúdo criado com IA?" → **Sim**: imagens prontas, criadas por nós e empacotadas.
-  - **Não verificado** se essa pergunta existe hoje.
+- **Se perguntar sobre IA (atualizado em 21/10):**
+  - "o app gera conteúdo com IA?" → **Sim**: voz de narração com IA (ElevenLabs), criada a partir do texto da própria pessoa, só depois do consentimento. Imagens e textos do Android continuam locais;
+  - "contém conteúdo criado com IA?" → **Sim**: imagens prontas e prévias de voz dos narradores, criadas por nós e empacotadas;
+  - "tem denúncia dentro do app?" → **Sim**: "Denunciar este conteúdo de IA" em toda tela onde a voz gerada toca, sem sair do app, como a política de IA exige (https://support.google.com/googleplay/android-developer/answer/13985936).
+  - **Não verificado** se essas perguntas existem hoje no questionário.
 
-**Segurança dos dados (Data safety).**
+**Segurança dos dados (Data safety)** — atualizado em 21/10 com a voz no Android.
+
+O que sai do celular agora, só depois que a pessoa permite a voz em nuvem ou envia uma denúncia:
+- o texto que ela pediu para ouvir, o idioma e a voz escolhida → nosso servidor (Vercel) → ElevenLabs, para criar o áudio;
+- a sessão anônima (um código do Supabase, sem nome nem e-mail) → para autorizar o pedido e aplicar o limite de gasto;
+- a verificação do Google (Play Integrity) → para recusar pedidos que não venham do app oficial;
+- a denúncia, como antes.
+
+Respostas:
 - Coleta ou compartilha dados obrigatórios? **Sim**.
-- Tudo criptografado em trânsito? **Sim** (HTTPS).
-- Oferece pedido de exclusão? **Sim**: "Perfil → Excluir denúncias de conteúdo de IA enviadas".
-- Tipos a marcar, todos iguais:
-  - **Informações pessoais → IDs de usuário**;
-  - **Atividade no app → Outros conteúdos gerados pelo usuário**;
-  - **Atividade no app → Outras ações**.
-- Para os três:
+- Tudo criptografado em trânsito? **Sim** (HTTPS no servidor, na ElevenLabs, no Supabase e no Google).
+- Oferece pedido de exclusão? **Sim**: "Perfil → Excluir denúncias de conteúdo de IA enviadas". O texto da voz não fica guardado no nosso servidor.
+- Tipos a marcar:
+  - **Informações pessoais → IDs de usuário** (a sessão anônima);
+  - **Atividade no app → Outros conteúdos gerados pelo usuário** (o texto que vira voz e o texto denunciado);
+  - **Atividade no app → Outras ações** (o pedido de voz e o motivo da denúncia);
+  - **Dispositivo ou outros IDs** → **decisão sua**, por causa da Play Integrity. Recomendo marcar (opção conservadora): o Google diz que, para gerar a verificação, a Play coleta dados do app e do celular (https://developer.android.com/google/play/integrity/terms). Não marcar também é defensável, porque o resultado que chega ao nosso servidor não traz identificador do celular nem da pessoa.
+- Para todos os tipos marcados:
   - Coletado: **Sim**;
-  - Compartilhado: **Não**, porque o Supabase só processa em nosso nome (service provider);
-  - Processado de forma efêmera: **Não**;
-  - **Opcional**: a pessoa escolhe denunciar;
-  - Finalidades: **Funcionalidade do app** e **Prevenção de fraudes, segurança e conformidade**.
-- **Decisão sua:** o texto denunciado pode repetir detalhes das respostas, como cidade ou trabalho. A opção conservadora é marcar também "Outras informações" (`store-listing/google-play-console-prefill.md`, seção 4).
-- **Não marcar** áudio, localização, contatos, fotos, crash ou analytics. Nada disso sai do aparelho na v1.
+  - Compartilhado: **Não**. Para o Google, passar dados a um "prestador de serviço" que processa em seu nome e sob suas instruções não é compartilhar. A Vercel hospeda nosso servidor, a ElevenLabs só cria o áudio que pedimos, o Supabase guarda a sessão e o limite, e o Google só confere a verificação. Condição: os termos ou contratos de cada um confirmarem esse papel. Se algum não confirmar, marque **Sim** no tipo afetado;
+  - Processado de forma efêmera: **Não**. Não dá para provar que a ElevenLabs e o Google apagam na hora; o Google diz que apaga os dados da verificação "após um período fixo";
+  - **Opcional**. O Google chama de opcional o dado que a pessoa pode escolher não fornecer e ainda usar o app. A voz em nuvem só liga com o consentimento; sem ele, o app funciona com a voz do celular. A denúncia também é escolha dela;
+  - Finalidades: **Funcionalidade do app** e **Prevenção de fraudes, segurança e conformidade** (em "Dispositivo ou outros IDs", só a segunda).
+- **Decisão sua (agora vale também para a voz):** o texto que vira voz é o texto da tela e pode repetir nome, cidade, trabalho, desejos de saúde ou de dinheiro e até nomes de filhos e de pessoas importantes; o texto denunciado também. A opção conservadora é marcar também "Nome" e "Outras informações" (`store-listing/google-play-console-prefill.md`, seção 4).
+- **Não marcar** áudio (a voz criada não é gravação da pessoa, e o microfone continua só no celular), localização, contatos, fotos, crash ou analytics.
 - Compartilhar cartão ou vídeo é iniciado pela pessoa, e a avaliação é do próprio Google: **não mudam** as respostas.
 
-**Nota de revisão em inglês, para colar em "Acesso ao app".** Ajuste a parte do compartilhar quando ela estiver pronta:
-> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version does not generate content with AI and has no Community, purchases, ads or exact alarm. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, and the device voice plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, choose a vision and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available. Reporting: open an affirmation, vision, Anchor Scene or dream result, tap "Report this AI content", choose a reason and submit.
+**Nota de revisão em inglês, para colar em "Acesso ao app"** (atualizada em 21/10; a mesma de `store-listing/review-notes.md`):
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images or text with AI. Its only AI feature is voice narration: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice. The first time, a dialog asks the user to confirm they are 18 or older and to allow the cloud voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts these requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the device's built-in voice plays with a notice. Reporting: on every screen where the AI voice plays, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
 
 ### 3. Ficha da loja (Presença na loja → Ficha principal)
-- **Título, descrição curta e descrição completa:** copiar dos arquivos em `store-listing/pt-BR/google-play/` e `store-listing/en-US/google-play/`, sem a seção do Espelho Vivo (B3).
-- **Ícone 512, feature graphic e 8 capturas do AAB (B4):** marcar a caixa **"gerado por IA"** no ícone, no feature graphic e nas capturas que mostrarem as cenas prontas (R10).
+- **Título, descrição curta e descrição completa:** copiar dos arquivos em `store-listing/pt-BR/google-play/` e `store-listing/en-US/google-play/`. O Espelho Vivo já saiu (B3) e, desde 21/10, a descrição tem a seção "Na voz que você escolher": voz criada com IA, com autorização, que precisa de internet.
+- **Ícone 512, feature graphic e 8 capturas do AAB (B4):** marcar a caixa **"gerado por IA"** no ícone, no feature graphic, nas capturas que mostrarem as cenas prontas (R10) e no vídeo de prévia, se ele tiver voz ou imagem de IA.
 - **Categoria:** Saúde e fitness.
 - **Tags:** só as que o Console oferecer entre Personal growth, Mindfulness, Journal, Meditation e Well-being.
 - **E-mail:** `suporte@celestegroup.biz`.
@@ -429,7 +442,10 @@ No "Explorador de pacotes de apps", conferir:
 Conferir também no Painel o **registro do pacote**, e ler o relatório de pré-lançamento.
 
 ### 6. Rotina
-Definir quem lê a fila de denúncias e com que frequência. Já é exigido hoje para o site.
+Definir quem lê a fila de denúncias e com que frequência. Já é exigido para o site e, desde 21/10, também para o Android, que gera voz com IA.
+
+### 7. Play Integrity (para a voz no Android)
+Depois de criar o app (passo 1), siga `docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`: vincular um projeto do Google Cloud, criar a chave, colocá-la na Vercel e pôr o número do projeto no EAS. Sem isso o app funciona, mas toca sempre a voz do celular.
 
 ---
 

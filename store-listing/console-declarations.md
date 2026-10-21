@@ -37,8 +37,9 @@ Respostas candidatas para o questionário vigente de cada console:
 - conteúdo público criado por usuários: não nesta submissão; a Comunidade deve
   permanecer privada/desativada;
 - conteúdo gerado/personalizado: sim; na v1 Android a criação paga em nuvem
-  fica bloqueada, o conteúdo local permanece disponível e existe denúncia
-  dentro do app;
+  fica bloqueada, exceto a voz da narração (ElevenLabs, desde 21/10, com
+  consentimento adulto e verificação Play Integrity), o conteúdo local permanece
+  disponível e existe denúncia dentro do app em toda tela onde a voz gerada toca;
 - saúde: reflexão e bem-estar, sem diagnóstico, tratamento ou aconselhamento
   médico;
 - acesso irrestrito à web: não;
@@ -71,17 +72,23 @@ que apareçam e descrevam o app real.
 
 ### Fronteira Data Safety da v1 Android
 
-No Android, as APIs pagas de Anthropic, OpenAI, Gemini e ElevenLabs falham antes
-de criar sessão ou fazer a chamada. O único fluxo controlado pelo app para fora
-do aparelho é a denúncia opcional de conteúdo, que envia pelo gateway Celeste ao
-Supabase um UUID pseudônimo, somente a saída gerada escolhida (ou referência
-visual), motivo, nota opcional e metadados mínimos da geração. As linhas ficam
-por no máximo 180 dias e podem ser excluídas no Perfil enquanto a sessão desta
-instalação existir. O preenchimento exato está em `google-play-console-prefill.md`.
+No Android, as APIs pagas de Anthropic, OpenAI e Gemini falham antes de criar
+sessão ou fazer a chamada. Os fluxos controlados pelo app para fora do aparelho
+são dois. O primeiro é a denúncia opcional de conteúdo, que envia pelo gateway
+Celeste ao Supabase um UUID pseudônimo, somente a saída gerada escolhida (ou
+referência visual), motivo, nota opcional e metadados mínimos da geração. As
+linhas ficam por no máximo 180 dias e podem ser excluídas no Perfil enquanto a
+sessão desta instalação existir. O segundo, desde 21/10, é a narração com a voz
+escolhida: depois do consentimento adulto, o texto que a pessoa pediu para
+ouvir, o idioma, a voz e a sessão anônima vão ao backend (Vercel), que confere
+com o Google a verificação Play Integrity do pedido e repassa somente texto,
+idioma e voz à ElevenLabs. O preenchimento exato está em
+`google-play-console-prefill.md`.
 
 O Plano Celeste mostra a imagem e o texto da visão ou Cena-Âncora. A narração
-completa começa somente após toque e, na v1 Android, usa o sintetizador do
-sistema porque ElevenLabs permanece bloqueada. A implementação não deve ser
+completa começa somente após toque e, no Android, usa a voz escolhida da
+ElevenLabs quando o consentimento está ativo e a verificação Play Integrity
+passa; caso contrário, usa o sintetizador do sistema. A implementação não deve ser
 descrita como necessariamente offline: a engine ou voz padrão do aparelho pode
 usar rede e precisa ser verificada no AAB e no tráfego de um Android físico.
 Depois da narração, ou da confirmação acessível de leitura integral, o Plano
@@ -92,10 +99,11 @@ descartados sem envio ou armazenamento; somente um recibo mínimo fica local.
 `expo-speech` não acrescenta uma nova permissão sensível, mas exige novo prebuild
 e novos binários Android/iOS; publicar somente a web não atualiza o app instalado.
 
-As linhas de provedores pagos abaixo continuam sendo o inventário para web/iOS
-e para uma futura release Android que habilite nuvem; elas não representam a
-v1 Android. A linha do sintetizador do sistema ou navegador também deve ser
-conferida na plataforma em que a prática for executada.
+As linhas de provedores pagos abaixo continuam sendo o inventário para web/iOS;
+na v1 Android valem somente a linha da narração ElevenLabs, a da verificação
+Play Integrity, a de IP/logs e a da denúncia. A linha do sintetizador do sistema
+ou navegador também deve ser conferida na plataforma em que a prática for
+executada.
 
 ### Dados transmitidos fora do aparelho
 
@@ -104,7 +112,8 @@ conferida na plataforma em que a prática for executada.
 | Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; confirmar retenção |
 | Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini |
 | Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
-| Texto da narração, idioma e narrador | toque em Play quando o consentimento de nuvem já está ativo | gerar áudio neural | opcional | não identificado | ElevenLabs TTS |
+| Texto da narração, idioma e narrador | toque em Play quando o consentimento de nuvem já está ativo | gerar áudio neural | opcional | não identificado | ElevenLabs TTS; no Android, só com Play Integrity confirmado |
+| Verificação Play Integrity (token do pedido, conferido pelo Google) | pedido de voz no Android | prevenção de abuso | opcional | não identificado | Google Play; o pedido vai preso por hash, sem o texto |
 | Texto da visão e idioma | toque em ouvir sem consentimento de nuvem ativo | sintetizar a narração no ambiente da pessoa | opcional | não identificado | sintetizador do sistema ou navegador; confirmar se a voz efetiva usa rede e como o fornecedor trata o texto |
 | Relato de sonho | reflexão em nuvem autorizada | gerar reflexão e afirmação | opcional | não identificado | Google Gemini; fallback local disponível |
 | Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |

@@ -23,13 +23,13 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Documento público · versão 1.5.0</p>
+          <p class="eyebrow">Documento público · versão 1.6.0</p>
           <h1>Política de privacidade</h1>
           <p class="lead">
             Esta política descreve como a Celeste trata dados no site e no aplicativo
             identificado pelo pacote <code>com.celesteapp.affirmations</code>.
           </p>
-          <p class="updated">Atualizada em 20 de outubro de 2026.</p>
+          <p class="updated">Atualizada em 21 de outubro de 2026.</p>
         </header>
 
         <div class="content">
@@ -85,7 +85,8 @@
               A Celeste usa seu próprio backend como intermediário e reduz cada pedido ao
               conteúdo necessário para a função escolhida. Depois do questionário, um único
               controle adulto no Perfil autoriza ou impede novas solicitações opcionais de cena,
-              sonho, imagem, tradução e narração neural.
+              sonho, imagem, tradução e narração neural. No aplicativo Android, esse controle libera
+              somente a narração neural; os demais recursos em nuvem ficam apenas no site.
             </p>
             <div class="processor-list" aria-label="Serviços e finalidades">
               <div class="processor">
@@ -122,6 +123,11 @@
                 solicitação, sinais de abuso e logs técnicos para segurança, prevenção de fraude
                 e operação do serviço.
               </div>
+              <div class="processor">
+                <strong>Google Play Integrity</strong>
+                Somente no aplicativo Android, confirma ao backend que um pedido de narração veio do
+                app oficial instalado pela Google Play, num aparelho certificado, para prevenir abuso.
+              </div>
             </div>
             <p>
               Faixa etária, gênero, sexualidade e nomes inseridos nos campos próprios para
@@ -135,6 +141,28 @@
               totais estruturados de progresso. O texto completo dos Rastros privados e o relato
               completo de sonhos não fazem parte desse pedido. Um sonho contribui somente com
               tema e sentimento escolhidos quando essa opção é ativada para aquele sonho.
+            </p>
+            <h3>Narração no aplicativo Android</h3>
+            <p>
+              No aplicativo Android, a narração com a voz escolhida é o único recurso em nuvem:
+              imagens pessoais não são geradas, e cena, sonho e tradução em nuvem ficam somente no
+              site. Depois do consentimento adulto, cada toque para ouvir envia ao backend da
+              Celeste, hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
+              história ou Cena-Âncora), o idioma, o identificador da voz escolhida e a sessão técnica
+              anônima, usada para autorizar o pedido e aplicar limites de uso. O backend repassa
+              somente o texto, o idioma e a voz à ElevenLabs, que atua como processadora para gerar o
+              áudio. Como esse texto é o que aparece na tela, ele pode repetir detalhes pessoais que
+              a pessoa escreveu.
+            </p>
+            <p>
+              Para prevenir abuso, o pedido também leva uma verificação do Google Play Integrity,
+              presa àquele pedido por um resumo criptográfico, sem enviar o texto ao Google. O
+              backend confere essa verificação com o Google e só gera a voz quando ela confirma o app
+              oficial instalado pela Google Play num aparelho certificado; o resultado não informa à
+              Celeste quem é a pessoa. Sem essa confirmação, sem conexão ou sem consentimento, toca a
+              voz do próprio aparelho, com aviso. O áudio devolvido segue as regras da seção 4; a
+              sessão técnica anônima pode permanecer para prevenção de abuso e não é uma conta
+              pessoal; os prazos dos fornecedores seguem o aviso da seção 5.
             </p>
             <h3>Denúncia de conteúdo de IA</h3>
             <p>
@@ -225,7 +253,9 @@
               sem dados pessoais, e a Celeste não recebe nada desse compartilhamento. No Android, a
               sequência do <strong>Meu despertar</strong> e os horários do lembrete ficam no aparelho;
               o lembrete é uma notificação local comum, com texto genérico e sem alarme exato, e nada
-              é enviado a servidores. No aplicativo instalado, a Celeste pode mostrar uma vez por
+              disso é enviado a servidores. Ao tocar a sequência com a voz escolhida, somente o texto
+              de cada item segue o caminho da narração descrito na seção 3. No aplicativo instalado,
+              a Celeste pode mostrar uma vez por
               instalação a janela de avaliação da própria loja; a avaliação é tratada pelo Google ou
               pela Apple conforme as regras de cada um, e a Celeste não fica sabendo quem avaliou.
             </p>
@@ -299,8 +329,9 @@
             <h2 id="seguranca">7. Segurança</h2>
             <p>
               O site e o backend público usam HTTPS. A Celeste aplica autorização de sessão,
-              consentimento unificado, limites de uso, redução dos pedidos, bloqueio de permissões
-              desnecessárias no Android e armazenamento privado no aparelho. Nenhum sistema é
+              consentimento unificado, limites de uso, redução dos pedidos, verificação Play Integrity
+              nos pedidos de voz do Android, bloqueio de permissões desnecessárias no Android e
+              armazenamento privado no aparelho. Nenhum sistema é
               totalmente livre de risco; evite inserir senhas, credenciais financeiras, números
               de documentos ou dados de outra pessoa.
             </p>

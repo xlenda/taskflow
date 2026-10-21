@@ -40,11 +40,26 @@
     "containsAds": false,
     "loginRequired": false,
     "hasUserFacingAccounts": false,
-    "anonymousSafetySession": "created_only_when_submitting_an_ai_content_report",
+    "anonymousSafetySession": "created_when_submitting_an_ai_content_report_or_requesting_cloud_narration",
     "hasActivePurchases": false,
     "publicCommunity": false,
     "androidSystemAlarm": false,
-    "paidCloudGeneration": false,
+    "paidCloudGeneration": "narration_only_since_2026-10-21",
+    "cloudNarration": {
+      "provider": "elevenlabs_via_celeste_backend_on_vercel",
+      "sentData": "text_the_user_asked_to_hear_language_voice_id_and_anonymous_session",
+      "requires": [
+        "adult_cloud_consent",
+        "play_integrity_verified_server_side"
+      ],
+      "fallback": "device_text_to_speech_with_notice",
+      "androidImagesAndOtherCloudFeatures": false
+    },
+    "playIntegrity": {
+      "used": true,
+      "purpose": "abuse_prevention_for_android_voice_requests",
+      "ownerSetupGuide": "docs/PLAY-INTEGRITY-PASSO-A-PASSO.md"
+    },
     "inAppAiContentReporting": true,
     "marketingUrl": "https://celeste-jet-two.vercel.app",
     "privacyUrl": "https://celeste-jet-two.vercel.app/privacidade",
@@ -75,8 +90,9 @@
       "anonymousSafetySessionDeletedWithReports": false,
       "lostSessionHandling": "remaining_report_rows_expire_within_180_days",
       "encryptedInTransit": "yes_after_final_aab_https_confirmation",
-      "shared": "no_only_if_owner_confirms_supabase_service_provider_exception",
+      "shared": "no_only_if_owner_confirms_service_provider_role_of_supabase_vercel_elevenlabs_and_google",
       "reportedContentMayContainDerivedPersonalDetails": true,
+      "narratedTextMayContainDerivedPersonalDetails": true,
       "embeddedDataTypeClassificationRequired": [
         "name",
         "other_info",
@@ -106,6 +122,13 @@
             "app_functionality",
             "fraud_prevention_security_compliance"
           ]
+        },
+        {
+          "type": "device_or_other_ids",
+          "purposes": [
+            "fraud_prevention_security_compliance"
+          ],
+          "ownerDecision": "conservative_choice_for_play_integrity_verification"
         }
       ]
     },
@@ -117,7 +140,7 @@
       ],
       "medicalFunctionality": false,
       "healthConnect": false,
-      "offDeviceHealthDataCollection": "no_dedicated_field_but_reported_generated_text_may_mention_health"
+      "offDeviceHealthDataCollection": "no_dedicated_field_but_reported_or_narrated_text_may_mention_health"
     },
     "prefillGuide": "store-listing/google-play-console-prefill.md"
   },
