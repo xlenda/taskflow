@@ -55,7 +55,9 @@ import {
   configureWakeNotifications,
   initialWakeNotificationUrl,
   subscribeWakeNotificationUrls,
+  syncWakeReminders,
 } from './services/wakeReminders';
+import { wakeSequenceItemsForState } from './utils/wakeSequence';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -574,14 +576,34 @@ function NativeAlarmContentSync() {
 
 // Android has no AlarmKit: its wake-up is ordinary reminders. Whatever turns
 // reminderEnabled off (the off button, reset, backup import, deleted content)
-// leaves none behind, and each launch while off sweeps orphans.
+// leaves none behind, and each launch while off sweeps orphans. While on (with
+// something to hear), each launch and each return to the foreground re-creates
+// reminders that vanished or no longer match the time, days or app language,
+// without ever asking for permission.
 function WakeReminderSync() {
   const { state } = useApp();
   const loaded = !!state;
-  const enabled = state?.morningRitual?.reminderEnabled === true;
+  const ritual = state?.morningRitual;
+  const enabled = ritual?.reminderEnabled === true;
+  const lang = (state && state.lang) || 'en'; // the app language, as useT reads it
+  const hasSequence = React.useMemo(
+    () => !!state && wakeSequenceItemsForState(state, lang).length > 0,
+    [state, lang]
+  );
+  const time = ritual?.reminderTime;
+  const days = Array.isArray(ritual?.weekdays) ? ritual.weekdays.join(',') : '';
   React.useEffect(() => {
     if (loaded && !enabled) void cancelWakeReminders();
   }, [loaded, enabled]);
+  React.useEffect(() => {
+    if (!enabled || !hasSequence) return undefined;
+    const sync = () => void syncWakeReminders({ time, weekdays: days.split(',').map(Number), lang });
+    sync();
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') sync();
+    });
+    return () => subscription?.remove?.();
+  }, [enabled, hasSequence, time, days, lang]);
   return null;
 }
 

@@ -104,9 +104,9 @@ export async function scheduleDailyRitualReminder({ time, previousId, lang = 'pt
         try {
           await client.cancelScheduledNotificationAsync(identifier);
         } catch (_rollbackError) {
-          if (typeof client.cancelAllScheduledNotificationsAsync === 'function') {
-            await client.cancelAllScheduledNotificationsAsync().catch(() => {});
-          }
+          // Last resort: every daily-ritual reminder goes, and only those — never
+          // the wake-up or practice-plan reminders of the rest of the app.
+          await cancelOrphanedDailyRitualReminders();
         }
         return { ok: false, error: 'previous_cancel_failed' };
       }

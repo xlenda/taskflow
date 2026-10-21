@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   View,
@@ -166,6 +166,11 @@ export default function HomeScreen() {
   // O envio dispara no onPressIn (ver `submit`); o onPress que vem logo atrás
   // cairia de novo no mesmo texto — este ref segura o segundo disparo.
   const sentRef = useRef('');
+  // Antes do retorno de carregamento (regra dos hooks): sem estado ainda, sem sequência.
+  const hasWakeSequence = useMemo(
+    () => !!state && wakeSequenceItemsForState(state, lang).length > 0,
+    [state, lang]
+  );
 
   useEffect(() => {
     let alive = true;
@@ -345,7 +350,6 @@ export default function HomeScreen() {
   // quando a pessoa desfaz um dia.
   const isComplete = (m) => m.sessions.length >= m.goalDays;
   const morningRitual = state.morningRitual || {};
-  const hasWakeSequence = wakeSequenceItemsForState(state, lang).length > 0;
   const dreamCount = Array.isArray(morningRitual.entries) ? morningRitual.entries.length : 0;
   const practicePlan = state.practicePlan || {};
   const practicePlanTimes = practiceSlotsInDayOrder(practicePlan).map((slot) => slot.time);

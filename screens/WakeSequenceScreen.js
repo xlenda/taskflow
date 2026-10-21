@@ -39,6 +39,8 @@ import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 const GAP_MS = 900; // a breath between items
 const START_WATCHDOG_MS = 4000;
 const KEEP_AWAKE_TAG = 'celeste-wake';
+// The device voice's pace; the caption's clock (no word events, common on Android) runs at the same rate.
+const DEVICE_RATE = 0.9;
 // Every word on the scene; 1 would switch the renderer to the fitted still phrase. The live caption stays below it
 // until the item ends (the last word, the cloud voice's final progress or the clock can reach 1 a moment earlier).
 const ALL_WORDS = 0.999;
@@ -192,7 +194,7 @@ export default function WakeSequenceScreen() {
     try {
       Speech.speak(item.text, {
         language: item.lang === 'en' ? 'en-US' : 'pt-BR',
-        rate: 0.9,
+        rate: DEVICE_RATE,
         onStart: () => {
           clearTimeout(watchdogRef.current);
           deviceStartRef.current = { epoch, at: Date.now(), text: item.text };
@@ -342,7 +344,7 @@ export default function WakeSequenceScreen() {
   }, [narration.lastCompletedPlaybackId, narration.phase, narration.activePlaybackId]);
 
   // The words on the scene follow the voice: the Celeste voice by its narration progress; the device voice by
-  // its words (wordSpoken) or, on a device that never reports them, by time since it began (14 letters/s).
+  // its words (wordSpoken) or, on a device that never reports them, by time since it began (14 letters/s × its rate).
   useEffect(() => {
     const playbackId = cloudIdRef.current;
     if (playbackId && narration.activePlaybackId === playbackId) {
@@ -356,7 +358,7 @@ export default function WakeSequenceScreen() {
       const start = deviceStartRef.current;
       const epoch = epochRef.current;
       if (!start || start.epoch !== epoch || deviceWordsRef.current === epoch) return;
-      setSpoken(captionProgressFromTime({ elapsedMs: Date.now() - start.at, text: start.text }));
+      setSpoken(captionProgressFromTime({ elapsedMs: Date.now() - start.at, text: start.text, rate: DEVICE_RATE }));
     }, 250);
     return () => clearInterval(timer);
   }, [phase]);

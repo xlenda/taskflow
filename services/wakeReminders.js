@@ -32,13 +32,38 @@ function permissionLabel(permission) {
   return permission?.status === 'denied' || permission?.canAskAgain === false ? 'denied' : 'undetermined';
 }
 
-async function scheduledWakeIdentifiers(client) {
+// Turning on, the sync and turning off run one at a time: two at once would each
+// keep the other's new reminders as duplicates.
+let queue = Promise.resolve();
+function serial(task) {
+  const run = queue.then(task);
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function scheduledWake(client) {
   const scheduled = await client.getAllScheduledNotificationsAsync();
   return (Array.isArray(scheduled) ? scheduled : [])
-    .filter((item) => isWakeData(item?.content?.data || item?.request?.content?.data))
-    .map((item) => item?.identifier || item?.request?.identifier)
-    .filter((identifier) => typeof identifier === 'string' && identifier);
+    .map((item) => ({
+      identifier: item?.identifier || item?.request?.identifier,
+      data: item?.content?.data || item?.request?.content?.data,
+    }))
+    .filter(({ identifier, data }) => isWakeData(data) && typeof identifier === 'string' && identifier);
 }
+
+const scheduledWakeIdentifiers = async (client) => (await scheduledWake(client)).map((item) => item.identifier);
+
+function parseSchedule(time, weekdays) {
+  const match = TIME_PATTERN.exec(String(time || ''));
+  if (!match) return { error: 'invalid_time' };
+  const days = normalizeAlarmWeekdays(weekdays);
+  if (!days) return { error: 'invalid_weekdays' };
+  return { hour: Number(match[1]), minute: Number(match[2]), days };
+}
+
+// Each reminder carries its language and its slot, so the sync can tell a
+// missing, stale or other-language reminder from one that is right.
+const slotOf = (trigger) => `${trigger.hour}:${trigger.minute}/${trigger.weekday || 'daily'}`;
 
 // One failing id never keeps the others alive.
 async function cancelEachQuietly(client, identifiers) {
@@ -49,7 +74,7 @@ async function cancelEachQuietly(client, identifiers) {
   }
 }
 
-function wakeContent(lang) {
+function wakeContent(lang, slot) {
   const en = lang === 'en';
   return {
     title: en ? 'Your wake-up is ready' : 'Seu despertar está pronto',
@@ -57,7 +82,7 @@ function wakeContent(lang) {
       ? 'Tap, light the three stars and listen to your sequence.'
       : 'Toque, acenda as três estrelas e ouça sua sequência.',
     sound: true,
-    data: { kind: WAKE_NOTIFICATION_KIND, url: WAKE_URL },
+    data: { kind: WAKE_NOTIFICATION_KIND, url: WAKE_URL, lang: en ? 'en' : 'pt', slot },
   };
 }
 
@@ -122,18 +147,45 @@ export async function getWakeReminderCapability() {
 
 // Called only from the explicit "turn on" tap: asks for notification permission
 // here, replaces any earlier wake-up reminders and keeps them if anything fails.
-export async function scheduleWakeReminders({ time, weekdays, lang = 'pt' } = {}) {
+export function scheduleWakeReminders(input = {}) {
+  return serial(() => schedule(input, true));
+}
+
+// App start and every return to the foreground while the reminder is on: re-creates
+// reminders that vanished (backup restore, reinstall, force-stop) or no longer
+// match the saved time, days or app language. Never asks for permission: without
+// it nothing changes and the screen shows its status.
+export function syncWakeReminders(input = {}) {
+  return serial(async () => {
+    const client = api();
+    if (typeof client?.getAllScheduledNotificationsAsync !== 'function') return { ok: false, error: 'unsupported' };
+    const plan = parseSchedule(input.time, input.weekdays);
+    if (plan.error) return { ok: false, error: plan.error };
+    try {
+      const permission = permissionLabel(await client.getPermissionsAsync());
+      if (permission !== 'granted') return { ok: false, error: 'permission_denied', permission };
+      const lang = input.lang === 'en' ? 'en' : 'pt';
+      const wanted = wakeTriggers(client, plan.hour, plan.minute, plan.days).map((trigger) => `${lang} ${slotOf(trigger)}`);
+      const found = (await scheduledWake(client)).map(({ data }) => `${data.lang} ${data.slot}`);
+      if (wanted.sort().join('|') === found.sort().join('|')) return { ok: true, changed: false };
+    } catch (_error) {
+      return { ok: false, error: 'status_failed' };
+    }
+    const result = await schedule(input, false);
+    return result.ok ? { ...result, changed: true } : result;
+  });
+}
+
+async function schedule({ time, weekdays, lang = 'pt' }, askPermission) {
   const client = api();
   if (!client) return { ok: false, error: 'unsupported' };
-  const match = TIME_PATTERN.exec(String(time || ''));
-  if (!match) return { ok: false, error: 'invalid_time' };
-  const days = normalizeAlarmWeekdays(weekdays);
-  if (!days) return { ok: false, error: 'invalid_weekdays' };
+  const plan = parseSchedule(time, weekdays);
+  if (plan.error) return { ok: false, error: plan.error };
 
   let permission = 'unknown';
   try {
     let current = await client.getPermissionsAsync();
-    if (permissionLabel(current) !== 'granted') {
+    if (askPermission && permissionLabel(current) !== 'granted') {
       current = await client.requestPermissionsAsync({
         ios: { allowAlert: true, allowSound: true, allowBadge: false },
       });
@@ -155,11 +207,10 @@ export async function scheduleWakeReminders({ time, weekdays, lang = 'pt' } = {}
     }
 
     const previous = await scheduledWakeIdentifiers(client);
-    const content = wakeContent(lang);
     const created = [];
     try {
-      for (const trigger of wakeTriggers(client, Number(match[1]), Number(match[2]), days)) {
-        const identifier = await client.scheduleNotificationAsync({ content, trigger });
+      for (const trigger of wakeTriggers(client, plan.hour, plan.minute, plan.days)) {
+        const identifier = await client.scheduleNotificationAsync({ content: wakeContent(lang, slotOf(trigger)), trigger });
         if (typeof identifier !== 'string' || !identifier) throw new Error('empty_identifier');
         created.push(identifier);
       }
@@ -176,7 +227,11 @@ export async function scheduleWakeReminders({ time, weekdays, lang = 'pt' } = {}
   }
 }
 
-export async function cancelWakeReminders() {
+export function cancelWakeReminders() {
+  return serial(cancel);
+}
+
+async function cancel() {
   if (Platform.OS === 'web') return { ok: true };
   const client = api();
   if (

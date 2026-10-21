@@ -178,6 +178,13 @@ assert.strictEqual(estimateListeningSeconds([{ text: 'a'.repeat(140) }]), 10);
 assert.strictEqual(estimateListeningSeconds([{ text: 'a'.repeat(141) }]), 11);
 assert.strictEqual(estimateListeningSeconds([{ text: 'a'.repeat(70) }, { text: 'b'.repeat(70) }]), 10);
 assert.strictEqual(estimateListeningSeconds([]), 0);
+// Um ritmo só: o tempo estimado usa a mesma constante do relógio da legenda do despertar (sem aviso de palavra).
+assert.ok(
+  /export const CHARS_PER_SECOND = 14;/.test(read('utils/captionProgress.js')) &&
+    /import \{ CHARS_PER_SECOND \} from '\.\/captionProgress';/.test(read('utils/wakeSequence.js')) &&
+    !/CHARS_PER_SECOND\s*=|\b14\b/.test(read('utils/wakeSequence.js').replace(/^\s*\/\/.*$/gm, '')),
+  'letras por segundo duplicadas: o tempo estimado precisa importar a constante de utils/captionProgress.js'
+);
 
 // 7. Frase do AlarmKit: 1ª afirmação; senão a afirmação da Cena-Âncora; senão nada.
 const mixed = withSequence([
@@ -287,7 +294,33 @@ const activeNoAnchor = {
     wakeSequence: [{ kind: 'affirmation', id: 'ritual:x' }],
   },
 };
+// Android (sem AlarmKit): o lembrete não tem áudio para trocar, então id, texto e idioma andam juntos — senão o
+// carregamento (mergeDefensivo) acha a diferença e grava alarmSyncError=true para sempre (ninguém o resolve ali).
+const androidRitual = ritualWithWakeSequence(
+  activeState,
+  [{ kind: 'affirmation', id: 'custom' }, { kind: 'affirmation', id: 'ritual:x' }],
+  { nativeAlarm: false }
+);
+assert.strictEqual(androidRitual.wakeAffirmationId, 'custom', 'Android: o lembrete aponta para a nova frase');
+assert.strictEqual(androidRitual.wakeAffirmationText, 'Minha frase própria para acordar.', 'Android: o texto anda com o id');
+assert.strictEqual(androidRitual.wakeAffirmationLang, 'pt');
+const { resolvePersonalAlarmContent } = load('utils/personalAffirmations.js');
+const androidLoaded = resolvePersonalAlarmContent({ ...activeState, morningRitual: androidRitual });
+assert.ok(
+  androidLoaded.text === androidRitual.wakeAffirmationText && androidLoaded.lang === androidRitual.wakeAffirmationLang,
+  'Android: carregar o estado salvo não pode achar diferença de frase (alarmSyncError falso)'
+);
+assert.strictEqual(
+  ritualWithWakeSequence(activeState, [{ kind: 'affirmation', id: 'custom' }]).wakeAffirmationText,
+  'Texto confirmado no aparelho',
+  'iPhone (padrão): o texto confirmado pelo AlarmKit continua até a troca nativa'
+);
 const emptiedNoAnchor = { ...activeNoAnchor, morningRitual: ritualWithWakeSequence(activeNoAnchor, []) };
+assert.strictEqual(
+  ritualWithWakeSequence(activeNoAnchor, [], { nativeAlarm: false }).wakeAffirmationText,
+  'Texto confirmado no aparelho',
+  'Android: lembrete ativo sem frase nova mantém a frase que tinha'
+);
 assert.strictEqual(emptiedNoAnchor.morningRitual.wakeAffirmationId, 'ritual:x', 'alarme ativo nunca pode ficar sem frase');
 assert.strictEqual(alarmPhraseForState(emptiedNoAnchor, [])?.id, 'ritual:x', 'tela não pode perder a frase do alarme ativo');
 const clearedOff = ritualWithWakeSequence(withSequence([{ kind: 'affirmation', id: 'ritual:x' }]), []);
@@ -391,6 +424,11 @@ assert.ok(
     (context.match(/\baddToWakeSequence,/g) || []).length >= 2,
   'provider precisa migrar, salvar e acrescentar a sequência'
 );
+assert.strictEqual(
+  (context.match(/ritualWithWakeSequence\([^;]*?, \{ nativeAlarm: RELEASE_FEATURES\.affirmationAlarm \}\)/g) || []).length,
+  2,
+  'provider precisa dizer ao ritualWithWakeSequence se existe alarme nativo (salvar e acrescentar)'
+);
 assert.ok(
   personal.includes('ritual.wakeCustomText'),
   'frase própria precisa existir sem depender de ser a frase do alarme'
@@ -489,6 +527,26 @@ assert.ok(
     home.includes("alarmTitle: { en: 'My wake-up', pt: 'Meu despertar' }") &&
     home.includes('wakeSequenceItemsForState(state, lang)'),
   'cartão da Home precisa se chamar Meu despertar e olhar a sequência'
+);
+const homeWakeMemo =
+  /const hasWakeSequence = useMemo\(\s*\(\) => !!state && wakeSequenceItemsForState\(state, lang\)\.length > 0,\s*\[state, lang\]\s*\);/.exec(home);
+assert.ok(
+  homeWakeMemo && homeWakeMemo.index < home.indexOf('if (loading || !state) {'),
+  'Home: a sequência do despertar só é recalculada quando o estado ou o idioma mudam (useMemo antes do retorno de carregamento)'
+);
+// Android: ao abrir e a cada volta para a frente, com o lembrete ligado e a sequência com itens, os lembretes que
+// sumiram (backup restaurado, reinstalação, force-stop) ou que não batem com horário, dias e idioma são refeitos —
+// sem pedir permissão. Desligado, nada é refeito e os órfãos saem como antes.
+const wakeSync = app.slice(app.indexOf('function WakeReminderSync()'), app.indexOf('function HomeStackNav()'));
+assert.ok(
+  wakeSync.includes('if (loaded && !enabled) void cancelWakeReminders();') &&
+    /if \(!enabled \|\| !hasSequence\) return undefined;/.test(wakeSync) &&
+    /syncWakeReminders\(\{ time, weekdays: days\.split\(','\)\.map\(Number\), lang \}\)/.test(wakeSync) &&
+    /AppState\.addEventListener\('change', \(next\) => \{\s*if \(next === 'active'\) sync\(\);/.test(wakeSync) &&
+    /\}, \[enabled, hasSequence, time, days, lang\]\);/.test(wakeSync) &&
+    /useMemo\(\s*\(\) => !!state && wakeSequenceItemsForState\(state, lang\)\.length > 0/.test(wakeSync) &&
+    !/requestPermissionsAsync|scheduleWakeReminders/.test(wakeSync),
+  'Android: o lembrete ligado precisa ser refeito ao abrir e ao voltar (horário, dias e idioma), sem pedir permissão'
 );
 const reminderActivation = alarmScreen.slice(
   alarmScreen.indexOf('const activateReminder = useCallback'),
@@ -671,8 +729,8 @@ for (const [name, block] of [
 
 // 13. Lembrete Android (expo-notifications falso + Platform falso): DAILY com os 7 dias,
 // WEEKLY por dia (domingo = 1 no Expo), canal próprio com som e web honesta.
-function loadWakeReminders(OS) {
-  const target = path.join(root, 'services', 'wakeReminders.js');
+function loadService(relative, OS) {
+  const target = path.join(root, relative);
   delete require.cache[target];
   const originalLoad = Module._load;
   Module._load = function mockedLoad(request, parent, isMain) {
@@ -680,11 +738,12 @@ function loadWakeReminders(OS) {
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
-    return load('services/wakeReminders.js');
+    return load(relative);
   } finally {
     Module._load = originalLoad;
   }
 }
+const loadWakeReminders = (OS) => loadService('services/wakeReminders.js', OS);
 
 const WAKE_DATA = { kind: 'wake_sequence', url: 'celeste://despertar/ouvir' };
 const scheduledWake = (identifier) => ({ identifier, content: { data: { ...WAKE_DATA } }, trigger: {} });
@@ -744,6 +803,37 @@ function notificationsMock(overrides = {}) {
   };
 }
 
+// Aparelho com estado: o que foi agendado fica lá até ser cancelado.
+function deviceNotifications(initial = [], overrides = {}) {
+  const live = new Map(initial.map((item) => [item.identifier, item]));
+  let created = 0;
+  const mock = notificationsMock({
+    async scheduleNotificationAsync(request) {
+      mock.calls.scheduled.push(request);
+      created += 1;
+      const identifier = `n-${created}`;
+      live.set(identifier, { identifier, content: request.content, trigger: request.trigger });
+      return identifier;
+    },
+    async getAllScheduledNotificationsAsync() {
+      return [...live.values()];
+    },
+    async cancelScheduledNotificationAsync(identifier) {
+      mock.calls.cancelled.push(identifier);
+      live.delete(identifier);
+    },
+    ...overrides,
+  });
+  mock.live = live;
+  return mock;
+}
+// Os lembretes do despertar que o aparelho vai entregar, pelo gatilho real e pelo título (o idioma).
+const wakeOnDevice = (mock) =>
+  [...mock.live.values()]
+    .filter((item) => item.content && item.content.data && item.content.data.kind === 'wake_sequence')
+    .map(({ content, trigger }) => `${content.title} | ${trigger.type} ${trigger.weekday || '-'} ${trigger.hour}:${trigger.minute}`)
+    .sort();
+
 async function verifyWakeReminders() {
   const service = loadWakeReminders('android');
   const useMock = (mock) => {
@@ -762,7 +852,11 @@ async function verifyWakeReminders() {
     'os 7 dias viram um único lembrete DAILY no canal do despertar'
   );
   const wakeContent = mock.calls.scheduled[0].content;
-  assert.deepStrictEqual(wakeContent.data, WAKE_DATA, 'tocar no lembrete precisa abrir despertar/ouvir');
+  assert.ok(
+    wakeContent.data.kind === WAKE_DATA.kind && wakeContent.data.url === WAKE_DATA.url,
+    'tocar no lembrete precisa abrir despertar/ouvir'
+  );
+  assert.strictEqual(wakeContent.data.lang, 'pt', 'o idioma do agendamento fica gravado no lembrete');
   assert.strictEqual(wakeContent.sound, true, 'lembrete do despertar não pode chegar mudo');
   assert.strictEqual(wakeContent.title, 'Seu despertar está pronto');
   assert.strictEqual(mock.calls.channels.length, 1);
@@ -941,6 +1035,100 @@ async function verifyWakeReminders() {
     assert.deepStrictEqual(await service.getWakeReminderCapability(), expected, permission.status);
   }
 
+  // 13b. Sincronia (App ao abrir e ao voltar para a frente, lembrete ligado): idempotente, nunca pede permissão.
+  const plan = { time: '07:05', weekdays: [1, 3], lang: 'pt' };
+  const ptMonWed = ['Seu despertar está pronto | weekly 2 7:5', 'Seu despertar está pronto | weekly 4 7:5'];
+  // Sumiram (backup restaurado, reinstalação, force-stop, limpeza de outro recurso): refeitos; o do plano fica.
+  mock = useMock(deviceNotifications([scheduledPlan]));
+  assert.strictEqual((await service.syncWakeReminders(plan)).ok, true);
+  assert.deepStrictEqual(wakeOnDevice(mock), ptMonWed, 'lembretes que sumiram não foram refeitos');
+  assert.strictEqual(mock.calls.requests, 0, 'a sincronia nunca pede permissão');
+  assert.ok(mock.live.has('plan-manha'), 'a sincronia mexeu no lembrete do plano');
+  // Já certos: nada muda.
+  const settled = mock.calls.scheduled.length;
+  assert.deepStrictEqual(
+    await service.syncWakeReminders(plan),
+    { ok: true, changed: false },
+    'sincronia com os lembretes certos precisa dizer que nada mudou'
+  );
+  assert.ok(
+    mock.calls.scheduled.length === settled && mock.calls.cancelled.length === 0,
+    'lembretes certos não podem ser refeitos a cada abertura'
+  );
+  // Um dia sumiu: refeitos, sem duplicata.
+  mock.live.delete([...mock.live.keys()].find((id) => id !== 'plan-manha'));
+  assert.strictEqual((await service.syncWakeReminders(plan)).changed, true);
+  assert.deepStrictEqual(wakeOnDevice(mock), ptMonWed, 'um dia que sumiu não voltou (ou ficou duplicado)');
+  // Horário ou dias salvos diferentes do que está agendado: reagenda.
+  await service.syncWakeReminders({ ...plan, time: '08:30', weekdays: [5] });
+  assert.deepStrictEqual(wakeOnDevice(mock), ['Seu despertar está pronto | weekly 6 8:30'], 'horário/dias salvos não valeram');
+  // O idioma do app mudou: título, texto e canal no novo idioma; os antigos saem.
+  const channelsBefore = mock.calls.channels.length;
+  await service.syncWakeReminders({ ...plan, time: '08:30', weekdays: [5], lang: 'en' });
+  assert.deepStrictEqual(wakeOnDevice(mock), ['Your wake-up is ready | weekly 6 8:30'], 'lembrete continuou no idioma antigo');
+  assert.strictEqual(mock.calls.channels.slice(channelsBefore).pop().config.name, 'My wake-up', 'canal no idioma antigo');
+  assert.deepStrictEqual(
+    await service.syncWakeReminders({ ...plan, time: '08:30', weekdays: [5], lang: 'en' }),
+    { ok: true, changed: false },
+    'depois de trocar o idioma, a sincronia volta a ser idempotente'
+  );
+  // Lembretes de antes desta versão (sem idioma gravado): refeitos uma vez.
+  mock = useMock(deviceNotifications([scheduledWake('legacy-wake')]));
+  await service.syncWakeReminders(plan);
+  assert.ok(!mock.live.has('legacy-wake') && wakeOnDevice(mock).length === 2, 'lembrete antigo sem idioma ficou');
+  // Abrir e voltar para a frente ao mesmo tempo: uma sincronia espera a outra, sem duplicar.
+  mock = useMock(deviceNotifications());
+  await Promise.all([service.syncWakeReminders(plan), service.syncWakeReminders(plan)]);
+  assert.deepStrictEqual(wakeOnDevice(mock), ptMonWed, 'duas sincronias ao mesmo tempo duplicaram os lembretes');
+  // Permissão que sumiu (negada ou ainda não decidida): não pede, não agenda, não apaga; a tela mostra o estado.
+  for (const permission of [
+    { status: 'denied', granted: false, canAskAgain: false },
+    { status: 'undetermined', granted: false, canAskAgain: true },
+  ]) {
+    mock = useMock(deviceNotifications([scheduledWake('kept-wake')], { getPermissionsAsync: async () => permission }));
+    const result = await service.syncWakeReminders(plan);
+    assert.ok(result.ok === false && result.error === 'permission_denied', `sem permissão (${permission.status}) fingiu sincronizar`);
+    assert.ok(
+      mock.calls.requests === 0 && mock.calls.scheduled.length === 0 && mock.live.has('kept-wake'),
+      `sem permissão (${permission.status}): a sincronia pediu permissão, agendou ou apagou`
+    );
+  }
+  // Horário salvo inválido: nada é feito.
+  mock = useMock(deviceNotifications());
+  assert.strictEqual((await service.syncWakeReminders({ ...plan, time: '7h' })).error, 'invalid_time');
+  assert.strictEqual(mock.calls.scheduled.length, 0);
+
+  // 13c. Ritual diário: a limpeza de último recurso (troca de horário com os dois cancelamentos falhando) apaga só os
+  // lembretes do próprio ritual — nunca os do despertar nem os do plano (antes: cancelAll).
+  const daily = loadService('services/dailyRitualReminder.js', 'android');
+  const dailyItem = (identifier) => ({ identifier, content: { data: { url: 'celeste://ritual', kind: 'daily_ritual' } }, trigger: {} });
+  const refused = new Set();
+  let wipedAll = false;
+  const dailyMock = deviceNotifications([scheduledWake('wake-1'), scheduledPlan, dailyItem('old-daily')], {
+    async cancelScheduledNotificationAsync(identifier) {
+      if (!refused.has(identifier)) {
+        refused.add(identifier);
+        throw new Error('native_failure');
+      }
+      dailyMock.live.delete(identifier);
+    },
+    async cancelAllScheduledNotificationsAsync() {
+      wipedAll = true;
+      dailyMock.live.clear();
+    },
+  });
+  daily._dailyRitualReminderTest.setApiForTests(dailyMock);
+  assert.deepStrictEqual(
+    await daily.scheduleDailyRitualReminder({ time: '08:00', previousId: 'old-daily', lang: 'pt' }),
+    { ok: false, error: 'previous_cancel_failed' }
+  );
+  assert.strictEqual(wipedAll, false, 'a limpeza do ritual diário apagou os lembretes do app inteiro');
+  assert.deepStrictEqual(
+    [...dailyMock.live.keys()].sort(),
+    ['plan-manha', 'wake-1'],
+    'a limpeza do ritual diário precisa tirar os dois lembretes do ritual e deixar o despertar e o plano'
+  );
+
   // Site: não finge lembrete.
   const web = loadWakeReminders('web');
   assert.deepStrictEqual(await web.scheduleWakeReminders({ time: '07:00', weekdays: [1], lang: 'pt' }), {
@@ -948,6 +1136,10 @@ async function verifyWakeReminders() {
     error: 'unsupported',
   });
   assert.deepStrictEqual(await web.cancelWakeReminders(), { ok: true });
+  assert.deepStrictEqual(await web.syncWakeReminders({ time: '07:00', weekdays: [1], lang: 'pt' }), {
+    ok: false,
+    error: 'unsupported',
+  });
   assert.strictEqual(await web.initialWakeNotificationUrl(), null);
   assert.strictEqual(web.configureWakeNotifications(), false);
 }

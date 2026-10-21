@@ -3072,7 +3072,7 @@ export function AppProvider({ children }) {
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'wakeSequence')) {
         return {
           ...s,
-          morningRitual: ritualWithWakeSequence({ ...s, morningRitual: next }, patch.wakeSequence),
+          morningRitual: ritualWithWakeSequence({ ...s, morningRitual: next }, patch.wakeSequence, { nativeAlarm: RELEASE_FEATURES.affirmationAlarm }),
         };
       }
       return { ...s, morningRitual: next };
@@ -3085,7 +3085,9 @@ export function AppProvider({ children }) {
     if (!accepted.ok) return accepted;
     setState((s) => {
       const next = appendToWakeSequence(s, entry);
-      return next.ok ? { ...s, morningRitual: ritualWithWakeSequence(s, next.sequence) } : s;
+      return next.ok
+        ? { ...s, morningRitual: ritualWithWakeSequence(s, next.sequence, { nativeAlarm: RELEASE_FEATURES.affirmationAlarm }) }
+        : s;
     });
     return { ok: true };
   }, []);

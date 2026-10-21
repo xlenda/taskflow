@@ -17,7 +17,7 @@ import CoverScene from './CoverScene';
  * foco recebe live (no app cada cena é uma WebView); a camada viva (CoverScene)
  * só monta então, e só ela assina o estado do app. Sem frase na cena: o texto do
  * card continua sendo o único texto, com o véu por cima. Qualquer erro da cena =
- * a imagem parada até o card sair.
+ * a imagem parada enquanto o card mostrar a mesma imagem.
  *
  * narration { text, progress, active }: a voz tocando — a cena com as palavras
  * surgindo, por cima do véu (ele escureceria a legenda), no lugar da cena do
@@ -44,7 +44,11 @@ export default function GradientCover({
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
   const personalVisualUri = usePersonalVisual(visualKey);
-  const [liveFailed, setLiveFailed] = useState(false);
+  // the failure belongs to one image: a reused cover (AffirmationsScreen swaps the affirmation on the same cover)
+  // tries the live scene again for another personal image or another ready scene
+  const sceneKey = `${visualKey || ''}|${sceneCategory || ''}`;
+  const [failedScene, setFailedScene] = useState(null);
+  const liveFailed = failedScene === sceneKey;
   // a voz tocando sempre leva a camada: as palavras aparecem mesmo depois de um erro da cena
   const wantsScene = (live && !liveFailed) || !!narration;
   // O 3º stop era branco a 28% e derrubava o contraste do texto branco por cima
@@ -108,7 +112,7 @@ export default function GradientCover({
           sceneCategory={sceneCategory}
           narration={narration}
           veil={veil(true)}
-          onFailed={() => setLiveFailed(true)}
+          onFailed={() => setFailedScene(sceneKey)}
         />
       ) : null}
       {icon ? (

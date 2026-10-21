@@ -1575,6 +1575,21 @@ async function main() {
   liveCover.update({ narration: { text: 'aa', progress: 0, active: true } });
   assert.strictEqual(layerOf(liveCover).props.narration.text, 'aa', 'mas a voz tocando ainda mostra as palavras');
   liveCover.unmount();
+  // capa reaproveitada (a AffirmationsScreen troca de afirmação na mesma capa): o erro vale só para aquela imagem —
+  // outra imagem pessoal ou outra cena pronta tenta a cena viva de novo
+  const reusedCover = coverOf({ live: true, visualKey: 'k-a', sceneCategory: 'Love' });
+  layerOf(reusedCover).props.onFailed();
+  reusedCover.flush();
+  reusedCover.update({ live: true });
+  assert.strictEqual(layerOf(reusedCover), null, 'a mesma imagem que falhou continua parada');
+  reusedCover.update({ visualKey: 'k-b' });
+  assert.ok(layerOf(reusedCover), 'outra afirmação (outra imagem): a cena viva volta');
+  layerOf(reusedCover).props.onFailed();
+  reusedCover.flush();
+  assert.strictEqual(layerOf(reusedCover), null, 'erro da nova imagem: parada de novo');
+  reusedCover.update({ sceneCategory: 'Peace' });
+  assert.ok(layerOf(reusedCover), 'outra cena pronta: a cena viva volta');
+  reusedCover.unmount();
 
   // a camada viva (CoverScene) de verdade, com o hook da imagem
   const sceneFailures = [];
@@ -1825,6 +1840,12 @@ async function main() {
     wordLengthAt,
   } = load('utils/captionProgress.js');
   assert.strictEqual(captionProgressFromTime({ elapsedMs: 5000, text: 'a'.repeat(140) }), 0.5, '14 letras por segundo');
+  // a voz do aparelho fala no rate que recebeu (0.9 = 12,6 letras/s): o relógio anda no mesmo ritmo, nunca na frente
+  assert.ok(
+    Math.abs(captionProgressFromTime({ elapsedMs: 5000, text: 'a'.repeat(126), rate: 0.9 }) - 0.5) < 1e-9,
+    'rate 0.9: 12,6 letras por segundo'
+  );
+  assert.ok(captionProgressFromTime({ elapsedMs: 5000, text: 'a'.repeat(140), rate: 0.9 }) < 0.5, 'rate 0.9: atrás das 14 letras/s');
   assert.strictEqual(captionProgressFromBoundary({ charIndex: 70, textLength: 140 }), 0.5);
   assert.strictEqual(captionProgressFromBoundary({ charIndex: 70, charLength: 7, textLength: 140 }), 0.55, 'o fim da palavra');
   assert.strictEqual(captionProgressFromTime({ elapsedMs: 60000, text: 'aa' }), 1, 'tempo além do texto: 1');
@@ -2203,22 +2224,28 @@ async function main() {
       0.999,
       'fim do item: todas as palavras no respiro, sem virar a frase parada encolhida (progress 1)'
     );
-    // 2º item: começa do zero; a voz que nunca avisa palavra anda pelo tempo (14 letras/s)
+    // 2º item: começa do zero; a voz que nunca avisa palavra anda pelo tempo (14 letras/s no rate 1), no rate que
+    // a voz recebeu (0.9 no aparelho): a legenda nunca corre na frente da voz (o Android quase nunca avisa palavra)
     wakeScreen.where((node) => node.props.testID === 'wake-next').props.onPress();
     await settle(wakeScreen, () => speeches.length === 2 && narratedNow() && narratedNow().props.progress === 0, 'item 2');
     const second = speeches[1].options;
+    assert.ok(second.rate > 0 && second.rate < 1, 'a voz do aparelho fala um pouco mais devagar (rate < 1)');
     second.onStart();
     wakeClock += 2000;
     tickIntervals();
     wakeScreen.flush();
-    assert.strictEqual(narratedNow().props.progress, (2 * 14) / 48, 'sem aviso de palavra: 14 letras por segundo');
+    const byClock = (2 * 14 * second.rate) / 48;
+    assert.ok(
+      Math.abs(narratedNow().props.progress - byClock) < 1e-9,
+      `sem aviso de palavra: 14 letras/s × rate ${second.rate} (legenda ${narratedNow().props.progress}, voz ${byClock})`
+    );
     // pausa (a voz do aparelho para): a legenda congela e a história volta a ficar em texto
     wakeScreen.where((node) => node.props.testID === 'wake-pause').props.onPress();
     wakeScreen.flush();
     wakeClock += 5000;
     tickIntervals();
     wakeScreen.flush();
-    assert.ok(narratedNow().props.progress === (2 * 14) / 48 && narratedNow().props.active === false, 'pausado: congela');
+    assert.ok(Math.abs(narratedNow().props.progress - byClock) < 1e-9 && narratedNow().props.active === false, 'pausado: congela');
     assert.ok(storyShown(), 'pausado: a história volta em texto');
     await settle(wakeScreen, () => !screenOn(), 'pausado: a tela volta a poder apagar');
     assert.deepStrictEqual(keepAwake[keepAwake.length - 1], ['off', 'celeste-wake'], 'pausado: solta a mesma marca');

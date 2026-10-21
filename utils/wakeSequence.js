@@ -1,3 +1,4 @@
+import { CHARS_PER_SECOND } from './captionProgress';
 import { personalAlarmContentForState, resolvePersonalAlarmContent } from './personalAffirmations';
 import {
   anchorManifestationForState,
@@ -6,7 +7,6 @@ import {
 } from './personalJourney';
 
 export const WAKE_SEQUENCE_MAX = 6;
-const CHARS_PER_SECOND = 14;
 
 const cleanId = (value) => (typeof value === 'string' ? value.trim().slice(0, 220) : '');
 
@@ -150,11 +150,13 @@ export function reminderRitualAfterDeletion(state) {
 // Saving the sequence re-points the AlarmKit phrase. While a native alarm is
 // active, text and language stay what the device confirmed, so
 // NativeAlarmContentSync sees the difference and replaces the audio first.
-export function ritualWithWakeSequence(state, sequence) {
+// Without a native alarm (Android reminder: no audio to replace, and no sync
+// mounted to clear the difference) the text and language move with the id.
+export function ritualWithWakeSequence(state, sequence, { nativeAlarm = true } = {}) {
   const ritual = (state && state.morningRitual) || {};
   const wakeSequence = normalizeWakeSequence(sequence, { validIds: alarmIds(state) });
   const phrase = firstPhraseForAlarm(wakeSequence, state);
-  if (ritual.reminderEnabled) {
+  if (ritual.reminderEnabled && (nativeAlarm || !phrase)) {
     // An active alarm never loses its phrase; turning it off stays explicit.
     return { ...ritual, wakeSequence, wakeAffirmationId: phrase ? phrase.id : ritual.wakeAffirmationId };
   }
