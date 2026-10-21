@@ -46,8 +46,9 @@ const phraseFit = (length) => {
 };
 
 // imagem do cartão: a pessoal (visualKey) ou, sem ela, a cena pronta das respostas — a mesma do vídeo; sem as duas,
-// o gradiente da marca. Enquanto a pessoal abre, nenhuma: a captura não pode sair com a cena pronta por engano
-function useCardImage(visualKey, readyScene) {
+// o gradiente da marca. Enquanto a pessoal abre, nenhuma: a captura não pode sair com a cena pronta por engano. É
+// também a imagem parada das capas com readyScene (GradientCover): a cena sem WebView
+export function useCardImage(visualKey, readyScene) {
   const [personal, setPersonal] = useState(null); // { key, uri } da última busca
   useEffect(() => {
     if (!visualKey) return undefined;

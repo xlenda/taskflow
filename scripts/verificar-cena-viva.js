@@ -1502,7 +1502,7 @@ async function main() {
     '../utils/useT': { useT: () => ({ t: (entry) => entry.pt, lang: 'pt' }) },
     './cenaViva/CenaViva': esDefault('CenaViva'),
     './NarratedScene': esDefault('NarratedScene'),
-    './CoverScene': esDefault('CoverScene'),
+    './CoverScene': { ...esDefault('CoverScene'), ReadySceneLabel: 'ReadySceneLabel' },
   };
   const { default: GradientCover } = loadWith('components/GradientCover.js', coverMocks);
   const { default: CoverScene } = loadWith('components/CoverScene.js', coverMocks);
@@ -1803,7 +1803,8 @@ async function main() {
     'AffirmationsScreen.js': /<AffirmationCard[^>]*?\slive=\{isFocused && current\.id === liveCardId && !share\.isOpen\}/,
     'VisionsScreen.js': /<GradientCover[^>]*?\slive=\{isFocused && vision\.id === liveVisionId && !share\.isOpen\}/,
     'HomeScreen.js': /testID="open-anchor-scene"[\s\S]{0,700}<GradientCover[^>]*?\slive=\{isFocused\}/,
-    'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused && !share\.isOpen\}/,
+    // a capa da manifestação: em foco e sem a história tocando (tocando, a cena viva da tela é a da história)
+    'ManifestationScreen.js': /<GradientCover\s+testID="manifestation-personal-visual"[^>]*?\slive=\{isFocused && !narrating && !share\.isOpen\}/,
     'PracticeRitualScreen.js': /<GradientCover\s+testID="practice-vision-visual"[^>]*?\slive=\{isFocused && !share\.isOpen\}/,
     'MorningRitualScreen.js': /<GradientCover\s+testID="dream-cena-viva"[^>]*?\slive=\{focused && !share\.isOpen\}/,
   };
@@ -2365,11 +2366,12 @@ async function main() {
     global.clearInterval = realClearInterval;
   }
 
-  // 22) Manifestação: "Sua história" é um vídeo. Parada: a cena da manifestação (a mesma da capa: a imagem dela ou a
-  //     cena pronta das respostas, com o rótulo honesto) com o COMEÇO da história, parado, e o ▶ por cima. O ▶ começa a
-  //     voz no MESMO toque e as palavras surgem na cena da história no ritmo dela — o único lugar das palavras: a capa
-  //     não as repete e vira pôster parado (uma cena animada por vez). Pausar/continuar são os controles de sempre; o
-  //     play da narrativa em áudio toca o mesmo vídeo (e leva a tela até ele). "Ler o texto" abre e fecha a história
+  // 22) Manifestação: "Sua história" é um vídeo. Parada: a IMAGEM da cena da manifestação (a mesma da capa: a dela ou
+  //     a cena pronta das respostas, com o rótulo honesto — sem CenaViva/WebView) com o COMEÇO da história e o ▶. O ▶
+  //     começa a voz no MESMO toque e só então a cena viva da história monta, com as palavras no ritmo da voz — o
+  //     único lugar delas; a capa fica na imagem parada. Uma cena viva por vez na tela (no app, cada uma é uma WebView
+  //     de até ~3,4 MB): parada, só a da capa; tocando, só a da história. Pausar/continuar são os controles de sempre;
+  //     o play da narrativa em áudio toca o mesmo vídeo (e leva a tela até ele). "Ler o texto" abre e fecha a história
   //     inteira. Folha do compartilhar aberta: nada anima. Reduzir movimento: palavras sim, animação não.
   const storySentences = [
     'Eu acordo com a luz do mar entrando devagar pela janela do quarto.', // 66 letras
@@ -2421,6 +2423,7 @@ async function main() {
   hosts.ScrollView = () => ({ scrollTo: (options) => storyScrolls.push(options) });
   const manifestMocks = {
     ...mocks,
+    ...sceneFiles,
     'react-native': {
       ...RN,
       TextInput: 'TextInput',
@@ -2510,26 +2513,32 @@ async function main() {
     return null;
   };
   const fullStoryShown = () => !!manifestScreen.where((node) => node.type === 'Text' && node.props.children === manifestStory);
+  const openingText = () => inside(storyCover(), (node) => node.type === 'Text' && node.props.numberOfLines === 5);
   const playIcon = () => inside(storyPlay(), (node) => node.type === 'Ionicons');
+  // quantas cenas vivas (CenaViva: no app, uma WebView cada) a capa monta com as props que a tela deu: quem decide é
+  // a GradientCover de verdade (a camada viva só monta com live ou narration)
+  const liveScenes = (cover) => (layerOf(coverOf(cover.props)) ? 1 : 0);
   const refresh = () => manifestScreen.update({});
   const narrateAs = (patch) => {
     Object.assign(manifestNarration, patch);
     refresh();
   };
 
-  // parada: a cena da manifestação com o começo da história e o ▶
-  assert.ok(storyCover() && storyCover().type === 'GradientCover', 'Sua história: um vídeo — a cena viva da manifestação no lugar do texto');
+  // parada: a imagem da cena da manifestação com o começo da história e o ▶
+  assert.ok(storyCover() && storyCover().type === 'GradientCover', 'Sua história: um vídeo — a cena da manifestação no lugar do texto');
   assert.ok(
     storyCover().props.visualKey === 'k-historia' &&
       storyCover().props.visualKey === heroCover().props.visualKey &&
       storyCover().props.sceneCategory === 'Peace' &&
-      storyCover().props.sceneCategory === heroCover().props.sceneCategory,
+      storyCover().props.sceneCategory === heroCover().props.sceneCategory &&
+      storyCover().props.readyScene === heroCover().props.readyScene &&
+      storyCover().props.readyScene?.id === 'neutral-Peace',
     'a mesma cena da capa: a imagem dela ou, sem ela, a cena pronta das respostas'
   );
-  assert.deepStrictEqual(
-    storyCover().props.narration,
-    { text: storyOpening, progress: 1, active: false },
-    'parada: a cena com o COMEÇO da história (as primeiras frases inteiras, paradas), sem animar'
+  assert.ok(storyCover().props.narration == null && !storyCover().props.live, 'parada: a história é imagem, sem cena viva');
+  assert.ok(
+    openingText() && openingText().props.children === storyOpening,
+    'parada: o COMEÇO da história (as primeiras frases inteiras) sobre a imagem'
   );
   assert.ok(
     inside(storyCover(), (node) => node === storyPlay()) &&
@@ -2539,19 +2548,34 @@ async function main() {
     'o ▶ por cima da cena: um botão com nome'
   );
   assert.ok(!fullStoryShown(), 'parada: a história inteira fica em "Ler o texto" (fechado)');
-  assert.ok(
-    heroCover().props.live === true && heroCover().props.active !== false && !heroCover().props.narration,
-    'parada: a capa é a cena animada da tela, sem palavras de narração'
+  assert.ok(heroCover().props.live === true && !heroCover().props.narration, 'parada: a capa é a cena viva da tela, sem palavras');
+  assert.deepStrictEqual(
+    [liveScenes(heroCover()), liveScenes(storyCover())],
+    [1, 0],
+    'parada: uma cena viva na tela, a da capa; a história não monta CenaViva'
   );
+  const storyStill = coverOf(storyCover().props);
+  await settle(storyStill, typed('Image'), 'imagem parada da história');
+  assert.ok(
+    typed('Image')(storyStill).props.source === storyCover().props.readyScene.source &&
+      typed('ReadySceneLabel')(storyStill) &&
+      !layerOf(storyStill),
+    'parada: a cena pronta como imagem (sem WebView), com o rótulo honesto'
+  );
+  assert.ok(
+    veilAt(storyStill) > layers(storyStill).indexOf(typed('Image')(storyStill)),
+    'a imagem parada leva o véu de imagem por cima (o começo e o rótulo claros ficam legíveis)'
+  );
+  storyStill.unmount();
   // a 1ª frase sozinha já passa de ~140 letras: ela inteira (o começo nunca fica vazio)
   const longFirst = `${'Eu caminho pela areia clara '.repeat(6).trim()}.`;
   manifestState = { ...manifestState, manifestations: [{ ...manifestItem, story: `${longFirst} Depois descanso.` }] };
   refresh();
-  assert.strictEqual(storyCover().props.narration.text, longFirst, '1ª frase longa: o começo é ela inteira');
+  assert.strictEqual(openingText().props.children, longFirst, '1ª frase longa: o começo é ela inteira');
   manifestState = { ...manifestState, manifestations: [manifestItem] };
   refresh();
 
-  // o ▶ começa a voz no MESMO toque: destrava o áudio e pede a história, sem nada esperado antes
+  // o ▶ começa a voz no MESMO toque: destrava o áudio e pede a história, sem esperar nada (nem a cena viva)
   voiceCalls.length = 0;
   storyPlay().props.onPress();
   assert.deepStrictEqual(voiceCallNames(), ['prime', 'playPersonal'], 'o ▶ começa a voz no MESMO toque (nenhum await antes)');
@@ -2564,23 +2588,29 @@ async function main() {
   assert.deepStrictEqual(
     storyCover().props.narration,
     { text: spokenStory, progress: 0, active: false },
-    'carregando: a cena espera a voz, nenhuma palavra antes dela'
+    'carregando: a cena da história monta e espera a voz, nenhuma palavra antes dela'
   );
-  // tocando: as palavras surgem na cena da história, no ritmo da voz; a capa não as repete e fica parada
+  // tocando: as palavras surgem na cena da história, no ritmo da voz; a capa não as repete e fica na imagem parada
   narrateAs({ phase: 'playing', progress: 0.4 });
   assert.deepStrictEqual(
     storyCover().props.narration,
     { text: spokenStory, progress: 0.4, active: true },
     'tocando: as palavras que a voz diz surgem na cena da história, no ritmo dela'
   );
+  assert.ok(!openingText(), 'tocando: o começo parado sai (as palavras são as da voz)');
   assert.ok(!heroCover().props.narration, 'tocando: a capa não repete as palavras');
   assert.strictEqual(
     manifestScreen.where((node) => !!node.props.narration && node !== storyCover()),
     null,
     'um lugar só para as palavras: a cena da história'
   );
-  assert.ok(heroCover().props.live === true && heroCover().props.active === false, 'tocando: a capa vira pôster parado (uma cena animada por vez)');
-  // a capa continua capa: o texto dela à vista e no leitor de tela (a voz não está mais nela)
+  assert.ok(heroCover().props.live === false, 'tocando: a capa fica na imagem parada');
+  assert.deepStrictEqual(
+    [liveScenes(heroCover()), liveScenes(storyCover())],
+    [0, 1],
+    'tocando: uma cena viva na tela, a da história; a capa nenhuma'
+  );
+  // a capa continua capa: o texto dela à vista e no leitor de tela
   const heroQuote = inside(heroCover(), (node) => node.type === 'Text' && node.props.children === 'Eu escolho a paz.');
   const heroText = heroQuote && inside(heroCover(), (node) => node.type === 'View' && !!inside(node, (child) => child === heroQuote));
   assert.ok(
@@ -2600,7 +2630,7 @@ async function main() {
     { text: spokenStory, progress: 0.4, active: false },
     'pausada: as palavras ficam onde a voz parou e a cena para'
   );
-  assert.strictEqual(heroCover().props.active, false, 'pausada: a capa segue parada');
+  assert.strictEqual(heroCover().props.live, false, 'pausada: a capa segue na imagem parada');
   storyPlay().props.onPress();
   assert.deepStrictEqual(voiceCalls, ['pause', 'resume'], 'pausar e continuar pelo vídeo: os controles de sempre');
   // folha do compartilhar aberta com a voz tocando: nada anima por trás (o gravador é a vez dela)
@@ -2611,14 +2641,13 @@ async function main() {
   manifestShare.open = false;
   refresh();
   assert.strictEqual(storyCover().props.narration.active, true, 'folha fechada: a história volta a animar com a voz');
-  // a voz terminou: o começo de novo, parado; a capa volta a animar
+  // a voz terminou: a imagem com o começo de novo; a capa volta a ser a cena viva
   narrateAs({ activePlaybackId: null, lastCompletedPlaybackId: 'manifestation:m-historia', phase: 'idle', progress: 1 });
-  assert.deepStrictEqual(
-    storyCover().props.narration,
-    { text: storyOpening, progress: 1, active: false },
-    'a voz terminou: o começo da história de novo, parado'
+  assert.ok(
+    storyCover().props.narration == null && openingText() && openingText().props.children === storyOpening,
+    'a voz terminou: a imagem com o começo da história de novo'
   );
-  assert.ok(heroCover().props.active !== false && !heroCover().props.narration, 'a voz terminou: a capa volta a ser a cena animada');
+  assert.ok(heroCover().props.live === true && !heroCover().props.narration, 'a voz terminou: a capa volta a ser a cena viva');
   assert.deepStrictEqual(practiceToggles, ['m-historia'], 'o fim da história registra a prática do dia');
 
   // o play da narrativa em áudio toca o MESMO vídeo: a voz começa no toque e a tela desce até a história
@@ -2651,35 +2680,74 @@ async function main() {
   manifestScreen.flush();
   assert.ok(readToggle().props['aria-expanded'] === false && !fullStoryShown(), '"Ler o texto" fecha de novo');
 
-  // sem voz pessoal (o app nesta versão): a cena com o começo e "Ler o texto", sem um ▶ que não tocaria nada
+  // sem voz pessoal (o app nesta versão): a imagem com o começo e "Ler o texto", sem um ▶ que não tocaria nada
   manifestNarration.personalNarrationAvailable = false;
   refresh();
-  assert.ok(!storyPlay() && storyCover().props.narration.text === storyOpening && readToggle(), 'sem voz: sem ▶; o começo e o texto ficam');
+  assert.ok(!storyPlay() && openingText() && readToggle(), 'sem voz: sem ▶; o começo e o texto ficam');
   manifestNarration.personalNarrationAvailable = true;
-  // parada com a folha aberta ou fora de foco: a cena da história sai (no app, uma WebView a menos), como a da capa
+  // folha aberta, parada: nenhuma cena viva (a capa vira imagem; a história já é)
   manifestShare.open = true;
   refresh();
-  assert.strictEqual(storyCover().props.narration, null, 'folha aberta, parada: a cena da história sai');
+  assert.deepStrictEqual([liveScenes(heroCover()), liveScenes(storyCover())], [0, 0], 'folha aberta: nenhuma cena viva na tela');
   manifestShare.open = false;
-  manifestFocus.value = false;
-  refresh();
-  assert.strictEqual(storyCover().props.narration, null, 'fora de foco: a cena da história sai');
-  manifestFocus.value = true;
   refresh();
 
-  // a capa parada é pôster de verdade: a mesma cena, sem animar (GradientCover e CoverScene repassam o active)
-  assert.strictEqual(
-    layerOf(coverOf({ live: true, active: false, visualKey: 'k-historia', sceneCategory: 'Peace' })).props.active,
-    false,
-    'capa parada: a camada viva recebe active=false'
+  // a imagem parada com readyScene (a do cartão do compartilhar, sem WebView): sem a imagem dela, a cena pronta com o
+  // rótulo; com a dela, ela sem rótulo; enquanto a dela abre, nenhuma (a pronta não pisca); com a cena viva montada, a
+  // viva é a cena (nem imagem pronta nem rótulo dobrado por baixo; a dela segue por baixo, como sempre); a capa parada
+  // não assina o estado do app (só o rótulo, que é outro componente)
+  const stillScene = { id: 'beach-Peace', source: 'beach-Peace' };
+  appReads = 0;
+  const readyCover = coverOf({ readyScene: stillScene, sceneCategory: 'Peace' });
+  assert.ok(
+    typed('Image')(readyCover) &&
+      typed('Image')(readyCover).props.source === 'beach-Peace' &&
+      typed('ReadySceneLabel')(readyCover) &&
+      !layerOf(readyCover),
+    'sem a imagem dela: a cena pronta como imagem, com o rótulo, sem CenaViva'
   );
-  assert.notStrictEqual(layerOf(coverOf({ live: true, sceneCategory: 'Peace' })).props.active, false, 'sem active: a capa anima como sempre');
-  const posterScene = sceneOf({ sceneCategory: 'Peace', active: false });
-  await settle(posterScene, liveOf, 'cena da capa parada');
-  assert.strictEqual(liveOf(posterScene).props.active, false, 'pôster: a mesma cena, parada no quadro');
-  posterScene.update({ active: true });
-  assert.notStrictEqual(liveOf(posterScene).props.active, false, 'a voz parou: a capa anima de novo');
-  posterScene.unmount();
+  assert.strictEqual(appReads, 0, 'a capa parada com a cena pronta não assina o estado do app');
+  // no site o asset empacotado é um objeto com uri (no app, um número): a cena pronta se reconhece pela identidade,
+  // nunca por ter uri — senão ela passava por imagem dela e ficava sem o rótulo
+  const webAsset = { uri: '/assets/scenes/beach-Peace.jpg', width: 720, height: 900 };
+  const webReady = coverOf({ readyScene: { id: 'beach-Peace', source: webAsset }, sceneCategory: 'Peace' });
+  assert.ok(
+    typed('Image')(webReady) && typed('Image')(webReady).props.source === webAsset && typed('ReadySceneLabel')(webReady),
+    'site (asset com uri): a cena pronta com o rótulo honesto, o asset como veio'
+  );
+  const slowCover = coverOf({ readyScene: stillScene, visualKey: 'k-lenta-capa', sceneCategory: 'Peace' });
+  for (let i = 0; i < 3; i++) await tick();
+  slowCover.flush();
+  assert.ok(!typed('Image')(slowCover) && !typed('ReadySceneLabel')(slowCover), 'a imagem dela abrindo: nenhuma (a cena pronta não pisca)');
+  openVisual('k-lenta-capa');
+  await settle(slowCover, typed('Image'), 'imagem dela na capa parada');
+  assert.ok(
+    typed('Image')(slowCover).props.source.uri === 'file:///document/k-lenta-capa.jpg' && !typed('ReadySceneLabel')(slowCover),
+    'a imagem dela, sem o rótulo da cena pronta'
+  );
+  slowCover.unmount();
+  const goneCover = coverOf({ readyScene: stillScene, visualKey: 'k-sumiu-capa', sceneCategory: 'Peace' });
+  await settle(goneCover, typed('Image'), 'cena pronta no lugar da imagem que sumiu');
+  assert.ok(
+    typed('Image')(goneCover).props.source === 'beach-Peace' && typed('ReadySceneLabel')(goneCover),
+    'a imagem dela sumiu: a cena pronta, com o rótulo'
+  );
+  goneCover.unmount();
+  const liveReady = coverOf({ readyScene: stillScene, live: true, sceneCategory: 'Peace' });
+  assert.ok(
+    layerOf(liveReady) && !typed('Image')(liveReady) && !typed('ReadySceneLabel')(liveReady),
+    'cena viva montada: ela é a cena (sem a pronta parada nem rótulo dobrado por baixo)'
+  );
+  const narratedReady = coverOf({ readyScene: stillScene, narration: { text: 'aa', progress: 0, active: false }, sceneCategory: 'Peace' });
+  assert.ok(layerOf(narratedReady) && !typed('Image')(narratedReady) && !typed('ReadySceneLabel')(narratedReady), 'narrando: a cena narrada é a cena');
+  personalFiles['k-capa-dela'] = 'file:///document/capa-dela.jpg';
+  const herLive = coverOf({ readyScene: stillScene, visualKey: 'k-capa-dela', live: true, sceneCategory: 'Peace' });
+  await settle(herLive, typed('Image'), 'imagem dela por baixo da cena viva');
+  assert.ok(
+    typed('Image')(herLive).props.source.uri === 'file:///document/capa-dela.jpg' && layerOf(herLive),
+    'com a cena viva, a imagem dela segue por baixo, como sempre'
+  );
+  herLive.unmount();
 
   // reduzir movimento com a história tocando: a cena que a tela monta desce pela capa, pela camada viva e pela cena
   // narrada até o CenaViva do site — imagem parada, as palavras continuam surgindo

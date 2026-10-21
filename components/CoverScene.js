@@ -15,9 +15,8 @@ const S = {
 // card segue legível). Narrando: a NarratedScene com as palavras no ritmo da voz (imagem a caminho: as palavras por
 // cima da capa; falha: o painel com o texto inteiro). Cena pronta na tela, depois de pintar: o rótulo honesto numa
 // pílula escura — parada, no respiro do pé do card (abaixo do texto, nunca por cima); narrando, dentro do quadro 4:5
-// da cena. Erro da cena ou imagem que não deu para preparar: onFailed (a capa volta à imagem parada). active=false: a
-// cena parada vira pôster (o quadro onde parou), sem recarregar.
-export default function CoverScene({ visualKey, sceneCategory, narration, active = true, veil, onFailed }) {
+// da cena. Erro da cena ou imagem que não deu para preparar: onFailed (a capa volta à imagem parada).
+export default function CoverScene({ visualKey, sceneCategory, narration, veil, onFailed }) {
   const { t } = useT();
   const narrating = !!narration;
   // narrando, a cena anterior fica até a nova entrar (o player troca de imagem no meio da fala); parada, trocar de
@@ -41,11 +40,7 @@ export default function CoverScene({ visualKey, sceneCategory, narration, active
     if (onFailed) onFailed();
   };
   const showsReady = !!uri && !source && brokenUri !== uri;
-  const label = (
-    <Text allowFontScaling={false} style={styles.label}>
-      {t(S.readyScene)}
-    </Text>
-  );
+  const label = readySceneLabel(t);
 
   if (narration) {
     // o rótulo vai para dentro da cena narrada: no quadro 4:5 que ela ocupa e só depois de pintar
@@ -65,11 +60,24 @@ export default function CoverScene({ visualKey, sceneCategory, narration, active
   if (!uri) return null;
   return (
     <>
-      <CenaViva imageUri={uri} active={active} style={styles.scene} onReady={setPainted} onError={fail} />
+      <CenaViva imageUri={uri} style={styles.scene} onReady={setPainted} onError={fail} />
       {painted === uri ? veil : null}
       {painted === uri && showsReady ? label : null}
     </>
   );
+}
+
+// o rótulo honesto da cena pronta: a mesma pílula na cena viva e na imagem parada
+const readySceneLabel = (t) => (
+  <Text allowFontScaling={false} style={styles.label}>
+    {t(S.readyScene)}
+  </Text>
+);
+
+// para a capa parada que mostra a cena pronta como imagem (GradientCover): só o rótulo assina o idioma, a capa não
+export function ReadySceneLabel() {
+  const { t } = useT();
+  return readySceneLabel(t);
 }
 
 const styles = StyleSheet.create({

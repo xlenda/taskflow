@@ -17,6 +17,7 @@ import { Screen, Header, Card, pct } from '../ui/kit';
 import { confirmAsync } from '../utils/confirm';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../context/AppContext';
+import { SERIF } from '../constants/brand';
 import { categoryMeta } from '../constants/content';
 import { txt } from '../constants/i18n';
 import { useT } from '../utils/useT';
@@ -27,6 +28,7 @@ import { todayISO, lastNDays } from '../utils/date';
 import { bridgeDoneOn, normalizeLivingMirror } from '../utils/livingMirror';
 import { alarmContentBelongsToManifestation } from '../utils/personalAffirmations';
 import { captionProgressFromNarration } from '../utils/captionProgress';
+import { pickReadyScene } from '../utils/readyScene';
 import {
   cancelAffirmationAlarm,
   getAffirmationAlarmCapability,
@@ -515,6 +517,8 @@ export default function ManifestationScreen() {
 
   const meta = categoryMeta(item.category);
   const color = accentAt(th, item.accent);
+  // a cena parada da capa e da história, como imagem (sem WebView): a dela ou a cena pronta das respostas
+  const readyScene = pickReadyScene({ dreamLocation: state.profile?.dreamLocation, category: item.category });
   // The Anchor Scene plays its whole story in the wake-up; other manifestations, their affirmation.
   const wakeTarget =
     saved.id === state.anchorSceneId
@@ -808,14 +812,6 @@ export default function ManifestationScreen() {
     ? t(S.nowPlaying, { i: lineIndex + 1, n: lines.length })
     : t(S.hintEyes);
 
-  // "Sua história" em vídeo: parada, a cena com o começo da história; tocando, as palavras que a voz diz, no ritmo
-  // dela. É o único lugar das palavras: a capa não as repete e fica parada (uma cena animada por vez).
-  const storyScene = {
-    text: narrating ? spokenText(lines.slice(spokenFrom).join(' '), lang) : storyStart(lines),
-    progress: narrating ? captionProgressFromNarration({ progress: narrationProgress }) : 1,
-    active: narrating && narrationPlaying && !share.isOpen,
-  };
-
   // o play da narrativa em áudio toca a MESMA história em vídeo: a voz começa no toque e a tela desce até ela
   const playFromAudioCard = () => {
     const starts = !playing;
@@ -940,13 +936,13 @@ export default function ManifestationScreen() {
             ) : null}
           </Card>
         ) : (
-          // a capa continua capa: a história em vídeo, mais abaixo, é quem conta com as palavras; enquanto ela toca, a
-          // capa vira pôster parado (uma cena animada por vez)
+          // a capa continua capa: as palavras moram na história em vídeo, mais abaixo; enquanto ela toca, a capa fica
+          // na imagem parada — só a cena que toca monta a cena viva (no app, uma WebView por vez)
           <GradientCover
             testID="manifestation-personal-visual"
             visualKey={item.visual?.cacheKey}
-            live={isFocused && !share.isOpen}
-            active={!narrating && !share.isOpen}
+            readyScene={readyScene}
+            live={isFocused && !narrating && !share.isOpen}
             sceneCategory={item.category}
             accent={item.accent}
             radius={28}
@@ -1239,9 +1235,9 @@ export default function ManifestationScreen() {
           ))}
         </Card>
 
-        {/* "Sua história" é um vídeo: a cena da manifestação (a mesma da capa) com o começo da história e o ▶; no
-            toque a voz conta e as palavras surgem na cena. Parada com a folha aberta ou fora de foco, a cena sai
-            (no app, uma WebView a menos), como a da capa. O texto inteiro fica em "Ler o texto". */}
+        {/* "Sua história" é um vídeo: parada, a imagem da cena da manifestação (a mesma da capa, sem WebView) com o
+            começo da história e o ▶; no toque a voz conta e só então a cena viva monta, com as palavras no ritmo da
+            voz (a capa fica na imagem parada). O texto inteiro fica em "Ler o texto". */}
         <View
           testID="manifestation-story"
           onLayout={(event) => {
@@ -1252,12 +1248,27 @@ export default function ManifestationScreen() {
           <GradientCover
             testID="manifestation-story-video"
             visualKey={item.visual?.cacheKey}
+            readyScene={readyScene}
             sceneCategory={item.category}
-            narration={narrating || (isFocused && !share.isOpen) ? storyScene : null}
+            narration={
+              narrating
+                ? {
+                    // as palavras que a voz diz, como ela diz (sem os nomes guardados), no ritmo dela
+                    text: spokenText(lines.slice(spokenFrom).join(' '), lang),
+                    progress: captionProgressFromNarration({ progress: narrationProgress }),
+                    active: narrationPlaying && !share.isOpen,
+                  }
+                : null
+            }
             accent={item.accent}
             radius={28}
             style={styles.storyVideo}
           >
+            {narrating ? null : (
+              <Text numberOfLines={5} style={styles.storyOpening}>
+                {storyStart(lines)}
+              </Text>
+            )}
             {audioOn ? (
               <TouchableOpacity
                 testID="manifestation-story-play"
@@ -1370,6 +1381,22 @@ const styles = StyleSheet.create({
   },
   // tocando: o pausar sai do caminho das palavras, no canto de cima
   storyPlaying: { position: 'absolute', top: 14, right: 14, width: 48, height: 48, borderRadius: 24 },
+  // o começo da história no pé da imagem parada, como a legenda da cena; o respiro de baixo é do rótulo da cena pronta
+  storyOpening: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 26,
+    color: '#FFFFFF',
+    fontFamily: SERIF,
+    fontStyle: 'italic',
+    fontSize: 18,
+    lineHeight: 26,
+    textAlign: 'center',
+    textShadowColor: 'rgba(3,9,18,0.62)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
   readRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   readText: { fontSize: 14.5, lineHeight: 20, fontWeight: '700', marginRight: 6 },
   badge: {

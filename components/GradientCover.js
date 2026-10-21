@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme';
 import { gradientPair, alpha } from '../utils/colors';
 import { usePersonalVisual } from '../utils/usePersonalVisual';
-import CoverScene from './CoverScene';
+import CoverScene, { ReadySceneLabel } from './CoverScene';
+import { useCardImage } from './ShareCard';
 
 /**
  * Soft dream-like gradient block used as the visual "photo" for visions
@@ -17,8 +18,14 @@ import CoverScene from './CoverScene';
  * foco recebe live (no app cada cena é uma WebView); a camada viva (CoverScene)
  * só monta então, e só ela assina o estado do app. Sem frase na cena: o texto do
  * card continua sendo o único texto, com o véu por cima. Qualquer erro da cena =
- * a imagem parada enquanto o card mostrar a mesma imagem. active=false: a cena viva vira pôster parado (a mesma
- * cena, sem animar), para outra cena da tela ser a única animando.
+ * a imagem parada enquanto o card mostrar a mesma imagem.
+ *
+ * readyScene (pickReadyScene): a imagem parada é a cena da capa mesmo para quem
+ * ainda não tem a sua — a pessoal ou, sem ela, a cena pronta das respostas com o
+ * rótulo honesto —, como imagem, sem WebView (a mesma do cartão do compartilhar).
+ * Enquanto a pessoal abre, nenhuma: a pronta não pisca para quem tem a sua. Com a
+ * cena viva montada (live/narration), ela é a cena e traz o próprio rótulo: por
+ * baixo fica só a pessoal, como sempre.
  *
  * narration { text, progress, active }: a voz tocando — a cena com as palavras
  * surgindo, por cima do véu (ele escureceria a legenda), no lugar da cena do
@@ -39,13 +46,23 @@ export default function GradientCover({
   onVisualError,
   decorative = false,
   live = false,
-  active = true,
   sceneCategory,
   narration,
+  readyScene,
 }) {
   const t = useTheme();
   const [a, b] = gradientPair(t, accent);
-  const personalVisualUri = usePersonalVisual(visualKey);
+  const personalVisualUri = usePersonalVisual(readyScene ? null : visualKey);
+  const sceneStill = useCardImage(readyScene ? visualKey : null, readyScene || null);
+  // a cena pronta se reconhece pela identidade, nunca pelo formato: no site o asset empacotado é um objeto com uri
+  const readyShown = !!readyScene && !!sceneStill && sceneStill === readyScene.source;
+  const personalSource = readyScene
+    ? readyShown
+      ? null
+      : sceneStill
+    : personalVisualUri
+      ? { uri: personalVisualUri }
+      : null;
   // the failure belongs to one image: a reused cover (AffirmationsScreen swaps the affirmation on the same cover)
   // tries the live scene again for another personal image or another ready scene
   const sceneKey = `${visualKey || ''}|${sceneCategory || ''}`;
@@ -53,6 +70,9 @@ export default function GradientCover({
   const liveFailed = failedScene === sceneKey;
   // a voz tocando sempre leva a camada: as palavras aparecem mesmo depois de um erro da cena
   const wantsScene = (live && !liveFailed) || !!narration;
+  // a cena pronta como imagem parada: só sem cena viva por cima (com ela, a viva é a cena)
+  const readyStill = readyShown && !wantsScene;
+  const imaged = !!personalSource || readyStill;
   // O 3º stop era branco a 28% e derrubava o contraste do texto branco por cima
   // para 1,06:1 — o título e a duração da visão sumiam no sol (auditoria WCAG,
   // 10/08). Agora o gradiente fecha na própria cor de destaque, mantendo o ar
@@ -96,9 +116,9 @@ export default function GradientCover({
       end={{ x: 0.95, y: 1 }}
       style={[{ borderRadius: radius, overflow: 'hidden' }, style]}
     >
-      {personalVisualUri ? (
+      {imaged ? (
         <Image
-          source={{ uri: personalVisualUri }}
+          source={personalSource || readyScene.source}
           contentFit="cover"
           transition={imageTransition}
           onLoad={onVisualReady}
@@ -107,17 +127,17 @@ export default function GradientCover({
           style={StyleSheet.absoluteFillObject}
         />
       ) : null}
-      {veil(!!personalVisualUri)}
+      {veil(imaged)}
       {wantsScene ? (
         <CoverScene
           visualKey={visualKey}
           sceneCategory={sceneCategory}
           narration={narration}
-          active={active}
           veil={veil(true)}
           onFailed={() => setFailedScene(sceneKey)}
         />
       ) : null}
+      {readyStill ? <ReadySceneLabel /> : null}
       {icon ? (
         // Selo puramente decorativo: fica fora do leitor de tela para não ler o glifo.
         <View

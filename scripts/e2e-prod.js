@@ -373,7 +373,8 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
     );
   try {
     await tab.goto(new globalThis.URL(`/m/${anchorId}`, URL).toString(), { waitUntil: 'networkidle2', timeout: 60000 });
-    await expect(tab.waitForSelector(SCENE, { visible: true, timeout: 30000 }), 'Sua história sem a cena da manifestação');
+    // parada: a IMAGEM da cena (sem CenaViva: no app, nenhuma WebView a mais), o começo da história, o ▶ e o rótulo
+    await expect(tab.waitForSelector(`${STORY} img`, { visible: true, timeout: 30000 }), 'Sua história sem a imagem da cena');
     await expect(
       tab.waitForFunction(
         (selector) => (document.querySelector(selector)?.textContent || '').includes('Cena inspirada nas suas respostas'),
@@ -382,22 +383,33 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
       ),
       'Sua história sem o rótulo honesto da cena pronta'
     );
-    const stopped = await tab.evaluate((scene) => ({
-      opening: document.querySelector(scene)?.getAttribute('aria-label') || '',
-      active: document.querySelector(scene)?.getAttribute('data-active'),
-      play: document.querySelector('[data-testid="manifestation-story-play"]')?.getAttribute('aria-label') || '',
-      read: document.querySelector('[data-testid="manifestation-story-read"]')?.getAttribute('aria-expanded'),
-    }), SCENE);
+    const stopped = await tab.evaluate((block) => {
+      const story = document.querySelector(block);
+      const opening = [...story.querySelectorAll('div')].find(
+        (node) =>
+          node.children.length === 0 &&
+          node.textContent.trim().length > 40 &&
+          !node.textContent.includes('Cena inspirada nas suas respostas')
+      );
+      return {
+        opening: opening ? opening.textContent.replace(/\s+/g, ' ').trim() : '',
+        scenesInStory: story.querySelectorAll('[data-testid="cena-viva"]').length,
+        scenesOnPage: document.querySelectorAll('[data-testid="cena-viva"]').length,
+        play: document.querySelector('[data-testid="manifestation-story-play"]')?.getAttribute('aria-label') || '',
+        read: document.querySelector('[data-testid="manifestation-story-read"]')?.getAttribute('aria-expanded'),
+      };
+    }, STORY);
     if (
       !stopped.opening ||
       !story.startsWith(stopped.opening) ||
       stopped.opening.length >= story.length ||
-      stopped.active !== 'false' ||
+      stopped.scenesInStory !== 0 ||
+      stopped.scenesOnPage !== 1 ||
       stopped.play !== 'Ouvir a narrativa' ||
       stopped.read !== 'false' ||
       (await storyTextShown(tab, story))
     ) {
-      throw new Error(`Sua história parada sem a cena com o começo e o ▶: ${JSON.stringify({ ...stopped, story: story.length })}`);
+      throw new Error(`Sua história parada sem a imagem com o começo e o ▶ (uma cena viva só, a da capa): ${JSON.stringify({ ...stopped, story: story.length })}`);
     }
     // o ▶ começa a voz no MESMO toque: o áudio é destravado ali, antes de qualquer espera (consentimento, rede)
     await tab.$eval('[data-testid="manifestation-story-play"]', (el) => el.scrollIntoView({ block: 'center' }));
@@ -422,20 +434,24 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
     await risesFrom(captionStart, 'A legenda da história não subiu com a voz');
     await sleep(1200);
     const captionLater = await progressNow();
-    const playing = await tab.evaluate((scene) => ({
+    const playing = await tab.evaluate((scene, block) => ({
       pause: document.querySelector('[data-testid="manifestation-story-play"]')?.getAttribute('aria-label') || '',
-      activeScenes: document.querySelectorAll('[data-testid="cena-viva"][data-active="true"]').length,
+      scenesOnPage: document.querySelectorAll('[data-testid="cena-viva"]').length,
+      scenesInHero: document.querySelectorAll('[data-testid="manifestation-personal-visual"] [data-testid="cena-viva"]').length,
       activeInStory: document.querySelectorAll(`${scene}[data-active="true"]`).length,
       wordsInHero: !!document.querySelector('[data-testid="manifestation-personal-visual"] [data-testid="narrated-scene"]'),
       label: document.querySelector(scene)?.getAttribute('aria-label') || '',
-    }), SCENE);
+      honest: (document.querySelector(block)?.textContent || '').includes('Cena inspirada nas suas respostas'),
+    }), SCENE, STORY);
     if (
       !(captionLater > captionStart) ||
       playing.pause !== 'Pausar a narrativa' ||
-      playing.activeScenes !== 1 ||
+      playing.scenesOnPage !== 1 ||
+      playing.scenesInHero !== 0 ||
       playing.activeInStory !== 1 ||
       playing.wordsInHero ||
       playing.label.length <= stopped.opening.length ||
+      !playing.honest ||
       !voiceRequests.length
     ) {
       throw new Error(`História sem palavras subindo com a voz na cena dela: ${JSON.stringify({ captionStart, captionLater, ...playing, label: playing.label.length, voice: voiceRequests.length })}`);
@@ -480,7 +496,43 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
   }
 }
 
-(async () => {
+// produção (E2E_GEMINI=1): no smoke da interface as rotas pagas respondem 403 sem sair do navegador (só o
+// transformador de sonhos segue de verdade) e toda rota paga tentada fica anotada com a fase do consentimento
+const paidPathsBlockedInUiSmoke = new Set([
+  '/api/gerar-cena',
+  '/api/traduzir-cena',
+  '/api/gerar-audio',
+  '/api/gerar-visual',
+]);
+const paidApiPaths = new Set([
+  ...paidPathsBlockedInUiSmoke,
+  '/api/transformar-sonho',
+]);
+// o pathname vem de globalThis.URL: o `URL` deste arquivo é o endereço testado (uma string) e, com ele, o new URL
+// lançava, o erro era engolido e nenhuma rota paga era bloqueada nem anotada
+function paidRequestGuard(attempts, phaseNow) {
+  return (request) => {
+    let pathname = '';
+    try {
+      pathname = new globalThis.URL(request.url()).pathname;
+    } catch (_error) {}
+    if (request.method() === 'POST' && paidApiPaths.has(pathname)) {
+      attempts.push({ pathname, phase: phaseNow() });
+    }
+    if (request.method() === 'POST' && paidPathsBlockedInUiSmoke.has(pathname)) {
+      void request.respond({
+        status: 403,
+        contentType: 'application/json',
+        headers: { 'Cache-Control': 'no-store' },
+        body: JSON.stringify({ error: 'automated_request_blocked' }),
+      }).catch(() => {});
+      return;
+    }
+    void request.continue().catch(() => {});
+  };
+}
+
+async function main() {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: USE_GEMINI ? false : 'new',
@@ -505,36 +557,8 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       } catch (_error) {}
     });
-    const paidPathsBlockedInUiSmoke = new Set([
-      '/api/gerar-cena',
-      '/api/traduzir-cena',
-      '/api/gerar-audio',
-      '/api/gerar-visual',
-    ]);
-    const paidApiPaths = new Set([
-      ...paidPathsBlockedInUiSmoke,
-      '/api/transformar-sonho',
-    ]);
     await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      let pathname = '';
-      try {
-        pathname = new URL(request.url()).pathname;
-      } catch (_error) {}
-      if (request.method() === 'POST' && paidApiPaths.has(pathname)) {
-        paidUiSmokeAttempts.push({ pathname, phase: uiSmokeCloudPhase });
-      }
-      if (request.method() === 'POST' && paidPathsBlockedInUiSmoke.has(pathname)) {
-        void request.respond({
-          status: 403,
-          contentType: 'application/json',
-          headers: { 'Cache-Control': 'no-store' },
-          body: JSON.stringify({ error: 'automated_request_blocked' }),
-        }).catch(() => {});
-        return;
-      }
-      void request.continue().catch(() => {});
-    });
+    page.on('request', paidRequestGuard(paidUiSmokeAttempts, () => uiSmokeCloudPhase));
   }
   await page.evaluateOnNewDocument(() => {
     window.__celesteVibrationCalls = [];
@@ -1600,7 +1624,11 @@ async function assertStoryVideo(browser, page, runtimeErrors) {
 
   console.log('✅ E2E COMPLETO PASSOU: onboarding + persistência + idempotência + links órfãos + app principal');
   await browser.close();
-})().catch(async (e) => {
+}
+
+// rodado direto (node scripts/e2e-prod.js) é o E2E; importado, só expõe o guarda das rotas pagas (portão da esteira)
+module.exports = { paidRequestGuard };
+if (require.main === module) main().catch(async (e) => {
   console.error('❌ E2E FALHOU:', String(e).slice(0, 400));
   try {
     if (global.__page) {

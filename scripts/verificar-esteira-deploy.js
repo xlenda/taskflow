@@ -561,6 +561,55 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(deploySource, /Rollback automatico para o deployment anterior falhou/);
 });
 
+test('o E2E de producao bloqueia e anota no navegador as rotas pagas do smoke', () => {
+  // importar o E2E nao abre navegador: ele so roda quando chamado direto
+  const { paidRequestGuard } = require('./e2e-prod');
+  const attempts = [];
+  let phase = 'before-consent';
+  const guard = paidRequestGuard(attempts, () => phase);
+  const send = (method, pathname) => {
+    const seen = { responded: null, continued: false };
+    guard({
+      method: () => method,
+      url: () => `https://celeste-jet-two.vercel.app${pathname}`,
+      respond: (response) => {
+        seen.responded = response;
+        return Promise.resolve();
+      },
+      continue: () => {
+        seen.continued = true;
+        return Promise.resolve();
+      },
+    });
+    return seen;
+  };
+  const visual = send('POST', '/api/gerar-visual');
+  assert.ok(
+    visual.responded && visual.responded.status === 403 && !visual.continued,
+    'imagem paga bloqueada no navegador (403), sem sair para a rede'
+  );
+  assert.strictEqual(JSON.parse(visual.responded.body).error, 'automated_request_blocked');
+  assert.deepStrictEqual(
+    attempts,
+    [{ pathname: '/api/gerar-visual', phase: 'before-consent' }],
+    'a tentativa paga fica anotada com a fase do consentimento'
+  );
+  for (const pathname of ['/api/gerar-cena', '/api/traduzir-cena', '/api/gerar-audio']) {
+    assert.strictEqual(send('POST', pathname).responded?.status, 403, `${pathname} bloqueada no navegador`);
+  }
+  phase = 'after-consent';
+  const dream = send('POST', '/api/transformar-sonho');
+  assert.ok(dream.continued && !dream.responded, 'o transformador de sonhos segue de verdade');
+  assert.deepStrictEqual(
+    attempts[attempts.length - 1],
+    { pathname: '/api/transformar-sonho', phase: 'after-consent' },
+    'o transformador de sonhos tambem fica anotado'
+  );
+  const read = send('GET', '/api/gerar-visual');
+  const other = send('POST', '/api/outra-coisa');
+  assert.ok(read.continued && other.continued && attempts.length === 5, 'GET e rotas nao pagas seguem, sem anotacao');
+});
+
 test.after(() => {
   process.stdout.write(`Esteira Celeste segura: env, sessao anonima, candidato e rollback validados em ${root}.\n`);
 });
