@@ -1,13 +1,16 @@
 const crypto = require('crypto');
 
-// Play Integrity "standard request" verification for the Android voice.
+// Play Integrity "standard request" verification for the Android app.
 // Docs: developer.android.com/google/play/integrity/standard (decode on Google's
 // server with a service account) and .../integrity/verdicts (payload fields).
 // The app binds every token to the request it protects and to the session that
 // sends it; services/appIntegrity.js builds the same canonical string hashed in
 // requestHashFor().
 const PACKAGE_NAME = 'com.celesteapp.affirmations';
-const NATIVE_OPERATION = 'audio';
+// The only operations a verified Android request may spend: the voice and the AI
+// texts (the Anchor Scene with the 6+6 suite, and its translation). Images and
+// dreams stay closed (api/_paid-access.js refuses them before any network call).
+const NATIVE_OPERATIONS = Object.freeze(['audio', 'scene', 'translation']);
 const SERVICE_ACCOUNT_ENV = 'CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64';
 const REQUEST_HASH_VERSION = 'celeste-play-integrity-v2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -222,8 +225,8 @@ function verdictProblem(payload, expectedHash, now) {
   return null;
 }
 
-// Callers (api/_paid-access.js) already limit this to Android voice requests
-// that carry a token, a valid request id and the Bearer session (`accessToken`)
+// Callers (api/_paid-access.js) already limit this to Android requests for
+// NATIVE_OPERATIONS that carry a token, a valid request id and the Bearer session (`accessToken`)
 // the token must be bound to: a token issued for one session fails for another.
 // Returns { ok } or { ok: false, reason, googleStatus } for logNativeRejection().
 async function verifyPlayIntegrity(req, { operation, requestId, accessToken }) {
@@ -256,7 +259,7 @@ function resetForTests() {
 
 module.exports = {
   MAX_TOKEN_AGE_MS,
-  NATIVE_OPERATION,
+  NATIVE_OPERATIONS,
   PACKAGE_NAME,
   REJECTION_REASONS,
   SERVICE_ACCOUNT_ENV,

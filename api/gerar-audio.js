@@ -1,5 +1,5 @@
 const { checkBotId } = require('botid/server');
-const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent');
 const paidAccess = require('./_paid-access');
 
 const DEFAULT_TTS_MODEL = 'eleven_multilingual_v2';
@@ -154,7 +154,7 @@ function validateInput(body) {
 
   if (!hasOnlyKeys(body, PERSONAL_KEYS)) return { error: 'invalid_request', status: 400 };
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
-  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+  if (!VOICE_AND_TEXT_CONSENT_VERSIONS.includes(body.cloudConsentVersion)) {
     return { error: 'cloud_consent_required', status: 403 };
   }
   if (body.adultConfirmed !== true) {

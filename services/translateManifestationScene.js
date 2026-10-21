@@ -105,20 +105,24 @@ export async function translateManifestationScene({
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
   try {
-    const authorization = fetchImpl ? {} : await celestePaidApiHeaders();
+    const requestBody = JSON.stringify({
+      sourceLang: from,
+      targetLang: to,
+      scene: sceneForCloud(scene, sourceProfile, from),
+      cloudConsent: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+      adultConfirmed: true,
+    });
+    // On Android the Play Integrity token is bound to the 'translation' operation and to these exact bytes.
+    const authorization = fetchImpl
+      ? {}
+      : await celestePaidApiHeaders({ operation: 'translation', body: requestBody });
     const response = await request(apiEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authorization },
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
-      body: JSON.stringify({
-        sourceLang: from,
-        targetLang: to,
-        scene: sceneForCloud(scene, sourceProfile, from),
-        cloudConsent: true,
-        cloudConsentVersion: CLOUD_CONSENT_VERSION,
-        adultConfirmed: true,
-      }),
+      body: requestBody,
     });
     if (!response.ok) throw new Error(`translation_api_${response.status}`);
     const payload = await response.json();

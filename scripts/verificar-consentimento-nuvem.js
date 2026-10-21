@@ -134,6 +134,33 @@ assert.match(home, /saveProfile\(\{[\s\S]*cloudConsentVersion,/);
 assert.strictEqual(CLOUD_CONSENT_VERSION, 'celeste-cloud-processors-v2');
 assert.match(chat, /const\s+DRAFT_V\s*=\s*7\s*;/);
 
+// Each platform keeps the version of the consent it showed: the website stays on v2 (nobody there accepts again);
+// the Android app (Metro picks cloudConsent.android.js) asks for voice + AI texts with its own version, so the older
+// voice-only consent given on Android is asked again. The voice and text routes accept both; images and dreams only v2.
+const web = require('../constants/cloudConsent');
+const android = require('../constants/cloudConsent.android.js');
+assert.strictEqual(android.CLOUD_CONSENT_VERSION, web.ANDROID_CLOUD_CONSENT_VERSION);
+assert.notStrictEqual(android.CLOUD_CONSENT_VERSION, web.CLOUD_CONSENT_VERSION, 'o Android tem a propria versao');
+assert.deepStrictEqual(
+  [...web.VOICE_AND_TEXT_CONSENT_VERSIONS].sort(),
+  [web.ANDROID_CLOUD_CONSENT_VERSION, web.CLOUD_CONSENT_VERSION].sort()
+);
+const androidAccepted = { ...legacyProfile, cloudConsentVersion: android.CLOUD_CONSENT_VERSION };
+const webAccepted = { ...legacyProfile, cloudConsentVersion: web.CLOUD_CONSENT_VERSION };
+assert.strictEqual(android.hasCurrentAdultCloudConsent(android.normalizeCloudConsentProfile(androidAccepted)), true, 'Android: o aceite novo vale');
+const oldOnAndroid = android.normalizeCloudConsentProfile(webAccepted);
+assert.strictEqual(oldOnAndroid.cloudConsentVersion, null, 'Android: o aceite antigo (so da voz) e pedido de novo');
+for (const field of CLOUD_CONSENT_BOOLEAN_FIELDS) {
+  assert.strictEqual(oldOnAndroid[field], false, `Android: ${field} do aceite antigo nao autoriza os textos`);
+}
+assert.strictEqual(web.hasCurrentAdultCloudConsent(web.normalizeCloudConsentProfile(webAccepted)), true, 'site: o aceite v2 segue valendo');
+assert.strictEqual(web.hasCurrentAdultCloudConsent(androidAccepted), false, 'site: o aceite do Android nao vale no site');
+assert.strictEqual(
+  android.hasCurrentAdultCloudConsent(android.normalizeCloudConsentProfile(androidAccepted, { forceReconsent: true })),
+  false,
+  'Android: backup nao restaura o aceite'
+);
+
 process.stdout.write(
-  `Consentimento de nuvem ${CLOUD_CONSENT_VERSION} OK: legado bloqueado, aceite atual e backup sem bypass.\n`
+  `Consentimento de nuvem ${CLOUD_CONSENT_VERSION} (site) e ${android.CLOUD_CONSENT_VERSION} (Android) OK: legado bloqueado, aceite atual por plataforma e backup sem bypass.\n`
 );

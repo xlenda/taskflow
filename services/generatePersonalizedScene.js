@@ -407,11 +407,12 @@ function apiEndpoint() {
   return `${PROD_API_URL}/api/gerar-cena`;
 }
 
-async function paidApiHeaders(fetchImpl) {
+async function paidApiHeaders(fetchImpl, body) {
   // Unit tests inject fetch directly; the server remains the security boundary.
   if (fetchImpl) return {};
   const { celestePaidApiHeaders } = require('./celesteApiSession');
-  return celestePaidApiHeaders();
+  // On Android the Play Integrity token is bound to the 'scene' operation and to these exact bytes.
+  return celestePaidApiHeaders({ operation: 'scene', body });
 }
 
 function requiredText(value, max, field) {
@@ -616,23 +617,24 @@ export async function generatePersonalizedScene({
   const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
   const request = fetchImpl || fetch;
   try {
-    const authorization = await paidApiHeaders(fetchImpl);
+    const payload = JSON.stringify({
+      desire: safeTitle,
+      category,
+      lang: locale,
+      profile: minimizeProfile(sourceProfile, category, locale, includeJourneySuite === true),
+      cloudConsent,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+      adultConfirmed,
+      ...(includeJourneySuite === true ? { includeJourneySuite: true } : {}),
+      ...(safeContinuity ? { continuity: safeContinuity } : {}),
+    });
+    const authorization = await paidApiHeaders(fetchImpl, payload);
     const response = await request(apiEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authorization },
       cache: 'no-store',
       signal: controller ? controller.signal : undefined,
-      body: JSON.stringify({
-        desire: safeTitle,
-        category,
-        lang: locale,
-        profile: minimizeProfile(sourceProfile, category, locale, includeJourneySuite === true),
-        cloudConsent,
-        cloudConsentVersion: CLOUD_CONSENT_VERSION,
-        adultConfirmed,
-        ...(includeJourneySuite === true ? { includeJourneySuite: true } : {}),
-        ...(safeContinuity ? { continuity: safeContinuity } : {}),
-      }),
+      body: payload,
     });
     if (!response.ok) throw new Error(`scene_api_${response.status}`);
     return validateScene(await response.json(), includeJourneySuite === true, locale);

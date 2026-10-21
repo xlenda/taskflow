@@ -83,15 +83,15 @@ const S = {
     pt: 'Confirme que você tem 18 anos ou mais e use este controle único para permitir que o Celeste envie somente os dados necessários aos recursos opcionais que você solicitar. A Anthropic gera textos de cenas personalizadas, com a OpenAI como alternativa. Se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Gemini poderá gerar a cena; o Gemini também traduz textos, cria imagens e interpreta sonhos que você escolher enviar. A ElevenLabs narra o texto selecionado sob demanda. As solicitações passam pelo backend do Celeste. Nomes cadastrados de filhos, pessoas importantes ou de uma pessoa específica ficam neste aparelho. Evite nomes e dados confidenciais em textos livres. Você pode desligar todo novo processamento em nuvem quando quiser.',
   },
   geminiConfirmAllow: { en: 'I am 18+ · Allow', pt: 'Tenho 18+ · Permitir' },
-  // Android: the only cloud feature in the app is the voice, so the control speaks only of it.
-  voiceCloudTitle: { en: "Celeste's voice in the cloud", pt: 'Voz da Celeste na nuvem' },
+  // Android: the app's cloud features are the voice and the AI texts, so the control speaks only of them.
+  voiceCloudTitle: { en: "Celeste's voice and texts in the cloud", pt: 'Voz e textos da Celeste na nuvem' },
   voiceCloudOn: {
-    en: 'ElevenLabs creates the voice you chose, only when you ask to listen. The text goes to our server and to ElevenLabs only to create the audio. No images are created in the app.',
-    pt: 'A ElevenLabs cria a voz que você escolheu, só quando você pede para ouvir. O texto vai ao nosso servidor e à ElevenLabs só para gerar o áudio. Nenhuma imagem é criada no app.',
+    en: 'AI writes your Anchor Scene, visions and affirmations from your answers (Anthropic; OpenAI as the failover and, without both, Google Gemini, which also translates the scene if you change the language). ElevenLabs creates the voice you chose, only when you ask to listen. No images are created in the app.',
+    pt: 'A IA escreve sua Cena-Âncora, visões e afirmações a partir das suas respostas (Anthropic; a OpenAI como alternativa e, sem as duas, o Google Gemini, que também traduz a cena se você trocar o idioma). A ElevenLabs cria a voz que você escolheu, só quando você pede para ouvir. Nenhuma imagem é criada no app.',
   },
   voiceCloudOff: {
-    en: 'Off: no text goes to the cloud. When you tap Listen, Celeste asks first.',
-    pt: 'Desligada: nenhum texto vai para a nuvem. Ao tocar em Ouvir, a Celeste pergunta antes.',
+    en: 'Off: nothing goes to the cloud and your texts are put together on this device. When you tap Listen, Celeste asks first.',
+    pt: 'Desligada: nada vai para a nuvem e seus textos são montados no aparelho. Ao tocar em Ouvir, a Celeste pergunta antes.',
   },
   geminiUnder18: {
     en: 'Cloud processing is unavailable for profiles marked Under 18. New content is created on this device.',
@@ -466,10 +466,10 @@ export default function ProfileScreen({ navigation }) {
     hasCurrentAdultCloudConsent(state.profile) &&
     state.profile.cloudNarrationConsent === true &&
     state.profile.cloudDreamConsent === true;
-  const voiceOnlyCloud = !RELEASE_FEATURES.paidCloudProcessing;
+  const voiceAndTextsCloud = !RELEASE_FEATURES.paidCloudProcessing;
   const cloudNote = under18
     ? S.geminiUnder18
-    : voiceOnlyCloud
+    : voiceAndTextsCloud
       ? cloudEnabled
         ? S.voiceCloudOn
         : S.voiceCloudOff
@@ -512,8 +512,8 @@ export default function ProfileScreen({ navigation }) {
       tap();
       return;
     }
-    if (voiceOnlyCloud) {
-      // Android: the same voice-only request as "Listen".
+    if (voiceAndTextsCloud) {
+      // Android: the same request (voice and texts) as "Listen".
       if ((await ensureCloudMediaConsent()).ok) success();
       return;
     }
@@ -782,7 +782,7 @@ export default function ProfileScreen({ navigation }) {
                 <Pressable
                   testID="profile-gemini-switch"
                   accessibilityRole="switch"
-                  accessibilityLabel={t(voiceOnlyCloud ? S.voiceCloudTitle : S.geminiTitle)}
+                  accessibilityLabel={t(voiceAndTextsCloud ? S.voiceCloudTitle : S.geminiTitle)}
                   accessibilityHint={t(cloudNote)}
                   accessibilityState={{ checked: cloudEnabled, disabled: under18 }}
                   disabled={under18}
@@ -796,7 +796,7 @@ export default function ProfileScreen({ navigation }) {
                 >
                   <View style={styles.geminiCopy}>
                     <Text style={[styles.settingTitle, { color: theme.text }]}>
-                      {t(voiceOnlyCloud ? S.voiceCloudTitle : S.geminiTitle)}
+                      {t(voiceAndTextsCloud ? S.voiceCloudTitle : S.geminiTitle)}
                     </Text>
                     <Text style={[styles.settingNote, { color: theme.textMuted }]}>{t(cloudNote)}</Text>
                   </View>

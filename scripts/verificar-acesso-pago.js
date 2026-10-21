@@ -6,11 +6,18 @@ const test = require('node:test');
 
 const paidAccess = require('../api/_paid-access');
 const playIntegrity = require('../api/_play-integrity');
-const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { ANDROID_CLOUD_CONSENT_VERSION, CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 
 const ENV_KEYS = [
   'CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64',
   'ELEVENLABS_API_KEY',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
+  'GEMINI_PAID_DATA_TERMS_ACCEPTED',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
+  'OPENAI_API_KEY',
+  'OPENAI_PAID_DATA_TERMS_ACCEPTED',
   'CELESTE_SUPABASE_URL',
   'CELESTE_SUPABASE_ANON_KEY',
   'CELESTE_SUPABASE_SERVICE_ROLE_KEY',
@@ -46,6 +53,17 @@ function configure() {
   process.env.NODE_ENV = 'production';
   delete process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64;
   delete process.env.ELEVENLABS_API_KEY;
+  for (const key of [
+    'GEMINI_API_KEY',
+    'GEMINI_MODEL',
+    'GEMINI_PAID_DATA_TERMS_ACCEPTED',
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_PAID_DATA_TERMS_ACCEPTED',
+    'OPENAI_API_KEY',
+    'OPENAI_PAID_DATA_TERMS_ACCEPTED',
+  ]) {
+    delete process.env[key];
+  }
   paidAccess.resetAuthorizerForTests();
   playIntegrity.resetForTests();
 }
@@ -850,6 +868,16 @@ function googleAndSupabase(state) {
         : { allowed: true, duplicate: false, reserved: false, actorQuota: true, operationQuota: true };
       return { ok: true, json: async () => result };
     }
+    if (url.startsWith('https://generativelanguage.googleapis.com/')) {
+      state.gemini = (state.gemini || 0) + 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(state.geminiOutput) }] } }],
+        }),
+      };
+    }
     if (url.startsWith('https://api.elevenlabs.io/')) {
       state.elevenLabs += 1;
       const pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]);
@@ -1096,10 +1124,10 @@ test('native claims without a usable attestation never reach Google, identity or
     ['Android sem token', nativeVoiceRequest({ headers: { 'x-celeste-integrity': '' } }), 'audio', 'no_token'],
     ['token com espaco', nativeVoiceRequest({ headers: { 'x-celeste-integrity': 'token forjado com espaco' } }), 'audio', 'no_token'],
     ['iOS com token', nativeVoiceRequest({ headers: { 'x-celeste-client': 'ios' } }), 'audio', 'client_not_supported'],
-    ['cena pelo Android', nativeVoiceRequest(), 'scene', 'operation_not_allowed'],
+    ['cena pelo Android sem token', nativeVoiceRequest({ headers: { 'x-celeste-integrity': '' } }), 'scene', 'no_token'],
+    ['traducao pelo iOS com token', nativeVoiceRequest({ headers: { 'x-celeste-client': 'ios' } }), 'translation', 'client_not_supported'],
     ['imagem pelo Android', nativeVoiceRequest(), 'visual', 'operation_not_allowed'],
     ['sonho pelo Android', nativeVoiceRequest(), 'dream', 'operation_not_allowed'],
-    ['traducao pelo Android', nativeVoiceRequest(), 'translation', 'operation_not_allowed'],
   ];
   for (const [label, req, operation, reason] of scenarios) {
     const { result, lines } = await withLogs(() =>
@@ -1218,6 +1246,280 @@ test('gerar-audio serves verified Android voice and refuses a body changed after
   assert.ok(!reachedSupabase(tamperedState));
 });
 
+// Android texts (21/10): besides the voice, a verified Android request may spend only the AI texts — the Anchor Scene
+// with the 6+6 suite (scene) and its translation. Images and dreams stay closed, and so does the Living Mirror (a
+// scene that continues a chapter).
+const ANDROID_SCENE_PROFILE = Object.freeze({
+  name: 'Ana',
+  aboutYou: 'sou pro ativa, bondosa e persistente',
+  whyMatters: 'ter liberdade para cuidar das pessoas importantes',
+  obstacle: 'medo de comecar',
+  dreamLocation: 'perto da praia',
+  dreamHome: 'uma casa de fazenda',
+  work: 'design de produto',
+  partnerDesire: 'uma parceria leal, companheira e presente',
+});
+const androidSceneBody = Object.freeze({
+  desire: 'viver com liberdade e construir uma familia',
+  category: 'Love',
+  lang: 'pt',
+  profile: ANDROID_SCENE_PROFILE,
+  cloudConsent: true,
+  cloudConsentVersion: ANDROID_CLOUD_CONSENT_VERSION,
+  adultConfirmed: true,
+  includeJourneySuite: true,
+});
+const androidTranslationBody = Object.freeze({
+  sourceLang: 'pt',
+  targetLang: 'en',
+  scene: {
+    title: 'Viver com liberdade',
+    intention: 'Viver com liberdade e presenca.',
+    affirmation: 'Eu escolho viver com liberdade e cuidar de quem importa.',
+    story: 'E fim de tarde perto da praia e eu volto para casa com calma.',
+    anchorIdentity: 'Eu pratico escolhas livres e cuidadosas.',
+    anchorStep: 'Se eu sentir medo de comecar, entao vou escrever um passo de dez minutos.',
+    personalizedWith: ['o que voce quer viver'],
+  },
+  cloudConsent: true,
+  cloudConsentVersion: ANDROID_CLOUD_CONSENT_VERSION,
+  adultConfirmed: true,
+});
+const GENERATED_SCENE = Object.freeze({
+  intention: 'Viver com liberdade e construir uma familia com presenca.',
+  affirmation: 'Eu cultivo uma vida com liberdade e construir uma familia enquanto reconheco minha proatividade e bondade.',
+  story: 'E fim de tarde perto da praia. Voce volta para uma casa de fazenda e percebe que viver com liberdade e construir uma familia aparece na forma como organiza o trabalho em design de produto e protege tempo para pessoas importantes. O medo de comecar ainda pode surgir, mas agora funciona como um sinal para escolher um passo pequeno. A parceria leal, companheira e presente que voce valoriza orienta limites e conversas honestas. Nada aqui e garantia: e uma cena para reconhecer valores e ensaiar escolhas possiveis no presente.',
+  anchorIdentity: 'Eu transformo liberdade em escolhas presentes, cuidadosas e constantes.',
+  anchorStep: 'Se eu notar medo de comecar, entao vou dedicar dez minutos ao passo mais concreto de hoje.',
+  affirmationFieldsUsed: ['desire', 'aboutYou'],
+  storyFieldsUsed: ['desire', 'location', 'dreamHome', 'work', 'partnerDesire', 'obstacle'],
+});
+const TRANSLATED_SCENE = Object.freeze({
+  title: 'Living with freedom',
+  intention: 'Living with freedom and presence.',
+  affirmation: 'I choose to live with freedom and care for those who matter.',
+  story: 'It is late afternoon near the beach and I walk home calmly.',
+  anchorIdentity: 'I practise free and caring choices.',
+  anchorStep: 'If I feel afraid to start, then I will write down a ten-minute step.',
+  personalizedWith: ['what you want to live'],
+});
+
+function routeResponse() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[String(name).toLowerCase()] = String(value);
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+    send(value) {
+      this.body = value;
+      return this;
+    },
+    end() {
+      return this;
+    },
+  };
+}
+
+function nativeTextRequest(operation, body, id = `celeste-android-${operation}-0001`) {
+  return {
+    req: nativeVoiceRequest({ body, headers: { 'x-celeste-request-id': id } }),
+    verdict: validVerdict((payload) => {
+      payload.requestDetails.requestHash = expectedRequestHash(operation, id, body);
+    }),
+  };
+}
+
+test('verified Android texts spend only the scene and its translation, bound to that operation', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  assert.deepStrictEqual(
+    [...playIntegrity.NATIVE_OPERATIONS].sort(),
+    ['audio', 'scene', 'translation'],
+    'lista explicita do que o Android verificado pode gastar: voz, cena (com a suite 6+6) e traducao'
+  );
+
+  for (const [operation, units, body] of [
+    ['scene', 12, androidSceneBody],
+    ['translation', 3, androidTranslationBody],
+  ]) {
+    playIntegrity.resetForTests();
+    const { req, verdict } = nativeTextRequest(operation, body);
+    const state = { verdict };
+    global.fetch = googleAndSupabase(state);
+    const { result, lines } = await withLogs(() => paidAccess.authorizePaidRequest(req, { operation, units }));
+    assert.strictEqual(result.ok, true, `${operation} pelo Android verificado: ${JSON.stringify(result)}`);
+    assert.deepStrictEqual(lines, [], `${operation}: pedido aceito nao escreve log`);
+    assert.deepStrictEqual(
+      state.calls,
+      [
+        GOOGLE_TOKEN_URL,
+        PLAY_DECODE_URL,
+        'https://celeste.supabase.co/auth/v1/user',
+        'https://celeste.supabase.co/rest/v1/rpc/celeste_reserve_generation_credit',
+      ],
+      `${operation}: Google valida antes de identidade e cota`
+    );
+    assert.strictEqual(state.reservations[0].p_operation, operation, `${operation}: gasta a cota da propria operacao`);
+    assert.strictEqual(state.reservations[0].p_units, units);
+    assert.strictEqual(
+      state.reservations[0].p_actor_hash,
+      nativeUserActor(NATIVE_USERS['android-anonymous-session']),
+      `${operation}: a cota de ator e a da pessoa verificada`
+    );
+
+    // a verdict issued for the voice (same request id and body) never opens a text operation
+    playIntegrity.resetForTests();
+    const voiceVerdictState = {
+      verdict: validVerdict((payload) => {
+        payload.requestDetails.requestHash = expectedRequestHash('audio', `celeste-android-${operation}-0001`, body);
+      }),
+    };
+    global.fetch = googleAndSupabase(voiceVerdictState);
+    const { result: crossed, lines: crossedLogs } = await withLogs(() =>
+      paidAccess.authorizePaidRequest(req, { operation, units })
+    );
+    assert.deepStrictEqual(crossed, NATIVE_DENIED, `${operation}: token da voz nao abre texto`);
+    assert.ok(!reachedSupabase(voiceVerdictState), `${operation}: token de outra operacao nao chega a cota`);
+    assert.deepStrictEqual(crossedLogs, rejectionLine('hash_mismatch'));
+  }
+
+  // images and dreams: closed before any network, even with a verdict bound to them
+  for (const [operation, units] of [['visual', 8], ['dream', 3]]) {
+    playIntegrity.resetForTests();
+    const { req, verdict } = nativeTextRequest(operation, androidSceneBody);
+    const state = { verdict };
+    global.fetch = googleAndSupabase(state);
+    const { result, lines } = await withLogs(() => paidAccess.authorizePaidRequest(req, { operation, units }));
+    assert.deepStrictEqual(result, NATIVE_DENIED, `${operation} pelo Android continua fechado`);
+    assert.deepStrictEqual(state.calls, [], `${operation}: nada sai da funcao`);
+    assert.deepStrictEqual(lines, rejectionLine('operation_not_allowed'));
+  }
+});
+
+test('gerar-cena and traduzir-cena serve verified Android texts; the Living Mirror stays on the website', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  process.env.GEMINI_API_KEY = 'gemini-route-test-secret';
+  process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
+  const sceneRoute = require('../api/gerar-cena');
+  const translationRoute = require('../api/traduzir-cena');
+  const { createPersonalContentSuite } = require('../utils/personalContentSuite');
+
+  // the Anchor Scene with the 6+6 suite, written for her and consented on Android
+  playIntegrity.resetForTests();
+  const scene = nativeTextRequest('scene', androidSceneBody);
+  const sceneState = {
+    verdict: scene.verdict,
+    geminiOutput: {
+      ...GENERATED_SCENE,
+      journeySuite: createPersonalContentSuite({
+        desire: androidSceneBody.desire,
+        profile: ANDROID_SCENE_PROFILE,
+        lang: 'pt',
+      }),
+    },
+  };
+  global.fetch = googleAndSupabase(sceneState);
+  const served = routeResponse();
+  await sceneRoute(scene.req, served);
+  assert.strictEqual(served.statusCode, 200, JSON.stringify(served.body));
+  assert.strictEqual(sceneState.gemini, 1, 'a cena do Android chega ao provedor de texto uma vez');
+  assert.strictEqual(served.body.journeySuite.visions.length, 6, 'o Android recebe as seis visoes');
+  assert.strictEqual(served.body.journeySuite.affirmations.length, 6, 'o Android recebe as seis afirmacoes');
+  assert.strictEqual(sceneState.reservations[0].p_operation, 'scene');
+
+  // the Living Mirror (continuity) from Android: refused before Google, identity, quota and the provider
+  playIntegrity.resetForTests();
+  const mirrorBody = { ...androidSceneBody, includeJourneySuite: undefined, continuity: { chapter: 2 } };
+  delete mirrorBody.includeJourneySuite;
+  const mirror = nativeTextRequest('scene', mirrorBody);
+  const mirrorState = { verdict: mirror.verdict, geminiOutput: GENERATED_SCENE };
+  global.fetch = googleAndSupabase(mirrorState);
+  const mirrorResponse = routeResponse();
+  const { lines: mirrorLogs } = await withLogs(() => sceneRoute(mirror.req, mirrorResponse));
+  assert.strictEqual(mirrorResponse.statusCode, 403, 'Espelho Vivo pelo Android: fechado');
+  assert.deepStrictEqual(mirrorResponse.body, { error: 'native_attestation_required' });
+  assert.deepStrictEqual(mirrorState.calls, [], 'Espelho Vivo pelo Android: nada sai da funcao');
+  assert.deepStrictEqual(mirrorLogs, rejectionLine('operation_not_allowed'));
+
+  // the scene translation when she changes the app language
+  playIntegrity.resetForTests();
+  const translation = nativeTextRequest('translation', androidTranslationBody);
+  const translationState = { verdict: translation.verdict, geminiOutput: TRANSLATED_SCENE };
+  global.fetch = googleAndSupabase(translationState);
+  const translated = routeResponse();
+  await translationRoute(translation.req, translated);
+  assert.strictEqual(translated.statusCode, 200, JSON.stringify(translated.body));
+  assert.strictEqual(translationState.gemini, 1, 'a traducao do Android chega ao Gemini uma vez');
+  assert.strictEqual(translated.body.scene.story, TRANSLATED_SCENE.story);
+  assert.strictEqual(translationState.reservations[0].p_operation, 'translation');
+});
+
+test('the Android consent (voice + texts) is accepted only by the voice and text routes', () => {
+  const sceneRoute = require('../api/gerar-cena');
+  const translationRoute = require('../api/traduzir-cena');
+  const audioRoute = require('../api/gerar-audio');
+  const visualRoute = require('../api/gerar-visual');
+  const dreamRoute = require('../api/transformar-sonho');
+  assert.notStrictEqual(ANDROID_CLOUD_CONSENT_VERSION, CLOUD_CONSENT_VERSION, 'o Android tem a propria versao do aceite');
+  const audioBody = { ...voiceBody, cloudConsentVersion: ANDROID_CLOUD_CONSENT_VERSION };
+  for (const [label, validate, body] of [
+    ['cena', sceneRoute._internals.validateInput, androidSceneBody],
+    ['traducao', translationRoute._internals.validateInput, androidTranslationBody],
+    ['voz', audioRoute._internals.validateInput, audioBody],
+  ]) {
+    assert.ok(!validate(body).error, `${label}: aceite do Android vale (${JSON.stringify(validate(body))})`);
+    assert.ok(!validate({ ...body, cloudConsentVersion: CLOUD_CONSENT_VERSION }).error, `${label}: aceite do site segue valendo`);
+    assert.deepStrictEqual(
+      validate({ ...body, cloudConsentVersion: 'celeste-cloud-processors-v1' }),
+      { error: 'cloud_consent_required', status: 403 },
+      `${label}: aceite antigo nao vale`
+    );
+  }
+  const visualBody = {
+    desire: 'uma cabana tranquila perto da natureza',
+    category: 'Peace',
+    lang: 'pt',
+    profile: {},
+    visualMood: 'grounded',
+    cloudConsent: true,
+    cloudConsentVersion: ANDROID_CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+  };
+  const dreamBody = {
+    dream: 'Eu caminhava por um jardim silencioso ao amanhecer e acordei calma.',
+    feeling: 'calm',
+    theme: 'peace',
+    lang: 'pt',
+    profile: {},
+    cloudConsent: true,
+    cloudConsentVersion: ANDROID_CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+  };
+  assert.deepStrictEqual(
+    visualRoute._internals.validateInput(visualBody),
+    { error: 'cloud_consent_required', status: 403 },
+    'imagem: o aceite do Android (sem imagens) nunca vale'
+  );
+  assert.deepStrictEqual(
+    dreamRoute._internals.validateInput(dreamBody),
+    { error: 'cloud_consent_required', status: 403 },
+    'sonho: o aceite do Android (sem sonho) nunca vale'
+  );
+});
+
 test('the refusal log line keeps only a known reason and an HTTP status', async () => {
   for (const [label, reason, googleStatus, expected] of [
     ['motivo conhecido', 'hash_mismatch', undefined, rejectionLine('hash_mismatch')],
@@ -1256,7 +1558,8 @@ test('Play Integrity module stays dependency-free, silent and pinned to the docu
     assert.ok(guide.includes(`\`${reason}`), `o passo a passo explica o motivo ${reason}`);
   }
   assert.strictEqual(playIntegrity.PACKAGE_NAME, PLAY_PACKAGE);
-  assert.strictEqual(playIntegrity.NATIVE_OPERATION, 'audio');
+  assert.ok(Object.isFrozen(playIntegrity.NATIVE_OPERATIONS), 'a lista nativa nao pode crescer em tempo de execucao');
+  assert.deepStrictEqual([...playIntegrity.NATIVE_OPERATIONS].sort(), ['audio', 'scene', 'translation']);
   assert.match(paidSource, /require\('\.\/_play-integrity'\)/);
   assert.match(source, /CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64/);
 });

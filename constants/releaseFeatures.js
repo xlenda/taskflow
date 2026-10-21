@@ -34,10 +34,15 @@ export function releaseFeaturesForPlatform(
     // alike. Android requests pass the server only with a verified Play
     // Integrity token; otherwise the device voice reads with an honest notice.
     cloudNarration: platformOS === 'web' || platformOS === 'android',
-    // Images, cloud scenes, dreams and the Living Mirror stay website-only. If a
-    // future Android build turns this on, bump CLOUD_CONSENT_VERSION
+    // The AI texts: the Anchor Scene, the 6+6 visions and affirmations and the
+    // scene translation, on the website and on Android (verified by Play
+    // Integrity; without it the texts built on the device stay, with no error).
+    // Android asks for them in its own consent (ANDROID_CLOUD_CONSENT_VERSION).
+    cloudText: platformOS === 'web' || platformOS === 'android',
+    // Images, cloud dreams and the Living Mirror stay website-only. If a future
+    // Android build turns this on, bump ANDROID_CLOUD_CONSENT_VERSION
     // (constants/cloudConsent.js, used by utils/useCloudMediaConsent.js): the
-    // consent Android users gave (VOICE_ONLY_COPY) named only the voice.
+    // consent Android users gave (ANDROID_COPY) names only the voice and texts.
     paidCloudProcessing: platformOS === 'web',
   });
 }

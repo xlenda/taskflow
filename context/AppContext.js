@@ -105,10 +105,15 @@ export const CELESTE_BACKUP_MAX_BYTES = 8 * 1024 * 1024;
 const CELESTE_BACKUP_RESTORE_POLICY = 'replace-local-device-data';
 const AppCtx = createContext(null);
 
-// Scene text, images, translations and the Living Mirror in the cloud: only where they exist (the website). In the
-// Android app the same consent opens only the voice (RELEASE_FEATURES.cloudNarration, usePersonalNarration).
+// Images and the Living Mirror in the cloud: only where they exist (the website).
 function cloudMediaConsent(profile) {
   return RELEASE_FEATURES.paidCloudProcessing && hasCurrentAdultCloudConsent(profile);
+}
+
+// The AI texts (Anchor Scene, the 6+6 suite, new scenes and the scene translation): the website and the Android app,
+// where the server serves them only with a verified Play Integrity token. Any refusal keeps the local texts, silently.
+function cloudTextConsent(profile) {
+  return RELEASE_FEATURES.cloudText && hasCurrentAdultCloudConsent(profile);
 }
 
 function settleWithin(promise, timeoutMs) {
@@ -1124,7 +1129,7 @@ export function AppProvider({ children }) {
       !hydratedRef.current ||
       isKnownMinor(state.profile) ||
       state.profile?.cloudPersonalization !== true ||
-      !cloudMediaConsent(state.profile)
+      !cloudTextConsent(state.profile)
     ) return;
 
     const generationEpoch = generationEpochRef.current;
@@ -1179,7 +1184,7 @@ export function AppProvider({ children }) {
       !hydratedRef.current ||
       isKnownMinor(state.profile) ||
       state.profile?.cloudPersonalization !== true ||
-      !cloudMediaConsent(state.profile)
+      !cloudTextConsent(state.profile)
     ) return;
     const generationEpoch = generationEpochRef.current;
     if (
@@ -2217,7 +2222,7 @@ export function AppProvider({ children }) {
     const canUseCloud =
       !isKnownMinor(profile) &&
       profile.cloudPersonalization === true &&
-      cloudMediaConsent(profile);
+      cloudTextConsent(profile);
     if (canUseCloud) {
       // The hydration upgrade effect sees the local item in the next render.
       // Mark this epoch before it can start a duplicate paid request.
@@ -3567,7 +3572,7 @@ export function AppProvider({ children }) {
       !snapshot ||
       isKnownMinor(snapshot.profile) ||
       snapshot.profile.cloudPersonalization !== true ||
-      !cloudMediaConsent(snapshot.profile)
+      !cloudTextConsent(snapshot.profile)
     ) {
       return;
     }
@@ -3590,7 +3595,7 @@ export function AppProvider({ children }) {
         latest.lang !== nextLang ||
         isKnownMinor(latest.profile) ||
         latest.profile.cloudPersonalization !== true ||
-        !cloudMediaConsent(latest.profile)
+        !cloudTextConsent(latest.profile)
       ) {
         return;
       }

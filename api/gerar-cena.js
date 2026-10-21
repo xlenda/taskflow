@@ -6,7 +6,7 @@ const textProvider = require('./_text-provider');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
 const { interpretSelfDescription } = require('../utils/selfDescription');
 const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
-const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -575,7 +575,7 @@ function parseBody(req) {
 
 function validateInput(body) {
   if (body.cloudConsent !== true) return { error: 'cloud_consent_required', status: 403 };
-  if (body.cloudConsentVersion !== CLOUD_CONSENT_VERSION) {
+  if (!VOICE_AND_TEXT_CONSENT_VERSIONS.includes(body.cloudConsentVersion)) {
     return { error: 'cloud_consent_required', status: 403 };
   }
   if (isPlainObject(body.profile) && isUnder18Age(body.profile.age)) {
@@ -1313,6 +1313,12 @@ async function handler(req, res) {
   if (parsedBody.error) return sendJson(res, parsedBody.status, parsedBody.error);
   const validated = validateInput(parsedBody.body);
   if (validated.error) return sendJson(res, validated.status, validated.error);
+  // The Android app writes the Anchor Scene, new scenes and the 6+6 suite; the Living Mirror (a chapter that
+  // continues the scene) stays on the website. Refused before any Google, identity, quota or provider call.
+  if (nativeRequest && validated.value.continuity) {
+    const refusal = paidAccess.nativeRefusal('operation_not_allowed');
+    return sendJson(res, refusal.status, refusal.error);
+  }
 
   const apiKey = cleanText(process.env.GEMINI_API_KEY || '', 512);
   const textProvidersReady = textProvider.hasConfiguredProvider();

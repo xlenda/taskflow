@@ -232,7 +232,7 @@ export default function HomeScreen() {
     const currentProfile = state.profile || {};
     const knownMinor = isUnder18Age(currentProfile.age);
     const currentConsentDecision =
-      RELEASE_FEATURES.paidCloudProcessing &&
+      RELEASE_FEATURES.cloudText &&
       !knownMinor &&
       hasCurrentCloudConsentVersion(currentProfile);
     let cloudConsentVersion = currentConsentDecision ? CLOUD_CONSENT_VERSION : null;
@@ -243,12 +243,12 @@ export default function HomeScreen() {
       currentConsentDecision && currentProfile.cloudNarrationConsent === true;
     let cloudDreamConsent =
       currentConsentDecision && currentProfile.cloudDreamConsent === true;
-    if (!RELEASE_FEATURES.paidCloudProcessing) {
+    if (!RELEASE_FEATURES.cloudText) {
       cloudConsentVersion = null;
       cloudPersonalization = false;
       cloudAdultConfirmed = false;
-      // The scene is created on the device. Only a build with no cloud at all clears what is left: on Android the
-      // saved consent is the one for the voice and it stays.
+      // The scene is created on the device. Only a build with no cloud at all clears what is left: a saved
+      // consent for the voice stays.
       if (
         !RELEASE_FEATURES.cloudNarration &&
         (currentProfile.cloudConsentVersion ||
@@ -265,7 +265,9 @@ export default function HomeScreen() {
           cloudDreamConsent: false,
         });
       }
-    } else if (!knownMinor && !currentConsentDecision) {
+    } else if (RELEASE_FEATURES.paidCloudProcessing && !knownMinor && !currentConsentDecision) {
+      // The website asks here. Android asks for its own consent (voice and texts) on "Listen" and in Profile;
+      // without it the new scene is created on the device.
       cloudPersonalization = await confirmAsync({
         title: t(S.consentTitle),
         message: t(S.consentBody),

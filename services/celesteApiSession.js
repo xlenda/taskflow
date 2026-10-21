@@ -5,17 +5,18 @@ import { getCelesteSupabaseClient } from './celesteSupabase';
 let sessionPromise;
 
 const NATIVE_STORE_PLATFORMS = new Set(['ios', 'android']);
-// The one paid operation Android may run: the voice, verified by Play Integrity
-// (same name as the server operation in api/gerar-audio.js).
-const ANDROID_VOICE_OPERATION = 'audio';
+// The paid operations Android may run, each verified by Play Integrity on the server
+// (same names as api/_play-integrity.js NATIVE_OPERATIONS): the voice and the AI texts,
+// the Anchor Scene with the 6+6 suite and its translation. Images and dreams stay closed.
+const ANDROID_VERIFIED_OPERATIONS = new Set(['audio', 'scene', 'translation']);
 
-function androidVoice(client, operation) {
-  return client === 'android' && operation === ANDROID_VOICE_OPERATION && appIntegrityConfigured();
+function androidVerified(client, operation) {
+  return client === 'android' && ANDROID_VERIFIED_OPERATIONS.has(operation) && appIntegrityConfigured();
 }
 
 export function celesteCloudAccessCapability(platform = Platform.OS, operation = null) {
   const client = ['ios', 'android', 'web'].includes(platform) ? platform : 'native';
-  if (NATIVE_STORE_PLATFORMS.has(client) && !androidVoice(client, operation)) {
+  if (NATIVE_STORE_PLATFORMS.has(client) && !androidVerified(client, operation)) {
     return {
       available: false,
       client,
@@ -69,16 +70,16 @@ function apiSession() {
 export async function getCelesteApiSession() {
   // A client header or embedded secret cannot prove that a request came from
   // the official binary: iOS/Android never get a generic cloud session.
-  // Android voice gets one only through celestePaidApiHeaders, after a Play
-  // Integrity token was issued for that exact request.
+  // Android voice and texts get one only through celestePaidApiHeaders, after a
+  // Play Integrity token was issued for that exact request.
   assertCloudAccessAvailable();
   return apiSession();
 }
 
 // `body` is the exact JSON string the caller will send: on Android the Play
-// Integrity token is bound to it and to the session that sends it (a token
-// captured for one session fails for another), so the session is created or
-// reused first and the voice request must pass its body here.
+// Integrity token is bound to it, to the operation and to the session that sends
+// it (a token captured for one session fails for another), so the session is
+// created or reused first and every Android request must pass its body here.
 export async function celestePaidApiHeaders({ operation = null, body } = {}) {
   const capability = assertCloudAccessAvailable(operation);
   const android = capability.client === 'android';

@@ -89,6 +89,32 @@ assert.ok(
   'a denuncia da visao precisa usar a historia original gerada, nunca a edicao da pessoa'
 );
 
+// Play AI-content rule: every surface that shows text written by the AI (on Android too, since 21/10 the Anchor Scene
+// and the 6+6 visions and affirmations) offers the in-app report for each kind of generated text it shows.
+const AI_TEXT_SURFACES = {
+  'screens/AffirmationsScreen.js': ['affirmation'],
+  'screens/VisionsScreen.js': ['vision'],
+  'screens/VisionPlayerScreen.js': ['vision'],
+  'screens/ManifestationScreen.js': ['scene'],
+  'screens/onboarding/RevealScreen.js': ['scene'],
+  'screens/DailyRitualScreen.js': ['affirmation'],
+  'screens/PracticeRitualScreen.js': ['vision', 'affirmation'],
+  'screens/MorningRitualScreen.js': ['dream'],
+};
+for (const [relative, kinds] of Object.entries(AI_TEXT_SURFACES)) {
+  const source = fs.readFileSync(path.join(root, relative), 'utf8');
+  const reported = [...source.matchAll(/<AiContentReportAction\b[\s\S]*?contentType="([a-z]+)"/g)].map((match) => match[1]);
+  for (const kind of kinds) {
+    assert.ok(reported.includes(kind), `${relative} mostra ${kind} gerado pela IA e precisa da denuncia desse conteudo`);
+  }
+}
+// the wake-up reads whatever item comes next (scene, vision or affirmation): its report follows the item
+assert.match(
+  fs.readFileSync(path.join(root, 'screens', 'WakeSequenceScreen.js'), 'utf8'),
+  /<AiContentReportAction\s+contentType=\{current\.kind === 'anchor' \? 'scene' : current\.kind\}/,
+  'o despertar denuncia o item que esta tocando'
+);
+
 integrationPaths.forEach((screenPath) => {
   const source = fs.readFileSync(screenPath, 'utf8');
   assert.ok(

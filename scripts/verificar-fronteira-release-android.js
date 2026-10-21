@@ -16,8 +16,9 @@ const releaseFeaturesForPlatform = new Function(
   `${executableFeatureSource}\nreturn releaseFeaturesForPlatform;`
 )({ env: {} });
 
-// Android (21/10): the Celeste voice joins the boundary on purpose (cloudNarration, verified by Play Integrity on
-// the server); images, cloud scenes, dreams and the Living Mirror (paidCloudProcessing) stay website-only.
+// Android (21/10): the Celeste voice (cloudNarration) and the AI texts — Anchor Scene, 6+6 suite, scene translation
+// (cloudText) — join the boundary on purpose, verified by Play Integrity on the server; images, cloud dreams and the
+// Living Mirror (paidCloudProcessing) stay website-only.
 assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   androidStoreBoundary: true,
   publicCommunity: false,
@@ -26,6 +27,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   practicePlan: true,
   onDevicePracticeSpeech: true,
   cloudNarration: true,
+  cloudText: true,
   paidCloudProcessing: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
@@ -36,6 +38,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
   practicePlan: true,
   onDevicePracticeSpeech: true,
   cloudNarration: true,
+  cloudText: true,
   paidCloudProcessing: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
@@ -46,6 +49,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
   practicePlan: true,
   onDevicePracticeSpeech: true,
   cloudNarration: true,
+  cloudText: true,
   paidCloudProcessing: false,
 });
 for (const platformOS of ['ios', 'web']) {
@@ -57,6 +61,7 @@ for (const platformOS of ['ios', 'web']) {
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'ios',
     cloudNarration: platformOS === 'web',
+    cloudText: platformOS === 'web',
     paidCloudProcessing: platformOS === 'web',
   });
 }
@@ -123,29 +128,47 @@ assert.ok(
     alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()'),
   'Without AlarmKit the wake-up must schedule and cancel only ordinary reminders'
 );
-// Only the voice crosses the Android boundary: scenes stay on the device, the Profile control and the consent
-// speak only of the voice, and every other cloud path in the provider still needs paidCloudProcessing.
+// Only the voice and the AI texts cross the Android boundary: new scenes use the AI only with the consent already
+// given (the website's prompt stays web-only), the Profile control and the consent speak of voice and texts with
+// Android's own version, and images, dreams and the Living Mirror still need paidCloudProcessing.
 const cloudMediaConsent = read('utils/useCloudMediaConsent.js');
+const cloudConsentAndroid = read('constants/cloudConsent.android.js');
 assert.ok(
-  home.includes('if (!RELEASE_FEATURES.paidCloudProcessing)') &&
+  home.includes('if (!RELEASE_FEATURES.cloudText)') &&
     /!RELEASE_FEATURES\.cloudNarration &&\s*\(currentProfile\.cloudConsentVersion/.test(home) &&
+    home.includes('} else if (RELEASE_FEATURES.paidCloudProcessing && !knownMinor && !currentConsentDecision) {') &&
     (profile.match(/RELEASE_FEATURES\.cloudNarration \? \(/g) || []).length === 2 &&
-    profile.includes('const voiceOnlyCloud = !RELEASE_FEATURES.paidCloudProcessing;') &&
+    profile.includes('const voiceAndTextsCloud = !RELEASE_FEATURES.paidCloudProcessing;') &&
     profile.includes('(!RELEASE_FEATURES.cloudNarration ||') &&
-    cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : VOICE_ONLY_COPY)[lang]') &&
+    cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : ANDROID_COPY)[lang]') &&
+    cloudConsentAndroid.includes("require('./cloudConsent.js')") &&
+    cloudConsentAndroid.includes('shared.cloudConsentRules(shared.ANDROID_CLOUD_CONSENT_VERSION)') &&
     !onboardingFlow.includes("id: 'cloudPersonalization'") &&
     onboarding.includes('cloudConsentVersion: null') &&
     onboarding.includes('cloudPersonalization: false'),
-  'Native store builds offer only the voice in the cloud, with a voice-only consent and control'
+  'Native store builds offer only the voice and the AI texts in the cloud, with their own consent and control'
+);
+const evolveBlock = context.slice(
+  context.indexOf('const evolveManifestation = useCallback'),
+  context.indexOf('const evolveManifestation = useCallback') + 1200
 );
 assert.ok(
   /function cloudMediaConsent\(profile\) \{\s*return RELEASE_FEATURES\.paidCloudProcessing && hasCurrentAdultCloudConsent\(profile\);/.test(
     context
   ) &&
-    (context.match(/hasCurrentAdultCloudConsent\(/g) || []).length === 1 &&
+    /function cloudTextConsent\(profile\) \{\s*return RELEASE_FEATURES\.cloudText && hasCurrentAdultCloudConsent\(profile\);/.test(
+      context
+    ) &&
+    (context.match(/hasCurrentAdultCloudConsent\(/g) || []).length === 2 &&
+    // the definition + scene upgrade, suite upgrade, new scene and the two translation checks
+    (context.match(/cloudTextConsent\(/g) || []).length === 6 &&
+    // the definition + three image paths + the Living Mirror
+    (context.match(/cloudMediaConsent\(/g) || []).length === 5 &&
+    evolveBlock.includes('!cloudMediaConsent(snapshot.profile)') &&
+    !evolveBlock.includes('cloudTextConsent(') &&
     context.includes("!RELEASE_FEATURES.paidCloudProcessing && status?.phase === 'consent_required' ? null : status") &&
     /const cloudDreamEnabled =\s*RELEASE_FEATURES\.paidCloudProcessing &&/.test(morning),
-  'Android voice consent must not open cloud scenes, images, translations, dreams or the Living Mirror'
+  'Android consent opens only the AI texts and the voice: never cloud images, dreams or the Living Mirror'
 );
 assert.ok(
   personalNarration.includes("error: 'personal_narration_unavailable'") &&

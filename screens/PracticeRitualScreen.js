@@ -867,6 +867,16 @@ export default function PracticeRitualScreen() {
           {affirmationText}
         </Text>
       </Card>
+      {/* the generated affirmation can be reported here too; the phrase she wrote herself is not AI content */}
+      {affirmation.source !== 'custom' ? (
+        <AiContentReportAction
+          contentType="affirmation"
+          contentRef={`affirmation:${affirmation.id}:${speechLang}`}
+          content={affirmationText}
+          generation={{ source: affirmation.source === 'dream' ? 'dream-result' : 'journey-suite' }}
+          lang={speechLang}
+        />
+      ) : null}
 
       <View style={[styles.progressPanel, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
         <View style={styles.repetitionRow} accessibilityLabel={t(S.progress).replace('{n}', String(repetitions))}>

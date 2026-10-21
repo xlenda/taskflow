@@ -333,9 +333,9 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   if (hasNativeClientClaim(req) && !isNativeRequest(req)) {
     return nativeRefusal(clientKind(req) === 'android' ? 'no_token' : 'client_not_supported');
   }
-  // Play Integrity opens only the Android voice; every other native call stays closed.
+  // Play Integrity opens only the Android voice and texts (scene, translation); images and dreams stay closed.
   const attestNative = hasNativeClientClaim(req) && !localNativeBypassEnabled();
-  if (attestNative && operation !== playIntegrity.NATIVE_OPERATION) {
+  if (attestNative && !playIntegrity.NATIVE_OPERATIONS.includes(operation)) {
     return nativeRefusal('operation_not_allowed');
   }
 
@@ -490,6 +490,7 @@ module.exports = {
   deriveReportActorHash,
   fetchWithTimeout,
   isNativeRequest,
+  nativeRefusal,
   releasePaidRequest,
   resetAuthorizerForTests,
   serverConfig,

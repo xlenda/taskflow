@@ -114,6 +114,24 @@ const voiceBody = JSON.stringify({
   cloudConsentVersion: 'test-consent',
   adultConfirmed: true,
 });
+const sceneBody = JSON.stringify({
+  desire: 'Viver perto do mar ✨ com calma',
+  category: 'Peace',
+  lang: 'pt',
+  profile: { whyMatters: 'respirar sem pressa' },
+  cloudConsent: true,
+  cloudConsentVersion: 'test-consent',
+  adultConfirmed: true,
+  includeJourneySuite: true,
+});
+const translationBody = JSON.stringify({
+  sourceLang: 'pt',
+  targetLang: 'en',
+  scene: { title: 'Mar', intention: 'Calma.', affirmation: 'Eu escolho a calma.', story: 'Você respira.', anchorIdentity: 'Eu respiro.', anchorStep: 'Respirar.' },
+  cloudConsent: true,
+  cloudConsentVersion: 'test-consent',
+  adultConfirmed: true,
+});
 
 async function assertClosedBeforeCloud(client, label, call) {
   await assert.rejects(call, attestationRequired, label);
@@ -139,32 +157,47 @@ async function verifyIosStaysLocal() {
   assert.strictEqual(ios.integrity.calls.prepare.length + ios.integrity.calls.request.length, 0);
 }
 
-async function verifyAndroidOnlyOpensVerifiedVoice() {
+// The paid operations the server knows (api/_paid-access.js OPERATIONS): Android may open exactly the server's
+// NATIVE_OPERATIONS — the voice and the AI texts (scene with the 6+6 suite, translation) — and nothing else.
+const SERVER_OPERATIONS = ['scene', 'translation', 'dream', 'audio', 'visual'];
+
+async function verifyAndroidOpensOnlyVerifiedVoiceAndTexts() {
   const unconfigured = loadClient('android');
   assert.deepStrictEqual(unconfigured.api.celesteCloudAccessCapability(), CLOSED('android'));
-  assert.deepStrictEqual(
-    unconfigured.api.celesteCloudAccessCapability('android', 'audio'),
-    CLOSED('android'),
-    'sem numero do projeto Google Cloud a voz nativa continua fechada'
-  );
-  await assertClosedBeforeCloud(unconfigured, 'Android voz sem projeto', () =>
-    unconfigured.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
-  );
+  for (const operation of ['audio', 'scene', 'translation']) {
+    assert.deepStrictEqual(
+      unconfigured.api.celesteCloudAccessCapability('android', operation),
+      CLOSED('android'),
+      `sem numero do projeto Google Cloud o Android continua fechado (${operation})`
+    );
+    await assertClosedBeforeCloud(unconfigured, `Android ${operation} sem projeto`, () =>
+      unconfigured.api.celestePaidApiHeaders({ operation, body: voiceBody })
+    );
+  }
   assert.strictEqual(unconfigured.integrity.calls.prepare.length, 0);
 
   const android = loadClient('android', { projectNumber: '123456789012' });
-  assert.deepStrictEqual(android.api.celesteCloudAccessCapability('android', 'audio'), {
-    available: true,
-    client: 'android',
-    reason: null,
-  });
+  for (const operation of SERVER_OPERATIONS) {
+    const allowed = playIntegrity.NATIVE_OPERATIONS.includes(operation);
+    assert.deepStrictEqual(
+      android.api.celesteCloudAccessCapability('android', operation),
+      allowed ? { available: true, client: 'android', reason: null } : CLOSED('android'),
+      `Android ${operation}: o app abre exatamente o que o servidor aceita do Android verificado`
+    );
+  }
   assert.deepStrictEqual(
-    android.api.celesteCloudAccessCapability('ios', 'audio'),
-    CLOSED('ios'),
-    'a voz verificada e so do Android'
+    [...playIntegrity.NATIVE_OPERATIONS].sort(),
+    ['audio', 'scene', 'translation'],
+    'Android verificado: voz, cena (com a suite 6+6) e traducao; imagem e sonho nunca'
   );
-  for (const operation of ['scene', 'visual', 'dream', 'translation']) {
-    assert.deepStrictEqual(android.api.celesteCloudAccessCapability('android', operation), CLOSED('android'));
+  for (const operation of ['audio', 'scene', 'translation']) {
+    assert.deepStrictEqual(
+      android.api.celesteCloudAccessCapability('ios', operation),
+      CLOSED('ios'),
+      `${operation} verificado e so do Android`
+    );
+  }
+  for (const operation of ['visual', 'dream']) {
     await assertClosedBeforeCloud(android, `Android ${operation}`, () =>
       android.api.celestePaidApiHeaders({ operation, body: voiceBody })
     );
@@ -172,11 +205,13 @@ async function verifyAndroidOnlyOpensVerifiedVoice() {
   await assertClosedBeforeCloud(android, 'Android sem operacao (chamadas antigas)', () =>
     android.api.celestePaidApiHeaders()
   );
-  await assertClosedBeforeCloud(android, 'Android voz sem corpo exato', () =>
-    android.api.celestePaidApiHeaders({ operation: 'audio' })
-  );
+  for (const operation of ['audio', 'scene', 'translation']) {
+    await assertClosedBeforeCloud(android, `Android ${operation} sem corpo exato`, () =>
+      android.api.celestePaidApiHeaders({ operation })
+    );
+  }
   await assertClosedBeforeCloud(android, 'Android sessao generica', () => android.api.getCelesteApiSession());
-  assert.strictEqual(android.integrity.calls.request.length, 0, 'so a voz pode pedir token de integridade');
+  assert.strictEqual(android.integrity.calls.request.length, 0, 'so voz e textos com o corpo exato pedem token');
 
   const headers = await android.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody });
   const requestId = headers['X-Celeste-Request-Id'];
@@ -219,6 +254,102 @@ async function verifyAndroidOnlyOpensVerifiedVoice() {
   assert.deepStrictEqual(signedIn.integrity.calls.request, [
     oracleRequestHash('audio', reused['X-Celeste-Request-Id'], 'sessao-anonima-ja-guardada', voiceBody),
   ]);
+
+  // The AI texts bind the token the same way, to their own operation: a scene token never serves the voice.
+  for (const [operation, body] of [['scene', sceneBody], ['translation', translationBody]]) {
+    const texts = loadClient('android', { projectNumber: '123456789012' });
+    const textHeaders = await texts.api.celestePaidApiHeaders({ operation, body });
+    const textRequestId = textHeaders['X-Celeste-Request-Id'];
+    assert.deepStrictEqual(textHeaders, {
+      Authorization: 'Bearer native-anonymous-session',
+      'X-Celeste-Client': 'android',
+      'X-Celeste-Request-Id': textRequestId,
+      'X-Celeste-Integrity': 'device-integrity-token',
+    });
+    assert.deepStrictEqual(texts.events, ['session', 'session', 'token'], `${operation}: a sessao vem antes do token`);
+    assert.deepStrictEqual(texts.integrity.calls.request, [
+      playIntegrity.requestHashFor({
+        operation,
+        requestId: textRequestId,
+        sessionHash: sha256Hex('native-anonymous-session'),
+        bodyHash: playIntegrity.requestBodyHash(JSON.parse(body)),
+      }),
+    ], `${operation}: app e servidor calculam o mesmo hash, amarrado a operacao`);
+    assert.notStrictEqual(
+      texts.integrity.calls.request[0],
+      oracleRequestHash('audio', textRequestId, 'native-anonymous-session', body),
+      `${operation}: o token do texto nao vale para a voz`
+    );
+  }
+}
+
+// The text services sign exactly the bytes they send: generatePersonalizedScene asks for a 'scene' token and
+// translateManifestationScene for a 'translation' token, each over the JSON string that goes in the request body.
+async function verifyTextServicesSignTheExactBody() {
+  const consent = require('../constants/cloudConsent.android.js');
+  const headerCalls = [];
+  const sent = [];
+  const session = {
+    celestePaidApiHeaders: async (options) => {
+      headerCalls.push(options);
+      return { Authorization: 'Bearer s', 'X-Celeste-Client': 'android', 'X-Celeste-Integrity': 'token' };
+    },
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    sent.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => (String(url).endsWith('/api/traduzir-cena')
+        ? { scene: { title: 'T', intention: 'I', affirmation: 'Eu escolho.', story: 'S', anchorIdentity: 'A', anchorStep: 'P', personalizedWith: [] }, generation: {} }
+        : { scene: { intention: 'I', affirmation: 'Eu escolho.', story: 'S', anchorIdentity: 'A', anchorStep: 'P' }, generation: {} }),
+    };
+  };
+  try {
+    const sceneService = loadEsm('services/generatePersonalizedScene.js', {
+      '../constants/cloudConsent': consent,
+      './celesteApiSession': session,
+    });
+    const translation = loadEsm('services/translateManifestationScene.js', {
+      '../constants/cloudConsent': consent,
+      './celesteApiSession': session,
+      './generatePersonalizedScene': sceneService,
+    });
+    const profile = {
+      age: '25–34',
+      cloudConsentVersion: consent.CLOUD_CONSENT_VERSION,
+      cloudPersonalization: true,
+      cloudAdultConfirmed: true,
+      cloudNarrationConsent: true,
+      cloudDreamConsent: true,
+    };
+    await sceneService.generatePersonalizedScene({
+      desire: 'viver perto do mar',
+      category: 'Peace',
+      lang: 'pt',
+      profile,
+      includeJourneySuite: false,
+    });
+    await translation.translateManifestationScene({
+      sourceLang: 'pt',
+      targetLang: 'en',
+      scene: { title: 'T', intention: 'I', affirmation: 'Eu escolho.', story: 'S', anchorIdentity: 'A', anchorStep: 'P' },
+      profile,
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+  assert.deepStrictEqual(headerCalls.map((call) => call.operation), ['scene', 'translation']);
+  assert.strictEqual(headerCalls[0].body, sent[0].init.body, 'cena: o token cobre exatamente o corpo enviado');
+  assert.strictEqual(headerCalls[1].body, sent[1].init.body, 'traducao: o token cobre exatamente o corpo enviado');
+  assert.ok(String(sent[0].url).endsWith('/api/gerar-cena') && String(sent[1].url).endsWith('/api/traduzir-cena'));
+  assert.strictEqual(
+    JSON.parse(sent[0].init.body).cloudConsentVersion,
+    consent.ANDROID_CLOUD_CONSENT_VERSION,
+    'no Android vai a versao do aceite que o Android mostrou'
+  );
+  assert.strictEqual(sent[0].init.headers['X-Celeste-Integrity'], 'token');
 }
 
 async function verifyAndroidIntegrityFailuresStayLocal() {
@@ -301,8 +432,20 @@ function verifyServerBoundarySource() {
   );
   assert.match(
     paidAccess,
-    /attestNative && operation !== playIntegrity\.NATIVE_OPERATION/,
-    'Play Integrity abre so a voz'
+    /attestNative && !playIntegrity\.NATIVE_OPERATIONS\.includes\(operation\)/,
+    'Play Integrity abre so a lista nativa (voz e textos)'
+  );
+  const integritySource = fs.readFileSync(path.join(root, 'api', '_play-integrity.js'), 'utf8');
+  assert.match(
+    integritySource,
+    /const NATIVE_OPERATIONS = Object\.freeze\(\['audio', 'scene', 'translation'\]\);/,
+    'lista nativa explicita e congelada: voz, cena e traducao'
+  );
+  const sceneRoute = fs.readFileSync(path.join(root, 'api', 'gerar-cena.js'), 'utf8');
+  assert.match(
+    sceneRoute,
+    /if \(nativeRequest && validated\.value\.continuity\) \{\s*const refusal = paidAccess\.nativeRefusal\('operation_not_allowed'\);/,
+    'Espelho Vivo (cena com continuidade) fica fora do Android'
   );
   const verifyIndex = paidAccess.indexOf('playIntegrity.verifyPlayIntegrity(req');
   const identityIndex = paidAccess.indexOf('await authenticatedUser(config, token)');
@@ -323,8 +466,9 @@ function verifyAabScriptWarnsWithoutProjectNumber() {
 async function main() {
   try {
     await verifyIosStaysLocal();
-    await verifyAndroidOnlyOpensVerifiedVoice();
+    await verifyAndroidOpensOnlyVerifiedVoiceAndTexts();
     await verifyAndroidIntegrityFailuresStayLocal();
+    await verifyTextServicesSignTheExactBody();
     await verifyWebUnchanged();
     verifyServerBoundarySource();
     verifyAabScriptWarnsWithoutProjectNumber();
@@ -333,7 +477,7 @@ async function main() {
     else process.env[PROJECT_NUMBER_ENV] = originalProjectNumber;
   }
   console.log(
-    'Fronteira nativa OK: iOS local, Android so abre a voz com Play Integrity e o resto continua fail-closed.'
+    'Fronteira nativa OK: iOS local, Android so abre voz e textos (cena, traducao) com Play Integrity e o resto continua fail-closed.'
   );
 }
 

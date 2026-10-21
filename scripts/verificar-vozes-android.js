@@ -1,14 +1,18 @@
-// Portão das vozes da Celeste no Android: comportamento com a plataforma 'android' e um servidor de mentira.
-//  1) bandeiras: a voz na nuvem existe no site e no Android; o resto da nuvem paga (imagens, sonho, Espelho Vivo) só
-//     no site; o iPhone segue sem nuvem.
+// Portão da voz e dos textos com IA da Celeste no Android: comportamento com a plataforma 'android' (o Metro escolhe
+// `<nome>.android.js`, como constants/cloudConsent.android.js) e um servidor de mentira.
+//  1) bandeiras: a voz e os textos com IA na nuvem existem no site e no Android; o resto da nuvem paga (imagens,
+//     sonho, Espelho Vivo) só no site; o iPhone segue sem nuvem; o aceite do Android tem a própria versão.
 //  2) NarrationContext + generateNarrationAudio de verdade no Android: servidor ok → a voz escolhida toca do WAV
 //     gravado no cache pelo expo-audio; recusa (403 native_attestation_required), rede ou teto de gasto → a voz do
 //     aparelho lê com aviso honesto no player global; ela termina, pausa, continua e para como a da Celeste. No site e
 //     na amostra de narrador nunca existe essa reserva.
-//  3) usePersonalNarration no Android: disponível, o aceite fala só da voz (sem imagem), toca a voz escolhida.
-//  4) telas no Android: revelação (escolha da voz, "Ouvir minha cena", denúncia), Perfil (voz e controle só da voz),
-//     despertar (voz da Celeste com o aceite, denúncia) e toda tela que toca voz gerada tem a denúncia de IA.
-//  5) imagens, cena, tradução e Espelho Vivo em nuvem continuam fora do Android (AppContext de verdade).
+//  3) usePersonalNarration no Android: disponível, o aceite fala da voz e dos textos (sem imagem), toca a voz escolhida.
+//  4) telas no Android: revelação (escolha da voz, "Ouvir minha cena", denúncia), Perfil (voz e controle de voz e
+//     textos), despertar e prática (voz da Celeste com o aceite, denúncia da visão e da afirmação), Home (cena nova pela
+//     IA com o aceite) e toda tela que toca voz gerada tem a denúncia de IA.
+//  5) AppContext de verdade: com o aceite do Android a Cena-Âncora e a suíte 6+6 são escritas pela IA (token do Google
+//     da operação 'scene' amarrado ao corpo) e a cena é traduzida; sem verificação a suíte local continua, sem erro;
+//     imagens e Espelho Vivo continuam fora.
 // Uso (cwd = C:\projetos\TaskFlow): node scripts/verificar-vozes-android.js
 const assert = require('assert');
 const fs = require('fs');
@@ -18,9 +22,12 @@ const { transformSync } = require('@babel/core');
 
 const root = path.join(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+// a plataforma que o app enxerga (Platform.OS) e que o Metro usa para escolher arquivos `<nome>.<plataforma>.js`
+const platform = { OS: 'android', select: (choices) => choices[platform.OS] ?? choices.default };
 
 // carrega um módulo do app com Babel trocando dependências por dublês (pelo texto do import); imports relativos que
-// não têm dublê também passam pelo Babel
+// não têm dublê também passam pelo Babel, escolhendo `<nome>.<plataforma>.js` primeiro como o Metro faz (no Android,
+// constants/cloudConsent.android.js no lugar de constants/cloudConsent.js)
 function loadWith(relative, mocks) {
   const cache = new Map();
   const compile = (file) => {
@@ -41,7 +48,9 @@ function loadWith(relative, mocks) {
   Module._load = (request, parent, isMain) => {
     if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
     if (request.startsWith('.') && !/[\\/]node_modules[\\/]/.test(parent.filename)) {
-      return compile(require.resolve(path.resolve(path.dirname(parent.filename), request)));
+      const target = path.resolve(path.dirname(parent.filename), request);
+      const platformFile = `${target}.${platform.OS}.js`;
+      return compile(fs.existsSync(platformFile) ? platformFile : require.resolve(target));
     }
     return original(request, parent, isMain);
   };
@@ -204,6 +213,7 @@ function response(status, { body, json, contentType } = {}) {
             : null,
     },
     text: async () => Buffer.from(bytes).toString('utf8'),
+    json: async () => JSON.parse(Buffer.from(bytes).toString('utf8')),
     arrayBuffer: async () => Uint8Array.from(bytes).buffer,
   };
 }
@@ -219,8 +229,9 @@ const narratorsMock = {
 async function main() {
   const app = fakeReact();
   const base = { react: app.React, 'react/jsx-runtime': app.jsxRuntime };
-  const platform = { OS: 'android', select: (choices) => choices[platform.OS] ?? choices.default };
-  const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+  // o aceite do site (v2) e o do Android (voz + textos com IA): cada plataforma guarda e envia a sua versão
+  const { CLOUD_CONSENT_VERSION: WEB_CONSENT_VERSION } = require('../constants/cloudConsent');
+  const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent.android.js');
   let reportSurfaces = 0;
   // cada seção roda mesmo se outra falhar: o relatório mostra tudo o que quebrou
   const failures = [];
@@ -248,20 +259,32 @@ async function main() {
   const iosFlags = flagsFor('ios');
   platform.OS = 'android';
   await section('1) bandeiras', () => {
-    // o aceite que o Android pediu (VOICE_ONLY_COPY) só falava da voz: ligar o resto da nuvem paga lá exige uma
-    // versão nova do aceite, senão quem aceitou só a voz ficaria com imagens e cenas na nuvem sem ter aceitado
+    // o aceite que o Android pedia antes só falava da voz: com os textos com IA ele tem versão própria (quem aceitou
+    // só a voz aceita de novo), e o site segue na v2 (ninguém no site precisa aceitar de novo)
+    assert.strictEqual(WEB_CONSENT_VERSION, 'celeste-cloud-processors-v2', 'site: o aceite continua o mesmo');
+    if (androidFlags.cloudText || androidFlags.paidCloudProcessing) {
+      assert.notStrictEqual(
+        CLOUD_CONSENT_VERSION,
+        WEB_CONSENT_VERSION,
+        'Android com textos na nuvem: o aceite do Android precisa da própria versão (o antigo só falava da voz)'
+      );
+    }
+    // o aceite atual do Android fala de voz e textos, não de imagens: ligar imagens lá exige subir a versão de novo
     if (androidFlags.paidCloudProcessing) {
       assert.notStrictEqual(
         CLOUD_CONSENT_VERSION,
-        'celeste-cloud-processors-v2',
-        'Android com a nuvem paga ligada: suba CLOUD_CONSENT_VERSION (o aceite do Android só falava da voz)'
+        'celeste-cloud-android-voice-texts-v1',
+        'Android com imagens: suba a versão do aceite do Android (o atual só fala de voz e textos)'
       );
     }
     assert.strictEqual(androidFlags.cloudNarration, true, 'Android: a voz da Celeste na nuvem existe');
+    assert.strictEqual(androidFlags.cloudText, true, 'Android: a cena e as visões/afirmações escritas pela IA existem');
     assert.strictEqual(androidFlags.paidCloudProcessing, false, 'Android: imagens e o resto da nuvem paga seguem fora');
     assert.strictEqual(webFlags.cloudNarration, true, 'site: a voz da Celeste continua');
+    assert.strictEqual(webFlags.cloudText, true, 'site: os textos com IA continuam');
     assert.strictEqual(webFlags.paidCloudProcessing, true, 'site: o resto da nuvem continua');
     assert.strictEqual(iosFlags.cloudNarration, false, 'iPhone: sem voz na nuvem nesta versão');
+    assert.strictEqual(iosFlags.cloudText, false, 'iPhone: sem textos na nuvem nesta versão');
     assert.strictEqual(iosFlags.paidCloudProcessing, false, 'iPhone: sem nuvem paga');
   });
 
@@ -732,7 +755,9 @@ async function main() {
       },
     },
   });
-  const hookFor = (flags) => {
+  // OS: a plataforma em que o módulo é montado (o Metro escolhe o aceite do Android só no Android)
+  const hookFor = (flags, OS = 'android') => {
+    platform.OS = OS;
     const { usePersonalNarration } = loadWith('utils/usePersonalNarration.js', hookMocks(flags));
     let hook = null;
     app.mount(() => {
@@ -749,19 +774,25 @@ async function main() {
     assert.strictEqual(confirmations.length, 1, 'o aceite é pedido uma vez, no toque');
     const consentMessage = confirmations[0].message;
     assert.match(consentMessage, /ElevenLabs/, 'o aceite nomeia quem cria a voz');
+    assert.match(consentMessage, /Cena-Âncora, suas visões e afirmações/, 'o aceite diz que a IA escreve os textos');
+    assert.match(consentMessage, /Anthropic[\s\S]*OpenAI[\s\S]*Google Gemini/, 'o aceite nomeia quem escreve e traduz os textos');
+    assert.match(consentMessage, /Nenhuma imagem é criada no app/, 'Android: o aceite diz que não há imagens');
     assert.match(consentMessage, /18 anos ou mais/, 'o aceite confirma 18+');
-    assert.doesNotMatch(consentMessage, /Gemini|imagens pessoais|imagem pessoal/i, 'Android: o aceite fala só da voz');
-    assert.doesNotMatch(confirmations[0].title, /imagens/i, 'Android: o título fala só da voz');
+    assert.doesNotMatch(consentMessage, /imagens pessoais|sonhos/i, 'Android: o aceite não fala de imagens nem sonhos');
+    assert.match(confirmations[0].title, /voz e os textos/, 'Android: o título fala da voz e dos textos');
     assert.ok(savedProfiles.length === 1 && savedProfiles[0].cloudNarrationConsent === true, 'o aceite fica guardado');
+    assert.strictEqual(savedProfiles[0].cloudConsentVersion, CLOUD_CONSENT_VERSION, 'Android: guarda a versão do Android');
     assert.strictEqual(voiceRequests[0].narratorId, 'rio', 'toca a voz que ela escolheu');
     assert.strictEqual(voiceRequests[0].cloudConsentVersion, CLOUD_CONSENT_VERSION);
-    // no site o aceite continua o mesmo (voz e imagens)
+    // no site o aceite continua o mesmo (voz e imagens), com a versão do site
     confirmations.length = 0;
-    await hookFor(webFlags).playPersonal({ text: 'Cena do site.', lang: 'pt', playbackId: 'reveal:w1' });
-    assert.match(confirmations[0].message, /Google Gemini/, 'site: o aceite continua falando das imagens');
+    savedProfiles.length = 0;
+    await hookFor(webFlags, 'web').playPersonal({ text: 'Cena do site.', lang: 'pt', playbackId: 'reveal:w1' });
+    assert.match(confirmations[0].message, /Google Gemini para criar imagens/, 'site: o aceite continua falando das imagens');
+    assert.strictEqual(savedProfiles[0].cloudConsentVersion, WEB_CONSENT_VERSION, 'site: guarda a versão do site');
     // iPhone: sem voz na nuvem, sem pedido de aceite
     confirmations.length = 0;
-    const iosVoice = hookFor(iosFlags);
+    const iosVoice = hookFor(iosFlags, 'ios');
     assert.strictEqual(iosVoice.personalNarrationAvailable, false, 'iPhone: sem narração pessoal');
     const iosResult = await iosVoice.playPersonal({ text: 'x y', lang: 'pt', playbackId: 'reveal:i1' });
     assert.deepStrictEqual([iosResult.ok, confirmations.length], [false, 0], 'iPhone: nada de aceite nem nuvem');
@@ -770,6 +801,7 @@ async function main() {
   // ---------------------------------------------------------------------------------------------------------------
   // 4) telas no Android
   const story = 'Eu acordo perto do mar. O café passa sem pressa e eu escolho a calma.';
+  // o aceite dado no Android (voz + textos) e o do site (v2): no Android a v2 é o aceite antigo, só da voz
   const consentedProfile = {
     age: '25-34',
     cloudConsentVersion: CLOUD_CONSENT_VERSION,
@@ -778,6 +810,7 @@ async function main() {
     cloudNarrationConsent: true,
     cloudDreamConsent: true,
   };
+  const webConsentedProfile = { ...consentedProfile, cloudConsentVersion: WEB_CONSENT_VERSION };
   await section('4) telas', async () => {
     const RN = {
       View: 'View',
@@ -945,29 +978,43 @@ async function main() {
     const profile = app.mount(AndroidProfile, { navigation: { addListener: () => () => {}, canGoBack: () => true } });
     assert.ok(profile.where((node) => node.type === 'NarratorSelector'), 'Android: o Perfil oferece a escolha da voz');
     const cloudSwitch = profile.byTestID('profile-gemini-switch');
-    assert.ok(cloudSwitch, 'Android: o Perfil tem o controle da voz na nuvem (para desligar o que ela aceitou)');
+    assert.ok(cloudSwitch, 'Android: o Perfil tem o controle da voz e dos textos na nuvem (para desligar o que ela aceitou)');
     const switchCopy = `${cloudSwitch.props.accessibilityLabel} ${cloudSwitch.props.accessibilityHint}`;
+    assert.match(switchCopy, /Voz e textos da Celeste na nuvem/, 'o controle diz que cobre a voz e os textos');
     assert.match(switchCopy, /ElevenLabs/, 'o controle diz quem cria a voz');
-    assert.doesNotMatch(switchCopy, /Gemini|Anthropic|OpenAI|imagens/i, 'Android: o controle fala só da voz');
+    assert.match(switchCopy, /Anthropic[\s\S]*Google Gemini/, 'o controle diz quem escreve os textos');
+    assert.match(switchCopy, /Nenhuma imagem é criada no app/, 'Android: o controle diz que não há imagens');
+    assert.doesNotMatch(switchCopy, /sonhos|cria imagens/i, 'Android: o controle não fala de imagens nem sonhos');
     assert.strictEqual(cloudSwitch.props.accessibilityState.checked, true, 'o aceite dado aparece ligado');
     assert.ok(
       !profileSaves.some((patch) => patch.cloudNarrationConsent === false),
-      'Android: abrir o Perfil não apaga o aceite da voz'
+      'Android: abrir o Perfil não apaga o aceite de voz e textos'
     );
     profileState = { ...profileState, profile: { age: '25-34' } };
     profile.update({});
     await profile.byTestID('profile-gemini-switch').props.onPress();
-    assert.strictEqual(consentAsks.length, 1, 'ligar no Android pede o mesmo aceite da voz do "Ouvir"');
+    assert.strictEqual(consentAsks.length, 1, 'ligar no Android pede o mesmo aceite (voz e textos) do "Ouvir"');
     profile.unmount();
-    // iPhone: nada de voz na nuvem no Perfil, e um aceite antigo é apagado como antes
-    profileState = { ...profileState, profile: consentedProfile };
+    // o aceite antigo do Android (v2, só da voz) não cobre os textos: sai, e ela aceita de novo
+    profileState = { ...profileState, profile: webConsentedProfile };
     profileSaves.length = 0;
+    const oldConsentProfile = app.mount(AndroidProfile, { navigation: { addListener: () => () => {}, canGoBack: () => true } });
+    assert.ok(
+      profileSaves.some((patch) => patch.cloudNarrationConsent === false && patch.cloudPersonalization === false),
+      'Android: o aceite antigo (só da voz) sai e o novo é pedido'
+    );
+    oldConsentProfile.unmount();
+    // iPhone: nada de voz na nuvem no Perfil, e um aceite antigo é apagado como antes
+    profileState = { ...profileState, profile: webConsentedProfile };
+    profileSaves.length = 0;
+    platform.OS = 'ios';
     const { default: IosProfile } = loadWith('screens/ProfileScreen.js', profileMocks(iosFlags));
     const iosProfile = app.mount(IosProfile, { navigation: { addListener: () => () => {}, canGoBack: () => true } });
     assert.ok(!iosProfile.where((node) => node.type === 'NarratorSelector'), 'iPhone: sem escolha de voz');
     assert.ok(!iosProfile.byTestID('profile-gemini-switch'), 'iPhone: sem controle de nuvem');
     assert.ok(profileSaves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: aceite antigo sai');
     iosProfile.unmount();
+    platform.OS = 'android';
 
     // 4c) despertar no Android: com o aceite, a voz da Celeste; a denúncia de IA do item que toca
     const wakeItem = {
@@ -1154,11 +1201,44 @@ async function main() {
     assert.ok(!localPractice.byTestID('practice-device-voice-notice'), 'prática sem aceite: nada foi trocado, sem aviso');
     localPractice.unmount();
 
-    // 4e) criar uma manifestação no Android: a cena nasce no aparelho e o aceite da voz continua (no iPhone, sem nuvem
-    //     nenhuma, o que sobrou sai como antes)
-    async function createManifestationOn(flags) {
+    // a prática mostra a visão E a afirmação geradas: cada uma tem a própria denúncia de IA (a frase que ela mesma
+    // escreveu não é conteúdo de IA, então não tem)
+    const reportsOn = (screen) =>
+      screen
+        .all((node) => node.type === 'AiContentReportAction')
+        .map((node) => ({
+          contentType: node.props.contentType,
+          contentRef: node.props.contentRef,
+          content: node.props.content,
+        }));
+    practiceAffirmations[0] = { ...practiceAffirmations[0], source: 'manifestation' };
+    const generatedPractice = app.mount(PracticeRitualScreen, {});
+    assert.deepStrictEqual(
+      reportsOn(generatedPractice),
+      [
+        { contentType: 'vision', contentRef: 'vision:vision-1:pt', content: visionStory },
+        { contentType: 'affirmation', contentRef: 'affirmation:aff-1:pt', content: 'Eu escolho a calma.' },
+      ],
+      'prática: a visão e a afirmação geradas podem ser denunciadas ali mesmo'
+    );
+    generatedPractice.unmount();
+    practiceAffirmations[0] = { ...practiceAffirmations[0], source: 'custom' };
+    const ownPhrasePractice = app.mount(PracticeRitualScreen, {});
+    assert.deepStrictEqual(
+      reportsOn(ownPhrasePractice).map((report) => report.contentType),
+      ['vision'],
+      'prática: a frase que ela escreveu não vira denúncia de IA'
+    );
+    ownPhrasePractice.unmount();
+    practiceAffirmations[0] = { ...practiceAffirmations[0], source: 'manifestation' };
+
+    // 4e) criar uma manifestação no Android: com o aceite (voz e textos) a cena é escrita pela IA como no site; sem ele
+    //     nasce no aparelho, sem pedir nada nem apagar o aceite (no iPhone, sem nuvem nenhuma, o que sobrou sai)
+    async function createManifestationOn(flags, OS, homeProfile) {
       const saves = [];
       const created = [];
+      const prompts = [];
+      platform.OS = OS;
       const { default: HomeScreen } = loadWith('screens/HomeScreen.js', {
         ...screenBase,
         'react-native': { ...RN, TouchableOpacity: 'TouchableOpacity', Keyboard: { dismiss() {} } },
@@ -1168,7 +1248,7 @@ async function main() {
         '../ui/theme': { useTheme: () => theme },
         '../context/AppContext': {
           useApp: () => ({
-            state: { lang: 'pt', name: 'Ana', manifestations: [], profile: consentedProfile, morningRitual: {}, practicePlan: {} },
+            state: { lang: 'pt', name: 'Ana', manifestations: [], profile: homeProfile, morningRitual: {}, practicePlan: {} },
             loading: false,
             derived: { streak: 0 },
             addManifestation: async (data) => {
@@ -1185,7 +1265,12 @@ async function main() {
         '../constants/i18n': { txt: (value) => (value && value.pt) || value, tr: (value) => value.pt, detectLang: () => 'pt' },
         '../utils/colors': { accentAt: () => '#123456', alpha: () => '#123456' },
         '../utils/date': { todayISO: () => '2026-10-21' },
-        '../utils/confirm': { confirmAsync: async () => true },
+        '../utils/confirm': {
+          confirmAsync: async (request) => {
+            prompts.push(request);
+            return true;
+          },
+        },
         '../utils/useT': { useT: () => ({ t: ptOnly, lang: 'pt' }) },
         './onboarding/flow': { isUnder18Age: () => false },
         '../utils/dailyRitual': { selectDailyRitual: () => null },
@@ -1202,17 +1287,31 @@ async function main() {
       home.flush();
       await field().props.onSubmitEditing();
       home.unmount();
-      return { saves, created };
+      platform.OS = 'android';
+      return { saves, created, prompts };
     }
-    const androidHome = await createManifestationOn(androidFlags);
+    const androidHome = await createManifestationOn(androidFlags, 'android', consentedProfile);
     assert.strictEqual(androidHome.created.length, 1, 'a manifestação é criada');
-    assert.strictEqual(androidHome.created[0].profile.cloudPersonalization, false, 'Android: a cena nasce no aparelho');
+    assert.deepStrictEqual(
+      [
+        androidHome.created[0].profile.cloudPersonalization,
+        androidHome.created[0].profile.cloudAdultConfirmed,
+        androidHome.created[0].profile.cloudConsentVersion,
+      ],
+      [true, true, CLOUD_CONSENT_VERSION],
+      'Android com o aceite: a cena nova é escrita pela IA, como no site'
+    );
+    assert.deepStrictEqual(androidHome.prompts, [], 'Android com o aceite: nada é perguntado de novo');
     assert.ok(
       !androidHome.saves.some((patch) => patch.cloudNarrationConsent === false),
-      'Android: criar uma manifestação não apaga o aceite da voz'
+      'Android: criar uma manifestação não apaga o aceite'
     );
-    const iosHome = await createManifestationOn(iosFlags);
+    const androidLocalHome = await createManifestationOn(androidFlags, 'android', { age: '25-34' });
+    assert.strictEqual(androidLocalHome.created[0].profile.cloudPersonalization, false, 'Android sem o aceite: a cena nasce no aparelho');
+    assert.deepStrictEqual(androidLocalHome.prompts, [], 'Android sem o aceite: a Home não pede nada (o aceite é o do "Ouvir"/Perfil)');
+    const iosHome = await createManifestationOn(iosFlags, 'ios', webConsentedProfile);
     assert.ok(iosHome.saves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: o aceite antigo sai');
+    assert.strictEqual(iosHome.created[0].profile.cloudPersonalization, false, 'iPhone: a cena nasce no aparelho');
 
     // 4d) toda tela que toca a voz gerada (playPersonal) oferece a denúncia de IA, com um tipo aceito pelo servidor
     const allowedTypes = new Set(['scene', 'dream', 'vision', 'affirmation']);
@@ -1254,31 +1353,71 @@ async function main() {
   });
 
   // ---------------------------------------------------------------------------------------------------------------
-  // 5) imagens, cena, tradução e Espelho Vivo em nuvem continuam fora do Android (AppContext de verdade)
-  await section('5) nuvem paga fora do Android', async () => {
-    async function cloudCallsFor(flags) {
-      const calls = { scene: 0, visual: 0, translate: 0 };
-      const stored = {
-        lang: 'pt',
-        onboarded: true,
-        anchorSceneId: 'm1',
-        profile: { name: 'Ana', ...consentedProfile },
-        manifestations: [
-          {
-            id: 'm1',
-            title: 'Viver perto do mar',
-            story,
-            affirmation: 'Eu escolho a paz.',
-            category: 'Peace',
-            lang: 'pt',
-            origin: 'onboarding-anchor',
-            createdAt: '2026-10-01',
-            sessions: [],
-            evidence: [],
-            goalDays: 21,
-          },
-        ],
-      };
+  // 5) AppContext de verdade: no Android, com o aceite (voz e textos), a Cena-Âncora e as visões/afirmações são escritas
+  //    pela IA e a cena é traduzida quando ela troca o idioma; imagens e Espelho Vivo continuam fora. Sem a verificação
+  //    do Google (ou com a recusa do servidor), a suíte local 6+6 continua, sem erro na cara dela.
+  await section('5) textos com IA no Android, imagens fora', async () => {
+    const { createPersonalContentSuite } = require('../utils/personalContentSuite');
+    const crypto = require('crypto');
+    const anchorTitle = 'Viver perto do mar';
+    const storedAnchor = {
+      id: 'm1',
+      title: anchorTitle,
+      story,
+      affirmation: 'Eu escolho a paz.',
+      category: 'Peace',
+      lang: 'pt',
+      origin: 'onboarding-anchor',
+      createdAt: '2026-10-01',
+      // one practice day: a new memory the Living Mirror could evolve from (where it exists)
+      sessions: ['2026-10-01'],
+      evidence: [],
+      goalDays: 21,
+      generation: { source: 'local', promptVersion: 'local-interpreted-v2' },
+    };
+    const serviceMocks = (flags, extra = {}) => ({
+      ...base,
+      'react-native': { Platform: platform, AppState: { addEventListener: () => ({ remove() {} }) } },
+      '../constants/narrators': narratorsMock,
+      './narrators': narratorsMock,
+      '../constants/releaseFeatures': { RELEASE_FEATURES: flags },
+      '../services/personalVisualStorage': {
+        acquirePersonalVisual: async () => null,
+        clearPersonalVisuals: async () => {},
+        createPersonalVisualCacheKey: () => 'k',
+        deletePersonalVisual: async () => {},
+        isPersonalVisualCacheKey: () => false,
+        savePersonalVisual: async () => {},
+      },
+      '../services/communityStories': {
+        beginCommunityDataReset: async () => {},
+        cancelCommunityDataReset: async () => {},
+        exportLocalCommunityStoriesForBackup: async () => [],
+        finishCommunityDataReset: async () => {},
+        restoreLocalCommunityStoriesFromBackup: async () => {},
+        validateLocalCommunityStoriesBackup: () => true,
+      },
+      '../services/dailyRitualReminder': {
+        cancelDailyRitualReminder: async () => {},
+        cancelOrphanedDailyRitualReminders: async () => {},
+      },
+      '../services/practicePlanReminders': { cancelPracticePlanReminders: async () => ({ ok: true }) },
+      '../services/affirmationAlarm': {
+        cancelAffirmationAlarm: async () => ({ ok: true }),
+        getAffirmationAlarmCapability: async () => null,
+      },
+      ...extra,
+    });
+    const settle = async (provider) => {
+      for (let i = 0; i < 12; i++) {
+        await tick();
+        provider.flush();
+      }
+    };
+    // monta o AppProvider de verdade com o estado guardado; devolve o contexto e quem foi chamado
+    async function mountApp({ flags, OS = 'android', profile, extra, anchor = storedAnchor }) {
+      platform.OS = OS;
+      const stored = { lang: 'pt', onboarded: true, anchorSceneId: 'm1', profile: { name: 'Ana', ...profile }, manifestations: [anchor] };
       const storage = new Map([['@stella_state_v2', JSON.stringify(stored)]]);
       const asyncStorage = {
         getItem: async (key) => (storage.has(key) ? storage.get(key) : null),
@@ -1286,91 +1425,245 @@ async function main() {
         removeItem: async (key) => storage.delete(key),
         multiRemove: async (keys) => keys.forEach((key) => storage.delete(key)),
       };
-      const never = () => new Promise(() => {});
       const { AppProvider } = loadWith('context/AppContext.js', {
-        ...base,
-        'react-native': { Platform: platform, AppState: { addEventListener: () => ({ remove() {} }) } },
+        ...serviceMocks(flags, extra),
         '@react-native-async-storage/async-storage': { __esModule: true, default: asyncStorage },
-        '../constants/narrators': narratorsMock,
-        './narrators': narratorsMock,
-        '../constants/releaseFeatures': { RELEASE_FEATURES: flags },
-        '../services/generatePersonalizedScene': {
-          generatePersonalizedScene: () => {
-            calls.scene += 1;
-            return never();
-          },
-        },
-        '../services/generatePersonalizedVisual': {
-          generatePersonalizedVisual: () => {
-            calls.visual += 1;
-            return never();
-          },
-        },
-        '../services/translateManifestationScene': {
-          translateManifestationScene: () => {
-            calls.translate += 1;
-            return never();
-          },
-        },
-        '../services/personalVisualStorage': {
-          acquirePersonalVisual: async () => null,
-          clearPersonalVisuals: async () => {},
-          createPersonalVisualCacheKey: () => 'k',
-          deletePersonalVisual: async () => {},
-          isPersonalVisualCacheKey: () => false,
-          savePersonalVisual: async () => {},
-        },
-        '../services/communityStories': {
-          beginCommunityDataReset: async () => {},
-          cancelCommunityDataReset: async () => {},
-          exportLocalCommunityStoriesForBackup: async () => [],
-          finishCommunityDataReset: async () => {},
-          restoreLocalCommunityStoriesFromBackup: async () => {},
-          validateLocalCommunityStoriesBackup: () => true,
-        },
-        '../services/dailyRitualReminder': {
-          cancelDailyRitualReminder: async () => {},
-          cancelOrphanedDailyRitualReminders: async () => {},
-        },
-        '../services/practicePlanReminders': { cancelPracticePlanReminders: async () => ({ ok: true }) },
-        '../services/affirmationAlarm': {
-          cancelAffirmationAlarm: async () => ({ ok: true }),
-          getAffirmationAlarmCapability: async () => null,
-        },
       });
       const provider = app.mount(AppProvider, { children: null });
       const context = () => provider.where((node) => node.type === 'ContextProvider').props.value;
       await until(() => context().state, 'estado carregado', () => provider.flush());
-      for (let i = 0; i < 10; i++) {
-        await tick();
-        provider.flush();
-      }
+      await settle(provider);
+      return { provider, context };
+    }
+
+    // 5a) quem é chamado: com o aceite do Android, cena + suíte, a cena de uma manifestação nova e a tradução ao trocar
+    //     o idioma; imagem nunca
+    async function cloudCallsFor(flags, OS, profile, anchor) {
+      const calls = { scene: 0, suite: 0, newScene: 0, visual: 0, translate: 0 };
+      const never = () => new Promise(() => {});
+      const { provider, context } = await mountApp({
+        flags,
+        OS,
+        profile,
+        anchor,
+        extra: {
+          '../services/generatePersonalizedScene': {
+            generatePersonalizedScene: (request) => {
+              calls.scene += 1;
+              if (request.includeJourneySuite === true) calls.suite += 1;
+              if (request.desire === 'Uma rotina criativa') calls.newScene += 1;
+              return never();
+            },
+          },
+          '../services/generatePersonalizedVisual': {
+            generatePersonalizedVisual: () => {
+              calls.visual += 1;
+              return never();
+            },
+          },
+          '../services/translateManifestationScene': {
+            translateManifestationScene: () => {
+              calls.translate += 1;
+              return never();
+            },
+          },
+        },
+      });
       void context().ensurePersonalVisual('m1', { force: true });
-      for (let i = 0; i < 10; i++) {
-        await tick();
-        provider.flush();
-      }
+      await settle(provider);
       const visualStatus = context().personalVisualStatus.m1 || null;
-      // trocar o idioma traduz as cenas na nuvem só onde ela existe (a tradução começa 350 ms depois)
+      // uma manifestação nova (Home): a cena dela também é escrita pela IA onde os textos com IA existem
+      await context().addManifestation({ title: 'Uma rotina criativa', category: 'Career', lang: 'pt' });
+      await settle(provider);
+      // o Espelho Vivo (um capítulo novo da cena) só existe onde a nuvem paga existe: no site ele começa a gerar
+      const mirror = await Promise.race([
+        context().evolveManifestation('m1'),
+        new Promise((resolve) => setTimeout(() => resolve('started'), 50)),
+      ]);
+      // trocar o idioma traduz a cena na nuvem onde os textos com IA existem (a tradução começa 350 ms depois)
       context().setLang('en');
       provider.flush();
       await new Promise((resolve) => setTimeout(resolve, 500));
       provider.flush();
       provider.unmount();
-      return { calls, visualStatus };
+      platform.OS = 'android';
+      return { calls, visualStatus, mirror };
     }
-    const androidCloud = await cloudCallsFor(androidFlags);
+    const androidCloud = await cloudCallsFor(androidFlags, 'android', consentedProfile);
     assert.deepStrictEqual(
-      androidCloud.calls,
-      { scene: 0, visual: 0, translate: 0 },
-      'Android com o aceite da voz: nenhuma cena, imagem ou tradução em nuvem'
+      {
+        scene: androidCloud.calls.scene,
+        suite: androidCloud.calls.suite,
+        newScene: androidCloud.calls.newScene,
+        visual: androidCloud.calls.visual,
+      },
+      { scene: 2, suite: 1, newScene: 1, visual: 0 },
+      'Android com o aceite: a Cena-Âncora com a suíte 6+6 uma vez e a cena nova pela IA; imagem nunca'
     );
+    assert.ok(androidCloud.calls.translate > 0, 'Android com o aceite: trocar o idioma traduz a cena escrita pela IA');
     assert.strictEqual(androidCloud.visualStatus, null, 'Android: nada de "Ativar minha imagem" para o que o app não faz');
-    const webCloud = await cloudCallsFor(webFlags);
+    assert.deepStrictEqual(
+      androidCloud.mirror,
+      { ok: false, error: 'cloud_consent_required' },
+      'Android: o Espelho Vivo continua fora (o aceite de voz e textos não o abre)'
+    );
+    // a Âncora já escrita pela IA com a suíte ainda local (por exemplo, o aceite veio depois): a suíte 6+6 é pedida
+    const remoteSceneAnchor = { ...storedAnchor, generation: { source: 'celeste-ai', promptVersion: 'celeste-scene-v7' } };
+    const suiteOnly = await cloudCallsFor(androidFlags, 'android', consentedProfile, remoteSceneAnchor);
+    assert.strictEqual(suiteOnly.calls.suite, 1, 'Android com o aceite: a suíte 6+6 da Âncora é escrita pela IA');
+    const oldConsent = await cloudCallsFor(androidFlags, 'android', webConsentedProfile);
+    assert.deepStrictEqual(
+      oldConsent.calls,
+      { scene: 0, suite: 0, newScene: 0, visual: 0, translate: 0 },
+      'Android com o aceite antigo (só da voz): nenhum texto vai para a nuvem até ela aceitar de novo'
+    );
+    const webCloud = await cloudCallsFor(webFlags, 'web', webConsentedProfile);
     assert.ok(
-      webCloud.calls.scene > 0 && webCloud.calls.visual > 0 && webCloud.calls.translate > 0,
+      webCloud.calls.scene > 0 && webCloud.calls.newScene === 1 && webCloud.calls.visual > 0 && webCloud.calls.translate > 0,
       `site com o aceite: cena, imagem e tradução em nuvem seguem (${JSON.stringify(webCloud.calls)})`
     );
+    assert.strictEqual(webCloud.mirror, 'started', 'site: o Espelho Vivo segue gerando o capítulo novo');
+
+    // 5b) o caminho inteiro no Android: AppContext → generatePersonalizedScene → celesteApiSession (sessão, token do
+    //     Google amarrado à operação 'scene' e ao corpo) → servidor; a resposta vira a cena e a suíte da Âncora
+    const remoteStory = 'Imagine a maré baixando devagar enquanto você escolhe, sem pressa, o próximo gesto possível.';
+    const localSuite = createPersonalContentSuite({ desire: anchorTitle, profile: { name: 'Ana' }, lang: 'pt' });
+    const remoteSuite = {
+      ...localSuite,
+      visions: localSuite.visions.map((item) => ({ ...item, title: `IA: ${item.title}` })),
+      affirmations: localSuite.affirmations.map((item) => ({ ...item, text: `${item.text} Escrito para mim.` })),
+    };
+    const sha256Hex = (value) => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
+    async function androidTextsWith({ projectNumber, server }) {
+      const requests = [];
+      const tokens = [];
+      const supabase = { calls: 0 };
+      // o Play Integrity do aparelho: configurado só com o número do projeto; o token sai para a operação pedida
+      const appIntegrity = {
+        appIntegrityConfigured: () => platform.OS === 'android' && Boolean(projectNumber),
+        integrityHash: sha256Hex,
+        integrityHeaderFor: async (input) => {
+          tokens.push(input);
+          return { 'X-Celeste-Integrity': 'device-integrity-token' };
+        },
+      };
+      const apiSession = loadWith('services/celesteApiSession.js', {
+        'react-native': { Platform: platform },
+        './appIntegrity': appIntegrity,
+        './celesteSupabase': {
+          getCelesteSupabaseClient: () => ({
+            auth: {
+              getSession: async () => {
+                supabase.calls += 1;
+                return { data: { session: { access_token: 'sessao-anonima' } }, error: null };
+              },
+            },
+          }),
+        },
+      });
+      // generatePersonalizedScene pede a sessão paga só na hora (require dentro da função): a mesma do app
+      const sessionPath = require.resolve('../services/celesteApiSession');
+      const cachedSession = new Module(sessionPath, module);
+      cachedSession.filename = sessionPath;
+      cachedSession.loaded = true;
+      cachedSession.exports = apiSession;
+      require.cache[sessionPath] = cachedSession;
+      const previousFetch = global.fetch;
+      global.fetch = async (url, init = {}) => {
+        requests.push({ url: String(url), headers: init.headers || {}, body: init.body });
+        return server(String(url), init);
+      };
+      try {
+        const { provider, context } = await mountApp({
+          flags: androidFlags,
+          profile: consentedProfile,
+          extra: {
+            './celesteApiSession': apiSession,
+            '../services/generatePersonalizedVisual': { generatePersonalizedVisual: () => new Promise(() => {}) },
+          },
+        });
+        await settle(provider);
+        const anchor = context().state.manifestations.find((item) => item.id === 'm1');
+        const result = {
+          anchor,
+          requests,
+          tokens,
+          supabaseCalls: supabase.calls,
+          visualStatus: context().personalVisualStatus,
+          storageError: context().storageError,
+        };
+        provider.unmount();
+        return result;
+      } finally {
+        global.fetch = previousFetch;
+        delete require.cache[sessionPath];
+      }
+    }
+    const remoteResponse = () =>
+      response(200, {
+        json: {
+          scene: {
+            intention: 'Viver perto do mar com presença.',
+            affirmation: 'Eu escolho a calma perto do mar.',
+            story: remoteStory,
+            anchorIdentity: 'Eu pratico a calma.',
+            anchorStep: 'Caminhar cinco minutos olhando o horizonte.',
+          },
+          journeySuite: remoteSuite,
+          generation: { source: 'celeste-ai', provider: 'anthropic', model: 'claude', promptVersion: 'celeste-journey-suite-v1', knowledgeCardIds: ['woop-mental-contrasting'] },
+        },
+      });
+    const verified = await androidTextsWith({ projectNumber: '123456789012', server: async () => remoteResponse() });
+    const sceneRequests = verified.requests.filter((request) => request.url.endsWith('/api/gerar-cena'));
+    assert.strictEqual(sceneRequests.length, 1, 'Android verificado: um pedido de cena + suíte');
+    assert.strictEqual(sceneRequests[0].headers['X-Celeste-Client'], 'android');
+    assert.strictEqual(sceneRequests[0].headers['X-Celeste-Integrity'], 'device-integrity-token', 'o pedido leva o token do Google');
+    const sentScene = JSON.parse(sceneRequests[0].body);
+    assert.deepStrictEqual(
+      [sentScene.includeJourneySuite, sentScene.cloudConsentVersion],
+      [true, CLOUD_CONSENT_VERSION],
+      'a Âncora pede a suíte 6+6 com o aceite do Android'
+    );
+    assert.deepStrictEqual(
+      verified.tokens.map((input) => [input.operation, input.bodyHash]),
+      [['scene', sha256Hex(sceneRequests[0].body)]],
+      'um token do Google, para a operação cena e exatamente o corpo enviado'
+    );
+    assert.strictEqual(verified.anchor.story, remoteStory, 'a Cena-Âncora passa a ser a escrita pela IA');
+    assert.strictEqual(verified.anchor.journeySuiteByLang.pt.source, 'remote', 'a suíte passa a ser a escrita pela IA');
+    assert.deepStrictEqual(
+      verified.anchor.journeySuiteByLang.pt.visions.map((item) => item.title),
+      remoteSuite.visions.map((item) => item.title),
+      'as seis visões da IA chegam à tela'
+    );
+    assert.deepStrictEqual(
+      verified.anchor.journeySuiteByLang.pt.affirmations.map((item) => item.text),
+      remoteSuite.affirmations.map((item) => item.text),
+      'as seis afirmações da IA chegam à tela'
+    );
+
+    // sem o número do projeto (sem Play Integrity): nada sai do aparelho e a suíte local continua, sem erro
+    const unverified = await androidTextsWith({ projectNumber: '', server: async () => remoteResponse() });
+    assert.deepStrictEqual(unverified.requests, [], 'Android sem verificação: nenhum texto sai do aparelho');
+    assert.strictEqual(unverified.supabaseCalls, 0, 'Android sem verificação: nem a sessão é criada');
+    // recusa do servidor (Play Integrity reprovada): um pedido, a recusa, e a suíte local continua
+    const refused = await androidTextsWith({
+      projectNumber: '123456789012',
+      server: async () => response(403, { json: { error: 'native_attestation_required' } }),
+    });
+    assert.strictEqual(refused.requests.length, 1, 'recusa do servidor: um pedido, sem novas tentativas');
+    for (const [label, outcome] of [['sem verificação', unverified], ['recusa do servidor', refused]]) {
+      const suite = outcome.anchor.journeySuiteByLang.pt;
+      assert.strictEqual(suite.source, 'local', `${label}: a suíte local continua`);
+      assert.deepStrictEqual(
+        [suite.visions.length, suite.affirmations.length],
+        [6, 6],
+        `${label}: as seis visões e seis afirmações locais continuam`
+      );
+      assert.strictEqual(outcome.anchor.story, story, `${label}: a Cena-Âncora local continua`);
+      assert.deepStrictEqual(outcome.visualStatus, {}, `${label}: nenhum erro na tela`);
+      assert.strictEqual(outcome.storageError, false, `${label}: nenhum erro na tela`);
+    }
   });
 
   if (failures.length) {
@@ -1378,7 +1671,8 @@ async function main() {
   }
   console.log(
     'Vozes da Celeste no Android OK: voz escolhida pelo arquivo no cache, voz do aparelho com aviso (recusa, rede, teto), ' +
-      `escolha de voz, denúncia em ${reportSurfaces} telas com voz e imagens fora do Android.`
+      `escolha de voz, denúncia em ${reportSurfaces} telas com voz, cena e suíte 6+6 escritas pela IA com o aceite ` +
+      '(local sem verificação) e imagens fora do Android.'
   );
 }
 
