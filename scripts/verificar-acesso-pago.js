@@ -707,10 +707,20 @@ const expectedRequestHash = (operation, requestId, body) =>
   sha256Hex(
     ['celeste-play-integrity-v1', operation, requestId, sha256Hex(JSON.stringify(body))].join('\n')
   );
-const nativePoolActor = crypto
-  .createHmac('sha256', ACTOR_SECRET)
-  .update('celeste-native-voice-pool-v1', 'utf8')
-  .digest('hex');
+const NATIVE_USERS = Object.freeze({
+  'android-anonymous-session': '00000000-0000-4000-8000-0000000000aa',
+  'android-second-session': '00000000-0000-4000-8000-0000000000bb',
+  'android-third-session': '00000000-0000-4000-8000-0000000000cc',
+});
+// Verified native voice spends the budget of the authenticated person, never a
+// shared or per-IP actor (distinct prefix: cannot collide with origin actors).
+const nativeUserActor = (userId) =>
+  crypto
+    .createHmac('sha256', ACTOR_SECRET)
+    .update(`celeste-native-user-actor-v1\0${userId}`, 'utf8')
+    .digest('hex');
+const originActor = (origin) =>
+  crypto.createHmac('sha256', ACTOR_SECRET).update(`celeste-actor-v1\0${origin}`, 'utf8').digest('hex');
 
 function nativeVoiceRequest({ headers = {}, body = voiceBody } = {}) {
   return {
@@ -780,34 +790,35 @@ function googleAndSupabase(state) {
       };
     }
     if (url === PLAY_DECODE_URL) {
+      const body = JSON.parse(options.body);
       state.decodes.push({
         method: options.method,
         authorization: options.headers && options.headers.Authorization,
-        body: JSON.parse(options.body),
+        body,
       });
       if (state.decodeStatus) {
         return { ok: false, status: state.decodeStatus, json: async () => ({ error: { code: state.decodeStatus } }) };
       }
-      return { ok: true, status: 200, json: async () => ({ tokenPayloadExternal: state.verdict }) };
+      const verdict = state.verdicts ? state.verdicts[body.integrityToken] : state.verdict;
+      return { ok: true, status: 200, json: async () => ({ tokenPayloadExternal: verdict }) };
     }
     if (url.endsWith('/auth/v1/user')) {
-      return {
-        ok: true,
-        json: async () => ({ id: '00000000-0000-4000-8000-0000000000aa', is_anonymous: true }),
-      };
-    }
-    if (url.endsWith('/rpc/celeste_reserve_generation_credit')) {
-      state.reservations.push(JSON.parse(options.body));
+      const bearer = String((options.headers && options.headers.Authorization) || '').replace(/^Bearer\s+/i, '');
       return {
         ok: true,
         json: async () => ({
-          allowed: true,
-          duplicate: false,
-          reserved: false,
-          actorQuota: true,
-          operationQuota: true,
+          id: NATIVE_USERS[bearer] || NATIVE_USERS['android-anonymous-session'],
+          is_anonymous: true,
         }),
       };
+    }
+    if (url.endsWith('/rpc/celeste_reserve_generation_credit')) {
+      const body = JSON.parse(options.body);
+      state.reservations.push(body);
+      const result = state.reserve
+        ? state.reserve(body)
+        : { allowed: true, duplicate: false, reserved: false, actorQuota: true, operationQuota: true };
+      return { ok: true, json: async () => result };
     }
     if (url.startsWith('https://api.elevenlabs.io/')) {
       state.elevenLabs += 1;
@@ -867,30 +878,107 @@ test('Android voice passes only with a Play Integrity verdict bound to the reque
   assert.strictEqual(state.reservations.length, 1);
   assert.strictEqual(state.reservations[0].p_operation, 'audio');
   assert.strictEqual(state.reservations[0].p_units, 4);
+  assert.strictEqual(state.reservations[0].p_user_id, NATIVE_USERS['android-anonymous-session']);
   assert.strictEqual(
     state.reservations[0].p_actor_hash,
-    nativePoolActor,
-    'toda voz nativa verificada divide um ator: a cota de ator do audio vira o teto diario do Android'
+    nativeUserActor(NATIVE_USERS['android-anonymous-session']),
+    'voz nativa verificada gasta a cota de ator da propria pessoa autenticada'
   );
   assert.notStrictEqual(
-    nativePoolActor,
-    paidAccess._internals.deriveActorHash(nativeVoiceRequest(), ACTOR_SECRET),
+    state.reservations[0].p_actor_hash,
+    originActor('203.0.113.20'),
     'voz nativa nao pode cair na cota por IP do site'
   );
 
+  // Another person on the same network: own actor budget, cached Google token.
   const secondId = 'celeste-android-voice-0002';
   state.verdict = validVerdict((payload) => {
     payload.requestDetails.requestHash = expectedRequestHash('audio', secondId, voiceBody);
   });
   const second = await paidAccess.authorizePaidRequest(
     nativeVoiceRequest({
-      headers: { 'x-celeste-request-id': secondId, 'x-vercel-forwarded-for': '198.51.100.30' },
+      headers: { authorization: 'Bearer android-second-session', 'x-celeste-request-id': secondId },
     }),
     { operation: 'audio', units: 4 }
   );
   assert.strictEqual(second.ok, true, JSON.stringify(second));
   assert.strictEqual(state.jwts.length, 1, 'token de acesso do Google deve ser reutilizado ate expirar');
-  assert.strictEqual(state.reservations[1].p_actor_hash, nativePoolActor, 'outra rede, mesmo teto nativo');
+  assert.strictEqual(state.reservations[1].p_user_id, NATIVE_USERS['android-second-session']);
+  assert.strictEqual(
+    state.reservations[1].p_actor_hash,
+    nativeUserActor(NATIVE_USERS['android-second-session']),
+    'segunda pessoa verificada tem o proprio ator'
+  );
+  assert.notStrictEqual(
+    state.reservations[0].p_actor_hash,
+    state.reservations[1].p_actor_hash,
+    'duas pessoas verificadas na mesma rede nao dividem a cota de ator'
+  );
+});
+
+test('verified Android voice still hits the per-person and global daily caps', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 = SERVICE_ACCOUNT_B64;
+  // The reservation RPC simulated with migration 010's order of checks
+  // (user/operation, actor/operation, then the weighted global ceiling).
+  const limits = { userOperation: 320, actorOperation: 640, global: 400 };
+  const used = { user: new Map(), actor: new Map(), global: 0 };
+  const state = {
+    verdicts: {},
+    reserve: (body) => {
+      const user = used.user.get(body.p_user_id) || 0;
+      const actor = used.actor.get(body.p_actor_hash) || 0;
+      let reason = null;
+      if (user + body.p_units > limits.userOperation) reason = 'user_operation_limit';
+      else if (actor + body.p_units > limits.actorOperation) reason = 'actor_operation_limit';
+      else if (used.global + body.p_units > limits.global) reason = 'global_limit';
+      state.lastReason = reason;
+      if (reason) return { allowed: false, reason };
+      used.user.set(body.p_user_id, user + body.p_units);
+      used.actor.set(body.p_actor_hash, actor + body.p_units);
+      used.global += body.p_units;
+      return { allowed: true, duplicate: false, reserved: false, actorQuota: true, operationQuota: true };
+    },
+  };
+  global.fetch = googleAndSupabase(state);
+  let sequence = 0;
+  const speak = (session) => {
+    sequence += 1;
+    const id = `celeste-cap-voice-${String(sequence).padStart(4, '0')}`;
+    const token = `play-integrity-token.${id}`;
+    state.verdicts[token] = validVerdict((payload) => {
+      payload.requestDetails.requestHash = expectedRequestHash('audio', id, voiceBody);
+    });
+    return paidAccess.authorizePaidRequest(
+      nativeVoiceRequest({
+        headers: {
+          authorization: `Bearer ${session}`,
+          'x-celeste-request-id': id,
+          'x-celeste-integrity': token,
+        },
+      }),
+      { operation: 'audio', units: 20 }
+    );
+  };
+  const LIMITED = { error: 'daily_generation_limit_reached', status: 429 };
+
+  for (let index = 0; index < 16; index += 1) {
+    const allowed = await speak('android-anonymous-session');
+    assert.strictEqual(allowed.ok, true, `pedido ${index + 1}: ${JSON.stringify(allowed)}`);
+  }
+  assert.deepStrictEqual(await speak('android-anonymous-session'), LIMITED, 'teto por pessoa continua valendo');
+  assert.strictEqual(state.lastReason, 'user_operation_limit');
+
+  for (let index = 0; index < 4; index += 1) {
+    const allowed = await speak('android-second-session');
+    assert.strictEqual(allowed.ok, true, `outra pessoa nao herda o teto da primeira: ${JSON.stringify(allowed)}`);
+  }
+  assert.deepStrictEqual(await speak('android-second-session'), LIMITED, 'teto global continua valendo');
+  assert.strictEqual(state.lastReason, 'global_limit');
+  assert.deepStrictEqual(await speak('android-third-session'), LIMITED);
+  assert.strictEqual(state.lastReason, 'global_limit');
+  assert.strictEqual(used.global, limits.global);
 });
 
 test('Play Integrity failures keep native voice closed before identity and quota', { concurrency: false }, async (t) => {
@@ -983,7 +1071,7 @@ test('native claims without a usable attestation never reach Google, identity or
   );
 
   // The explicit local development bypass keeps its old behaviour: no Google
-  // call and the per-origin actor, never the native pool.
+  // call and the per-origin actor.
   process.env.CELESTE_ALLOW_LOCAL_NATIVE_BYPASS = '1';
   process.env.VERCEL_ENV = 'development';
   process.env.NODE_ENV = 'development';
@@ -997,7 +1085,7 @@ test('native claims without a usable attestation never reach Google, identity or
   );
   assert.strictEqual(bypassed.ok, true, JSON.stringify(bypassed));
   assert.ok(!state.calls.some((url) => url.includes('googleapis.com')), 'bypass local nao chama o Google');
-  assert.notStrictEqual(state.reservations.at(-1).p_actor_hash, nativePoolActor);
+  assert.strictEqual(state.reservations.at(-1).p_actor_hash, originActor('127.0.0.1'), 'bypass mantem o ator por origem');
 });
 
 test('gerar-audio serves verified Android voice and refuses a body changed after the token', { concurrency: false }, async (t) => {

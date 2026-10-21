@@ -123,15 +123,13 @@ function deriveActorHash(req, secret) {
     .digest('hex');
 }
 
-// Every Play-Integrity-verified native voice request shares this one actor, so
-// the 'audio' row of celeste_generation_operation_policy (actor_daily_units,
-// migration 010) is the Android-wide daily ceiling on top of the per-person
-// quota. No migration: the existing actor/operation counter does the work.
-function deriveNativeVoiceActorHash(secret) {
-  if (!validActorHashSecret(secret)) return '';
+// A Play-Integrity-verified request spends the actor budget of its
+// authenticated anonymous user (distinct prefix: never collides with origin
+// actors). The per-person and weighted global quotas still apply in the RPC.
+function deriveNativeUserActorHash(userId, secret) {
   return crypto
     .createHmac('sha256', secret)
-    .update('celeste-native-voice-pool-v1', 'utf8')
+    .update(`celeste-native-user-actor-v1\0${userId}`, 'utf8')
     .digest('hex');
 }
 
@@ -343,10 +341,10 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   ) {
     return { error: 'spend_guard_not_configured', status: 503 };
   }
-  const actorHash = attestNative
-    ? deriveNativeVoiceActorHash(config.actorHashSecret)
-    : deriveActorHash(req, config.actorHashSecret);
-  if (!ACTOR_HASH_PATTERN.test(actorHash)) {
+  // Web: the trusted origin is the actor. Verified native: the authenticated
+  // user is (derived after identity below).
+  const originActorHash = attestNative ? '' : deriveActorHash(req, config.actorHashSecret);
+  if (!attestNative && !ACTOR_HASH_PATTERN.test(originActorHash)) {
     return { error: 'spend_guard_unavailable', status: 503 };
   }
   const token = bearerToken(req);
@@ -365,7 +363,9 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
     requestId: id,
     operation,
     units,
-    actorHash,
+    actorHash: attestNative
+      ? deriveNativeUserActorHash(identity.userId, config.actorHashSecret)
+      : originActorHash,
   });
   if (!reservation.ok) return reservation;
   return {
@@ -466,7 +466,7 @@ module.exports = {
     ACTOR_HASH_SECRET_MIN_BYTES,
     TRUSTED_VERCEL_IP_HEADER,
     deriveActorHash,
-    deriveNativeVoiceActorHash,
+    deriveNativeUserActorHash,
     deriveReportActorHash,
     normalizeActorOrigin,
     trustedActorOrigin,
