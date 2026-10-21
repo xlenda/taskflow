@@ -1,6 +1,8 @@
-# Play Integrity — passo a passo (voz da Celeste no Android)
+# Play Integrity — passo a passo (voz e textos com IA da Celeste no Android)
 
 **Para que serve.** É a verificação do Google que prova ao servidor da Celeste que o pedido de voz veio do app oficial, baixado da Google Play, num celular Android de verdade. Sem ela, o servidor recusa o pedido e o app toca a voz do próprio celular, com aviso. Isso impede que alguém gaste os créditos da sua conta da ElevenLabs fora do app.
+
+**Também libera os textos com IA (desde 21/10), sem passo extra.** A mesma configuração deste guia vale para a Cena-Âncora e as visões e afirmações das seis áreas escritas pela IA a partir das respostas dela. Sem a verificação, o servidor recusa também esse pedido e ela continua vendo os textos montados no próprio celular com as respostas dela, sem IA e sem aviso de erro. Isso protege da mesma forma os créditos dos provedores de texto.
 
 **Quanto tempo:** uns 30 minutos.
 
@@ -10,7 +12,7 @@ Conferi cada passo nas páginas oficiais do Google, da Vercel e da Expo em 21/10
 
 - O app Celeste já criado no Play Console (depende da conta verificada, item B1 da auditoria).
 - Acesso de dono ou administrador ao Play Console, ao Google Cloud (pode ser a mesma conta Google), à Vercel (projeto `celeste`) e à Expo (organização `celestegroup`).
-- O código da voz no Android já no GitHub (tarefas V1 e V2 do plano de 21/10). O agente avisa quando estiver.
+- O código da voz no Android já no GitHub (tarefas V1 e V2 do plano de 21/10) e o dos textos com IA (tarefa T1 do plano dos textos, também de 21/10). O agente avisa quando estiver.
 
 > **Regra de ouro:** a chave (o arquivo `.json` e o texto em base64) é uma senha. Ela só vai para a Vercel. Nunca cole a chave no chat, no WhatsApp, no GitHub nem em arquivos do projeto.
 
@@ -41,7 +43,7 @@ Observações:
 
 ## Passo 3b — Alerta de cota e pedido de aumento (logo depois do vínculo)
 
-O Google dá ao projeto 10 mil verificações por dia. Se acabarem, o Android toca a voz do celular até o dia seguinte. O Google diz que o aumento pode levar até uma semana, então peça logo depois do passo 3.
+O Google dá ao projeto 10 mil verificações por dia. Cada pedido de voz ou de textos gasta uma. Se acabarem, o Android toca a voz do celular e mostra os textos montados no celular até o dia seguinte. O Google diz que o aumento pode levar até uma semana, então peça logo depois do passo 3.
 
 1. **Alerta:** no Google Cloud, com o projeto do passo 1 escolhido, abra **IAM & Admin → Quotas & System Limits** (IAM e administrador → Cotas e limites do sistema) e busque **Play Integrity**. Na linha da cota diária, clique em **More actions** (os três pontos) → **Create usage alert**. Em **Configure notifications**, escolha o seu e-mail e clique em **Create**.
 2. **Aumento:** preencha o formulário do Google: https://support.google.com/googleplay/android-developer/contact/piaqr. O Google só aceita com o projeto já vinculado (passo 3) e com o app disponível na Google Play. Se recusar por isso, peça de novo quando o app estiver publicado.
@@ -111,10 +113,11 @@ Peça ao agente, ou rode nesta ordem, na pasta `C:\projetos\TaskFlow`:
 
 1. Instale a Celeste pelo link de teste interno, **pela Play Store**, num celular Android de verdade.
 2. Escolha uma voz em **Perfil → Voz da narração**.
-3. Toque para ouvir uma afirmação, uma visão ou a sua história. Na primeira vez, confirme que tem 18 anos ou mais e permita a voz.
+3. Toque para ouvir uma afirmação, uma visão ou a sua história. Na primeira vez, confirme que tem 18 anos ou mais e permita a voz e os textos com IA.
 4. **Deu certo** se tocar a voz do narrador escolhido, a mesma da prévia.
 5. **Está falhando** se tocar a voz robótica do celular, com aviso.
 6. Confira também, na mesma tela, o botão **Denunciar este conteúdo de IA**.
+7. **Textos:** depois de permitir, abra **Visões** e **Afirmações**. Em até um minuto, os textos das seis áreas e a Cena-Âncora trocam pela versão escrita pela IA a partir das suas respostas, e cada tela tem **Denunciar este conteúdo de IA**. Se continuarem os textos montados no celular (sem nenhum aviso), a verificação falhou: confira a lista abaixo, que vale igual para a voz e para os textos.
 
 **Se tocar a voz do celular, confira nesta ordem:**
 - **Esperado, não é defeito:**
@@ -151,8 +154,8 @@ Peça ao agente, ou rode nesta ordem, na pasta `C:\projetos\TaskFlow`:
 | `not_play_recognized` | O app não veio da Play (APK do EAS, build "preview", cabo), ou o mesmo token foi usado duas vezes. | Instale pela trilha interna, pela Play Store (item 1 deste passo). |
 | `device_integrity_missing` | Emulador, celular com root ou com o bootloader desbloqueado. | Esperado: teste num celular comum. |
 | `no_token` | Pedido que diz vir do Android, mas sem a verificação. O app oficial não envia pedido assim. | Nada: não é o app. |
-| `client_not_supported` | Pedido que diz vir do iPhone. | Nada: o iPhone não tem a voz em nuvem nesta versão. |
-| `operation_not_allowed` | Pedido do Android para outra coisa além da voz (imagem, cena, sonho ou tradução). | Nada: no Android só a voz vai para a nuvem. |
+| `client_not_supported` | Pedido que diz vir do iPhone. | Nada: o iPhone não tem a voz nem os textos em nuvem nesta versão. |
+| `operation_not_allowed` | Pedido do Android para outra coisa além da voz e dos textos (imagem, sonho, tradução ou Espelho Vivo). | Nada: no Android só a voz e os textos vão para a nuvem. |
 | `unknown` | Erro inesperado no servidor. | Me chame. |
 
 **Opcional:** em **Protected with Play → Play Integrity API → Manage → Testing → Create new test**, o Play Console permite escolher respostas de teste para os e-mails dos testadores. Serve para ver de propósito o caminho da voz do celular.

@@ -37,9 +37,11 @@ Respostas candidatas para o questionário vigente de cada console:
 - conteúdo público criado por usuários: não nesta submissão; a Comunidade deve
   permanecer privada/desativada;
 - conteúdo gerado/personalizado: sim; na v1 Android a criação paga em nuvem
-  fica bloqueada, exceto a voz da narração (ElevenLabs, desde 21/10, com
-  consentimento adulto e verificação Play Integrity), o conteúdo local permanece
-  disponível e existe denúncia dentro do app em toda tela onde a voz gerada toca;
+  fica bloqueada, exceto a voz da narração (ElevenLabs) e os textos da
+  Cena-Âncora e das visões e afirmações (provedor de texto de cena), desde
+  21/10, com consentimento adulto e verificação Play Integrity; o conteúdo local
+  permanece disponível e existe denúncia dentro do app em toda tela que mostra
+  texto escrito pela IA ou onde a voz gerada toca;
 - saúde: reflexão e bem-estar, sem diagnóstico, tratamento ou aconselhamento
   médico;
 - acesso irrestrito à web: não;
@@ -72,17 +74,23 @@ que apareçam e descrevam o app real.
 
 ### Fronteira Data Safety da v1 Android
 
-No Android, as APIs pagas de Anthropic, OpenAI e Gemini falham antes de criar
-sessão ou fazer a chamada. Os fluxos controlados pelo app para fora do aparelho
-são dois. O primeiro é a denúncia opcional de conteúdo, que envia pelo gateway
-Celeste ao Supabase um UUID pseudônimo, somente a saída gerada escolhida (ou
-referência visual), motivo, nota opcional e metadados mínimos da geração. As
+No Android, as APIs pagas de imagem, sonho, tradução e Espelho Vivo falham antes
+de criar sessão ou fazer a chamada. Os fluxos controlados pelo app para fora do
+aparelho são três. O primeiro é a denúncia opcional de conteúdo, que envia pelo
+gateway Celeste ao Supabase um UUID pseudônimo, somente a saída gerada escolhida
+(ou referência visual), motivo, nota opcional e metadados mínimos da geração. As
 linhas ficam por no máximo 180 dias e podem ser excluídas no Perfil enquanto a
 sessão desta instalação existir. O segundo, desde 21/10, é a narração com a voz
 escolhida: depois do consentimento adulto, o texto que a pessoa pediu para
 ouvir, o idioma, a voz e a sessão anônima vão ao backend (Vercel), que confere
 com o Google a verificação Play Integrity do pedido e repassa somente texto,
-idioma e voz à ElevenLabs. O preenchimento exato está em
+idioma e voz à ElevenLabs. O terceiro, também desde 21/10, são os textos com
+IA: depois do mesmo consentimento, o desejo, a área, o idioma, as respostas
+selecionadas do questionário (inclusive nome e cidade) e a sessão anônima vão
+ao backend, que confere a verificação Play Integrity e repassa o pedido reduzido
+ao provedor de texto de cena (Anthropic; OpenAI como failover; Gemini só se
+nenhum dos dois estiver configurado) para escrever a Cena-Âncora e as visões e
+afirmações das seis áreas. O preenchimento exato está em
 `google-play-console-prefill.md`.
 
 O Plano Celeste mostra a imagem e o texto da visão ou Cena-Âncora. A narração
@@ -100,8 +108,9 @@ descartados sem envio ou armazenamento; somente um recibo mínimo fica local.
 e novos binários Android/iOS; publicar somente a web não atualiza o app instalado.
 
 As linhas de provedores pagos abaixo continuam sendo o inventário para web/iOS;
-na v1 Android valem somente a linha da narração ElevenLabs, a da verificação
-Play Integrity, a de IP/logs e a da denúncia. A linha do sintetizador do sistema
+na v1 Android valem somente as linhas de nome próprio e de respostas e desejos
+(textos com IA), a da narração ElevenLabs, a da verificação Play Integrity, a
+de IP/logs e a da denúncia. A linha do sintetizador do sistema
 ou navegador também deve ser conferida na plataforma em que a prática for
 executada.
 
@@ -109,11 +118,11 @@ executada.
 
 | Tipo provável | Quando | Finalidade | Obrigatório | Tracking | Estado |
 |---|---|---|---|---|---|
-| Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; confirmar retenção |
-| Respostas e desejos | geração de cena autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini |
+| Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; no Android, só com Play Integrity confirmado; confirmar retenção |
+| Respostas e desejos | geração autorizada da cena e das visões e afirmações | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini; no Android, só com Play Integrity confirmado |
 | Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
 | Texto da narração, idioma e narrador | toque em Play quando o consentimento de nuvem já está ativo | gerar áudio neural | opcional | não identificado | ElevenLabs TTS; no Android, só com Play Integrity confirmado |
-| Verificação Play Integrity (token do pedido, conferido pelo Google) | pedido de voz no Android | prevenção de abuso | opcional | não identificado | Google Play; o pedido vai preso por hash, sem o texto |
+| Verificação Play Integrity (token do pedido, conferido pelo Google) | pedido de voz ou de textos no Android | prevenção de abuso | opcional | não identificado | Google Play; o pedido vai preso por hash, sem o texto nem as respostas |
 | Texto da visão e idioma | toque em ouvir sem consentimento de nuvem ativo | sintetizar a narração no ambiente da pessoa | opcional | não identificado | sintetizador do sistema ou navegador; confirmar se a voz efetiva usa rede e como o fornecedor trata o texto |
 | Relato de sonho | reflexão em nuvem autorizada | gerar reflexão e afirmação | opcional | não identificado | Google Gemini; fallback local disponível |
 | Sentimento e tema do sonho | reflexão/Espelho Vivo autorizados | personalização | opcional | não identificado | confirmar retenção |

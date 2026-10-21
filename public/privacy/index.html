@@ -23,7 +23,7 @@
 
       <main id="content">
         <header class="hero">
-          <p class="eyebrow">Public document · version 1.6.0</p>
+          <p class="eyebrow">Public document · version 1.7.0</p>
           <h1>Privacy policy</h1>
           <p class="lead">
             This policy explains how Celeste handles data on its website and in the
@@ -84,8 +84,8 @@
               Celeste uses its backend as an intermediary and reduces each request to the content
               needed for the chosen feature. After onboarding, one adult control in Profile allows
               or prevents new optional requests for scenes, dreams, images, translations and neural
-              narration. In the Android app, that control enables neural narration only; the other
-              cloud features remain website-only.
+              narration. In the Android app, that control enables neural narration and the AI-written
+              Anchor Scene, visions and affirmations; the other cloud features remain website-only.
             </p>
             <div class="processor-list" aria-label="Services and purposes">
               <div class="processor">
@@ -96,8 +96,9 @@
               </div>
               <div class="processor">
                 <strong>Anthropic</strong>
-                Receives selected answers and minimized context to generate personal scenes and
-                Living Mirror chapters when that feature is authorized.
+                Receives selected answers and minimized context to generate personal scenes, the
+                visions and affirmations for the six areas and Living Mirror chapters when that
+                feature is authorized.
               </div>
               <div class="processor">
                 <strong>OpenAI</strong>
@@ -122,8 +123,9 @@
               </div>
               <div class="processor">
                 <strong>Google Play Integrity</strong>
-                In the Android app only, confirms to the backend that a narration request came from
-                the official app installed from Google Play on a certified device, to prevent abuse.
+                In the Android app only, confirms to the backend that a narration or AI-text request
+                came from the official app installed from Google Play on a certified device, to
+                prevent abuse.
               </div>
             </div>
             <p>
@@ -141,10 +143,10 @@
             </p>
             <h3>Narration in the Android app</h3>
             <p>
-              In the Android app, narration in the chosen voice is the only cloud feature: personal
-              images are not generated, and cloud scenes, dreams and translations remain website-only.
-              After adult consent, each tap to listen sends to Celeste's backend, hosted on Vercel,
-              the text the person asked to hear (an affirmation, vision, story or Anchor Scene), its
+              In the Android app, personal images are not generated, and cloud dreams, translations
+              and the Living Mirror remain website-only. After adult consent, each tap to listen
+              sends to Celeste's backend, hosted on Vercel, the text the person asked to hear
+              (an affirmation, vision, story or Anchor Scene), its
               language, the selected voice identifier and the anonymous technical session, which
               authorizes the request and enforces usage limits. The backend passes only the text
               and voice to ElevenLabs, which acts as a processor to create the audio. Because that
@@ -162,6 +164,29 @@
               follows the rules in section 4; the anonymous technical session may remain for abuse
               prevention and is not a personal account; provider retention follows the notice in
               section 5.
+            </p>
+            <h3>AI-written texts in the Android app</h3>
+            <p>
+              In the Android app, the same adult consent that enables the voice also lets AI write the
+              Anchor Scene and the visions and affirmations for the six areas. After it, the app sends
+              to Celeste's backend, hosted on Vercel, the desire, its chosen area, the language and the
+              selected onboarding answers (such as name, city, work, relationship, why it matters and
+              what gets in the way), minimized as described above, together with the anonymous
+              technical session, which authorizes the request and enforces usage limits. The backend
+              passes that minimized request to the same scene-text providers as the website:
+              Anthropic, with OpenAI as failover, and Google Gemini only if neither is configured.
+              They act as processors to write the texts. No images are generated on Android.
+            </p>
+            <p>
+              As with narration, the request carries a Google Play Integrity check bound to it by a
+              cryptographic hash, without sending the answers to Google, and the backend requests the
+              texts only when the check confirms the official app installed from Google Play on a
+              certified device. Without consent, that confirmation or a connection, or if the service
+              fails, the texts are assembled on the device from the answers, without AI. The returned
+              texts are stored on the device like the other content in section 2; the anonymous
+              technical session may remain for abuse prevention and is not a personal account;
+              provider retention follows the notice in section 5. Every screen that shows these texts
+              offers <strong>Report this AI content</strong>.
             </p>
             <h3>AI-content reports</h3>
             <p>
@@ -324,8 +349,8 @@
             <p>
               The public site and backend use HTTPS. Celeste applies session authorization,
               unified consent, usage limits, minimized requests, Play Integrity verification for
-              Android voice requests, blocked unnecessary Android permissions and private device
-              storage. No system is entirely risk-free; do not
+              Android voice and AI-text requests, blocked unnecessary Android permissions and private
+              device storage. No system is entirely risk-free; do not
               enter passwords, financial credentials, document numbers or another person's data.
             </p>
           </section>

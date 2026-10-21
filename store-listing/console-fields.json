@@ -40,11 +40,11 @@
     "containsAds": false,
     "loginRequired": false,
     "hasUserFacingAccounts": false,
-    "anonymousSafetySession": "created_when_submitting_an_ai_content_report_or_requesting_cloud_narration",
+    "anonymousSafetySession": "created_when_submitting_an_ai_content_report_or_requesting_cloud_narration_or_ai_text",
     "hasActivePurchases": false,
     "publicCommunity": false,
     "androidSystemAlarm": false,
-    "paidCloudGeneration": "narration_only_since_2026-10-21",
+    "paidCloudGeneration": "narration_and_ai_text_since_2026-10-21",
     "cloudNarration": {
       "provider": "elevenlabs_via_celeste_backend_on_vercel",
       "sentData": "text_the_user_asked_to_hear_language_voice_id_and_anonymous_session",
@@ -55,9 +55,24 @@
       "fallback": "device_text_to_speech_with_notice",
       "androidImagesAndOtherCloudFeatures": false
     },
+    "cloudText": {
+      "provider": "scene_text_provider_via_celeste_backend_on_vercel_anthropic_openai_failover_gemini_only_if_neither_configured",
+      "generates": [
+        "anchor_scene",
+        "visions_for_six_areas",
+        "affirmations_for_six_areas"
+      ],
+      "sentData": "desire_area_language_selected_onboarding_answers_including_name_and_city_and_anonymous_session",
+      "requires": [
+        "adult_cloud_consent",
+        "play_integrity_verified_server_side"
+      ],
+      "fallback": "texts_assembled_on_device_from_answers_without_ai",
+      "inAppReportingOnEveryAiTextSurface": true
+    },
     "playIntegrity": {
       "used": true,
-      "purpose": "abuse_prevention_for_android_voice_requests",
+      "purpose": "abuse_prevention_for_android_voice_and_ai_text_requests",
       "ownerSetupGuide": "docs/PLAY-INTEGRITY-PASSO-A-PASSO.md"
     },
     "inAppAiContentReporting": true,
@@ -90,13 +105,11 @@
       "anonymousSafetySessionDeletedWithReports": false,
       "lostSessionHandling": "remaining_report_rows_expire_within_180_days",
       "encryptedInTransit": "yes_after_final_aab_https_confirmation",
-      "shared": "no_only_if_owner_confirms_service_provider_role_of_supabase_vercel_elevenlabs_and_google",
+      "shared": "no_only_if_owner_confirms_service_provider_role_of_supabase_vercel_elevenlabs_text_providers_and_google",
       "reportedContentMayContainDerivedPersonalDetails": true,
       "narratedTextMayContainDerivedPersonalDetails": true,
+      "aiTextAnswersMayContainDerivedPersonalDetails": true,
       "embeddedDataTypeClassificationRequired": [
-        "name",
-        "other_info",
-        "approximate_location",
         "health_info",
         "other_financial_info",
         "manually_entered_contact_names"
@@ -107,6 +120,24 @@
           "purposes": [
             "app_functionality",
             "fraud_prevention_security_compliance"
+          ]
+        },
+        {
+          "type": "personal_info_name",
+          "purposes": [
+            "app_functionality"
+          ]
+        },
+        {
+          "type": "location_approximate",
+          "purposes": [
+            "app_functionality"
+          ]
+        },
+        {
+          "type": "personal_info_other_info",
+          "purposes": [
+            "app_functionality"
           ]
         },
         {
@@ -140,7 +171,7 @@
       ],
       "medicalFunctionality": false,
       "healthConnect": false,
-      "offDeviceHealthDataCollection": "no_dedicated_field_but_reported_or_narrated_text_may_mention_health"
+      "offDeviceHealthDataCollection": "no_dedicated_field_but_ai_text_answers_reported_or_narrated_text_may_mention_health"
     },
     "prefillGuide": "store-listing/google-play-console-prefill.md"
   },

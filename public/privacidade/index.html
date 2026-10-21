@@ -23,7 +23,7 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Documento público · versão 1.6.0</p>
+          <p class="eyebrow">Documento público · versão 1.7.0</p>
           <h1>Política de privacidade</h1>
           <p class="lead">
             Esta política descreve como a Celeste trata dados no site e no aplicativo
@@ -86,7 +86,8 @@
               conteúdo necessário para a função escolhida. Depois do questionário, um único
               controle adulto no Perfil autoriza ou impede novas solicitações opcionais de cena,
               sonho, imagem, tradução e narração neural. No aplicativo Android, esse controle libera
-              somente a narração neural; os demais recursos em nuvem ficam apenas no site.
+              a narração neural e os textos escritos com IA da Cena-Âncora, das visões e das
+              afirmações; os demais recursos em nuvem ficam apenas no site.
             </p>
             <div class="processor-list" aria-label="Serviços e finalidades">
               <div class="processor">
@@ -97,8 +98,9 @@
               </div>
               <div class="processor">
                 <strong>Anthropic</strong>
-                Recebe respostas selecionadas e contexto reduzido para gerar cenas pessoais e
-                capítulos do Espelho Vivo quando essa função é autorizada.
+                Recebe respostas selecionadas e contexto reduzido para gerar cenas pessoais, as
+                visões e afirmações das seis áreas e capítulos do Espelho Vivo quando essa função é
+                autorizada.
               </div>
               <div class="processor">
                 <strong>OpenAI</strong>
@@ -124,8 +126,9 @@
               </div>
               <div class="processor">
                 <strong>Google Play Integrity</strong>
-                Somente no aplicativo Android, confirma ao backend que um pedido de narração veio do
-                app oficial instalado pela Google Play, num aparelho certificado, para prevenir abuso.
+                Somente no aplicativo Android, confirma ao backend que um pedido de narração ou de
+                texto com IA veio do app oficial instalado pela Google Play, num aparelho certificado,
+                para prevenir abuso.
               </div>
             </div>
             <p>
@@ -143,10 +146,10 @@
             </p>
             <h3>Narração no aplicativo Android</h3>
             <p>
-              No aplicativo Android, a narração com a voz escolhida é o único recurso em nuvem:
-              imagens pessoais não são geradas, e cena, sonho e tradução em nuvem ficam somente no
-              site. Depois do consentimento adulto, cada toque para ouvir envia ao backend da
-              Celeste, hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
+              No aplicativo Android, imagens pessoais não são geradas, e sonho, tradução e Espelho
+              Vivo em nuvem ficam somente no site. Depois do consentimento adulto, cada toque para
+              ouvir envia ao backend da Celeste,
+              hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
               história ou Cena-Âncora), o idioma, o identificador da voz escolhida e a sessão técnica
               anônima, usada para autorizar o pedido e aplicar limites de uso. O backend repassa
               somente o texto e a voz à ElevenLabs, que atua como processadora para gerar o áudio.
@@ -164,6 +167,30 @@
               Plano Celeste leem com a voz do próprio aparelho. O áudio devolvido segue as regras da
               seção 4; a sessão técnica anônima pode permanecer para prevenção de abuso e não é uma
               conta pessoal; os prazos dos fornecedores seguem o aviso da seção 5.
+            </p>
+            <h3>Textos com IA no aplicativo Android</h3>
+            <p>
+              No aplicativo Android, o mesmo consentimento adulto que libera a voz também permite que
+              a IA escreva a Cena-Âncora e as visões e afirmações das seis áreas. Depois dele, o app
+              envia ao backend da Celeste, hospedado na Vercel, o desejo, a área escolhida, o idioma
+              e as respostas selecionadas do questionário (como nome, cidade,
+              trabalho, relacionamento, por que isso importa e o que atrapalha), reduzidas como
+              descrito acima, junto com a sessão técnica anônima, usada para autorizar o pedido e
+              aplicar limites de uso. O backend repassa esse pedido reduzido aos mesmos provedores de
+              texto de cena do site: a Anthropic, com a OpenAI como alternativa, e o Google Gemini
+              somente se nenhum dos dois estiver configurado. Eles atuam como processadores para
+              escrever os textos. Nenhuma imagem é gerada no Android.
+            </p>
+            <p>
+              Como na narração, o pedido leva uma verificação do Google Play Integrity presa a ele por
+              um resumo criptográfico, sem enviar as respostas ao Google, e o backend só pede os
+              textos quando ela confirma o app oficial instalado pela Google Play num aparelho
+              certificado. Sem o consentimento, sem essa confirmação, sem conexão ou se o serviço
+              falhar, os textos são montados no próprio aparelho a partir das respostas, sem IA. Os
+              textos devolvidos ficam guardados no aparelho, como os demais conteúdos da seção 2; a
+              sessão técnica anônima pode permanecer para prevenção de abuso e não é uma conta
+              pessoal; os prazos dos fornecedores seguem o aviso da seção 5. Toda tela que mostra
+              esses textos oferece <strong>Denunciar este conteúdo de IA</strong>.
             </p>
             <h3>Denúncia de conteúdo de IA</h3>
             <p>
@@ -331,7 +358,8 @@
             <p>
               O site e o backend público usam HTTPS. A Celeste aplica autorização de sessão,
               consentimento unificado, limites de uso, redução dos pedidos, verificação Play Integrity
-              nos pedidos de voz do Android, bloqueio de permissões desnecessárias no Android e
+              nos pedidos de voz e de texto com IA do Android, bloqueio de permissões desnecessárias
+              no Android e
               armazenamento privado no aparelho. Nenhum sistema é
               totalmente livre de risco; evite inserir senhas, credenciais financeiras, números
               de documentos ou dados de outra pessoa.

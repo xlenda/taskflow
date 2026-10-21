@@ -74,13 +74,14 @@ informar o D-U-N-S diretamente no Play Console.
 
 - O Supabase está contratado para processar dados somente em nome da Celeste, como prestador de serviço: `SIM` / `NÃO` / `NÃO SEI`
 - A ElevenLabs (voz) e a Vercel (servidor) também atuam somente em nome da Celeste, como prestadoras de serviço: `SIM` / `NÃO` / `NÃO SEI`
+- A Anthropic, a OpenAI e o Google Gemini (textos com IA) também atuam somente em nome da Celeste, como prestadores de serviço: `SIM` / `NÃO` / `NÃO SEI`
 - A conta da ElevenLabs está em plano pago (o grátis não permite uso comercial): `SIM` / `NÃO`
 - Prazo máximo das linhas de denúncia: **180 dias**. A retenção da sessão técnica
   anônima e dos registros próprios do Supabase continua sujeita ao contrato ativo.
 - Exclusão disponível: **Perfil → Excluir denúncias de conteúdo de IA enviadas**,
   enquanto a sessão pseudônima desta instalação existir. O e-mail público presta
   ajuda, mas não garante localizar uma sessão perdida após limpeza/desinstalação.
-- Aprova declarar conservadoramente que o texto escolhido para denúncia pode conter nome, outras informações pessoais, cidade aproximada, informações de saúde ou financeiras: `SIM` / `NÃO`
+- Aprova declarar nome, cidade (localização aproximada) e outras informações pessoais, que desde 21/10 saem do aparelho para os textos com IA, e declarar conservadoramente que o desejo, as respostas e o texto escolhido para denúncia podem conter informações de saúde ou financeiras: `SIM` / `NÃO`
 
 Se a relação contratual do Supabase não puder ser confirmada, a transferência deverá ser declarada conservadoramente como compartilhamento. A declaração final será comparada com o AAB assinado e com o comportamento real do aplicativo.
 
@@ -127,7 +128,8 @@ Também autorizo marcar individualmente no Play Console os assets criados ou edi
   acrescentar permissão sensível; a engine pode usar rede e precisa ser validada no AAB final
 - Binário: a inclusão de `expo-speech` exige gerar um novo AAB e um novo build
   iOS; atualizar apenas o site/Vercel não acrescenta o módulo aos apps instalados
-- Data Safety básico: UUID pseudônimo, texto enviado para virar voz, conteúdo escolhido para denúncia e ações (denúncia e pedido de voz); coleta opcional, não efêmera, para funcionalidade e segurança; detalhes em `google-play-console-prefill.md`
+- Textos com IA no Android (desde 21/10): depois do consentimento e da verificação Play Integrity, a Cena-Âncora e as visões e afirmações das seis áreas são escritas pelo provedor de texto de cena a partir do desejo e das respostas; sem isso, os textos são montados no aparelho
+- Data Safety básico: UUID pseudônimo, nome, cidade e respostas enviados para os textos com IA, texto enviado para virar voz, conteúdo escolhido para denúncia e ações (denúncia e pedidos de voz e de textos); coleta opcional, não efêmera, para funcionalidade e segurança; detalhes em `google-play-console-prefill.md`
 
 As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 
@@ -142,7 +144,8 @@ As respostas técnicas ainda serão conferidas no AAB assinado antes do envio.
 - Manter uma rotina real de análise das denúncias recebidas.
 - Configurar a Play Integrity (projeto do Google Cloud vinculado, chave na Vercel
   e número do projeto no EAS) seguindo `docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`,
-  sem copiar a chave para este arquivo, para o chat ou para o repositório.
+  sem copiar a chave para este arquivo, para o chat ou para o repositório. A
+  mesma configuração libera a voz e os textos com IA no Android.
 - Instalar e aprovar o build final em um Android físico antes do lançamento público.
 
 ## Atenção ao prazo de verificação Android
