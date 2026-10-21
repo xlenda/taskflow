@@ -337,6 +337,11 @@ try {
   foreach ($required in @('EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_CELESTE_API_URL')) {
     if (-not $scopes.ContainsKey($required)) { throw "Variavel EAS production ausente: $required" }
   }
+  # Sem o numero do projeto do Google Cloud o AAB sai sem Play Integrity: no
+  # Android a voz da Celeste nunca abre (toca a voz do aparelho). Avisa, nao bloqueia.
+  if (-not $scopes.ContainsKey('EXPO_PUBLIC_PLAY_INTEGRITY_PROJECT_NUMBER')) {
+    Write-Warning 'EXPO_PUBLIC_PLAY_INTEGRITY_PROJECT_NUMBER ausente no EAS production: este AAB sai sem Play Integrity e no Android so toca a voz do aparelho (docs/PLAY-INTEGRITY-PASSO-A-PASSO.md, passo 7).'
+  }
   $keyNames = @(
     @('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'EXPO_PUBLIC_SUPABASE_ANON_KEY') |
       Where-Object { $scopes.ContainsKey($_) }

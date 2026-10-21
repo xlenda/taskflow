@@ -184,6 +184,13 @@ function isNativeRequest(req) {
   );
 }
 
+// Every native refusal is the same 403 for the caller and one log line saying why
+// (api/_play-integrity.js keeps that line free of tokens, hashes and secrets).
+function nativeRefusal(reason, googleStatus) {
+  playIntegrity.logNativeRejection(reason, googleStatus);
+  return { error: 'native_attestation_required', status: 403 };
+}
+
 async function fetchWithTimeout(url, options) {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS) : null;
@@ -324,12 +331,12 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   }
 
   if (hasNativeClientClaim(req) && !isNativeRequest(req)) {
-    return { error: 'native_attestation_required', status: 403 };
+    return nativeRefusal(clientKind(req) === 'android' ? 'no_token' : 'client_not_supported');
   }
   // Play Integrity opens only the Android voice; every other native call stays closed.
   const attestNative = hasNativeClientClaim(req) && !localNativeBypassEnabled();
   if (attestNative && operation !== playIntegrity.NATIVE_OPERATION) {
-    return { error: 'native_attestation_required', status: 403 };
+    return nativeRefusal('operation_not_allowed');
   }
 
   const config = serverConfig();
@@ -352,8 +359,13 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   if (!token || !id) return { error: 'identity_required', status: 401 };
 
   if (attestNative) {
-    const integrity = await playIntegrity.verifyPlayIntegrity(req, { operation, requestId: id });
-    if (!integrity.ok) return { error: 'native_attestation_required', status: 403 };
+    // The token is bound to this Bearer session too: replayed with another session, it fails.
+    const integrity = await playIntegrity.verifyPlayIntegrity(req, {
+      operation,
+      requestId: id,
+      accessToken: token,
+    });
+    if (!integrity.ok) return nativeRefusal(integrity.reason, integrity.googleStatus);
   }
 
   const identity = await authenticatedUser(config, token);

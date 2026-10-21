@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { appIntegrityConfigured, integrityHeaderFor, requestBodyHash } from './appIntegrity';
+import { appIntegrityConfigured, integrityHash, integrityHeaderFor } from './appIntegrity';
 import { getCelesteSupabaseClient } from './celesteSupabase';
 
 let sessionPromise;
@@ -76,19 +76,25 @@ export async function getCelesteApiSession() {
 }
 
 // `body` is the exact JSON string the caller will send: on Android the Play
-// Integrity token is bound to it, so the voice request must pass it here.
+// Integrity token is bound to it and to the session that sends it (a token
+// captured for one session fails for another), so the session is created or
+// reused first and the voice request must pass its body here.
 export async function celestePaidApiHeaders({ operation = null, body } = {}) {
   const capability = assertCloudAccessAvailable(operation);
+  const android = capability.client === 'android';
+  if (android && typeof body !== 'string') throw attestationRequired();
   const id = requestId();
+  const session = await apiSession();
   let integrity = null;
-  if (capability.client === 'android') {
-    integrity =
-      typeof body === 'string'
-        ? await integrityHeaderFor({ operation, requestId: id, bodyHash: requestBodyHash(body) })
-        : null;
+  if (android) {
+    integrity = await integrityHeaderFor({
+      operation,
+      requestId: id,
+      sessionHash: integrityHash(session.access_token),
+      bodyHash: integrityHash(body),
+    });
     if (!integrity) throw attestationRequired();
   }
-  const session = await apiSession();
   return {
     Authorization: `Bearer ${session.access_token}`,
     'X-Celeste-Client': capability.client,

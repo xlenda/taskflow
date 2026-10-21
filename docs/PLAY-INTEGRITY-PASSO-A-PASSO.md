@@ -39,6 +39,15 @@ Observações:
 - Não precisa mexer em **Responses** (respostas). O servidor usa só as respostas que já vêm ligadas: app reconhecido pela Play e aparelho certificado.
 - **Não verificado:** se o botão aparece antes do primeiro envio de AAB. Se não aparecer, faça o passo 8 primeiro e volte aqui.
 
+## Passo 3b — Alerta de cota e pedido de aumento (logo depois do vínculo)
+
+O Google dá ao projeto 10 mil verificações por dia. Se acabarem, o Android toca a voz do celular até o dia seguinte. O Google diz que o aumento pode levar até uma semana, então peça logo depois do passo 3.
+
+1. **Alerta:** no Google Cloud, com o projeto do passo 1 escolhido, abra **IAM & Admin → Quotas & System Limits** (IAM e administrador → Cotas e limites do sistema) e busque **Play Integrity**. Na linha da cota diária, clique em **More actions** (os três pontos) → **Create usage alert**. Em **Configure notifications**, escolha o seu e-mail e clique em **Create**.
+2. **Aumento:** preencha o formulário do Google: https://support.google.com/googleplay/android-developer/contact/piaqr. O Google só aceita com o projeto já vinculado (passo 3) e com o app disponível na Google Play. Se recusar por isso, peça de novo quando o app estiver publicado.
+
+**Não verificado:** se a cota da Play Integrity aparece nessa página do Google Cloud. O Google avisa que nem todo serviço mostra a cota ali. Se não aparecer, me chame.
+
 ## Passo 4 — Conta de serviço e chave JSON
 
 É o "login" que o servidor usa para perguntar ao Google se a verificação é válida.
@@ -116,9 +125,35 @@ Peça ao agente, ou rode nesta ordem, na pasta `C:\projetos\TaskFlow`:
   - variável da Vercel ausente, com nome errado ou sem deploy novo (passos 6 e 8);
   - número do projeto errado, ou AAB gerado antes do passo 7;
   - projeto não vinculado no Play Console (passo 3).
-- **Limite:** o padrão é de 10 mil pedidos por dia; o aumento é pedido pelo Play Console.
+- **Limite:** o padrão é de 10 mil verificações por dia. O alerta e o pedido de aumento estão no passo 3b.
 
-Em qualquer caso, peça ao agente para olhar os logs da Vercel. Quando recusa, o servidor responde `native_attestation_required`.
+**O motivo de cada recusa fica no log da Vercel.** O celular recebe sempre a mesma recusa (`native_attestation_required`). O servidor escreve uma linha no log com o motivo:
+
+1. Na Vercel, abra o projeto **celeste** e clique em **Logs**, no menu lateral.
+2. Na busca, digite `play_integrity_rejected`.
+3. Cada recusa aparece assim: `{"event":"play_integrity_rejected","reason":"stale","googleStatus":null}`. A linha nunca mostra o token, o texto, a sessão nem a chave.
+4. Olhe logo depois do teste. A Vercel guarda esses logs por pouco tempo: 1 hora no plano Hobby, 1 dia no Pro.
+
+| `reason` (motivo) | Causa provável | O que fazer |
+|---|---|---|
+| `no_credentials` | A chave do Google não está na Vercel, está com o nome errado ou não é um JSON de conta de serviço. Ou o deploy é anterior a ela. | Refaça os passos 5 e 6 e o deploy do passo 8. |
+| `auth_http_400` ou `auth_http_401` | O Google recusou a chave da conta de serviço: chave apagada, trocada ou colada pela metade. | Crie outra chave (passos 4 a 6) e faça o deploy (passo 8). |
+| `auth_http_` com outro número, ou `auth_invalid_response` | O login da conta de serviço falhou do lado do Google. | Espere alguns minutos e teste de novo. Se continuar, me chame. |
+| `decode_http_403` | Falta permissão: a conta de serviço não é do projeto vinculado, ou a Play Integrity API não está ligada nesse projeto. | Confira se os passos 2, 3 e 4 usaram o mesmo projeto. Se estiver tudo certo, me chame. |
+| `decode_http_400` | O Google não reconheceu o token: app modificado ou token cortado no caminho. | No seu celular de teste, instale de novo pela Play. Vindo de outro celular, é tentativa de abuso: nada a fazer. |
+| `decode_http_429` | Acabou a cota diária de verificações do Google. | Passo 3b (alerta e aumento). A cota volta no dia seguinte. |
+| `decode_http_500` a `decode_http_599`, `timeout` ou `network_error` | O Google ficou fora do ar ou demorou mais de 5 segundos. | Nada: passa sozinho. Se durar mais de uma hora, me chame. |
+| `decode_http_` com outro número, ou `decode_invalid_response` | O Google recusou por outro motivo ou respondeu sem o resultado. | Me chame e diga o número. |
+| `package_mismatch` ou `app_package_mismatch` | O token é de outro app. | Nada: é tentativa de abuso ou cópia do app. |
+| `hash_mismatch` | O token não é deste pedido: o pedido mudou depois do token, o token veio de outra sessão (reaproveitado), ou o app e o servidor estão em versões diferentes. | No seu celular: faça o deploy do servidor e gere um AAB novo com o mesmo código (passo 8). Vindo de outro celular, nada a fazer. |
+| `stale` | O token chegou com mais de 2 minutos: internet muito lenta ou relógio do celular atrasado. | Ligue data e hora automáticas no celular e teste de novo. |
+| `future` | O horário do token está no futuro: relógio do celular adiantado. | Ligue data e hora automáticas no celular e teste de novo. |
+| `not_play_recognized` | O app não veio da Play (APK do EAS, build "preview", cabo), ou o mesmo token foi usado duas vezes. | Instale pela trilha interna, pela Play Store (item 1 deste passo). |
+| `device_integrity_missing` | Emulador, celular com root ou com o bootloader desbloqueado. | Esperado: teste num celular comum. |
+| `no_token` | Pedido que diz vir do Android, mas sem a verificação. O app oficial não envia pedido assim. | Nada: não é o app. |
+| `client_not_supported` | Pedido que diz vir do iPhone. | Nada: o iPhone não tem a voz em nuvem nesta versão. |
+| `operation_not_allowed` | Pedido do Android para outra coisa além da voz (imagem, cena, sonho ou tradução). | Nada: no Android só a voz vai para a nuvem. |
+| `unknown` | Erro inesperado no servidor. | Me chame. |
 
 **Opcional:** em **Protected with Play → Play Integrity API → Manage → Testing → Create new test**, o Play Console permite escolher respostas de teste para os e-mails dos testadores. Serve para ver de propósito o caminho da voz do celular.
 
@@ -135,11 +170,15 @@ Em qualquer caso, peça ao agente para olhar os logs da Vercel. Quando recusa, o
 - O caminho exato no menu até **Service accounts** no Google Cloud (a documentação só dá o link direto).
 - Se a conta de serviço precisa de algum papel (role). Pela documentação, não precisa.
 - Se o vínculo do passo 3 aparece antes do primeiro AAB enviado.
+- Se a cota da Play Integrity aparece em **Quotas & System Limits** para criar o alerta do passo 3b.
+- As causas da tabela do passo 9 são as prováveis; o Google não lista todas as causas de cada código.
 - O comando `eas env:set` não foi rodado.
 
 ## Fontes oficiais
 
-- Configuração da Play Integrity: https://developer.android.com/google/play/integrity/setup
+- Configuração da Play Integrity (cota e pedido de aumento): https://developer.android.com/google/play/integrity/setup
+- Alertas de cota no Google Cloud: https://docs.cloud.google.com/docs/quotas/set-up-quota-alerts
+- Logs da Vercel (onde ver e por quanto tempo ficam): https://vercel.com/docs/logs/runtime
 - Pedido padrão e decodificação no servidor (conta de serviço): https://developer.android.com/google/play/integrity/standard
 - Respostas (veredictos): https://developer.android.com/google/play/integrity/verdicts
 - Dados tratados pela Play Integrity: https://developer.android.com/google/play/integrity/terms

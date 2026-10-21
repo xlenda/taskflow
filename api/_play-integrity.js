@@ -3,12 +3,13 @@ const crypto = require('crypto');
 // Play Integrity "standard request" verification for the Android voice.
 // Docs: developer.android.com/google/play/integrity/standard (decode on Google's
 // server with a service account) and .../integrity/verdicts (payload fields).
-// The app binds every token to the request it protects; services/appIntegrity.js
-// builds the same canonical string hashed in requestHashFor().
+// The app binds every token to the request it protects and to the session that
+// sends it; services/appIntegrity.js builds the same canonical string hashed in
+// requestHashFor().
 const PACKAGE_NAME = 'com.celesteapp.affirmations';
 const NATIVE_OPERATION = 'audio';
 const SERVICE_ACCOUNT_ENV = 'CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64';
-const REQUEST_HASH_VERSION = 'celeste-play-integrity-v1';
+const REQUEST_HASH_VERSION = 'celeste-play-integrity-v2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const PLAY_INTEGRITY_SCOPE = 'https://www.googleapis.com/auth/playintegrity';
 const DECODE_URL = `https://playintegrity.googleapis.com/v1/${PACKAGE_NAME}:decodeIntegrityToken`;
@@ -19,6 +20,27 @@ const GOOGLE_TIMEOUT_MS = 5000;
 const MAX_TOKEN_AGE_MS = 2 * 60 * 1000;
 const MAX_CLOCK_SKEW_MS = 30 * 1000;
 const TOKEN_PATTERN = /^[\x21-\x7e]{16,16384}$/;
+// Why a native request was refused: the one log line each refusal writes carries
+// only one of these (docs/PLAY-INTEGRITY-PASSO-A-PASSO.md, passo 9, explains
+// each) plus Google's HTTP status, which also rides in `<stage>_http_<status>`.
+const REJECTION_REASONS = new Set([
+  'no_token',
+  'client_not_supported',
+  'operation_not_allowed',
+  'no_credentials',
+  'timeout',
+  'network_error',
+  'auth_invalid_response',
+  'decode_invalid_response',
+  'package_mismatch',
+  'hash_mismatch',
+  'stale',
+  'future',
+  'not_play_recognized',
+  'app_package_mismatch',
+  'device_integrity_missing',
+]);
+const HTTP_REJECTION = /^(?:auth|decode)_http_\d{3}$/;
 
 let parsedAccount = { raw: null, value: null };
 let cachedAccessToken = null;
@@ -27,8 +49,18 @@ function sha256Hex(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-function requestHashFor({ operation, requestId, bodyHash }) {
-  return sha256Hex([REQUEST_HASH_VERSION, operation, requestId, bodyHash].join('\n'));
+function requestHashFor({ operation, requestId, sessionHash, bodyHash }) {
+  return sha256Hex([REQUEST_HASH_VERSION, operation, requestId, sessionHash, bodyHash].join('\n'));
+}
+
+// The refusal the app sees is always the same 403; the Vercel log gets one
+// structured line saying why. Never the token, hashes, user, body or secrets:
+// anything outside the fixed reasons becomes 'unknown'.
+function logNativeRejection(reason, googleStatus = null) {
+  const safeReason = REJECTION_REASONS.has(reason) || HTTP_REJECTION.test(reason) ? reason : 'unknown';
+  const safeStatus =
+    Number.isInteger(googleStatus) && googleStatus >= 100 && googleStatus <= 599 ? googleStatus : null;
+  console.warn(JSON.stringify({ event: 'play_integrity_rejected', reason: safeReason, googleStatus: safeStatus }));
 }
 
 // The app hashes the exact JSON string it sends; JSON.parse + JSON.stringify
@@ -77,18 +109,31 @@ function base64url(value) {
   return Buffer.from(value).toString('base64url');
 }
 
-async function postToGoogle(url, options) {
-  const response = await fetch(url, {
-    ...options,
-    method: 'POST',
-    signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
-  });
-  if (!response || !response.ok) {
-    const error = new Error('google_request_failed');
-    error.status = response ? response.status : 0;
-    throw error;
+function googleFailure(reason, googleStatus = null) {
+  return Object.assign(new Error(reason), { reason, googleStatus });
+}
+
+// `stage` names the call in the refusal reason: 'auth' (service-account token) or 'decode'.
+async function postToGoogle(stage, url, options) {
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      method: 'POST',
+      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw googleFailure(error && error.name === 'TimeoutError' ? 'timeout' : 'network_error');
   }
-  return response.json();
+  if (!response || !response.ok) {
+    const status = response ? response.status : 0;
+    throw googleFailure(`${stage}_http_${status}`, status);
+  }
+  try {
+    return await response.json();
+  } catch (error) {
+    throw googleFailure(error && error.name === 'TimeoutError' ? 'timeout' : `${stage}_invalid_response`);
+  }
 }
 
 // developers.google.com/identity/protocols/oauth2/service-account#httprest
@@ -104,7 +149,7 @@ async function requestAccessToken(account) {
   };
   const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;
   const signature = crypto.sign('sha256', Buffer.from(unsigned), account.privateKey);
-  const json = await postToGoogle(GOOGLE_TOKEN_URL, {
+  const json = await postToGoogle('auth', GOOGLE_TOKEN_URL, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -112,7 +157,7 @@ async function requestAccessToken(account) {
     }).toString(),
   });
   if (!json || typeof json.access_token !== 'string' || !json.access_token) {
-    throw new Error('google_token_invalid');
+    throw googleFailure('auth_invalid_response');
   }
   return { token: json.access_token, expiresInSeconds: Number(json.expires_in) || 0 };
 }
@@ -145,7 +190,7 @@ function googleAccessToken(account) {
 async function decodeIntegrityToken(account, token) {
   const accessToken = await googleAccessToken(account);
   try {
-    const json = await postToGoogle(DECODE_URL, {
+    const json = await postToGoogle('decode', DECODE_URL, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
@@ -155,42 +200,52 @@ async function decodeIntegrityToken(account, token) {
     });
     return json && json.tokenPayloadExternal;
   } catch (error) {
-    if (error && error.status === 401) cachedAccessToken = null;
+    if (error && error.googleStatus === 401) cachedAccessToken = null;
     throw error;
   }
 }
 
 function verdictProblem(payload, expectedHash, now) {
-  const request = (payload && payload.requestDetails) || {};
-  const app = (payload && payload.appIntegrity) || {};
-  const device = (payload && payload.deviceIntegrity) || {};
-  if (request.requestPackageName !== PACKAGE_NAME) return 'package';
-  if (request.requestHash !== expectedHash) return 'request_hash';
+  if (!payload || typeof payload !== 'object') return 'decode_invalid_response';
+  const request = payload.requestDetails || {};
+  const app = payload.appIntegrity || {};
+  const device = payload.deviceIntegrity || {};
+  if (request.requestPackageName !== PACKAGE_NAME) return 'package_mismatch';
+  if (request.requestHash !== expectedHash) return 'hash_mismatch';
   const age = now - Number(request.timestampMillis);
-  if (!(age >= -MAX_CLOCK_SKEW_MS && age <= MAX_TOKEN_AGE_MS)) return 'stale';
-  if (app.appRecognitionVerdict !== 'PLAY_RECOGNIZED') return 'app';
+  if (!(age <= MAX_TOKEN_AGE_MS)) return 'stale';
+  if (age < -MAX_CLOCK_SKEW_MS) return 'future';
+  if (app.appRecognitionVerdict !== 'PLAY_RECOGNIZED') return 'not_play_recognized';
+  if (app.packageName !== PACKAGE_NAME) return 'app_package_mismatch';
   const labels = Array.isArray(device.deviceRecognitionVerdict) ? device.deviceRecognitionVerdict : [];
-  if (!labels.includes('MEETS_DEVICE_INTEGRITY')) return 'device';
+  if (!labels.includes('MEETS_DEVICE_INTEGRITY')) return 'device_integrity_missing';
   return null;
 }
 
 // Callers (api/_paid-access.js) already limit this to Android voice requests
-// that carry a token and a valid request id.
-async function verifyPlayIntegrity(req, { operation, requestId }) {
+// that carry a token, a valid request id and the Bearer session (`accessToken`)
+// the token must be bound to: a token issued for one session fails for another.
+// Returns { ok } or { ok: false, reason, googleStatus } for logNativeRejection().
+async function verifyPlayIntegrity(req, { operation, requestId, accessToken }) {
   const account = serviceAccount();
-  if (!account) return { ok: false, reason: 'not_configured' };
+  if (!account) return { ok: false, reason: 'no_credentials' };
   let payload;
   try {
     payload = await decodeIntegrityToken(account, integrityToken(req));
-  } catch (_error) {
-    return { ok: false, reason: 'google_unavailable' };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: (error && error.reason) || 'unknown',
+      googleStatus: error && error.googleStatus,
+    };
   }
-  const bodyHash = requestBodyHash(req && req.body);
-  const problem = verdictProblem(
-    payload,
-    requestHashFor({ operation, requestId, bodyHash }),
-    Date.now()
-  );
+  const expectedHash = requestHashFor({
+    operation,
+    requestId,
+    sessionHash: sha256Hex(String(accessToken || '')),
+    bodyHash: requestBodyHash(req && req.body),
+  });
+  const problem = verdictProblem(payload, expectedHash, Date.now());
   return problem ? { ok: false, reason: problem } : { ok: true };
 }
 
@@ -203,8 +258,10 @@ module.exports = {
   MAX_TOKEN_AGE_MS,
   NATIVE_OPERATION,
   PACKAGE_NAME,
+  REJECTION_REASONS,
   SERVICE_ACCOUNT_ENV,
   integrityToken,
+  logNativeRejection,
   requestBodyHash,
   requestHashFor,
   resetForTests,

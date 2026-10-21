@@ -56,8 +56,16 @@ function loadClient(platform, { projectNumber = '', integrity = fakeAppIntegrity
     'expo-file-system': { Directory: class TestDirectory {}, File: class TestFile {}, Paths: {} },
     'react-native': reactNative,
   });
+  // the order the app talks to Supabase ('session') and asks Google for the token ('token')
+  const events = [];
   const appIntegrity = loadEsm('services/appIntegrity.js', {
-    '@expo/app-integrity': integrity.module,
+    '@expo/app-integrity': {
+      ...integrity.module,
+      requestIntegrityCheckAsync: (requestHash) => {
+        events.push('token');
+        return integrity.module.requestIntegrityCheckAsync(requestHash);
+      },
+    },
     './narrationAudioStorage': storage,
     'react-native': reactNative,
   });
@@ -69,10 +77,12 @@ function loadClient(platform, { projectNumber = '', integrity = fakeAppIntegrity
         auth: {
           getSession: async () => {
             supabaseCalls.count += 1;
+            events.push('session');
             return { data: { session }, error: null };
           },
           signInAnonymously: async () => {
             supabaseCalls.count += 1;
+            events.push('session');
             return { data: { session: { access_token: 'native-anonymous-session' } }, error: null };
           },
         },
@@ -80,13 +90,16 @@ function loadClient(platform, { projectNumber = '', integrity = fakeAppIntegrity
     },
     'react-native': reactNative,
   });
-  return { api, appIntegrity, integrity, supabaseCalls };
+  return { api, appIntegrity, integrity, supabaseCalls, events };
 }
 
 const sha256Hex = (value) => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
-// Independent oracle of the canonical request hash checked by api/_play-integrity.js.
-const oracleRequestHash = (operation, requestId, body) =>
-  sha256Hex(['celeste-play-integrity-v1', operation, requestId, sha256Hex(body)].join('\n'));
+// Independent oracle of the canonical request hash checked by api/_play-integrity.js: the token is bound to the
+// operation, the request id, the session (Bearer) that sends it and the exact body.
+const oracleRequestHash = (operation, requestId, accessToken, body) =>
+  sha256Hex(
+    ['celeste-play-integrity-v2', operation, requestId, sha256Hex(accessToken), sha256Hex(body)].join('\n')
+  );
 const attestationRequired = (error) =>
   error &&
   error.message === 'native_attestation_required' &&
@@ -105,6 +118,13 @@ const voiceBody = JSON.stringify({
 async function assertClosedBeforeCloud(client, label, call) {
   await assert.rejects(call, attestationRequired, label);
   assert.strictEqual(client.supabaseCalls.count, 0, `${label}: Supabase contatado sem atestacao`);
+}
+
+// The token binds to the session, so Google is asked only after the session exists; when no token comes, the call
+// still refuses (the caller never sends the voice request).
+async function assertRefusedAfterSession(client, label, call) {
+  await assert.rejects(call, attestationRequired, label);
+  assert.strictEqual(client.events[0], 'session', `${label}: a sessao vem antes do pedido do token`);
 }
 
 async function verifyIosStaysLocal() {
@@ -167,21 +187,38 @@ async function verifyAndroidOnlyOpensVerifiedVoice() {
     'X-Celeste-Request-Id': requestId,
     'X-Celeste-Integrity': 'device-integrity-token',
   });
+  assert.deepStrictEqual(
+    android.events,
+    ['session', 'session', 'token'],
+    'a sessao anonima e criada antes do token: o token fica amarrado a ela'
+  );
   assert.deepStrictEqual(android.integrity.calls.prepare, ['123456789012']);
   assert.deepStrictEqual(android.integrity.calls.request, [
-    oracleRequestHash('audio', requestId, voiceBody),
+    oracleRequestHash('audio', requestId, 'native-anonymous-session', voiceBody),
   ]);
   assert.strictEqual(
     android.integrity.calls.request[0],
     playIntegrity.requestHashFor({
       operation: 'audio',
       requestId,
+      sessionHash: sha256Hex('native-anonymous-session'),
       bodyHash: playIntegrity.requestBodyHash(JSON.parse(voiceBody)),
     }),
     'app e servidor precisam calcular o mesmo hash do pedido'
   );
   await android.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody });
   assert.deepStrictEqual(android.integrity.calls.prepare, ['123456789012'], 'provedor preparado uma vez');
+
+  // The session already on the device is the one the token binds: another session gives another hash.
+  const signedIn = loadClient('android', {
+    projectNumber: '123456789012',
+    session: { access_token: 'sessao-anonima-ja-guardada' },
+  });
+  const reused = await signedIn.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody });
+  assert.strictEqual(reused.Authorization, 'Bearer sessao-anonima-ja-guardada');
+  assert.deepStrictEqual(signedIn.integrity.calls.request, [
+    oracleRequestHash('audio', reused['X-Celeste-Request-Id'], 'sessao-anonima-ja-guardada', voiceBody),
+  ]);
 }
 
 async function verifyAndroidIntegrityFailuresStayLocal() {
@@ -191,7 +228,7 @@ async function verifyAndroidIntegrityFailuresStayLocal() {
     projectNumber: '123456789012',
     integrity: fakeAppIntegrity({ results: [integrityError('ERR_APP_INTEGRITY_NETWORK_ERROR')] }),
   });
-  await assertClosedBeforeCloud(failing, 'Play Integrity falhou', () =>
+  await assertRefusedAfterSession(failing, 'Play Integrity falhou', () =>
     failing.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
   );
 
@@ -199,7 +236,7 @@ async function verifyAndroidIntegrityFailuresStayLocal() {
     projectNumber: '123456789012',
     integrity: fakeAppIntegrity({ results: [''] }),
   });
-  await assertClosedBeforeCloud(emptyToken, 'token vazio', () =>
+  await assertRefusedAfterSession(emptyToken, 'token vazio', () =>
     emptyToken.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
   );
 
@@ -217,10 +254,10 @@ async function verifyAndroidIntegrityFailuresStayLocal() {
     projectNumber: '123456789012',
     integrity: fakeAppIntegrity({ prepareError: integrityError('ERR_APP_INTEGRITY_PLAY_STORE_NOT_FOUND') }),
   });
-  await assertClosedBeforeCloud(unprepared, 'Play Store ausente', () =>
+  await assertRefusedAfterSession(unprepared, 'Play Store ausente', () =>
     unprepared.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
   );
-  await assertClosedBeforeCloud(unprepared, 'Play Store ausente (repeticao)', () =>
+  await assertRefusedAfterSession(unprepared, 'Play Store ausente (repeticao)', () =>
     unprepared.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
   );
   assert.strictEqual(
@@ -229,7 +266,7 @@ async function verifyAndroidIntegrityFailuresStayLocal() {
     'a Play aceita 5 preparos por minuto: falha nao pode virar loop'
   );
   assert.strictEqual(
-    await unprepared.appIntegrity.integrityHeaderFor({ operation: 'audio', requestId: 'x', bodyHash: 'y' }),
+    await unprepared.appIntegrity.integrityHeaderFor({ operation: 'audio', requestId: 'x', sessionHash: 'z', bodyHash: 'y' }),
     null,
     'integrityHeaderFor nunca lanca para quem chama'
   );
@@ -272,6 +309,17 @@ function verifyServerBoundarySource() {
   assert.ok(verifyIndex > 0 && verifyIndex < identityIndex, 'Google valida antes de identidade e cota');
 }
 
+// An AAB built without the Cloud project number never opens the Celeste voice on Android (the app refuses before the
+// network): the publish script says so out loud, without blocking and without printing any value.
+function verifyAabScriptWarnsWithoutProjectNumber() {
+  const script = fs.readFileSync(path.join(root, 'scripts', 'publicar-google-play.ps1'), 'utf8');
+  assert.match(
+    script,
+    /if \(-not \$scopes\.ContainsKey\('EXPO_PUBLIC_PLAY_INTEGRITY_PROJECT_NUMBER'\)\) \{\s*Write-Warning '[^'\r\n]*EXPO_PUBLIC_PLAY_INTEGRITY_PROJECT_NUMBER[^'\r\n]*'\s*\}/,
+    'publicar-google-play.ps1 avisa (sem bloquear) quando falta o numero do projeto no EAS production'
+  );
+}
+
 async function main() {
   try {
     await verifyIosStaysLocal();
@@ -279,6 +327,7 @@ async function main() {
     await verifyAndroidIntegrityFailuresStayLocal();
     await verifyWebUnchanged();
     verifyServerBoundarySource();
+    verifyAabScriptWarnsWithoutProjectNumber();
   } finally {
     if (originalProjectNumber === undefined) delete process.env[PROJECT_NUMBER_ENV];
     else process.env[PROJECT_NUMBER_ENV] = originalProjectNumber;
