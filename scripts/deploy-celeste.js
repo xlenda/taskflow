@@ -42,6 +42,7 @@ const STATIC_GATES = [
   ['scripts/verificar-provedores-texto.js', 'Providers Claude/OpenAI da Celeste falharam'],
   ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],
   ['scripts/verificar-acesso-pago.js', 'Autorizacao e cota distribuida do Gemini falharam'],
+  ['scripts/verificar-fronteira-api-nativa.js', 'Fronteira nativa (so a voz do Android com Play Integrity) falhou'],
   ['scripts/verificar-waf-vercel.js', 'WAF ativo da Vercel diverge da protecao versionada'],
   ['scripts/verificar-audio-gemini.js', 'Infraestrutura de voz Gemini falhou'],
   ['scripts/verificar-controles-reproducao-audio.js', 'Controles de progresso e velocidade do audio falharam'],
