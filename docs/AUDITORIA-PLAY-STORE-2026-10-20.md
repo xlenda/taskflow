@@ -2,6 +2,31 @@
 
 Auditoria somente de leitura, feita antes de enviar a Celeste para a Google Play. Não alterei código e não fiz commit.
 
+## Execução — 20/10, noite (atualizado depois da auditoria)
+
+O que já foi corrigido no código e o que continua com você. As seções abaixo ficam como foram escritas, como registro.
+
+| Item | Situação | Commit |
+|---|---|---|
+| B1 Conta Google Play / D-U-N-S | **Pendente — você**, no Play Console | — |
+| B2 Política com "nome legal pendente" | **Pendente — falta o nome legal e a regra de retenção da sessão anônima.** O link da política pública dentro do app já foi feito | 57f7a9f |
+| B3 Ficha prometia o Espelho Vivo | **Corrigido.** A descrição cita só o que o Android tem: cena viva, Meu despertar, Jornada e compartilhar em imagem ou vídeo | 57c57f7, 7264833 |
+| B4 Fotos da ficha tiradas do site | **Pendente:** refazer as 8 no Android, pela trilha interna | — |
+| B5 AAB desta versão | Gerado depois do merge; **teste em aparelho real pendente** | — |
+| R1 Avaliação logo depois da Cena-Âncora | **Mantido** por decisão do Lenda (não é violação) | — |
+| R2 WebView | **Parcial:** `setSupportMultipleWindows={false}` nas duas WebViews; filtro de navegação adiado porque só dá para testar em aparelho | 4493b7b |
+| R3 Público 18+ | **Console — você** | — |
+| R4 Privacidade e notas ao revisor | **Corrigido:** política v1.5.0 de 20/10 e notas atualizadas | 57f7a9f, 2f76feb |
+| R5 Denúncia de IA em mais telas | **Adiado:** o Android não gera conteúdo com IA | — |
+| R6/R7 Supabase | **Painel — você:** limite de login anônimo, avisos de segurança e migrations 013/014 | — |
+| R8 npm audit | Sem ação: são ferramentas de build | — |
+| R9 Vídeo de abertura pela internet | **Adiado** (opcional) | — |
+| R10 Direitos e IA dos materiais | **Registrado.** Falta confirmar se a ElevenLabs estava em plano pago em 27/08 | 57f7a9f |
+| R11 Botão "Restaurar" | **Removido** | 57f7a9f |
+| R12 Target 36, 16 KB e permissões | Conferir no Explorador de pacotes depois do 1º upload | — |
+| Revisão final: cena viva e vídeo no Android release | **Corrigido:** no AAB a cena pronta não chegava à animação | 9a2a383 |
+| Revisão final: despertar parava quando a tela apagava | **Corrigido:** a tela fica acesa enquanto a voz fala, sem permissão nova | 9a2a383 |
+
 - **Versão auditada:** commit `411d645` da branch `feat/despertar-compartilhar-cena-viva`. A branch ainda está em construção e não tem cópia no GitHub.
 - **O que eu conferi:**
   - o código e a configuração, inclusive o manifesto gerado pelos plugins (`npx expo config --type introspect`);
@@ -380,7 +405,7 @@ Concluir o D-U-N-S e a verificação da organização.
 - Compartilhar cartão ou vídeo é iniciado pela pessoa, e a avaliação é do próprio Google: **não mudam** as respostas.
 
 **Nota de revisão em inglês, para colar em "Acesso ao app".** Ajuste a parte do compartilhar quando ela estiver pronta:
-> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version does not generate content with AI and has no Community, purchases, ads or exact alarm. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, and the device voice plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the image or the 8-second video and send it through the system share sheet. Celeste Plan: Home > Celeste Plan, choose a vision and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available. Reporting: open an affirmation, vision, Anchor Scene or dream result, tap "Report this AI content", choose a reason and submit.
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version does not generate content with AI and has no Community, purchases, ads or exact alarm. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, and the device voice plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, choose a vision and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available. Reporting: open an affirmation, vision, Anchor Scene or dream result, tap "Report this AI content", choose a reason and submit.
 
 ### 3. Ficha da loja (Presença na loja → Ficha principal)
 - **Título, descrição curta e descrição completa:** copiar dos arquivos em `store-listing/pt-BR/google-play/` e `store-listing/en-US/google-play/`, sem a seção do Espelho Vivo (B3).
