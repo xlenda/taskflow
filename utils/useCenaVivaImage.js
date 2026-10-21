@@ -5,16 +5,21 @@ import { useApp } from '../context/AppContext';
 import { acquirePersonalVisual } from '../services/personalVisualStorage';
 import { pickReadyScene } from './readyScene';
 
+const NONE = { key: null, uri: null, source: null, failed: false };
+
 // Imagem da cena viva de um conteúdo: { uri, source, failed }. A pessoal (visualKey) quando ela abre — source é a
 // uri dela —; sem imagem pessoal (nunca gerada, ou o arquivo sumiu), a cena pronta das respostas (lugar dos sonhos ×
 // categoria) e source null: quem mostra põe o rótulo honesto. Enquanto a pessoal abre, nada (sem piscar a cena
-// pronta). Trocou a chave: a cena anterior fica até a nova entrar, e só então a imagem dela é liberada (ainda está
-// na tela). failed: não deu para preparar a imagem — quem mostra decide, nada fica calado.
+// pronta). Trocou de conteúdo: nada até a cena dele (o conteúdo anterior não fica na tela) — só com keepPrevious (a
+// voz tocando, quando o player troca de imagem no meio da fala) a cena anterior fica até a nova entrar, sem buraco.
+// A imagem pessoal anterior só é liberada quando a nova entra (pode ainda estar na tela). failed: não deu para
+// preparar a imagem — quem mostra decide, nada fica calado.
 // Só use dentro do que monta quando a cena é querida: este hook assina o estado do app.
-export function useCenaVivaImage({ visualKey, category }) {
+export function useCenaVivaImage({ visualKey, category, keepPrevious = false }) {
   const { state } = useApp();
   const dreamLocation = state?.profile?.dreamLocation;
-  const [scene, setScene] = useState({ uri: null, source: null, failed: false });
+  const key = [visualKey, dreamLocation, category].join('|');
+  const [scene, setScene] = useState(NONE);
   const held = useRef(null); // a imagem pessoal que a cena mostra agora
 
   useEffect(
@@ -34,7 +39,7 @@ export function useCenaVivaImage({ visualKey, category }) {
       }
       if (held.current) held.current.release();
       held.current = personal;
-      setScene(next);
+      setScene({ key, ...next });
     };
     (async () => {
       personal = visualKey ? await acquirePersonalVisual(visualKey).catch(() => null) : null;
@@ -51,7 +56,8 @@ export function useCenaVivaImage({ visualKey, category }) {
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visualKey, dreamLocation, category]);
 
-  return scene;
+  return keepPrevious || scene.key === key ? scene : NONE;
 }

@@ -37,6 +37,9 @@ import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 
 const GAP_MS = 900; // a breath between items
 const START_WATCHDOG_MS = 4000;
+// Every word on the scene; 1 would switch the renderer to the fitted still phrase. The live caption stays below it
+// until the item ends (the last word, the cloud voice's final progress or the clock can reach 1 a moment earlier).
+const ALL_WORDS = 0.999;
 
 const S = {
   title: { pt: 'Ouvir meu despertar', en: 'Hear my wake-up' },
@@ -145,8 +148,7 @@ export default function WakeSequenceScreen() {
 
   function itemFinished(epoch) {
     if (epochRef.current !== epoch) return;
-    // Every word stays on the scene during the breath; 1 would switch the renderer to the fitted still phrase.
-    setSpoken(0.999);
+    setSpoken(ALL_WORDS); // every word stays on the scene during the breath
     const next = positionRef.current + 1;
     if (next >= latest.current.items.length) {
       silence();
@@ -168,14 +170,15 @@ export default function WakeSequenceScreen() {
   }
 
   function speakWithDevice(item, epoch) {
+    // The device voice says the item's own text from its first word; the scene shows that text even if it cannot start.
+    setSpoken(0);
+    setVoiceText(item.text);
     // A browser without a speech engine: say so now instead of an unseen rejection.
     if (!webSpeechAvailable()) {
       voiceDidNotPlay(epoch);
       return;
     }
     deviceActiveRef.current = true;
-    setSpoken(0); // the device voice always starts the item from its first word
-    setVoiceText(item.text);
     if (Platform.OS === 'web') {
       // O Safari do iPhone descarta calado a fala pedida fora do toque: sem início, oferece tocar de novo.
       watchdogRef.current = setTimeout(() => {
@@ -480,7 +483,7 @@ export default function WakeSequenceScreen() {
               <NarratedScene
                 imageUri={currentScene.uri}
                 text={voiceText || current.text}
-                progress={spoken}
+                progress={Math.min(spoken, ALL_WORDS)}
                 active={phase === 'playing'}
                 onReady={(uri) => setShown(uri)}
                 onError={(code) => code === 'image_error' && dropScene(currentScene.source)}
@@ -524,8 +527,9 @@ export default function WakeSequenceScreen() {
             </Pressable>
           ))}
         </View>
-        {/* While the voice tells the story on the scene, the words are there; the text returns when it pauses. */}
-        {current.kind === 'affirmation' || (currentScene && phase === 'playing') ? null : (
+        {/* While the voice tells the story on the scene, the words are there; the text returns when it pauses, and
+            when no voice played (the notice above promises the text stays here to read). */}
+        {current.kind === 'affirmation' || (currentScene && phase === 'playing' && !voiceFailed) ? null : (
           <Text selectable style={[styles.story, { color: theme.text }]}>{current.text}</Text>
         )}
       </View>

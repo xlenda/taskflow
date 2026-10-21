@@ -1562,10 +1562,29 @@ async function main() {
   const readyLabel = labelOf(readySceneLayer);
   assert.ok(readyLabel, 'cena pronta: o rótulo honesto "Cena inspirada nas suas respostas"');
   const labelStyle = flat(readyLabel.props.style);
+  // o menor respiro do pé entre as capas vivas é 15 px (o cartão da Cena-Âncora na Home; Prática e o player compacto
+  // têm 18): o rótulo inteiro cabe nele e não cresce com a fonte do aparelho, então nunca encosta na última linha
+  const labelBand = labelStyle.bottom + labelStyle.lineHeight + 2 * (labelStyle.paddingVertical || 0);
   assert.ok(
-    labelStyle.position === 'absolute' && labelStyle.bottom <= 8 && labelStyle.right <= 12 && labelStyle.fontSize <= 11,
-    'rótulo pequeno no pé do card, no respiro abaixo do texto (nunca por cima dele)'
+    labelStyle.position === 'absolute' && labelStyle.fontSize <= 11 && labelBand <= 15 && readyLabel.props.allowFontScaling === false,
+    `rótulo pequeno no respiro do pé (≤ 15 px, sem crescer com a fonte), nunca por cima do texto do card (ocupa ${labelBand} px)`
   );
+  const pill = /^rgba\((\d+),(\d+),(\d+),(0?\.\d+)\)$/.exec(String(labelStyle.backgroundColor).replace(/\s/g, ''));
+  assert.ok(
+    pill && Math.max(+pill[1], +pill[2], +pill[3]) <= 40 && +pill[4] >= 0.4 && labelStyle.borderRadius > 0 && labelStyle.right >= 12,
+    'rótulo legível sobre qualquer cena: pílula escura translúcida por baixo das letras, longe do canto arredondado'
+  );
+  // a voz tocou e parou: a cena parada volta como página nova (outra WebView), então véu e rótulo só depois de ela
+  // pintar de novo — antes, o véu dobrava sobre o da imagem parada e o rótulo aparecia sem cena
+  readySceneLayer.update({ narration: { text: 'Eu escolho a paz', progress: 0.5, active: true } });
+  readySceneLayer.update({ narration: null });
+  assert.ok(
+    liveOf(readySceneLayer) && veilAt(readySceneLayer) < 0 && !labelOf(readySceneLayer),
+    'a voz parou: a cena parada recarrega sem véu dobrado nem rótulo até pintar de novo'
+  );
+  liveOf(readySceneLayer).props.onReady(liveOf(readySceneLayer).props.imageUri);
+  readySceneLayer.flush();
+  assert.ok(veilAt(readySceneLayer) >= 0 && labelOf(readySceneLayer), 'pintou de novo: o véu e o rótulo voltam');
   readyLive.props.onError('webview_gone');
   assert.deepStrictEqual(sceneFailures, ['pronta'], 'erro da cena: a capa fica sabendo');
   readySceneLayer.unmount();
@@ -1591,6 +1610,7 @@ async function main() {
   slowScene.update({ narration: { text: 'Eu escolho a paz', progress: 0.2, active: true } });
   const waitingVoice = typed('NarratedScene')(slowScene);
   assert.ok(waitingVoice && !waitingVoice.props.imageUri, 'narrando sem cena ainda: as palavras em texto (a NarratedScene sem imagem)');
+  assert.ok(!waitingVoice.props.failed, 'a imagem ainda vem vindo: não é falha (nada de painel escuro piscando a cada play)');
   slowScene.update({ narration: null });
   openVisual('k-lenta');
   await settle(slowScene, liveOf, 'cena da imagem que abriu devagar');
@@ -1628,8 +1648,8 @@ async function main() {
   missingScene.flush();
   assert.ok(labelOf(missingScene), 'imagem que sumiu: cena pronta, com o rótulo');
   missingScene.unmount();
-  // o card da vez trocou (chave e categoria juntas): a cena anterior fica até a nova entrar (sem buraco); só a imagem
-  // da chave atual vira cena; a anterior é liberada quando a nova entra, não antes (ela ainda está na tela)
+  // o card da vez trocou (chave e categoria juntas), parado: a cena anterior sai na hora (o conteúdo anterior não
+  // fica na tela); só a imagem da chave atual vira cena; a anterior é liberada quando a nova entra
   personalFiles['k-a'] = 'file:///document/a.jpg';
   personalFiles['k-b'] = 'file:///document/b.jpg';
   const swapLayer = sceneOf({ visualKey: 'k-a', sceneCategory: 'Love' });
@@ -1637,11 +1657,29 @@ async function main() {
   await settle(swapLayer, showing('a.jpg'), 'cena da 1ª afirmação');
   sceneReads.length = 0;
   swapLayer.update({ visualKey: 'k-b', sceneCategory: 'Wealth' });
-  assert.ok(showing('a.jpg')(swapLayer) && !releasedVisuals.includes('k-a'), 'trocando: a cena anterior fica na tela até a nova');
+  assert.strictEqual(liveOf(swapLayer), null, 'parado, trocando: a cena do conteúdo anterior sai na hora');
   await settle(swapLayer, showing('b.jpg'), 'cena da 2ª afirmação');
   assert.deepStrictEqual(sceneReads, ['file:///document/b.jpg'], 'só a imagem da afirmação atual vira cena');
   assert.ok(releasedVisuals.includes('k-a') && !releasedVisuals.includes('k-b'), 'a imagem anterior é liberada, a atual não');
   swapLayer.unmount();
+  // narrando (o player troca para a 2ª imagem no meio da fala): a cena anterior fica até a nova entrar, sem buraco, e
+  // a imagem dela só é liberada quando a nova entra (ainda está na tela)
+  personalFiles['k-voz-1'] = 'file:///document/voz-1.jpg';
+  personalFiles['k-voz-2'] = 'file:///document/voz-2.jpg';
+  const narratedShowing = (name) => (tree) => {
+    const narratedLayer = typed('NarratedScene')(tree);
+    return !!narratedLayer && !!narratedLayer.props.imageUri && narratedLayer.props.imageUri.includes(name);
+  };
+  const voiceSwap = sceneOf({ visualKey: 'k-voz-1', sceneCategory: 'Love', narration: { text: 'aa bb', progress: 0.5, active: true } });
+  await settle(voiceSwap, narratedShowing('voz-1.jpg'), 'cena narrada da 1ª imagem');
+  voiceSwap.update({ visualKey: 'k-voz-2' });
+  assert.ok(
+    narratedShowing('voz-1.jpg')(voiceSwap) && !releasedVisuals.includes('k-voz-1'),
+    'narrando, trocando: a cena anterior fica na tela até a nova'
+  );
+  await settle(voiceSwap, narratedShowing('voz-2.jpg'), 'cena narrada da 2ª imagem');
+  assert.ok(releasedVisuals.includes('k-voz-1') && !releasedVisuals.includes('k-voz-2'), 'narrando: a anterior é liberada quando a nova entra');
+  voiceSwap.unmount();
   // preparar a imagem falhou (arquivo ilegível): a capa fica sabendo (nada calado); narrando, as palavras em texto
   personalFiles['k-quebrada'] = 'file:///document/quebrada.jpg';
   sceneFailures.length = 0;
@@ -1650,6 +1688,7 @@ async function main() {
   assert.deepStrictEqual(sceneFailures, ['k-quebrada'], 'falha ao preparar a cena: a capa volta à imagem parada');
   brokenLayer.update({ narration: { text: 'aa', progress: 0, active: true } });
   assert.ok(!typed('NarratedScene')(brokenLayer).props.imageUri, 'sem cena possível: a voz mostra as palavras em texto');
+  assert.strictEqual(typed('NarratedScene')(brokenLayer).props.failed, true, 'falha de verdade ao preparar: a NarratedScene sabe (painel do texto inteiro)');
   brokenLayer.unmount();
   // narrando: a NarratedScene com a imagem, as palavras e o play/pausa; cena pronta = rótulo; erro dela avisa a capa
   // e o rótulo sai (a NarratedScene passa a mostrar o texto)
@@ -1665,10 +1704,17 @@ async function main() {
       voiceLayer.props.active === true,
     'imagem, texto, progresso e play/pausa chegam à cena narrada'
   );
-  assert.ok(labelOf(voiceScene), 'cena pronta narrando: o rótulo também');
+  const voiceLabel = voiceLayer.props.label;
+  assert.ok(
+    voiceLabel && voiceLabel.props.children === READY_LABEL && !labelOf(voiceScene),
+    'cena pronta narrando: o rótulo vai para dentro da cena narrada (no quadro 4:5 visível, não na borda da capa larga)'
+  );
   voiceLayer.props.onError('webview_gone');
   voiceScene.flush();
-  assert.ok(sceneFailures.length === 1 && !labelOf(voiceScene), 'erro da cena narrada: a capa fica sabendo e o rótulo sai');
+  assert.ok(
+    sceneFailures.length === 1 && !typed('NarratedScene')(voiceScene).props.label,
+    'erro da cena narrada: a capa fica sabendo e o rótulo sai'
+  );
   voiceScene.unmount();
   DeviceFile.prototype.base64 = realBase64;
 
@@ -1810,11 +1856,74 @@ async function main() {
     'texto claro sobre fundo escuro (legível sobre qualquer cena)'
   );
   assert.notStrictEqual(flat(narrated.tree.props.style).pointerEvents, 'none', 'com o texto, o toque fica (para rolar)');
+  // toda superfície narrada mora dentro de uma tela que rola (despertar, manifestação, afirmações, player): no Android
+  // a rolagem aninhada vem desligada e o texto não rolaria; no site e no iPhone continua rolando
+  assert.ok(
+    fallbackScroll.props.nestedScrollEnabled === true && fallbackScroll.props.scrollEnabled !== false,
+    'o texto inteiro rola mesmo dentro da tela que rola (Android: rolagem aninhada ligada)'
+  );
   narrated.update({ imageUri: 'data:image/jpeg;base64,REVG' }); // outra imagem: a pronta no lugar da quebrada
   assert.ok(narratedScene() && !narrated.find('ScrollView'), 'imagem nova: a cena volta');
+  // a imagem ainda vem vindo (no aparelho, um base64 de até ~3,4 MB a cada play): as palavras por cima da capa que já
+  // está ali, claras e com sombra como o texto do card — nada do painel escuro piscando antes da cena
   narrated.update({ imageUri: null });
-  assert.ok(narrated.find('ScrollView') && !narratedScene(), 'sem imagem (abrindo, ou nenhuma possível): o texto inteiro');
+  const pendingScroll = narrated.find('ScrollView');
+  const pendingText = narrated.where((node) => node.type === 'Text');
+  assert.ok(pendingScroll && !narratedScene(), 'sem imagem ainda: o texto inteiro no lugar da cena');
+  const pendingBackdrop = flat(pendingScroll.props.style).backgroundColor;
+  assert.ok(!pendingBackdrop || pendingBackdrop === 'transparent', `imagem a caminho: sem painel escuro (veio ${pendingBackdrop})`);
+  const pendingStyle = flat(pendingText.props.style);
+  assert.ok(
+    pendingText.props.children === longStory &&
+      !pendingText.props.numberOfLines &&
+      /^#F{3,6}$/i.test(pendingStyle.color) &&
+      !!pendingStyle.textShadowColor &&
+      pendingStyle.textShadowRadius > 0,
+    'imagem a caminho: o texto inteiro, claro e com sombra como o texto do card, legível sobre a capa (nunca invisível)'
+  );
+  assert.ok(pendingScroll.props.nestedScrollEnabled === true, 'imagem a caminho: o texto também rola dentro da tela');
+  narrated.update({ failed: true }); // não deu para preparar a imagem: aí sim o painel do texto inteiro
+  assert.ok(
+    /^rgba\(8,16,28,0\.(8|9)/.test(flat(narrated.find('ScrollView').props.style).backgroundColor) &&
+      flat(narrated.where((node) => node.type === 'Text').props.style).color === '#FFF9F0',
+    'falha de verdade ao preparar a imagem: o painel escuro com o texto inteiro'
+  );
   narrated.unmount();
+  // rótulo da cena pronta narrando: dentro do quadro 4:5 que a cena ocupa (centrado na capa larga), só depois de a
+  // cena pintar; o onReady de quem chama continua chegando
+  const readyLabelElement = { type: 'Text', props: { children: READY_LABEL } };
+  const paintedUris = [];
+  const labelled = app.mount(NarratedScene, {
+    imageUri: 'data:image/jpeg;base64,QUJD',
+    text: 'aa bb',
+    progress: 0.5,
+    label: readyLabelElement,
+    onReady: (uri) => paintedUris.push(uri),
+  });
+  labelled.tree.props.onLayout({ nativeEvent: { layout: { width: 400, height: 300 } } });
+  labelled.flush();
+  const labelShown = () => labelled.where((node) => node === readyLabelElement);
+  assert.ok(labelled.find('CenaViva') && !labelShown(), 'antes de a cena pintar: sem rótulo');
+  labelled.find('CenaViva').props.onReady('data:image/jpeg;base64,QUJD');
+  labelled.flush();
+  assert.deepStrictEqual(paintedUris, ['data:image/jpeg;base64,QUJD'], 'o onReady de quem chama continua chegando');
+  const labelSpot = labelled.where(
+    (node) => node.type === 'View' && [].concat(node.props.children).includes(readyLabelElement)
+  );
+  const spotStyle = labelSpot ? flat(labelSpot.props.style) : {};
+  assert.ok(
+    spotStyle.position === 'absolute' &&
+      near(spotStyle.left, 80) &&
+      near(spotStyle.top, 0) &&
+      near(spotStyle.width, 240) &&
+      near(spotStyle.height, 300) &&
+      spotStyle.pointerEvents === 'none',
+    `pintou: o rótulo dentro do quadro 4:5 visível (80..320 de 400), não na borda clara da capa (veio ${JSON.stringify(spotStyle)})`
+  );
+  labelled.find('CenaViva').props.onError('webview_gone');
+  labelled.flush();
+  assert.ok(!labelShown(), 'a cena falhou: o rótulo sai junto');
+  labelled.unmount();
 
   // o card da afirmação narrando: a frase sai da tela e do leitor de tela (a cena diz a frase), o layout fica e o
   // toque atravessa (o texto da cena, se ela falhar, precisa rolar)
@@ -1922,7 +2031,7 @@ async function main() {
   //     a palavra vai até o espaço; sem aviso nenhum, 14 letras/s; fim do item = texto inteiro; a voz da Celeste usa o
   //     progresso da narração. Tocando, a história em texto sai; webview_gone não derruba a cena.
   const wakeStory = 'Eu escolho viver com calma. Cada dia é um passo.'; // 48 letras
-  const wakeItems = [
+  let wakeItems = [
     { kind: 'anchor', id: 'anchor:m1', title: 'Cena-Âncora', text: wakeStory, lang: 'pt', category: 'Peace', visualKey: null },
     { kind: 'vision', id: 'm1:vision:Love', title: 'Visão', text: wakeStory, lang: 'pt', category: 'Love', visualKey: null },
   ];
@@ -2016,6 +2125,13 @@ async function main() {
     tickIntervals();
     wakeScreen.flush();
     assert.strictEqual(narratedNow().props.progress, 16 / 48, 'com avisos de palavra, o relógio não empurra a legenda');
+    first.onBoundary({ charIndex: 42, charLength: 6, name: 'word' }); // "passo.", a última palavra
+    wakeScreen.flush();
+    assert.strictEqual(
+      narratedNow().props.progress,
+      0.999,
+      'a última palavra: todas à vista, sem virar a frase parada encolhida (progress 1) antes de o item acabar'
+    );
     // a cena não aguenta (webview_gone): continua montada (a NarratedScene mostra o texto inteiro); só imagem quebrada troca
     narratedNow().props.onError('webview_gone');
     wakeScreen.flush();
@@ -2060,9 +2176,13 @@ async function main() {
     Object.assign(narrationDouble, { activePlaybackId: cloudRequest.playbackId, phase: 'playing', progress: 0.5 });
     wakeScreen.update({});
     assert.strictEqual(narratedNow().props.progress, 0.5, 'voz da Celeste: o progresso da narração');
-    Object.assign(narrationDouble, { progress: 1.4 });
+    Object.assign(narrationDouble, { progress: 1 });
     wakeScreen.update({});
-    assert.strictEqual(narratedNow().props.progress, 1, 'progresso da narração limitado a 1');
+    assert.strictEqual(
+      narratedNow().props.progress,
+      0.999,
+      'voz da Celeste no fim (progress 1 antes de o item acabar): abaixo de 1, sem virar a frase parada encolhida'
+    );
     // a voz da Celeste quebrou no meio: a do aparelho assume o item do começo, e a legenda recomeça junto
     const speechesBeforeFallback = speeches.length;
     Object.assign(narrationDouble, { activePlaybackId: null, phase: 'error' });
@@ -2076,6 +2196,52 @@ async function main() {
     wakeScreen.flush();
     assert.ok(!narratedNow() && storyShown(), 'sem imagem nenhuma: as palavras ficam em texto');
     wakeScreen.unmount();
+
+    // a voz da Celeste quebrou num navegador sem voz do aparelho: nenhuma voz toca. O aviso diz que o texto continua
+    // ali, então a história INTEIRA fica à vista; e cada item mostra o PRÓPRIO texto, nunca o do item anterior
+    wakeItems = [
+      { kind: 'anchor', id: 'anchor:m2', title: 'Cena-Âncora', text: 'Primeira cena, vivida com calma.', lang: 'pt', category: 'Peace', visualKey: null },
+      { kind: 'vision', id: 'm2:vision:Love', title: 'Visão', text: 'Segunda cena, cheia de amor.', lang: 'pt', category: 'Love', visualKey: null },
+    ];
+    Object.assign(narrationDouble, { activePlaybackId: null, lastCompletedPlaybackId: null, phase: 'idle', progress: 0 });
+    RN.Platform.OS = 'web'; // o Node não tem SpeechSynthesisUtterance: um navegador sem voz do aparelho
+    try {
+      const silentScreen = app.mount(WakeSequenceScreen, {});
+      const silentNarrated = () => silentScreen.where((node) => node.type === 'NarratedScene');
+      const shownText = (text) => !!silentScreen.where((node) => node.type === 'Text' && node.props.children === text);
+      const voiceFailedNotice = 'A voz não tocou neste aparelho. O texto continua aqui para você ler.';
+      const silentTrace = silentScreen.find('CelestialTrace');
+      silentTrace.props.onFinalStar();
+      silentTrace.props.onComplete();
+      await settle(silentScreen, silentNarrated, 'cena do 1º item, voz da Celeste');
+      assert.strictEqual(silentNarrated().props.text, 'Primeira cena, vivida com leveza.', 'voz da Celeste: a legenda é o texto dela');
+      Object.assign(narrationDouble, { phase: 'error' }); // a voz da Celeste quebrou; a do aparelho não existe aqui
+      silentScreen.update({});
+      assert.ok(
+        shownText(voiceFailedNotice) && silentScreen.where((node) => node.props.testID === 'wake-pause'),
+        'nenhuma voz tocou: o aviso honesto, com o item ainda na vez'
+      );
+      assert.ok(shownText('Primeira cena, vivida com calma.'), 'sem voz: a história inteira à vista, como o aviso promete');
+      assert.strictEqual(
+        silentNarrated().props.text,
+        'Primeira cena, vivida com calma.',
+        'a voz da Celeste saiu de cena: a legenda (e o rótulo do leitor de tela) volta ao texto do item, igual à história'
+      );
+      silentScreen.where((node) => node.props.testID === 'wake-next').props.onPress();
+      await settle(
+        silentScreen,
+        () => silentNarrated() && String(silentNarrated().props.imageUri).includes('Love'),
+        'cena do 2º item sem voz'
+      );
+      assert.strictEqual(silentNarrated().props.text, 'Segunda cena, cheia de amor.', 'o 2º item mostra o texto dele, não o do item anterior');
+      assert.ok(
+        shownText(voiceFailedNotice) && shownText('Segunda cena, cheia de amor.'),
+        'o 2º item também sem voz: o aviso e a história dele à vista'
+      );
+      silentScreen.unmount();
+    } finally {
+      RN.Platform.OS = 'android';
+    }
   } finally {
     Date.now = realNow;
     global.setInterval = realSetInterval;
