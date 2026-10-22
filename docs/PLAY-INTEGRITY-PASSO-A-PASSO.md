@@ -117,7 +117,8 @@ Peça ao agente, ou rode nesta ordem, na pasta `C:\projetos\TaskFlow`:
 4. **Deu certo** se tocar a voz do narrador escolhido, a mesma da prévia.
 5. **Está falhando** se tocar a voz robótica do celular, com aviso.
 6. Confira também, na mesma tela, o botão **Denunciar este conteúdo de IA**.
-7. **Textos:** depois de permitir, abra **Visões** e **Afirmações**. Em até um minuto, os textos das seis áreas e a Cena-Âncora trocam pela versão escrita pela IA a partir das suas respostas, e cada tela tem **Denunciar este conteúdo de IA**. Se continuarem os textos montados no celular (sem nenhum aviso), a verificação falhou: confira a lista abaixo, que vale igual para a voz e para os textos.
+7. **Textos:** depois de permitir, abra **Visões** e **Afirmações**. Em até um minuto, os textos das seis áreas e a Cena-Âncora trocam pela versão escrita pela IA a partir das suas respostas, e cada tela tem **Denunciar este conteúdo de IA**. Se continuarem os textos montados no celular (sem nenhum aviso), a verificação falhou: confira a lista abaixo, que vale igual para a voz e para os textos. Depois de uma recusa, o celular espera 24 horas antes de pedir esses textos sozinho de novo (para não gastar uma verificação do Google a cada abertura); depois de corrigir, crie um desejo novo na **Início** (esse pedido não espera) ou apague os dados do app para testar na hora.
+8. **Tradução:** com os textos da IA na tela, troque o idioma do app. A Cena-Âncora escrita pela IA aparece traduzida (Google Gemini, com a mesma verificação).
 
 **Se tocar a voz do celular, confira nesta ordem:**
 - **Esperado, não é defeito:**
@@ -155,7 +156,7 @@ Peça ao agente, ou rode nesta ordem, na pasta `C:\projetos\TaskFlow`:
 | `device_integrity_missing` | Emulador, celular com root ou com o bootloader desbloqueado. | Esperado: teste num celular comum. |
 | `no_token` | Pedido que diz vir do Android, mas sem a verificação. O app oficial não envia pedido assim. | Nada: não é o app. |
 | `client_not_supported` | Pedido que diz vir do iPhone. | Nada: o iPhone não tem a voz nem os textos em nuvem nesta versão. |
-| `operation_not_allowed` | Pedido do Android para outra coisa além da voz e dos textos (imagem, sonho, tradução ou Espelho Vivo). | Nada: no Android só a voz e os textos vão para a nuvem. |
+| `operation_not_allowed` | Pedido do Android para outra coisa além da voz, dos textos e da tradução da cena (imagem, sonho ou Espelho Vivo). | Nada: no Android só a voz, os textos e a tradução da cena (pelo Google Gemini, quando ela troca o idioma) vão para a nuvem. |
 | `unknown` | Erro inesperado no servidor. | Me chame. |
 
 **Opcional:** em **Protected with Play → Play Integrity API → Manage → Testing → Create new test**, o Play Console permite escolher respostas de teste para os e-mails dos testadores. Serve para ver de propósito o caminho da voz do celular.

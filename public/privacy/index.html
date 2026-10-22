@@ -84,8 +84,9 @@
               Celeste uses its backend as an intermediary and reduces each request to the content
               needed for the chosen feature. After onboarding, one adult control in Profile allows
               or prevents new optional requests for scenes, dreams, images, translations and neural
-              narration. In the Android app, that control enables neural narration and the AI-written
-              Anchor Scene, visions and affirmations; the other cloud features remain website-only.
+              narration. In the Android app, that control enables neural narration, the AI-written
+              Anchor Scene, visions and affirmations, and the translation of the AI-written scene when
+              you change the language; cloud images, dreams and the Living Mirror remain website-only.
             </p>
             <div class="processor-list" aria-label="Services and purposes">
               <div class="processor">
@@ -143,8 +144,9 @@
             </p>
             <h3>Narration in the Android app</h3>
             <p>
-              In the Android app, personal images are not generated, and cloud dreams, translations
-              and the Living Mirror remain website-only. After adult consent, each tap to listen
+              In the Android app, personal images are not generated, and cloud dreams and the Living
+              Mirror remain website-only (the scene translation is described under AI-written texts in
+              the Android app). After adult consent, each tap to listen
               sends to Celeste's backend, hosted on Vercel, the text the person asked to hear
               (an affirmation, vision, story or Anchor Scene), its
               language, the selected voice identifier and the anonymous technical session, which
@@ -175,7 +177,11 @@
               technical session, which authorizes the request and enforces usage limits. The backend
               passes that minimized request to the same scene-text providers as the website:
               Anthropic, with OpenAI as failover, and Google Gemini only if neither is configured.
-              They act as processors to write the texts. No images are generated on Android.
+              They act as processors to write the texts. On Android, when you change the app
+              language, the AI-written scene (title, intention, affirmation and story) is sent through
+              the same backend, with the same check, to Google Gemini, which acts as a processor to
+              translate it; saved names of children and important people stay on the device. No
+              images are generated on Android.
             </p>
             <p>
               As with narration, the request carries a Google Play Integrity check bound to it by a
@@ -186,7 +192,7 @@
               texts are stored on the device like the other content in section 2; the anonymous
               technical session may remain for abuse prevention and is not a personal account;
               provider retention follows the notice in section 5. Every screen that shows these texts
-              offers <strong>Report this AI content</strong>.
+              in full offers <strong>Report this AI content</strong>.
             </p>
             <h3>AI-content reports</h3>
             <p>

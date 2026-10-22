@@ -86,8 +86,9 @@
               conteúdo necessário para a função escolhida. Depois do questionário, um único
               controle adulto no Perfil autoriza ou impede novas solicitações opcionais de cena,
               sonho, imagem, tradução e narração neural. No aplicativo Android, esse controle libera
-              a narração neural e os textos escritos com IA da Cena-Âncora, das visões e das
-              afirmações; os demais recursos em nuvem ficam apenas no site.
+              a narração neural, os textos escritos com IA da Cena-Âncora, das visões e das
+              afirmações e a tradução da cena escrita pela IA quando você troca o idioma; imagem,
+              sonho e Espelho Vivo em nuvem ficam apenas no site.
             </p>
             <div class="processor-list" aria-label="Serviços e finalidades">
               <div class="processor">
@@ -146,8 +147,9 @@
             </p>
             <h3>Narração no aplicativo Android</h3>
             <p>
-              No aplicativo Android, imagens pessoais não são geradas, e sonho, tradução e Espelho
-              Vivo em nuvem ficam somente no site. Depois do consentimento adulto, cada toque para
+              No aplicativo Android, imagens pessoais não são geradas, e sonho e Espelho Vivo em nuvem
+              ficam somente no site (a tradução da cena está descrita em Textos com IA no aplicativo
+              Android). Depois do consentimento adulto, cada toque para
               ouvir envia ao backend da Celeste,
               hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
               história ou Cena-Âncora), o idioma, o identificador da voz escolhida e a sessão técnica
@@ -179,7 +181,11 @@
               aplicar limites de uso. O backend repassa esse pedido reduzido aos mesmos provedores de
               texto de cena do site: a Anthropic, com a OpenAI como alternativa, e o Google Gemini
               somente se nenhum dos dois estiver configurado. Eles atuam como processadores para
-              escrever os textos. Nenhuma imagem é gerada no Android.
+              escrever os textos. No Android, quando você troca o idioma do app, a cena escrita pela
+              IA (título, intenção, afirmação e história) é enviada, pelo mesmo backend e com a mesma
+              verificação, ao Google Gemini, que atua como processador para traduzi-la; os nomes
+              guardados de filhos e pessoas importantes ficam no aparelho. Nenhuma imagem é gerada no
+              Android.
             </p>
             <p>
               Como na narração, o pedido leva uma verificação do Google Play Integrity presa a ele por
@@ -190,7 +196,7 @@
               textos devolvidos ficam guardados no aparelho, como os demais conteúdos da seção 2; a
               sessão técnica anônima pode permanecer para prevenção de abuso e não é uma conta
               pessoal; os prazos dos fornecedores seguem o aviso da seção 5. Toda tela que mostra
-              esses textos oferece <strong>Denunciar este conteúdo de IA</strong>.
+              esses textos por inteiro oferece <strong>Denunciar este conteúdo de IA</strong>.
             </p>
             <h3>Denúncia de conteúdo de IA</h3>
             <p>

@@ -94,6 +94,33 @@ assert(
   'Privacy EN não descreve onboarding local, despertador completo e Plano com Anchor Scene'
 );
 
+// Android (21/10): when she changes the language, the AI-written scene goes to Google Gemini to be translated. The
+// policies (site and app) say so, and no public, store or guide text still says translation stays on the website.
+const oneLine = (text) => text.replace(/\s+/g, ' ');
+const legal = read(path.join('constants', 'legal.js'));
+assert(
+  oneLine(privacyPt).includes('quando você troca o idioma do app, a cena escrita pela IA (título, intenção, afirmação e história) é enviada') &&
+    oneLine(privacyEn).includes('when you change the app language, the AI-written scene (title, intention, affirmation and story) is sent') &&
+    legal.includes('the Google Gemini translation of that scene when you change the language') &&
+    legal.includes('a tradução dessa cena pelo Google Gemini quando você troca o idioma'),
+  'Privacidade: a tradução da cena pelo Google Gemini no Android não está declarada'
+);
+for (const [label, text] of [
+  ['privacidade PT', privacyPt],
+  ['privacy EN', privacyEn],
+  ['constants/legal.js', legal],
+  ['review-notes.md', read(path.join('store-listing', 'review-notes.md'))],
+  ['console-declarations.md', read(path.join('store-listing', 'console-declarations.md'))],
+  ['google-play-console-prefill.md', read(path.join('store-listing', 'google-play-console-prefill.md'))],
+  ['submission-readiness.json', read(path.join('store-listing', 'submission-readiness.json'))],
+  ['PLAY-INTEGRITY-PASSO-A-PASSO.md', read(path.join('docs', 'PLAY-INTEGRITY-PASSO-A-PASSO.md'))],
+]) {
+  assert(
+    !/sonhos?, traduç(?:ão|ões) e Espelho|dreams, translations and the Living Mirror|(?:imagem, sonho, tradução|tradução, imagem, sonho) (?:e|ou) Espelho|image, dream, translation and Living Mirror/i.test(oneLine(text)),
+    `${label}: ainda diz que a tradução fica só no site no Android`
+  );
+}
+
 assert(privacyPt.includes('href="/suporte"'), 'Privacidade PT não aponta para suporte');
 assert(privacyPt.includes('href="/privacy"'), 'Privacidade PT não aponta para inglês');
 assert(privacyEn.includes('href="/support"'), 'Privacy EN não aponta para suporte');

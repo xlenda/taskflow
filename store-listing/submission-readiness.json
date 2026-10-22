@@ -4,7 +4,7 @@
     "nativeApiAccess": {
       "ready": true,
       "evidence": "services/celesteApiSession.js; scripts/verificar-fronteira-api-nativa.js; docs/android-store-v1-boundary.md",
-      "note": "Android v1 uses the local path and blocks paid image, dream, translation and Living Mirror calls fail-closed with native_attestation_required before creating a session or contacting the backend. Since 2026-10-21 there are two exceptions, both only after adult consent and a Play Integrity token verified with Google: cloud narration (ElevenLabs; docs/superpowers/plans/2026-10-21-celeste-vozes-elevenlabs-android.md, task V2) and the AI-written Anchor Scene, visions and affirmations through the scene-text provider (docs/superpowers/plans/2026-10-21-celeste-textos-ia-android.md, task T1). Otherwise the server returns native_attestation_required, the app plays the device voice with a notice and keeps the texts assembled on the device from the answers."
+      "note": "Android v1 uses the local path and blocks paid image, dream and Living Mirror calls fail-closed with native_attestation_required before creating a session or contacting the backend. Since 2026-10-21 there are two exceptions, both only after adult consent and a Play Integrity token verified with Google: cloud narration (ElevenLabs; docs/superpowers/plans/2026-10-21-celeste-vozes-elevenlabs-android.md, task V2) and the AI-written Anchor Scene, visions and affirmations through the scene-text provider, plus the Google Gemini translation of that scene when the user changes the language (docs/superpowers/plans/2026-10-21-celeste-textos-ia-android.md, task T1). Otherwise the server returns native_attestation_required, the app plays the device voice with a notice and keeps the texts assembled on the device from the answers."
     },
     "nativeScreenshots": {
       "ready": false,
@@ -19,7 +19,7 @@
     "aiContentReporting": {
       "ready": true,
       "evidence": "components/AiContentReportAction.js; services/aiContentReports.js; supabase/migrations/011_ai_content_reports.sql; scripts/verificar-denuncia-ia.js; scripts/verificar-denuncia-ia-live.js",
-      "note": "The in-app report flow is integrated on the generated-content surfaces and, on Android since 2026-10-21, on every surface where the ElevenLabs voice plays (task V1 of the 2026-10-21 voice plan) and on every surface that shows AI-written text (task T1 of the 2026-10-21 text plan). Supabase migrations 001-011 are synchronized in production; a live anonymous report succeeded and its report and test user were removed."
+      "note": "The in-app report flow is integrated on the generated-content surfaces and, on Android since 2026-10-21, on every surface where the ElevenLabs voice plays (task V1 of the 2026-10-21 voice plan) and on every surface that shows AI-written text in full (task T1 of the 2026-10-21 text plan). Supabase migrations 001-011 are synchronized in production; a live anonymous report succeeded and its report and test user were removed."
     },
     "communityReleaseBoundary": {
       "ready": true,

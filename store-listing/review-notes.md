@@ -29,11 +29,15 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
   Play Integrity aprovada; sem ela ou sem internet, toca a voz do aparelho com
   aviso e os textos ficam os montados no aparelho com as respostas, sem IA e sem
   aviso de erro. Sem o consentimento, a narração não toca e a tela oferece o
-  texto; o despertar e a prática do Plano Celeste usam a voz do aparelho.
-  Imagens, sonhos, traduções e Espelho Vivo em nuvem continuam só no site.
-- Toda tela do Android que mostra texto escrito pela IA (visões, afirmações,
-  Cena-Âncora/manifestação, revelação e rituais) ou onde a voz gerada toca tem
-  `Denunciar este conteúdo de IA`.
+  texto; o despertar e a prática do Plano Celeste usam a voz do aparelho. O
+  pedido de consentimento aparece no primeiro toque para ouvir ou ao criar um
+  desejo novo na Início, como no site. Quando a pessoa troca o idioma, a cena
+  escrita pela IA vai, pelo mesmo backend e com a mesma verificação, ao Google
+  Gemini para ser traduzida. Imagens, sonhos e Espelho Vivo em nuvem continuam
+  só no site.
+- Toda tela do Android que mostra por inteiro texto escrito pela IA (visões,
+  afirmações, Cena-Âncora/manifestação, revelação e rituais) ou onde a voz gerada
+  toca tem `Denunciar este conteúdo de IA`.
 - O app nao apresenta afirmacoes ou sonhos como previsao, diagnostico ou garantia.
 
 ## Dados locais
@@ -90,8 +94,9 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
    áreas, escritos a partir do desejo e das respostas da própria pessoa) e a voz
    (ElevenLabs), criada a partir do texto da própria pessoa, os dois depois do
    consentimento adulto; imagens e os outros recursos em nuvem não aparecem.
-   Tocar para ouvir uma afirmação, visão ou a história; na primeira vez,
-   confirmar 18+ e permitir a voz e os textos com IA; conferir a voz escolhida,
+   Tocar para ouvir uma afirmação, visão ou a história (ou criar um desejo novo
+   na Início); na primeira vez, confirmar 18+ e permitir a voz e os textos com
+   IA; conferir a voz escolhida,
    os textos das Visões e Afirmações trocados pela versão escrita pela IA e o
    botão `Denunciar este conteúdo de IA` nessas telas. Fora da Play (sem a
    verificação Play Integrity) ou sem internet, toca a voz do aparelho com aviso
@@ -113,7 +118,8 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 - Textos com IA (Android): depois do consentimento, abrir `Visões` e
   `Afirmações`; os textos das seis áreas e a Cena-Âncora passam a ser os
   escritos pela IA a partir das respostas. Sem a verificação Play Integrity, sem
-  internet ou sem consentimento, continuam os textos montados no aparelho.
+  internet ou sem consentimento, continuam os textos montados no aparelho. Trocar
+  o idioma do app traduz a Cena-Âncora escrita pela IA (Google Gemini).
 - Cena: `Manifestar > abrir manifestacao > Sua narrativa em audio`.
 - Sonhos: `Inicio > Conte seu sonho`; escrever, escolher sentimento e tema e
   tocar `Transformar em afirmacao`.
@@ -138,9 +144,9 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 - Avaliação: depois da revelação da Cena-Âncora, a janela padrão de avaliação da
   Google Play pode aparecer uma vez; não há pergunta antes nem botão próprio.
 - Privacidade: `Perfil > Privacidade e dados`.
-- Denunciar: em qualquer tela que mostra texto escrito pela IA ou onde a voz
-  gerada toca, `Denunciar este conteúdo de IA`, escolher o motivo e enviar, sem
-  sair do app.
+- Denunciar: em qualquer tela que mostra por inteiro texto escrito pela IA ou
+  onde a voz gerada toca, `Denunciar este conteúdo de IA`, escolher o motivo e
+  enviar, sem sair do app.
 - Denúncias: `Perfil > Excluir denúncias de conteúdo de IA enviadas`.
 - Backup: `Jornada > Cópia de segurança`; no app, conferir a share sheet.
 - Reset: `Jornada > Recomeçar minha jornada`.
@@ -150,4 +156,4 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 Texto atualizado em 21/10, o mesmo da auditoria
 `docs/AUDITORIA-PLAY-STORE-2026-10-20.md`:
 
-> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images with AI. Its AI features are text and voice, both made from the user's own content and only after consent. The first time the user taps to listen, a dialog asks them to confirm they are 18 or older and to allow the AI voice and AI-written texts. Texts: Celeste's server then has an AI text model rewrite the Anchor Scene and the visions and affirmations for six life areas from the user's desire and selected onboarding answers (Visions and Affirmations tabs); before consent, or without a connection, these texts are assembled on the device from the same answers. Voice: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts AI text and voice requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the texts stay the on-device versions and the device's built-in voice plays with a notice. Reporting: on every screen that shows AI-written text or plays the AI voice, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images with AI. Its AI features are text and voice, both made from the user's own content and only after consent. The first time the user taps to listen, or creates a new desire on Home, a dialog asks them to confirm they are 18 or older and to allow the AI voice and AI-written texts. Texts: Celeste's server then has an AI text model rewrite the Anchor Scene and the visions and affirmations for six life areas from the user's desire and selected onboarding answers (Visions and Affirmations tabs); before consent, or without a connection, these texts are assembled on the device from the same answers. When the user switches the app language, the AI-written scene is translated by Google Gemini through Celeste's server, with the same Play Integrity check. Voice: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts AI text and voice requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the texts stay the on-device versions and the device's built-in voice plays with a notice. Reporting: on every screen that shows AI-written text in full or plays the AI voice, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
