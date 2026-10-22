@@ -478,6 +478,13 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   );
   assert.match(deploySource, /results\.audio\.riff === 'RIFF'/);
   assert.match(deploySource, /results\.audio\.wave === 'WAVE'/);
+  // a voz real precisa voltar com o tempo das letras: o pedaço logo depois do 'data' é 'ctim'
+  assert.match(deploySource, /afterData: ascii\(36, 40\) === 'data' \? ascii\(44 \+ dataSize, 48 \+ dataSize\) : ''/);
+  assert.match(
+    deploySource,
+    /results\.audio\.afterData === 'ctim'/,
+    'smoke de producao precisa provar o tempo das letras (ctim) da voz real'
+  );
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);

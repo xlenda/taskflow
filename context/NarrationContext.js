@@ -81,10 +81,14 @@ function aggregatePlaybackMetrics(chunkProgress, localTime, localDuration) {
   const localRatio = safeLocalDuration
     ? Math.max(0, Math.min(1, safeLocalTime / safeLocalDuration))
     : 0;
-  // With the time of each letter (sent by the server with the Celeste voice), the letters she has actually said;
-  // audio cached before that is proportional to the chunk's time, as before.
+  // With the time of each letter (sent by the server with the Celeste voice), the letters she has actually said, a hair
+  // short of the whole chunk: the last word starts 0.3-0.8 s before the audio ends, and only the end (finishSequence)
+  // takes the narration to 1. Audio cached before the times is proportional to the chunk's time, as before.
   const current = chunkProgress.letters
-    ? lettersSpoken({ letters: chunkProgress.letters, text: chunkProgress.text, seconds: safeLocalTime })
+    ? Math.min(
+        lettersSpoken({ letters: chunkProgress.letters, text: chunkProgress.text, seconds: safeLocalTime }),
+        currentWeight - 0.01
+      )
     : currentWeight * localRatio;
   const progress = totalWeight
     ? Math.max(0, Math.min(1, (completedWeight + current) / totalWeight))
@@ -1084,8 +1088,9 @@ export function NarrationProvider({ children }) {
 
   // With the letters' times the caption follows the voice word by word: timeupdate (web) and the player status (app)
   // come only every ~250 ms, so each frame works out where the audio is and updates only when she reaches a new word.
-  // Website: the <audio> clock itself. App: the last status, run on by the frame clock (reading player.currentTime
-  // would block the JS thread on the main thread every frame), at most 0.3 s past it if the statuses stop (a stall).
+  // Website: the <audio> clock itself. App: the last status, run on by the frame clock only while that status says it
+  // is playing (reading player.currentTime would block the JS thread on the main thread every frame), at most 0.3 s
+  // past it if the statuses stop (a stall).
   useEffect(() => {
     const { letters, text } = chunkProgress;
     if (phase !== 'playing' || !letters || typeof requestAnimationFrame !== 'function') return undefined;
@@ -1099,7 +1104,8 @@ export function NarrationProvider({ children }) {
       } else {
         const reported = Number(statusRef.current.currentTime) || 0;
         if (!anchor || anchor.time !== reported) anchor = { time: reported, at: frameTime };
-        seconds = reported + Math.min(0.3, Math.max(0, frameTime - anchor.at) / 1000) * playbackRateRef.current;
+        const runOn = statusRef.current.playing ? Math.min(0.3, Math.max(0, frameTime - anchor.at) / 1000) : 0;
+        seconds = reported + runOn * playbackRateRef.current;
       }
       const spoken = lettersSpoken({ letters, text, seconds });
       if (spoken !== reached) {

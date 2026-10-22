@@ -2,13 +2,15 @@
 // voz começa a dizê-la, não quando uma conta por letras acha que ela disse. Medido em 21/10: a conta por letras
 // (tempo do trecho × letras) deixava as palavras 0,5 a 1 s atrás da voz numa história em português.
 //  1) servidor (api/gerar-audio.js de verdade, ElevenLabs de mentira): pede a voz com o tempo de cada letra
-//     (/with-timestamps) e devolve o WAV de sempre com esses tempos num pedaço 'ctim' depois do som; alinhamento de
-//     outro texto não vira tempo; se a rota com tempo recusar o pedido, a voz vem pela rota de antes, sem tempo; conta
-//     e limite (401/403/429) nunca pedem de novo.
+//     (/with-timestamps) e devolve o WAV de sempre com esses tempos num pedaço 'ctim' depois do som (tamanho ímpar com
+//     o byte de preenchimento); alinhamento de outro texto ou que não cabe no som não vira tempo; um 200 sem o rótulo
+//     JSON é lido; se a rota com tempo recusar ou falhar sem cobrar (404/500/503), a voz vem pela rota de antes, sem
+//     tempo; conta, limite e o que pode ter sido cobrado (401/429/502/504/tempo esgotado) nunca pedem de novo.
 //  2) app (NarrationContext de verdade, no site e no Android): com os tempos, a legenda vai até o fim da palavra que a
-//     voz começou e ESPERA na pausa entre as frases (a conta por letras seguia andando); a palavra nova entra no
-//     quadro seguinte, sem esperar o próximo timeupdate/status; áudio guardado antes (sem o pedaço) segue por letras;
-//     com dois trechos, o espaço entre eles conta e a legenda cai na letra certa do texto inteiro.
+//     voz começou (no 0 do áudio, nada) e ESPERA na pausa entre as frases (a conta por letras seguia andando); a
+//     palavra nova entra no quadro seguinte, sem esperar o próximo timeupdate/status (no Android só se o status diz que
+//     está tocando); fica abaixo de 1 até o som acabar; pausa e parada não deixam quadro agendado; áudio guardado antes
+//     (sem o pedaço) segue por letras; com dois trechos, o espaço entre eles conta e a legenda cai na letra certa.
 // Uso (cwd = C:\projetos\TaskFlow): node scripts/verificar-legenda-sincronizada.js
 const assert = require('assert');
 const fs = require('fs');
@@ -234,26 +236,78 @@ async function main() {
     assert.strictEqual(captions.letterTimesFromWav(new Uint8Array(other), TEXT.length), null);
     assert.strictEqual(captions.letterTimesFromWav(new Uint8Array(pcmToWav(pcm)), TEXT.length), null, 'WAV antigo, sem tempos');
 
-    // a rota com tempo recusou o pedido: a voz vem pela rota de antes (sem tempos), e conta/limite nunca repetem
-    const calls = [];
-    global.fetch = async (url, options) => {
-      calls.push({ url: new URL(url), options });
-      return calls.length === 1 ? upstream(404) : upstream(200, { pcm });
+    // um 200 cobrado sem o rótulo application/json: lido do mesmo jeito
+    global.fetch = async () => ({ ...upstream(200, { json: timedReply(pcm, TEXT, STARTS) }), headers: { get: () => 'text/plain' } });
+    const unlabelled = await requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste');
+    assert.ok(captions.letterTimesFromWav(new Uint8Array(unlabelled), TEXT.length), '200 sem rótulo JSON: a voz e os tempos chegam');
+
+    // alinhamento que não cabe no som de 6 s: o som segue, sem tempos
+    const ms = STARTS.map((s) => Math.round(s * 1000));
+    const insane = [
+      ['letra sem número', STARTS.map((s, i) => (i === 30 ? 'x' : s))],
+      ['letra antes do 0', STARTS.map((s, i) => (i === 0 ? -0.2 : s))],
+      ['letra que recua 0,4 s', STARTS.map((s, i) => (i === 40 ? s - 0.46 : s))],
+      ['tudo em 0', STARTS.map(() => 0)],
+      ['última letra depois do fim + 250 ms', STARTS.map((s) => s * 1.12)],
+      ['última letra antes da metade do som', STARTS.map((s) => s * 0.4)],
+    ];
+    for (const [label, starts] of insane) {
+      global.fetch = async () => upstream(200, { json: timedReply(pcm, TEXT, starts) });
+      const wavOf = await requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste');
+      assert.strictEqual(wavOf.length, 44 + pcm.length, `${label}: sem tempos`);
+    }
+    // um recuo pequeno (até 250 ms) é ruído do alinhamento: fica no maior tempo já visto
+    global.fetch = async () => upstream(200, { json: timedReply(pcm, TEXT, STARTS.map((s, i) => (i === 40 ? s - 0.1 : s))) });
+    const nudged = captions.letterTimesFromWav(
+      new Uint8Array(await requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste')),
+      TEXT.length
+    );
+    assert.ok(nudged && nudged[40] === ms[39] && nudged[41] === ms[41], 'recuo de 100 ms: o tempo da letra anterior');
+
+    // pedaço de tamanho ímpar: um byte de preenchimento, coberto pelo tamanho RIFF, e o app lê
+    const odd = pcmToWav(Buffer.from([0, 0, 1, 0]), [0, 100, 200]); // "[0,100,200]" = 11 bytes
+    assert.strictEqual(odd.length, 44 + 4 + 8 + 11 + 1, 'pedaço ímpar com 1 byte de preenchimento');
+    assert.strictEqual(odd.readUInt32LE(4), odd.length - 8);
+    assert.strictEqual(odd.readUInt32LE(44 + 4 + 4), 11, 'o tamanho do pedaço não conta o preenchimento');
+    assert.strictEqual(odd[odd.length - 1], 0);
+    assert.deepStrictEqual(captions.letterTimesFromWav(new Uint8Array(odd), 3), [0, 100, 200]);
+
+    // a rota com tempo recusou ou falhou sem cobrar: a voz vem pela rota de antes (sem tempos)
+    for (const refused of [404, 500, 503]) {
+      const calls = [];
+      global.fetch = async (url, options) => {
+        calls.push({ url: new URL(url), options });
+        return calls.length === 1 ? upstream(refused) : upstream(200, { pcm });
+      };
+      const plain = await requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste');
+      assert.strictEqual(calls.length, 2, `${refused}: um pedido pela rota de antes`);
+      assert.strictEqual(calls[1].url.pathname, `/v1/text-to-speech/${NARRATOR_VOICES.aurora.voiceId}`);
+      assert.strictEqual(calls[1].options.headers.Accept, 'audio/pcm');
+      assert.ok(plain.subarray(44).equals(pcm) && plain.length === 44 + pcm.length, `${refused}: a voz chega, sem tempos`);
+    }
+    // conta, limite e o que pode ter sido cobrado (502, 504, tempo esgotado) nunca pedem de novo
+    const abort = () => {
+      throw Object.assign(new Error('tempo esgotado'), { name: 'AbortError' });
     };
-    const plain = await requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste');
-    assert.strictEqual(calls.length, 2, 'rota com tempo recusada: um pedido pela rota de antes');
-    assert.strictEqual(calls[1].url.pathname, `/v1/text-to-speech/${NARRATOR_VOICES.aurora.voiceId}`);
-    assert.strictEqual(calls[1].options.headers.Accept, 'audio/pcm');
-    assert.ok(plain.subarray(44).equals(pcm) && plain.length === 44 + pcm.length, 'a voz chega, sem tempos');
-    for (const [status, code] of [[401, 'audio_not_configured'], [429, 'audio_rate_limited']]) {
+    for (const [answer, code] of [
+      [() => upstream(401), 'audio_not_configured'],
+      [() => upstream(429), 'audio_rate_limited'],
+      [() => upstream(502), 'audio_unavailable'],
+      [() => upstream(504), 'audio_unavailable'],
+      [abort, 'audio_timeout'],
+    ]) {
       let count = 0;
       global.fetch = async () => {
         count += 1;
-        return upstream(status);
+        return answer();
       };
       await assert.rejects(() => requestElevenLabs(input, 'eleven_multilingual_v2', 'chave-de-teste'), (error) => error.code === code);
-      assert.strictEqual(count, 1, `${status}: nenhum pedido a mais`);
+      assert.strictEqual(count, 1, `${code}: nenhum pedido a mais`);
     }
+
+    // no 0 do áudio (o alinhamento começa em 0,000) nenhuma palavra foi dita ainda
+    assert.strictEqual(captions.lettersSpoken({ letters: [0, 0, 60, 120], text: 'Eu é', seconds: 0 }), 0, 'no 0, nada dito');
+    assert.strictEqual(captions.lettersSpoken({ letters: [0, 0, 60, 120], text: 'Eu é', seconds: 0.01 }), 2, 'logo depois, "Eu"');
   });
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -423,7 +477,30 @@ async function main() {
         // 2,3 s: "A vida " dito, "que" (2,32 s) ainda não
         const upToVida = TEXT.indexOf(' que') + 1;
         assert.ok(Math.abs(letters() - upToVida) < 1e-9, `status parados: ${letters()} letras, esperado ${upToVida} (até 2,3 s)`);
+        // status que diz que não está tocando (carregando): o relógio por quadro não anda além dele
+        Object.assign(voice.status, { playing: false, currentTime: 2.4 });
+        voice.flush();
+        runFrame(8000);
+        runFrame(8250);
+        voice.flush();
+        const upToQue = TEXT.indexOf(' que') + 4; // 2,4 s: "que" começou (2,32 s), "você" (2,56 s) ainda não
+        assert.ok(Math.abs(letters() - upToQue) < 1e-9, `status parado em 2,4 s: ${letters()} letras, esperado ${upToQue}`);
+        Object.assign(voice.status, { playing: true });
       }
+      // a última palavra começa antes de o som acabar: a legenda fica abaixo de 1 (a frase inteira só no fim de verdade)
+      voice.at(5.9);
+      assert.ok(voice.value().progress < 1 && letters() > TEXT.length - 0.05, `perto do fim: ${voice.value().progress}`);
+      // pausar e parar não deixam quadro agendado; continuar volta a conferir a cada quadro
+      assert.ok(frames.size > 0, 'tocando com os tempos: há um quadro agendado');
+      voice.value().pause();
+      voice.flush();
+      assert.strictEqual(frames.size, 0, 'pausa: nenhum quadro agendado');
+      await voice.value().resume();
+      voice.flush();
+      assert.strictEqual(frames.size, 1, 'continuar: um quadro agendado');
+      voice.value().stop();
+      voice.flush();
+      assert.strictEqual(frames.size, 0, 'parar: nenhum quadro agendado');
     });
   }
 

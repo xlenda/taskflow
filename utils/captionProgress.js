@@ -42,13 +42,14 @@ const ascii = (bytes, at) => String.fromCharCode(bytes[at], bytes[at + 1], bytes
 
 // Quantas letras do trecho a voz já disse aos `seconds` do áudio dele: até o FIM da palavra cuja 1ª letra ela começou
 // (o renderizador mostra a palavra inteira quando ela é dita); entre palavras, até o espaço (a próxima ainda não).
+// Começou = o relógio passou do início da letra: no 0 do áudio (o alinhamento começa em 0,000) nada foi dito ainda.
 export function lettersSpoken({ letters, text, seconds }) {
   const ms = Number(seconds) * 1000;
   let low = 0;
   let high = letters.length; // a 1ª letra que a voz ainda não começou
   while (low < high) {
     const mid = (low + high) >> 1;
-    if (letters[mid] <= ms) low = mid + 1;
+    if (letters[mid] < ms) low = mid + 1;
     else high = mid;
   }
   let end = low;

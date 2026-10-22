@@ -883,12 +883,17 @@ async function liveGeminiChecks(
         const contentType = response.headers.get('content-type') || '';
         const bytes = new Uint8Array(await response.arrayBuffer());
         const ascii = (from, to) => String.fromCharCode(...bytes.slice(from, to));
+        // o pedaço logo depois do som: 'ctim' (o tempo de cada letra) prova que a rota com tempo funciona em produção
+        const dataSize = bytes.length >= 44
+          ? (bytes[40] | (bytes[41] << 8) | (bytes[42] << 16) | (bytes[43] << 24)) >>> 0
+          : 0;
         return {
           status: response.status,
           contentType,
           bytes: bytes.length,
           riff: ascii(0, 4),
           wave: ascii(8, 12),
+          afterData: ascii(36, 40) === 'data' ? ascii(44 + dataSize, 48 + dataSize) : '',
         };
       };
       const generation = await postGeneration();
@@ -968,6 +973,10 @@ async function liveGeminiChecks(
       results.audio.riff === 'RIFF' &&
       results.audio.wave === 'WAVE',
     `ElevenLabs ao vivo nao devolveu WAV valido: ${JSON.stringify(results.audio)}`
+  );
+  assert(
+    results.audio.afterData === 'ctim',
+    `ElevenLabs ao vivo sem o tempo das letras (pedaco 'ctim' depois do som): ${JSON.stringify(results.audio)}`
   );
   console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
 }
