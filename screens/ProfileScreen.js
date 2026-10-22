@@ -90,8 +90,8 @@ const S = {
     pt: 'A IA escreve sua Cena-Âncora, visões e afirmações a partir das suas respostas (Anthropic; a OpenAI como alternativa e, sem as duas, o Google Gemini, que também traduz a cena se você trocar o idioma). A ElevenLabs cria a voz que você escolheu, só quando você pede para ouvir. Nenhuma imagem é criada no app.',
   },
   voiceCloudOff: {
-    en: 'Off: nothing goes to the cloud and your texts are put together on this device. When you tap Listen, Celeste asks first.',
-    pt: 'Desligada: nada vai para a nuvem e seus textos são montados no aparelho. Ao tocar em Ouvir, a Celeste pergunta antes.',
+    en: 'Off: nothing goes to the cloud and new texts are put together on this device; the ones AI already wrote stay with you. When you tap Listen, Celeste asks first.',
+    pt: 'Desligada: nada vai para a nuvem e os novos textos são montados no aparelho; os que a IA já escreveu continuam com você. Ao tocar em Ouvir, a Celeste pergunta antes.',
   },
   geminiUnder18: {
     en: 'Cloud processing is unavailable for profiles marked Under 18. New content is created on this device.',

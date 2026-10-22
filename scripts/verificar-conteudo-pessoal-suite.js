@@ -744,6 +744,46 @@ assert.match(
   'afirmacoes variadas continuam em primeira pessoa (o validador exige uma palavra de primeira pessoa)'
 );
 
+// Fix round 1 (21/10): different people converged on the same cups, mint water and notebooks. Each request now
+// carries its own imagined setting and sense per area (the same person always gets the same ones), and the home chip
+// goes to the AI in her language (no more "sua farmhouse").
+const systemFor = (body, model) =>
+  endpoint._internals.buildGeminiRequest(endpoint._internals.validateInput(body).value, 1, '', model).systemInstruction.parts[0].text;
+const hintsOf = (body) => (systemFor(body).match(/Scene hints for this person[^:]*: (.*)\.$/m) || [])[1] || '';
+const ownHints = hintsOf(requestBody);
+assert.match(ownHints, /^Love: [^;]+, opening on [^;]+; Wealth: [^;]+; Career: [^;]+; Health: [^;]+; Confidence: [^;]+; Peace: [^;]+$/, 'uma dica de cenario e de sentido por area');
+assert.strictEqual(hintsOf({ ...requestBody }), ownHints, 'a mesma pessoa recebe as mesmas dicas');
+const hintParts = ownHints.split('; ').map((part) => part.replace(/^\w+: /, '').split(', opening on '));
+assert.strictEqual(new Set(hintParts.map(([setting]) => setting)).size, 6, 'seis cenarios diferentes na suite');
+assert.strictEqual(new Set(hintParts.map(([, sense]) => sense)).size, 6, 'seis sentidos diferentes na suite');
+const peopleHints = VARIETY_PEOPLE.map(([category, desire, answers]) => hintsOf({ ...requestBody, category, desire, profile: answers }));
+assert.ok(new Set(peopleHints).size >= 18, `pessoas diferentes recebem dicas diferentes (${new Set(peopleHints).size}/20)`);
+assert.match(
+  suiteSystem,
+  /Never center a vision on a cup, mug, glass of water, tea, notebook, candle, or a set table/,
+  'o prompt tira do centro as imagens que se repetiam'
+);
+assert.doesNotMatch(
+  systemFor({ ...requestBody, includeJourneySuite: undefined }),
+  /Scene hints for this person/,
+  'a cena sozinha (sem a suite) nao recebe as dicas das seis areas'
+);
+const homeSent = (lang, dreamHome) =>
+  endpoint._internals.validateInput({ ...requestBody, lang, profile: { ...profile, dreamHome } }).value.profile.dreamHome;
+assert.strictEqual(homeSent('pt', 'Farmhouse'), 'uma casa de fazenda', 'a casa do chip vai para a IA em portugues');
+assert.strictEqual(homeSent('en', 'Tiny Home'), 'a tiny home', 'a casa do chip vai para a IA em ingles');
+assert.strictEqual(homeSent('pt', 'uma casa com quintal'), 'uma casa com quintal', 'a casa que ela escreveu vai como ela escreveu');
+// Gemini 3 thinks little (the dream route already does it with the same model); older models get no thinkingLevel
+assert.deepStrictEqual(
+  endpoint._internals.buildGeminiRequest(validated.value, 1, '', 'gemini-3.7-flash').generationConfig.thinkingConfig,
+  { thinkingLevel: 'low' }
+);
+assert.strictEqual(
+  Object.hasOwn(endpoint._internals.buildGeminiRequest(validated.value, 1, '', 'gemini-2.5-flash').generationConfig, 'thinkingConfig'),
+  false,
+  'modelo anterior ao Gemini 3 nao recebe thinkingLevel'
+);
+
 // An affirmation that does not open with Eu still speaks in the first person ("Reconheço em mim...", "Me permito...",
 // "Trust lives in me..."): the server and the app accept the same first-person words, so neither drops the other's suite.
 const firstPersonVariants = {
@@ -904,12 +944,14 @@ const fetchImpl = async (_url, options) => {
   // The real handler: a suite whose affirmations open alike is refused and the one retry carries the targeted
   // repair; the second answer (all openings different) is served.
   const gemini = [];
+  const thinking = [];
   const previousEnv = {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_PAID_DATA_TERMS_ACCEPTED: process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED,
     CELESTE_ALLOWED_ORIGINS: process.env.CELESTE_ALLOWED_ORIGINS,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
   };
   const previousFetch = global.fetch;
   process.env.GEMINI_API_KEY = 'suite-variety-test-key';
@@ -917,6 +959,7 @@ const fetchImpl = async (_url, options) => {
   process.env.CELESTE_ALLOWED_ORIGINS = 'https://celeste.example';
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_MODEL;
   endpoint._internals.setBotVerifierForTests(async () => ({ isHuman: true, isBot: false }));
   endpoint._internals.setPaidAccessAuthorizerForTests(async () => ({
     ok: true,
@@ -926,6 +969,7 @@ const fetchImpl = async (_url, options) => {
   global.fetch = async (_url, options) => {
     const request = JSON.parse(options.body);
     gemini.push(request.systemInstruction.parts[0].text);
+    thinking.push(request.generationConfig.thinkingConfig);
     const journeySuite = answers[Math.min(gemini.length - 1, answers.length - 1)];
     return {
       ok: true,
@@ -962,6 +1006,11 @@ const fetchImpl = async (_url, options) => {
   }
   assert.strictEqual(served.statusCode, 200, JSON.stringify(served.body));
   assert.strictEqual(gemini.length, 2, 'aberturas repetidas: uma nova tentativa');
+  assert.deepStrictEqual(
+    thinking,
+    [{ thinkingLevel: 'low' }, { thinkingLevel: 'low' }],
+    'o Gemini 3 pensa pouco nas duas tentativas: o raciocinio nao come o orcamento da suite'
+  );
   assert.doesNotMatch(gemini[0], /journey_repeated_openings/);
   assert.match(gemini[1], /QUALITY REPAIR FOR THIS RETRY:[\s\S]*journey_repeated_openings/, 'a nova tentativa leva o conserto');
   assert.deepStrictEqual(

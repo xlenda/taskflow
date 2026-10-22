@@ -30,6 +30,7 @@ import { RELEASE_FEATURES } from '../constants/releaseFeatures';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
 import { confirmAsync } from '../utils/confirm';
+import { ANDROID_CLOUD_CONSENT_COPY } from '../utils/useCloudMediaConsent';
 import { useT } from '../utils/useT';
 import { txt, tr, detectLang } from '../constants/i18n';
 import { isUnder18Age } from './onboarding/flow';
@@ -265,13 +266,14 @@ export default function HomeScreen() {
           cloudDreamConsent: false,
         });
       }
-    } else if (RELEASE_FEATURES.paidCloudProcessing && !knownMinor && !currentConsentDecision) {
-      // The website asks here. Android asks for its own consent (voice and texts) on "Listen" and in Profile;
-      // without it the new scene is created on the device.
+    } else if (!knownMinor && !currentConsentDecision) {
+      // The website and Android ask here, when she creates a desire, each with its own text (Android: the voice and
+      // the AI texts, no images). The answer is saved either way, so the question is not repeated.
+      const android = !RELEASE_FEATURES.paidCloudProcessing && ANDROID_CLOUD_CONSENT_COPY[lang === 'en' ? 'en' : 'pt'];
       cloudPersonalization = await confirmAsync({
-        title: t(S.consentTitle),
-        message: t(S.consentBody),
-        confirmLabel: t(S.consentAllow),
+        title: android ? android.title : t(S.consentTitle),
+        message: android ? android.message : t(S.consentBody),
+        confirmLabel: android ? android.confirm : t(S.consentAllow),
         cancelLabel: t(S.consentLocal),
         destructive: false,
         lang,

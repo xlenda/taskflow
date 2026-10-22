@@ -128,19 +128,20 @@ assert.ok(
     alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()'),
   'Without AlarmKit the wake-up must schedule and cancel only ordinary reminders'
 );
-// Only the voice and the AI texts cross the Android boundary: new scenes use the AI only with the consent already
-// given (the website's prompt stays web-only), the Profile control and the consent speak of voice and texts with
-// Android's own version, and images, dreams and the Living Mirror still need paidCloudProcessing.
+// Only the voice and the AI texts cross the Android boundary: Home asks when she creates a desire, as the website
+// does, but with the Android text (voice and texts), the Profile control and the consent speak of voice and texts
+// with Android's own version, and images, dreams and the Living Mirror still need paidCloudProcessing.
 const cloudMediaConsent = read('utils/useCloudMediaConsent.js');
 const cloudConsentAndroid = read('constants/cloudConsent.android.js');
 assert.ok(
   home.includes('if (!RELEASE_FEATURES.cloudText)') &&
     /!RELEASE_FEATURES\.cloudNarration &&\s*\(currentProfile\.cloudConsentVersion/.test(home) &&
-    home.includes('} else if (RELEASE_FEATURES.paidCloudProcessing && !knownMinor && !currentConsentDecision) {') &&
+    home.includes('} else if (!knownMinor && !currentConsentDecision) {') &&
+    home.includes("const android = !RELEASE_FEATURES.paidCloudProcessing && ANDROID_CLOUD_CONSENT_COPY[lang === 'en' ? 'en' : 'pt'];") &&
     (profile.match(/RELEASE_FEATURES\.cloudNarration \? \(/g) || []).length === 2 &&
     profile.includes('const voiceAndTextsCloud = !RELEASE_FEATURES.paidCloudProcessing;') &&
     profile.includes('(!RELEASE_FEATURES.cloudNarration ||') &&
-    cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : ANDROID_COPY)[lang]') &&
+    cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : ANDROID_CLOUD_CONSENT_COPY)[lang]') &&
     cloudConsentAndroid.includes("require('./cloudConsent.js')") &&
     cloudConsentAndroid.includes('shared.cloudConsentRules(shared.ANDROID_CLOUD_CONSENT_VERSION)') &&
     !onboardingFlow.includes("id: 'cloudPersonalization'") &&

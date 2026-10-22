@@ -116,6 +116,26 @@ function cloudTextConsent(profile) {
   return RELEASE_FEATURES.cloudText && hasCurrentAdultCloudConsent(profile);
 }
 
+// Android: once the server refuses the automatic AI texts (403: the Play Integrity check failed) or cannot check them
+// (502), the app waits a day before asking again on its own, so a phone that cannot pass the check does not spend a
+// Google check on every launch. What she asks for herself (a new desire, a language switch) is not held back.
+const AUTOMATIC_TEXTS_PAUSE_KEY = '@celeste_automatic_texts_paused_until_v1';
+const AUTOMATIC_TEXTS_PAUSE_MS = 24 * 60 * 60 * 1000;
+
+async function automaticTextsPaused() {
+  if (Platform.OS !== 'android') return false;
+  try {
+    return Date.now() < Number(await AsyncStorage.getItem(AUTOMATIC_TEXTS_PAUSE_KEY));
+  } catch (_error) {
+    return false;
+  }
+}
+
+function pauseAutomaticTextsAfterRefusal(error) {
+  if (Platform.OS !== 'android' || !/^scene_api_(403|502)$/.test(String(error && error.message))) return;
+  AsyncStorage.setItem(AUTOMATIC_TEXTS_PAUSE_KEY, String(Date.now() + AUTOMATIC_TEXTS_PAUSE_MS)).catch(() => {});
+}
+
 function settleWithin(promise, timeoutMs) {
   return new Promise((resolve) => {
     let settled = false;
@@ -1158,14 +1178,16 @@ export function AppProvider({ children }) {
     const profileFingerprint = JSON.stringify(state.profile || {});
     const candidateTitle = shortText(sourceVariant && sourceVariant.title, 160) || target.title;
 
-    void generatePersonalizedScene({
-      desire: candidateTitle,
-      category: target.category || 'Wealth',
-      lang: candidate.lang,
-      profile: state.profile,
-      includeJourneySuite:
-        target.id === state.anchorSceneId || target.origin === 'onboarding-anchor',
-    }).then((remote) => {
+    void (async () => {
+      if (await automaticTextsPaused()) return;
+      const remote = await generatePersonalizedScene({
+        desire: candidateTitle,
+        category: target.category || 'Wealth',
+        lang: candidate.lang,
+        profile: state.profile,
+        includeJourneySuite:
+          target.id === state.anchorSceneId || target.origin === 'onboarding-anchor',
+      });
       applyRemoteSceneUpgrade({
         id: candidate.id,
         lang: candidate.lang,
@@ -1175,8 +1197,9 @@ export function AppProvider({ children }) {
         remote,
         generationEpoch,
       });
-    }).catch(() => {
+    })().catch((error) => {
       // The interpreted local v2 copy remains readable; a later app launch can retry.
+      pauseAutomaticTextsAfterRefusal(error);
     });
   }, [applyRemoteSceneUpgrade, state]);
 
@@ -1200,13 +1223,15 @@ export function AppProvider({ children }) {
 
     journeySuiteUpgradeEpochRef.current = generationEpoch;
     const profileFingerprint = JSON.stringify(state.profile || {});
-    void generatePersonalizedScene({
-      desire: anchor.title,
-      category: anchor.category || 'Wealth',
-      lang: state.lang,
-      profile: state.profile,
-      includeJourneySuite: true,
-    }).then((remote) => {
+    void (async () => {
+      if (await automaticTextsPaused()) return;
+      const remote = await generatePersonalizedScene({
+        desire: anchor.title,
+        category: anchor.category || 'Wealth',
+        lang: state.lang,
+        profile: state.profile,
+        includeJourneySuite: true,
+      });
       applyRemoteJourneySuite({
         id: anchor.id,
         lang: state.lang,
@@ -1214,8 +1239,9 @@ export function AppProvider({ children }) {
         remote,
         generationEpoch,
       });
-    }).catch(() => {
+    })().catch((error) => {
       // The complete local 6+6 suite remains available; retry happens next launch.
+      pauseAutomaticTextsAfterRefusal(error);
     });
   }, [applyRemoteJourneySuite, state]);
 

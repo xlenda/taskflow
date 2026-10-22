@@ -778,6 +778,11 @@ async function main() {
     assert.match(consentMessage, /Cena-Âncora, suas visões e afirmações/, 'o aceite diz que a IA escreve os textos');
     assert.match(consentMessage, /Anthropic[\s\S]*OpenAI[\s\S]*Google Gemini/, 'o aceite nomeia quem escreve e traduz os textos');
     assert.match(consentMessage, /Nenhuma imagem é criada no app/, 'Android: o aceite diz que não há imagens');
+    assert.match(
+      consentMessage,
+      /nomes cadastrados de filhos e de pessoas importantes ficam neste aparelho; evite nomes e dados confidenciais nos textos livres/,
+      'Android: o aceite avisa, como o do site, que os nomes ficam no aparelho e para evitar nomes nos textos livres'
+    );
     assert.match(consentMessage, /18 anos ou mais/, 'o aceite confirma 18+');
     assert.doesNotMatch(consentMessage, /imagens pessoais|sonhos/i, 'Android: o aceite não fala de imagens nem sonhos');
     assert.match(confirmations[0].title, /voz e os textos/, 'Android: o título fala da voz e dos textos');
@@ -993,6 +998,11 @@ async function main() {
     );
     profileState = { ...profileState, profile: { age: '25-34' } };
     profile.update({});
+    assert.match(
+      profile.byTestID('profile-gemini-switch').props.accessibilityHint,
+      /os que a IA já escreveu continuam com você/,
+      'desligada: os textos que a IA já escreveu continuam com ela'
+    );
     await profile.byTestID('profile-gemini-switch').props.onPress();
     assert.strictEqual(consentAsks.length, 1, 'ligar no Android pede o mesmo aceite (voz e textos) do "Ouvir"');
     profile.unmount();
@@ -1233,9 +1243,10 @@ async function main() {
     ownPhrasePractice.unmount();
     practiceAffirmations[0] = { ...practiceAffirmations[0], source: 'manifestation' };
 
-    // 4e) criar uma manifestação no Android: com o aceite (voz e textos) a cena é escrita pela IA como no site; sem ele
-    //     nasce no aparelho, sem pedir nada nem apagar o aceite (no iPhone, sem nuvem nenhuma, o que sobrou sai)
-    async function createManifestationOn(flags, OS, homeProfile) {
+    // 4e) criar uma manifestação no Android: com o aceite (voz e textos) a cena é escrita pela IA como no site; sem
+    //     decisão, a Home pede o aceite do Android na mesma hora que o site pede o dele, e a resposta fica guardada
+    //     (recusou: a cena nasce no aparelho e a pergunta não volta); no iPhone, sem nuvem nenhuma, o que sobrou sai
+    async function createManifestationOn(flags, OS, homeProfile, answer = true) {
       const saves = [];
       const created = [];
       const prompts = [];
@@ -1269,7 +1280,7 @@ async function main() {
         '../utils/confirm': {
           confirmAsync: async (request) => {
             prompts.push(request);
-            return true;
+            return answer;
           },
         },
         '../utils/useT': { useT: () => ({ t: ptOnly, lang: 'pt' }) },
@@ -1307,12 +1318,67 @@ async function main() {
       !androidHome.saves.some((patch) => patch.cloudNarrationConsent === false),
       'Android: criar uma manifestação não apaga o aceite'
     );
-    const androidLocalHome = await createManifestationOn(androidFlags, 'android', { age: '25-34' });
-    assert.strictEqual(androidLocalHome.created[0].profile.cloudPersonalization, false, 'Android sem o aceite: a cena nasce no aparelho');
-    assert.deepStrictEqual(androidLocalHome.prompts, [], 'Android sem o aceite: a Home não pede nada (o aceite é o do "Ouvir"/Perfil)');
+    const androidAsked = await createManifestationOn(androidFlags, 'android', { age: '25-34' });
+    assert.strictEqual(androidAsked.prompts.length, 1, 'Android sem decisão: a Home pede o aceite ao criar o desejo, como o site');
+    assert.match(androidAsked.prompts[0].title, /voz e os textos/, 'Android: a Home pede o aceite do Android (voz e textos)');
+    assert.match(androidAsked.prompts[0].message, /Nenhuma imagem é criada no app/, 'Android: o pedido da Home não fala de imagens');
+    assert.deepStrictEqual(
+      [androidAsked.created[0].profile.cloudPersonalization, androidAsked.created[0].profile.cloudConsentVersion],
+      [true, CLOUD_CONSENT_VERSION],
+      'Android: aceitou na Home, a cena nova é escrita pela IA com o aceite do Android'
+    );
+    const androidDeclined = await createManifestationOn(androidFlags, 'android', { age: '25-34' }, false);
+    assert.strictEqual(androidDeclined.created[0].profile.cloudPersonalization, false, 'Android: recusou, a cena nasce no aparelho');
+    assert.ok(
+      androidDeclined.saves.some(
+        (patch) => patch.cloudConsentVersion === CLOUD_CONSENT_VERSION && patch.cloudPersonalization === false
+      ),
+      'Android: a recusa fica guardada'
+    );
+    const androidDecided = await createManifestationOn(androidFlags, 'android', {
+      age: '25-34',
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+      cloudPersonalization: false,
+    });
+    assert.deepStrictEqual(androidDecided.prompts, [], 'Android com a recusa guardada: a Home não pergunta de novo');
+    assert.strictEqual(androidDecided.created[0].profile.cloudPersonalization, false, 'Android com a recusa: a cena nasce no aparelho');
     const iosHome = await createManifestationOn(iosFlags, 'ios', webConsentedProfile);
     assert.ok(iosHome.saves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: o aceite antigo sai');
     assert.strictEqual(iosHome.created[0].profile.cloudPersonalization, false, 'iPhone: a cena nasce no aparelho');
+
+    // 4f) a denúncia não leva os nomes guardados (como a narração): a prévia e o envio saem sem os nomes dos filhos e
+    //     das pessoas importantes, mesmo num texto montado no aparelho ou editado por ela
+    const sentReports = [];
+    const { default: ReportAction } = loadWith('components/AiContentReportAction.js', {
+      ...screenBase,
+      '../ui/theme': { useTheme: () => theme },
+      '../context/AppContext': {
+        useApp: () => ({ state: { profile: { kids: [{ name: 'Lia', age: '6' }], people: [{ name: 'Bia', relation: 'irmã' }] } } }),
+      },
+      '../utils/colors': { alpha: () => '#123456' },
+      '../services/aiContentReports': {
+        normalizeAiReportEvidenceText: (text) => String(text || ''),
+        submitAiContentReport: async (payload) => sentReports.push(payload),
+      },
+    });
+    const reportAction = app.mount(ReportAction, {
+      contentType: 'vision',
+      contentRef: 'vision:m1:vision:Love:pt',
+      content: 'Lia corre na areia enquanto Bia ri, e você respira devagar.',
+      lang: 'pt',
+    });
+    reportAction.byTestID('ai-report-open-vision').props.onPress();
+    reportAction.flush();
+    const reportPreview = reportAction.all((node) => node.type === 'Text').map(textOf).join(' ');
+    assert.match(reportPreview, /uma pessoa próxima corre na areia enquanto uma pessoa próxima ri/, 'a prévia mostra o texto sem os nomes');
+    assert.doesNotMatch(reportPreview, /\b(Lia|Bia)\b/, 'a prévia não mostra os nomes guardados');
+    reportAction.byTestID('ai-report-reason-other').props.onPress();
+    reportAction.flush();
+    await reportAction.byTestID('ai-report-submit').props.onPress();
+    assert.strictEqual(sentReports.length, 1, 'a denúncia é enviada');
+    assert.doesNotMatch(sentReports[0].content, /\b(Lia|Bia)\b/, 'o texto enviado não leva os nomes guardados');
+    assert.match(sentReports[0].content, /uma pessoa próxima corre na areia/, 'o texto enviado é o mesmo da prévia');
+    reportAction.unmount();
 
     // 4d) toda tela que toca a voz gerada (playPersonal) oferece a denúncia de IA, com um tipo aceito pelo servidor
     const allowedTypes = new Set(['scene', 'dream', 'vision', 'affirmation']);
@@ -1416,10 +1482,11 @@ async function main() {
       }
     };
     // monta o AppProvider de verdade com o estado guardado; devolve o contexto e quem foi chamado
-    async function mountApp({ flags, OS = 'android', profile, extra, anchor = storedAnchor }) {
+    // `storage` (optional): the same AsyncStorage across launches; the saved state is written only when it is empty
+    async function mountApp({ flags, OS = 'android', profile, extra, anchor = storedAnchor, storage = new Map() }) {
       platform.OS = OS;
       const stored = { lang: 'pt', onboarded: true, anchorSceneId: 'm1', profile: { name: 'Ana', ...profile }, manifestations: [anchor] };
-      const storage = new Map([['@stella_state_v2', JSON.stringify(stored)]]);
+      if (!storage.has('@stella_state_v2')) storage.set('@stella_state_v2', JSON.stringify(stored));
       const asyncStorage = {
         getItem: async (key) => (storage.has(key) ? storage.get(key) : null),
         setItem: async (key, value) => storage.set(key, value),
@@ -1535,7 +1602,7 @@ async function main() {
       affirmations: localSuite.affirmations.map((item) => ({ ...item, text: `${item.text} Escrito para mim.` })),
     };
     const sha256Hex = (value) => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
-    async function androidTextsWith({ projectNumber, server }) {
+    async function androidTextsWith({ projectNumber, server, storage, anchor: launchAnchor }) {
       const requests = [];
       const tokens = [];
       const supabase = { calls: 0 };
@@ -1578,6 +1645,8 @@ async function main() {
         const { provider, context } = await mountApp({
           flags: androidFlags,
           profile: consentedProfile,
+          storage,
+          anchor: launchAnchor,
           extra: {
             './celesteApiSession': apiSession,
             '../services/generatePersonalizedVisual': { generatePersonalizedVisual: () => new Promise(() => {}) },
@@ -1665,6 +1734,56 @@ async function main() {
       assert.deepStrictEqual(outcome.visualStatus, {}, `${label}: nenhum erro na tela`);
       assert.strictEqual(outcome.storageError, false, `${label}: nenhum erro na tela`);
     }
+
+    // 5b2) depois de uma recusa (403: verificação reprovada; 502: o servidor não conseguiu conferir), o aparelho
+    //      espera um dia antes de pedir sozinho de novo: um celular que não passa na verificação não gasta uma
+    //      conferência do Google a cada abertura do app; outra falha (500, rede) não pausa nada
+    const PAUSE_KEY = '@celeste_automatic_texts_paused_until_v1';
+    const remoteOk = async () => remoteResponse();
+    for (const status of [403, 502]) {
+      const launches = new Map();
+      const first = await androidTextsWith({
+        projectNumber: '123456789012',
+        server: async () => response(status, { json: { error: status === 403 ? 'native_attestation_required' : 'integrity_unavailable' } }),
+        storage: launches,
+      });
+      assert.strictEqual(first.requests.length, 1, `${status}: um pedido`);
+      const pausedUntil = Number(launches.get(PAUSE_KEY));
+      assert.ok(
+        pausedUntil > Date.now() + 23 * 3600e3 && pausedUntil <= Date.now() + 24 * 3600e3,
+        `${status}: o aparelho espera um dia (${pausedUntil - Date.now()} ms)`
+      );
+      const nextLaunch = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
+      assert.deepStrictEqual(nextLaunch.requests, [], `${status}: na abertura seguinte, dentro do dia, nada é pedido sozinho`);
+      launches.set(PAUSE_KEY, String(Date.now() - 1));
+      const dayAfter = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
+      assert.strictEqual(dayAfter.requests.length, 1, `${status}: passado o dia, pede de novo`);
+      assert.strictEqual(dayAfter.anchor.journeySuiteByLang.pt.source, 'remote', `${status}: e a suíte da IA chega`);
+    }
+    // a Âncora já escrita pela IA com a suíte ainda local: o pedido só da suíte 6+6 também espera o dia
+    const suiteLaunches = new Map();
+    const suiteRefused = await androidTextsWith({
+      projectNumber: '123456789012',
+      server: async () => response(403, { json: { error: 'native_attestation_required' } }),
+      storage: suiteLaunches,
+      anchor: remoteSceneAnchor,
+    });
+    assert.strictEqual(suiteRefused.requests.length, 1, 'suíte sozinha: um pedido recusado');
+    assert.ok(Number(suiteLaunches.get(PAUSE_KEY)) > Date.now(), 'suíte sozinha: a recusa pausa');
+    const suiteNext = await androidTextsWith({
+      projectNumber: '123456789012',
+      server: remoteOk,
+      storage: suiteLaunches,
+      anchor: remoteSceneAnchor,
+    });
+    assert.deepStrictEqual(suiteNext.requests, [], 'suíte sozinha: dentro do dia, nada é pedido sozinho');
+    const otherFailure = new Map();
+    await androidTextsWith({
+      projectNumber: '123456789012',
+      server: async () => response(500, { json: { error: 'generation_unavailable' } }),
+      storage: otherFailure,
+    });
+    assert.strictEqual(otherFailure.has(PAUSE_KEY), false, 'uma falha que não é da verificação não pausa');
 
     // 5c) quem já tem a jornada não leva susto (fix round 1, 21/10): a suíte local salva pelo app publicado (sem
     //     localVersion) volta da atualização com os mesmos textos e os mesmos visualBrief, que prendem as imagens

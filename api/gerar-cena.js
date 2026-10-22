@@ -5,14 +5,42 @@ const celesteBrain = require('./_celeste-brain');
 const textProvider = require('./_text-provider');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
 const { interpretSelfDescription } = require('../utils/selfDescription');
-const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
+const { homeInLanguage, isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
 const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const PROMPT_VERSION = 'celeste-scene-v8';
 const LEGACY_PROMPT_VERSION = 'celeste-scene-v8';
-const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v2';
+const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v3';
+// Different people kept getting the same cups, mint water and notebooks: each request gets its own imagined settings
+// and senses for the six visions, chosen from its own data (the same person always gets the same hints).
+const JOURNEY_SETTINGS = [
+  'a bus or train ride',
+  'a street market',
+  'a staircase',
+  'a park path',
+  'a doorway on the way out',
+  'a waiting room',
+  'a rooftop or viewpoint',
+  'a bookshop or library',
+  'a beach or riverside path',
+  'a kitchen late at night',
+  'an office corridor',
+  'a bakery queue',
+  'a bench outside',
+  'a city square',
+  'a sidewalk after rain',
+  'a community hall',
+];
+const JOURNEY_SENSES = [
+  'a sound',
+  'a smell',
+  'the texture of something in her hands',
+  'the temperature of the air',
+  'a taste',
+  'a movement of her body',
+];
 const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
@@ -282,7 +310,9 @@ function sanitizeProfile(profile, lang = 'pt') {
     return isNonInformativeProfileAnswer(text) ? '' : text;
   };
   const location = personalText('dreamLocation') || personalText('city');
-  const dreamHome = personalText('dreamHome');
+  // the home chip is stored in canonical English ("Farmhouse"): say it in her language, or the scene says "sua farmhouse"
+  const dreamHomeAnswer = personalText('dreamHome');
+  const dreamHome = homeInLanguage(dreamHomeAnswer, lang) || dreamHomeAnswer;
   const work = personalText('work');
   const workFeeling = personalText('workFeeling');
   const relationshipStatus = personalText('relationshipStatus');
@@ -625,6 +655,19 @@ function deterministicSeed(input) {
   return value || 1;
 }
 
+// Six different settings and six different senses, one of each per area, in an order that depends on her data.
+function journeySceneHints(input) {
+  const seed = deterministicSeed(input);
+  const ordered = (label, values) =>
+    values
+      .map((value, index) => [crypto.createHash('sha256').update(`${seed}|${label}|${index}`).digest().readUInt32BE(0), value])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, value]) => value);
+  const settings = ordered('setting', JOURNEY_SETTINGS);
+  const senses = ordered('sense', JOURNEY_SENSES);
+  return JOURNEY_CATEGORIES.map((category, index) => `${category}: ${settings[index]}, opening on ${senses[index]}`).join('; ');
+}
+
 function buildKnowledgeInstructions(scope = 'scene', input = {}) {
   const pack = celesteBrain.buildKnowledgePack(scope, input);
   const contract = pack.generationContract || { required: [], rejectWhen: [] };
@@ -665,6 +708,8 @@ function buildSystemInstruction(input = {}) {
         'A vision is a possible future, not a prediction. In Portuguese, every vision story must begin exactly with "Imagine uma possibilidade do seu futuro:". In English, every vision story must begin exactly with "Imagine one possibility in your future:".',
         'After that future framing, write the vision as an immersive sensory scene. Keep each vision between 70 and 130 words and make setting, action, emotional texture, and wording genuinely different across categories.',
         'Each vision is a moment she lives, doing something, not a description of a photograph or of objects on a table (photographic language belongs in visualBrief); do not repeat the same objects or materials across visions.',
+        `Scene hints for this person (imagined settings for these possible moments, not facts about her; follow each unless one of her own answers gives a better concrete place for that area): ${journeySceneHints(input)}.`,
+        'Never center a vision on a cup, mug, glass of water, tea, notebook, candle, or a set table: those images repeat from person to person.',
         'Ground every vision in at least one concrete detail drawn from her own answers that fits that area, named with at least one of her own key words, with a different detail in each: Love with her partner wish or how she describes herself; Wealth with her home, place or reason; Career with her work; Health with her reason or the people she cares for; Confidence with her qualities or the obstacle she named; Peace with her place or reason. When a detail is missing, use the desire from a new angle.',
         'Never begin two visions (after the future framing) or two affirmations with the same three words. Vary the first sentence of the visions (a moment of the day, a sound, something in her hands, an action already under way, a line someone says, a place), vary verbs and rhythm, and at most three of the six affirmations may begin with Eu or I.',
         'Love concerns reciprocity and belonging; Wealth concerns meaningful resources and choice; Career concerns contribution and authorship; Health concerns sustainable care without medical claims; Confidence concerns grounded agency; Peace concerns attention and restoration.',
@@ -800,7 +845,13 @@ function responseSchema(input = {}) {
   return schema;
 }
 
-function buildGeminiRequest(input, seed, repairInstruction = '') {
+// Gemini 3 spends "thinking" tokens out of maxOutputTokens: unbounded, the 6+6 suite ran out of budget (MAX_TOKENS)
+// or past the timeout. 'low' is the level the dream route already uses with this model.
+function supportsThinkingLevel(model) {
+  return /^gemini-3(?:[.-]|$)/i.test(cleanText(model, 80));
+}
+
+function buildGeminiRequest(input, seed, repairInstruction = '', model = DEFAULT_MODEL) {
   const language = input.lang === 'pt' ? 'Brazilian Portuguese' : 'English';
   const knowledgePack = celesteBrain.buildKnowledgePack('scene', input);
   const userData = {
@@ -832,6 +883,7 @@ function buildGeminiRequest(input, seed, repairInstruction = '') {
       responseMimeType: 'application/json',
       responseSchema: responseSchema(input),
       temperature: 0.55,
+      ...(supportsThinkingLevel(model) ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
       maxOutputTokens: input.includeJourneySuite ? JOURNEY_SUITE_MAX_OUTPUT_TOKENS : 1800,
       seed,
     },
@@ -1231,7 +1283,7 @@ async function requestGemini(input, model, apiKey, seed, repairInstruction, dead
         'Content-Type': 'application/json',
         'x-goog-api-key': apiKey,
       },
-      body: JSON.stringify(buildGeminiRequest(input, seed, repairInstruction)),
+      body: JSON.stringify(buildGeminiRequest(input, seed, repairInstruction, model)),
       signal: controller.signal,
     });
   } catch (error) {

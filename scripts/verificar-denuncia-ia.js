@@ -65,10 +65,14 @@ assert.ok(
   'a pessoa precisa saber exatamente quais dados saem do aparelho e por quanto tempo ficam'
 );
 assert.ok(!/\bLinking\b|mailto:|https?:\/\//.test(componentSource), 'a denuncia nao pode tirar a pessoa do app');
+// the preview and the submission use the same text, without the saved names (the behaviour is exercised in
+// scripts/verificar-vozes-android.js, 4f)
 assert.ok(
-  componentSource.includes('normalizeAiReportEvidenceText(content)') &&
+  componentSource.includes('normalizeAiReportEvidenceText(evidence)') &&
+    componentSource.includes('content: evidence,') &&
+    componentSource.includes('redactThirdPartyNames(content, thirdPartyNames(state?.profile || {})') &&
     !componentSource.includes('slice(0, 357)'),
-  'a confirmacao precisa mostrar exatamente todo o texto normalizado que sera enviado'
+  'a confirmacao precisa mostrar exatamente todo o texto normalizado que sera enviado, sem os nomes guardados'
 );
 assert.ok(
   profileSource.includes('deleteAllAiContentReports') &&

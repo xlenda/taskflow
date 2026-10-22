@@ -743,6 +743,27 @@ async function liveGeminiChecks(
     cloudConsentVersion: CLOUD_CONSENT_VERSION,
     adultConfirmed: true,
   };
+  // One live 6+6 suite per deploy through the production text provider (the owner authorized the call), with an
+  // ordinary profile: the provider that writes the Anchor suite for real people has to pass the same validation.
+  const suiteBody = {
+    desire: 'ter uma rotina mais calma e tempo para minha familia',
+    category: 'Peace',
+    lang: 'pt',
+    profile: {
+      name: 'Clara',
+      city: 'Belo Horizonte',
+      work: 'professora',
+      whyMatters: 'estar presente com minha familia',
+      obstacle: 'tempo ou energia',
+      aboutYou: 'organizada, carinhosa e um pouco ansiosa',
+      dreamHome: 'Cozy Cottage',
+      partnerDesire: 'companheirismo e amizade',
+    },
+    cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+    includeJourneySuite: true,
+  };
   const translationBody = {
     sourceLang: 'pt',
     targetLang: 'en',
@@ -812,6 +833,8 @@ async function liveGeminiChecks(
       '--lang=pt-BR',
     ],
     defaultViewport: { width: 420, height: 900 },
+    // one evaluate runs scene, 6+6 suite, translation, dream, image and voice: more than the default 180 s per call
+    protocolTimeout: 420_000,
   });
   let results;
   try {
@@ -828,6 +851,7 @@ async function liveGeminiChecks(
     results = await page.evaluate(async ({
       accessToken: sessionToken,
       generationBody: generationInput,
+      suiteBody: suiteInput,
       translationBody: translationInput,
       dreamBody: dreamInput,
       visualBody: visualInput,
@@ -868,6 +892,18 @@ async function liveGeminiChecks(
         }
         return result;
       };
+      // one call per deploy; a second only when the first comes back as a transient refusal or timeout
+      const postSuite = async () => {
+        let result;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          result = await post('/api/gerar-cena', suiteInput);
+          const transient =
+            (result.status === 502 && ['invalid_generation', 'upstream_error'].includes(result.payload?.error)) ||
+            (result.status === 504 && result.payload?.error === 'generation_timeout');
+          if (!transient) return result;
+        }
+        return result;
+      };
       const postAudio = async () => {
         const response = await fetch('/api/gerar-audio', {
           method: 'POST',
@@ -892,6 +928,7 @@ async function liveGeminiChecks(
         };
       };
       const generation = await postGeneration();
+      const suite = await postSuite();
       const translation = await post('/api/traduzir-cena', translationInput);
       const dream = await post('/api/transformar-sonho', dreamInput);
       const visualResult = await post('/api/gerar-visual', visualInput);
@@ -914,8 +951,8 @@ async function liveGeminiChecks(
           error: visualResult.payload?.error,
         },
       };
-      return { generation, translation, dream, visual, audio };
-    }, { accessToken, generationBody, translationBody, dreamBody, visualBody, audioBody });
+      return { generation, suite, translation, dream, visual, audio };
+    }, { accessToken, generationBody, suiteBody, translationBody, dreamBody, visualBody, audioBody });
   } finally {
     await browser.close();
   }
@@ -932,6 +969,33 @@ async function liveGeminiChecks(
   );
   assert(generation.generation.promptVersion === 'celeste-scene-v8', 'Celeste AI nao confirmou o prompt de cena esperado');
   assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v2', 'Celeste AI nao confirmou a base esperada');
+
+  // the 6+6 suite the production provider writes for a real person: six visions and six affirmations, one per area
+  // in order, all different, the visions with the future framing, no two opening with the same three words
+  assert(results.suite.status === 200, `Suite 6+6 ao vivo falhou: ${JSON.stringify(results.suite).slice(0, 800)}`);
+  const suitePayload = results.suite.payload;
+  assert(
+    suitePayload.generation?.promptVersion === 'celeste-journey-suite-v3',
+    `Suite 6+6 ao vivo nao confirmou o prompt esperado: ${suitePayload.generation?.promptVersion || 'ausente'}`
+  );
+  const SUITE_AREAS = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
+  const FUTURE_FRAME = 'Imagine uma possibilidade do seu futuro:';
+  for (const kind of ['visions', 'affirmations']) {
+    const items = Array.isArray(suitePayload.journeySuite?.[kind]) ? suitePayload.journeySuite[kind] : [];
+    assert(
+      items.length === 6 && items.map((item) => item.category).join() === SUITE_AREAS.join(),
+      `Suite 6+6 ao vivo: ${kind} fora das seis areas`
+    );
+    const texts = items.map((item) => String((kind === 'visions' ? item.story : item.text) || '').trim());
+    assert(texts.every((text) => text.length >= 40) && new Set(texts).size === 6, `Suite 6+6 ao vivo: ${kind} vazias ou repetidas`);
+    if (kind === 'visions') {
+      assert(texts.every((text) => text.startsWith(FUTURE_FRAME)), 'Suite 6+6 ao vivo: visao sem o enquadramento de futuro');
+    }
+    const openings = texts.map((text) =>
+      (kind === 'visions' ? text.slice(FUTURE_FRAME.length) : text).trim().toLowerCase().split(/\s+/).slice(0, 3).join(' ')
+    );
+    assert(new Set(openings).size === 6, `Suite 6+6 ao vivo: ${kind} com a mesma abertura`);
+  }
 
   assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);
   const translation = results.translation.payload;
@@ -969,7 +1033,7 @@ async function liveGeminiChecks(
       results.audio.wave === 'WAVE',
     `ElevenLabs ao vivo nao devolveu WAV valido: ${JSON.stringify(results.audio)}`
   );
-  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
+  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, suite 6+6 ${suitePayload.generation.provider}/${suitePayload.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
 }
 
 async function candidateChecks(vercelCli, candidate, env) {

@@ -478,6 +478,22 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   );
   assert.match(deploySource, /results\.audio\.riff === 'RIFF'/);
   assert.match(deploySource, /results\.audio\.wave === 'WAVE'/);
+  // fix round 1 (21/10): one live 6+6 suite per deploy through the production text provider (a second call only on
+  // a transient refusal), validated as six visions and six affirmations in the six areas, different, with the prompt
+  const suiteBodySource = deploySource.slice(deploySource.indexOf('const suiteBody = {'), deploySource.indexOf('const translationBody = {'));
+  assert.match(suiteBodySource, /includeJourneySuite: true,/, 'smoke de producao precisa pedir a suite 6+6 de verdade');
+  assert.match(suiteBodySource, /profile: \{\s*name: '[^']+',\s*city:/, 'a suite ao vivo usa um perfil comum, com respostas');
+  assert.match(deploySource, /const suite = await postSuite\(\);/);
+  assert.match(
+    deploySource,
+    /for \(let attempt = 0; attempt < 2; attempt \+= 1\) \{\s*result = await post\('\/api\/gerar-cena', suiteInput\);/,
+    'a suite ao vivo faz no maximo duas chamadas'
+  );
+  assert.match(deploySource, /suitePayload\.generation\?\.promptVersion === 'celeste-journey-suite-v3'/);
+  assert.match(deploySource, /items\.length === 6 && items\.map\(\(item\) => item\.category\)\.join\(\) === SUITE_AREAS\.join\(\)/);
+  assert.match(deploySource, /new Set\(texts\)\.size === 6/);
+  assert.match(deploySource, /new Set\(openings\)\.size === 6/);
+  assert.match(deploySource, /protocolTimeout: 420_000/, 'a chamada unica do navegador cabe a suite alem das outras rotas');
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);

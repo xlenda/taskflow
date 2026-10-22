@@ -14,11 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '../ui/theme';
+import { useApp } from '../context/AppContext';
 import { alpha } from '../utils/colors';
 import {
   normalizeAiReportEvidenceText,
   submitAiContentReport,
 } from '../services/aiContentReports';
+import { redactThirdPartyNames, thirdPartyNames } from '../services/generatePersonalizedScene';
 
 const COPY = {
   pt: {
@@ -97,7 +99,13 @@ export default function AiContentReportAction({
   style,
 }) {
   const theme = useTheme();
+  const { state } = useApp();
   const copy = COPY[lang === 'en' ? 'en' : 'pt'];
+  // Like the narration: the saved names of children and important people never leave the device in a report (a text
+  // built on the phone, or her own edit, can carry them).
+  const evidence = content
+    ? redactThirdPartyNames(content, thirdPartyNames(state?.profile || {}), lang === 'en' ? 'en' : 'pt')
+    : content;
   const [visible, setVisible] = useState(false);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -107,7 +115,7 @@ export default function AiContentReportAction({
   // Show the exact normalized evidence sent by the service. The dialog is
   // already scrollable, so a hidden suffix would create an invalid consent
   // boundary for reported content.
-  const preview = normalizeAiReportEvidenceText(content);
+  const preview = normalizeAiReportEvidenceText(evidence);
 
   const open = () => {
     setReason('');
@@ -131,7 +139,7 @@ export default function AiContentReportAction({
       await submitAiContentReport({
         contentType,
         contentRef,
-        content,
+        content: evidence,
         visualRef,
         generation,
         reason,

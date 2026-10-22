@@ -42,7 +42,7 @@ export function releaseFeaturesForPlatform(
     // Images, cloud dreams and the Living Mirror stay website-only. If a future
     // Android build turns this on, bump ANDROID_CLOUD_CONSENT_VERSION
     // (constants/cloudConsent.js, used by utils/useCloudMediaConsent.js): the
-    // consent Android users gave (ANDROID_COPY) names only the voice and texts.
+    // consent Android users gave (ANDROID_CLOUD_CONSENT_COPY) names only the voice and texts.
     paidCloudProcessing: platformOS === 'web',
   });
 }
