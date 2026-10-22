@@ -43,6 +43,13 @@ function stableHash(value) {
     hash ^= character.codePointAt(0);
     hash = Math.imul(hash, 16777619);
   }
+  // FNV alone leaves the low bits (what `% 4` reads) badly mixed: one phrasing of four came first in 8% of the
+  // suites, another in 33%. murmur3's finalizer evens them out.
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
   return hash >>> 0;
 }
 

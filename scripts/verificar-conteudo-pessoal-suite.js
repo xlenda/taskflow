@@ -516,6 +516,18 @@ const outsideQuotes = (text) => text.replace(/“[^”]*”/g, '“…”');
 const sentencesIn = (text) => text.split(/(?<=[.!?])\s+/);
 const hashInt = (value) => crypto.createHash('sha256').update(value).digest().readUInt32BE(0);
 const sanityReport = [];
+// Each phrasing gets its turn: with the same answers and 400 different desires, every Love affirmation second (her
+// partner answer included) comes up in at least 15% of the suites (the bare FNV hash never picked that one).
+const loveSeconds = new Map();
+for (let index = 0; index < 400; index += 1) {
+  const suite = createPersonalContentSuite({ desire: `desejo ${index}`, profile: { partnerDesire: 'Quero alguém leal' }, lang: 'pt', category: 'Love' });
+  const second = suite.affirmations[0].text.split(/(?<=\.)\s+/).slice(1).join(' ');
+  loveSeconds.set(second, (loveSeconds.get(second) || 0) + 1);
+}
+assert.ok(
+  loveSeconds.size === 4 && [...loveSeconds.values()].every((count) => count >= 60),
+  `cada frase tem a sua vez no sorteio: ${JSON.stringify([...loveSeconds])}`
+);
 for (const lang of ['pt', 'en']) {
   const bank = SANITY[lang];
   const problems = new Map();
