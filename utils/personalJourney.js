@@ -3,6 +3,12 @@ const {
   JOURNEY_SUITE_VERSION,
   createPersonalContentSuite,
 } = require('./personalContentSuite');
+const { createPersonalContentSuite: createFirstLocalSuite } = require('./personalContentSuiteV1');
+
+// The local generator a manifestation's suite was born with: 1 = released until 21/10 (frozen), 2 = the current
+// banks. Existing people keep the texts they know and the image briefs their paid images are keyed on.
+const LOCAL_SUITE_GENERATORS = { 1: createFirstLocalSuite, 2: createPersonalContentSuite };
+const LOCAL_SUITE_VERSION = 2;
 
 const JOURNEY_KINDS = Object.freeze(['vision', 'affirmation']);
 const CATEGORY_ACCENTS = Object.freeze({
@@ -76,7 +82,14 @@ function buildPersonalJourneySuites({ desire, profile, stored, originLang, categ
     : originLang === 'en'
     ? 'en'
     : 'pt';
-  const fallbackFor = (lang) => createPersonalContentSuite({
+  // A suite saved before the versions existed was built by the first generator; a new manifestation (nothing
+  // stored yet) gets the current one.
+  const localVersion = LOCAL_SUITE_GENERATORS[source.localVersion]
+    ? source.localVersion
+    : Object.keys(source).length
+    ? 1
+    : LOCAL_SUITE_VERSION;
+  const fallbackFor = (lang) => LOCAL_SUITE_GENERATORS[localVersion]({
     desire: lang === sourceLang ? desire : '',
     profile: lang === sourceLang ? profile : {},
     lang,
@@ -90,6 +103,7 @@ function buildPersonalJourneySuites({ desire, profile, stored, originLang, categ
   };
   return {
     originLang: sourceLang,
+    localVersion,
     // Local suites are deterministic fallbacks and are rebuilt when their
     // contract changes. Remote suites are paid personal content and must never
     // be discarded while repairing the alternate-language fallback.

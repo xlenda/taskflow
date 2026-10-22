@@ -23,4 +23,23 @@ function isNonInformativeProfileAnswer(value) {
   return NON_INFORMATIVE_ANSWERS.has(semanticKey(value));
 }
 
-module.exports = { isNonInformativeProfileAnswer };
+// The onboarding stores the dream-home chip in canonical English ("Farmhouse"); a home she typed stays as written.
+// Neutral phrases (no "your" or "my") fit a vision, an affirmation and the AI request alike.
+const HOME_CHIPS = {
+  'Luxury Penthouse': { pt: 'uma cobertura de luxo', en: 'a luxury penthouse' },
+  'Beachfront Villa': { pt: 'uma casa à beira-mar', en: 'a beachfront villa' },
+  'Modern Loft': { pt: 'um loft moderno', en: 'a modern loft' },
+  'Cozy Cottage': { pt: 'um chalé aconchegante', en: 'a cozy cottage' },
+  'Suburban Mansion': { pt: 'uma casa ampla no subúrbio', en: 'a spacious house in the suburbs' },
+  Farmhouse: { pt: 'uma casa de fazenda', en: 'a farmhouse' },
+  Cabin: { pt: 'uma cabana', en: 'a cabin' },
+  'Tiny Home': { pt: 'uma mini casa', en: 'a tiny home' },
+};
+
+// The chip said in the language ('' when the answer is not a chip).
+function homeInLanguage(value, lang) {
+  const chip = HOME_CHIPS[String(value || '').trim()];
+  return chip ? chip[lang === 'en' ? 'en' : 'pt'] : '';
+}
+
+module.exports = { homeInLanguage, isNonInformativeProfileAnswer };

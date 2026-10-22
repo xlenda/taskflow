@@ -12,7 +12,8 @@
 //     IA com o aceite) e toda tela que toca voz gerada tem a denúncia de IA.
 //  5) AppContext de verdade: com o aceite do Android a Cena-Âncora e a suíte 6+6 são escritas pela IA (token do Google
 //     da operação 'scene' amarrado ao corpo) e a cena é traduzida; sem verificação a suíte local continua, sem erro;
-//     imagens e Espelho Vivo continuam fora.
+//     imagens e Espelho Vivo continuam fora. Quem já tem a jornada volta da atualização com a mesma suíte local
+//     (textos e visualBrief); só a manifestação nova recebe os bancos novos.
 // Uso (cwd = C:\projetos\TaskFlow): node scripts/verificar-vozes-android.js
 const assert = require('assert');
 const fs = require('fs');
@@ -1664,6 +1665,65 @@ async function main() {
       assert.deepStrictEqual(outcome.visualStatus, {}, `${label}: nenhum erro na tela`);
       assert.strictEqual(outcome.storageError, false, `${label}: nenhum erro na tela`);
     }
+
+    // 5c) quem já tem a jornada não leva susto (fix round 1, 21/10): a suíte local salva pelo app publicado (sem
+    //     localVersion) volta da atualização com os mesmos textos e os mesmos visualBrief, que prendem as imagens
+    //     pagas da jornada; só a manifestação nova recebe os bancos novos
+    const personalJourney = require('../utils/personalJourney');
+    const firstLocal = require('../utils/personalContentSuiteV1');
+    const keptProfile = { name: 'Ana', work: 'TI', dreamHome: 'Tiny Home', obstacle: 'dinheiro ou recursos', city: 'Recife' };
+    const releasedSuites = {
+      originLang: 'pt',
+      pt: personalJourney.normalizePersonalJourneySuite(
+        null,
+        firstLocal.createPersonalContentSuite({ desire: anchorTitle, profile: keptProfile, lang: 'pt' })
+      ),
+      en: personalJourney.normalizePersonalJourneySuite(
+        null,
+        firstLocal.createPersonalContentSuite({ desire: '', profile: {}, lang: 'en' })
+      ),
+    };
+    const generated = [];
+    const kept = await mountApp({
+      flags: webFlags,
+      OS: 'web',
+      profile: keptProfile,
+      anchor: { ...storedAnchor, journeySuiteByLang: releasedSuites },
+      extra: {
+        '../services/generatePersonalizedScene': {
+          generatePersonalizedScene: () => generated.push('scene') && new Promise(() => {}),
+        },
+        '../services/generatePersonalizedVisual': {
+          generatePersonalizedVisual: () => generated.push('visual') && new Promise(() => {}),
+        },
+        '../services/translateManifestationScene': {
+          translateManifestationScene: () => generated.push('translation') && new Promise(() => {}),
+        },
+      },
+    });
+    const keptAnchor = kept.context().state.manifestations.find((item) => item.id === 'm1');
+    assert.deepStrictEqual(
+      keptAnchor.journeySuiteByLang,
+      { ...releasedSuites, localVersion: 1 },
+      'quem já tem a jornada: depois da atualização, os mesmos textos e os mesmos visualBrief (nenhuma imagem refeita)'
+    );
+    await kept.context().addManifestation({ title: 'Uma rotina criativa', category: 'Career', lang: 'pt' });
+    await settle(kept.provider);
+    const freshItem = kept.context().state.manifestations.find((item) => item.title === 'Uma rotina criativa');
+    assert.strictEqual(freshItem.journeySuiteByLang.localVersion, 2, 'a manifestação nova nasce com os bancos novos');
+    assert.deepStrictEqual(
+      freshItem.journeySuiteByLang.pt.visions.map((item) => item.story),
+      createPersonalContentSuite({
+        desire: 'Uma rotina criativa',
+        profile: kept.context().state.profile,
+        lang: 'pt',
+        category: 'Career',
+      }).visions.map((item) => item.story),
+      'a manifestação nova usa o gerador atual'
+    );
+    assert.deepStrictEqual(generated, [], 'sem o aceite, nada foi gerado na nuvem: só os geradores locais');
+    kept.provider.unmount();
+    platform.OS = 'android';
   });
 
   if (failures.length) {

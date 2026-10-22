@@ -192,13 +192,10 @@ assert.strictEqual(
   12,
   'cada unidade de conteudo precisa de uma direcao visual diferente'
 );
+// (fix round 1: the visions no longer must all name "a direção": that requirement made it a tic in 84% of them; the
+// sanity sample below caps how often it appears)
 local.visions.forEach((item) => {
   assert.match(item.story, /^Imagine uma possibilidade do seu futuro:/);
-  assert.match(
-    item.story,
-    /Cena-Âncora|vida que você deseja|direção pessoal|direção que você escolheu/i,
-    `${item.category}: a visao perdeu a direcao pessoal sem reescrever o rascunho`
-  );
 });
 local.affirmations.forEach((item) => {
   assert.match(item.text, /\b(Eu|meu|minha|meus|minhas)\b/i);
@@ -395,6 +392,266 @@ assert.ok(
   ),
   'toda suite local montada pelo app recebe a area do desejo'
 );
+
+// Fix round 1 (21/10): whoever already has a journey is not surprised. The first local generator is frozen in
+// utils/personalContentSuiteV1.js and reproduces, byte for byte, what the released app (master 19be59f) builds: the
+// texts she knows and the visualBrief that key her paid images (golden hash taken from the original code).
+const crypto = require('node:crypto');
+const firstLocal = require('../utils/personalContentSuiteV1');
+const FROZEN_PEOPLE = [
+  ['Love', 'viver com liberdade e construir uma família', { aboutYou: 'sou pro ativa, bondosa e persistente', whyMatters: 'ter liberdade para cuidar das pessoas importantes', obstacle: 'medo ou insegurança', dreamLocation: 'Na praia ou no litoral', dreamHome: 'Farmhouse', work: 'design de produto', partnerDesire: 'uma parceria leal, companheira e presente', relationshipStatus: 'Solteiro(a)', workFeeling: 'Amo', people: [{ name: 'Bia' }] }],
+  ['Career', 'abrir minha confeitaria', { aboutYou: 'criativa e teimosa', obstacle: 'dinheiro ou recursos', city: 'Recife', work: 'a construção do meu próprio negócio', kids: [{ name: 'Leo' }] }],
+  ['Wealth', 'ter estabilidade financeira', { work: 'TI', partnerDesire: 'Quero alguém leal', dreamHome: 'Tiny Home', obstacle: 'Eu procrastino', aboutYou: 'calma', whyMatters: 'Minha filha' }],
+  ['Peace', 'build a calmer life', { work: "I'm a nurse", partnerDesire: 'I want someone kind', dreamHome: 'Tiny Home', city: 'Chicago', whyMatters: 'my kids deserve a present mom', obstacle: 'burnout', aboutYou: 'organized, demanding and loyal' }],
+  ['Career', 'conseguir um emprego', { work: 'desempregada', obstacle: 'ansiedade', whyMatters: 'pagar as contas' }],
+  ['Health', 'dormir bem', { obstacle: 'tempo ou energia', work: 'a aposentadoria', dreamLocation: 'Onde moro hoje, mas do meu jeito' }],
+  ['Love', 'find love', {}],
+  ['Peace', '', {}],
+];
+const frozenOutputs = [];
+for (const [, desire, answers] of FROZEN_PEOPLE) {
+  for (const lang of ['pt', 'en']) frozenOutputs.push(firstLocal.createPersonalContentSuite({ desire, profile: answers, lang }));
+}
+assert.strictEqual(
+  crypto.createHash('sha256').update(JSON.stringify(frozenOutputs), 'utf8').digest('hex'),
+  'dc26061aca0f2b6143d942e4c688d2758e0ce98cb1bd112696eff9fd3e55fbc4',
+  'o gerador congelado reproduz byte a byte o que o app publicado monta (textos e visualBrief)'
+);
+// the new banks keep the image briefs of the same answers: no paid image is redone because a text changed
+for (const [category, desire, answers] of [...FROZEN_PEOPLE, ...VARIETY_PEOPLE]) {
+  for (const lang of ['pt', 'en']) {
+    const current = createPersonalContentSuite({ desire, profile: answers, lang, category });
+    const first = firstLocal.createPersonalContentSuite({ desire, profile: answers, lang });
+    assert.deepStrictEqual(
+      [...current.visions, ...current.affirmations].map((item) => item.visualBrief),
+      [...first.visions, ...first.affirmations].map((item) => item.visualBrief),
+      `${lang} "${desire}": os visualBrief continuam os da primeira versao`
+    );
+  }
+}
+// The generator travels with the manifestation: a suite saved before the versions existed (no localVersion, as the
+// released app hydrated it) stays with the first generator; a new manifestation gets the current banks; both keep it.
+const frozenPerson = FROZEN_PEOPLE[1];
+const releasedStored = {
+  originLang: 'pt',
+  pt: personalJourney.normalizePersonalJourneySuite(
+    null,
+    firstLocal.createPersonalContentSuite({ desire: frozenPerson[1], profile: frozenPerson[2], lang: 'pt' })
+  ),
+  en: personalJourney.normalizePersonalJourneySuite(
+    null,
+    firstLocal.createPersonalContentSuite({ desire: '', profile: {}, lang: 'en' })
+  ),
+};
+const suitesFor = (stored) =>
+  personalJourney.buildPersonalJourneySuites({
+    desire: frozenPerson[1],
+    profile: frozenPerson[2],
+    stored,
+    originLang: 'pt',
+    category: frozenPerson[0],
+  });
+const keptSuites = suitesFor(releasedStored);
+assert.deepStrictEqual(
+  keptSuites,
+  { ...releasedStored, localVersion: 1 },
+  'quem ja tem a jornada: a suite local fica como estava (textos e visualBrief)'
+);
+const newSuites = suitesFor(undefined);
+assert.strictEqual(newSuites.localVersion, 2, 'uma manifestacao nova recebe os bancos novos');
+assert.deepStrictEqual(
+  newSuites.pt.visions.map((item) => item.story),
+  createPersonalContentSuite({ desire: frozenPerson[1], profile: frozenPerson[2], lang: 'pt', category: frozenPerson[0] })
+    .visions.map((item) => item.story),
+  'a manifestacao nova usa o gerador atual'
+);
+assert.notDeepStrictEqual(
+  newSuites.pt.visions.map((item) => item.story),
+  keptSuites.pt.visions.map((item) => item.story),
+  'os dois geradores escrevem textos diferentes'
+);
+assert.deepStrictEqual(suitesFor(newSuites), newSuites, 'a versao 2 salva continua 2');
+assert.deepStrictEqual(suitesFor(keptSuites), keptSuites, 'a versao 1 salva continua 1');
+
+// Fix round 1 (21/10): grammar and meaning over a large sample of answers people really give: the chips exactly as
+// the onboarding stores them (multiple choices joined as it joins them) and free text, in Portuguese with Portuguese
+// answers and in English with English answers. The variety metric above cannot see any of this.
+const { homeInLanguage } = require('../utils/profileSemantics');
+const SANITY = {
+  pt: {
+    desires: ['abrir minha confeitaria', 'ter estabilidade financeira', 'encontrar um amor de verdade', 'dormir bem de novo', 'ter coragem de falar em público', 'ter mais tempo para mim'],
+    work: ['TI', 'UX designer', 'professora', 'Sou enfermeira', 'desempregada', 'RH de uma empresa', 'um emprego em uma empresa', 'trabalho autônomo ou freelancer', 'a construção do meu próprio negócio', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', ''],
+    partnerDesire: ['Quero alguém leal', 'alguém que me apoie', 'Que ele me respeite', 'lealdade e confiança, além de apoio aos meus sonhos', ''],
+    dreamHome: ['Tiny Home', 'Farmhouse', 'Luxury Penthouse', 'Uma casa com quintal', ''],
+    place: [{ dreamLocation: 'Na praia ou no litoral' }, { dreamLocation: 'Onde moro hoje, mas do meu jeito', city: 'Recife' }, { city: 'Lisboa' }, { dreamLocation: 'Em outro país', city: 'São Paulo' }, {}],
+    obstacle: ['dinheiro ou recursos', 'tempo ou energia', 'medo ou insegurança, além de tempo ou energia', 'falta de clareza; dinheiro ou recursos; e falta de constância', 'Eu procrastino', 'minha depressão', ''],
+    whyMatters: ['Minha filha', 'quero paz', ''],
+    aboutYou: ['calma', 'determinada, criativa e um pouco ansiosa', ''],
+  },
+  en: {
+    desires: ['open my bakery', 'have financial stability', 'find real love', 'sleep well again', 'speak up in public', 'have more time for myself'],
+    work: ['IT', 'UX designer', "I'm a nurse", 'unemployed', 'HR at a bank', 'a job at a company', 'freelance or self-employed work', 'building a business', 'studying', 'caring for my home or family', 'a career transition', 'retirement', ''],
+    partnerDesire: ['I want someone kind', 'someone loyal', 'loyalty and trust, as well as support for my dreams', ''],
+    dreamHome: ['Tiny Home', 'Farmhouse', 'Luxury Penthouse', 'A house with a garden', ''],
+    place: [{ dreamLocation: 'By the beach or coast' }, { dreamLocation: 'Where I live now, but better', city: 'Chicago' }, { city: 'Lisbon' }, { dreamLocation: 'In another country', city: 'Austin' }, {}],
+    obstacle: ['money or resources', 'time or energy', 'fear or self-doubt, as well as time or energy', 'lack of clarity; money or resources; and lack of consistency', 'I procrastinate', 'my depression', ''],
+    whyMatters: ['My daughter', 'I want peace', ''],
+    aboutYou: ['calm', 'organized, demanding and loyal', ''],
+  },
+};
+const SANITY_SIZE = 2400;
+const PLACE_CHIP = /^(Onde|Em|Na|No|Viajando|Where|In|By|Traveling)\b/;
+const HERE_CHIP = /^(Onde moro hoje, mas do meu jeito|Where I live now, but better)$/;
+const NON_JOB_WORK = new Set(['desempregada', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', 'unemployed', 'studying', 'caring for my home or family', 'a career transition', 'retirement']);
+const WORK_CHIPS = new Set([...NON_JOB_WORK, 'um emprego em uma empresa', 'trabalho autônomo ou freelancer', 'a construção do meu próprio negócio', 'a job at a company', 'freelance or self-employed work', 'building a business']);
+const JOB_FRAMES = /deixa de ser só tarefa|O que você já faz hoje|contou do seu trabalho|do que faço no meu trabalho|stops being just tasks|What you already do|shared about your work|what I do at work/;
+const OBSTACLE_MARKERS = { pt: /caminho|pesa|obstáculo/, en: /\bway\b|weighs|obstacle/ };
+const SECOND_PERSON = { pt: /(?<!\p{L})(você|sua|seu|suas|seus|te|contigo)(?!\p{L})/iu, en: /\b(you|your|yours|yourself)\b/i };
+const RAW_AFTER_COLON = { pt: /: (quero|que ele|sou|eu) /i, en: /: (i want|i'm|i am) /i };
+const CALQUES = /possible size|possible gesture|next possible step|possible piece|possible acts/i;
+const DIRECTION = /\bdireç|\bdirection\b/i;
+// the minimum number of different sentences each kind of answer must be seen in (every frame that carries it)
+const FRAME_MINIMUM = { obstacle: 4, partner: 3, work: 3, homeChip: 3, homeText: 2, dreamPlace: 2, city: 2 };
+const outsideQuotes = (text) => text.replace(/“[^”]*”/g, '“…”');
+const sentencesIn = (text) => text.split(/(?<=[.!?])\s+/);
+const hashInt = (value) => crypto.createHash('sha256').update(value).digest().readUInt32BE(0);
+const sanityReport = [];
+for (const lang of ['pt', 'en']) {
+  const bank = SANITY[lang];
+  const problems = new Map();
+  const note = (kind, text) => {
+    if (!problems.has(kind)) problems.set(kind, { count: 0, example: text });
+    problems.get(kind).count += 1;
+  };
+  const frames = new Map();
+  const seen = (slot, value, form, texts) => {
+    if (!value || !form) return;
+    for (const text of texts) {
+      for (const sentence of sentencesIn(text)) {
+        if (!sentence.includes(form)) continue;
+        const key = `${slot}|${value}`;
+        if (!frames.has(key)) frames.set(key, new Set());
+        frames.get(key).add(sentence.split(form).join('<X>'));
+      }
+    }
+  };
+  const openerSuites = new Map();
+  let visionCount = 0;
+  let directionCount = 0;
+  for (let index = 0; index < SANITY_SIZE; index += 1) {
+    const pick = (field) => bank[field][hashInt(`${lang}|${index}|${field}`) % bank[field].length];
+    const answers = {
+      work: pick('work'),
+      partnerDesire: pick('partnerDesire'),
+      dreamHome: pick('dreamHome'),
+      obstacle: pick('obstacle'),
+      whyMatters: pick('whyMatters'),
+      aboutYou: pick('aboutYou'),
+      ...pick('place'),
+    };
+    const suite = createPersonalContentSuite({
+      desire: bank.desires[index % bank.desires.length],
+      profile: answers,
+      lang,
+      category: JOURNEY_CATEGORIES[index % 6],
+    });
+    const visions = suite.visions.map((item) => item.story);
+    const affirmations = suite.affirmations.map((item) => item.text);
+    const all = [...visions, ...affirmations];
+    try {
+      endpoint._internals.validateGeneratedJourneySuite(suite, { lang, availablePersonalization: new Set(['desire']) });
+    } catch (error) {
+      note(`recusada pelo validador do servidor (${error.evaluation ? error.evaluation.issues[0].code : error.message})`, all.join(' / '));
+    }
+    visionCount += visions.length;
+    directionCount += visions.filter((text) => DIRECTION.test(text)).length;
+    for (const text of all) {
+      if (/\p{Ll}\p{Lu}/u.test(outsideQuotes(text))) note('maiuscula no meio de uma palavra', text);
+      if (lang === 'en' && /(^|[\s(“—])i(?=[\s'’]|$)/.test(text)) note('"i" minusculo', text);
+      if (CALQUES.test(text)) note('decalque do portugues', text);
+    }
+    const openers = new Set();
+    for (const text of affirmations) {
+      if (SECOND_PERSON[lang].test(outsideQuotes(text))) note('segunda pessoa dentro da afirmacao', text);
+      if (RAW_AFTER_COLON[lang].test(outsideQuotes(text))) note('resposta crua colada depois de dois-pontos', text);
+      const words = wordsFolded(text);
+      const opener = words.slice(0, words.indexOf(lang === 'pt' ? 'eu' : 'i') + 1);
+      openers.add(opener.join(' '));
+      for (const word of opener.filter((candidate) => candidate.length >= 4 && candidate !== 'with')) {
+        if (words.slice(opener.length).includes(word)) note('palavra da abertura volta na mesma afirmacao', text);
+      }
+    }
+    openers.forEach((opener) => openerSuites.set(opener, (openerSuites.get(opener) || 0) + 1));
+    // her own words are never altered (no "tI", no "i want", no "sou enfermeira" after a colon)
+    for (const value of [answers.work, answers.partnerDesire, answers.whyMatters, answers.obstacle, answers.city]) {
+      if (!value || !/^\p{Lu}/u.test(value)) continue;
+      const lowered = value.charAt(0).toLocaleLowerCase() + value.slice(1);
+      if (all.some((text) => text.includes(lowered))) note('resposta dela alterada', `${value} → ${lowered}`);
+    }
+    const career = visions[JOURNEY_CATEGORIES.indexOf('Career')];
+    const careerAffirmation = affirmations[JOURNEY_CATEGORIES.indexOf('Career')];
+    if (NON_JOB_WORK.has(answers.work) && JOB_FRAMES.test(`${career} ${careerAffirmation}`)) {
+      note('trabalho que nao e emprego dentro de uma frase de emprego', `${answers.work}: ${career}`);
+    }
+    if ((careerAffirmation.match(/\bvalor\b|\bvalue\b/gi) || []).length > 1) note('"valor" duas vezes na afirmacao de Carreira', careerAffirmation);
+    if (answers.obstacle) {
+      for (const text of all) {
+        for (const sentence of sentencesIn(text)) {
+          if (sentence.includes(`“${answers.obstacle}”`) && !OBSTACLE_MARKERS[lang].test(sentence)) {
+            note('obstaculo fora do molde "o que estava no caminho"', sentence);
+          }
+        }
+      }
+    }
+    if (answers.city) {
+      for (const text of all) {
+        for (const sentence of sentencesIn(text)) {
+          if (sentence.includes(`“${answers.city}”`) && /imagin|descrev|describ/i.test(sentence)) {
+            note('a cidade onde ela mora tratada como lugar imaginado', sentence);
+          }
+        }
+      }
+    }
+    if (HERE_CHIP.test(answers.dreamLocation || '') && all.some((text) => fold(text).includes(fold(answers.dreamLocation)))) {
+      note('"onde moro hoje" citado como outro lugar', answers.dreamLocation);
+    }
+    const homeChip = homeInLanguage(answers.dreamHome, lang);
+    if (homeChip && all.some((text) => text.includes(answers.dreamHome))) note('casa do chip no ingles guardado', answers.dreamHome);
+    seen('obstacle', answers.obstacle, answers.obstacle && `“${answers.obstacle}”`, all);
+    seen('partner', answers.partnerDesire, answers.partnerDesire && `“${answers.partnerDesire}”`, all);
+    if (!WORK_CHIPS.has(answers.work)) seen('work', answers.work, answers.work && `“${answers.work}”`, all);
+    if (homeChip) seen('homeChip', answers.dreamHome, homeChip, all);
+    else seen('homeText', answers.dreamHome, answers.dreamHome && `“${answers.dreamHome}”`, all);
+    if (answers.dreamLocation && !HERE_CHIP.test(answers.dreamLocation)) {
+      const form = PLACE_CHIP.test(answers.dreamLocation)
+        ? answers.dreamLocation.charAt(0).toLocaleLowerCase() + answers.dreamLocation.slice(1)
+        : answers.dreamLocation;
+      seen('dreamPlace', answers.dreamLocation, `“${form}”`, all);
+    }
+    if (answers.city && !answers.dreamLocation) seen('city', answers.city, `“${answers.city}”`, all);
+  }
+  // chip × frame: every answer kind reaches every sentence built to carry it
+  for (const [key, sentences] of frames) {
+    const minimum = FRAME_MINIMUM[key.split('|')[0]];
+    if (sentences.size < minimum) note(`resposta vista em poucas frases (${sentences.size} < ${minimum})`, key);
+  }
+  for (const slot of Object.keys(FRAME_MINIMUM)) {
+    if (![...frames.keys()].some((key) => key.startsWith(`${slot}|`))) note('tipo de resposta nunca usado', slot);
+  }
+  const directionRate = directionCount / visionCount;
+  if (directionRate > 0.35) note(`"direção" em ${(directionRate * 100).toFixed(1)}% das visoes`, String(directionRate));
+  const openerShare = Math.max(...openerSuites.values()) / SANITY_SIZE;
+  if (openerSuites.size < 10 || openerShare > 0.75) note('as mesmas aberturas de afirmacao para todo mundo', [...openerSuites.keys()].join(' | '));
+  sanityReport.push(
+    `${lang}: ${SANITY_SIZE} suites, "direção" em ${(directionRate * 100).toFixed(1)}% das visoes, ` +
+      `${openerSuites.size} aberturas (a mais usada em ${(openerShare * 100).toFixed(0)}% das suites)`
+  );
+  assert.deepStrictEqual(
+    [...problems].map(([kind, { count, example }]) => `${kind} (${count}x): ${example}`),
+    [],
+    `${lang}: frases quebradas na amostra grande`
+  );
+}
 
 const requestBody = {
   desire: 'viver com liberdade e construir uma familia',
@@ -714,7 +971,8 @@ const fetchImpl = async (_url, options) => {
   );
   console.log(
     'OK: suite pessoal 6+6 local, Claude, validacao e compatibilidade legada; variedade (pares de pessoas com o ' +
-      `mesmo esqueleto, palavras dela fora): ${varietyReport.join(' | ')}`
+      `mesmo esqueleto, palavras dela fora): ${varietyReport.join(' | ')}; amostra grande sem frases quebradas: ` +
+      `${sanityReport.join(' | ')}; quem ja tem a jornada fica com a suite e as imagens que tem`
   );
 })().catch((error) => {
   console.error(error);
