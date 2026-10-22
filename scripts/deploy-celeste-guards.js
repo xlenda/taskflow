@@ -464,6 +464,27 @@ function extractAnonymousAccessToken(payload) {
 // per day (migration 010) and gerar-cena commits the units before generating, so a quota refusal proves the spend
 // guard, not a broken deploy: skipped with a loud warning, never a rollback. The suite is checked with the server's
 // own validator (`validateJourneySuite`), so a valid 200 always passes; anything else throws and rolls back.
+// The browser waits longer than api/gerar-cena.js can live (vercel.json maxDuration 270 s), so the answer is always
+// the server's. A second call only when the server's validator refused the answer even after its own repair (502);
+// a 504 means the server already spent its whole deadline, so a second call would only wait it all again.
+const LIVE_SUITE_TIMEOUT_MS = 300_000;
+const LIVE_SUITE_ATTEMPTS = 2;
+
+function liveSuiteRetryable(result) {
+  return Boolean(result) &&
+    result.status === 502 &&
+    ['invalid_generation', 'upstream_error'].includes(result.payload && result.payload.error);
+}
+
+async function runLiveSuite(post) {
+  let result;
+  for (let attempt = 0; attempt < LIVE_SUITE_ATTEMPTS; attempt += 1) {
+    result = await post();
+    if (!liveSuiteRetryable(result)) return result;
+  }
+  return result;
+}
+
 function validateLiveSceneSuite(result, validateJourneySuite) {
   if (result && result.status === 429 && result.payload && result.payload.error === 'daily_generation_limit_reached') {
     return { skipped: true };
@@ -479,7 +500,7 @@ function validateLiveSceneSuite(result, validateJourneySuite) {
   if (generation.provider !== 'anthropic') {
     throw new Error(`Celeste AI nao confirmou Anthropic como provider primario: ${generation.provider || 'ausente'}`);
   }
-  if (generation.promptVersion !== 'celeste-journey-suite-v3') {
+  if (generation.promptVersion !== 'celeste-journey-suite-v4') {
     throw new Error(`Suite 6+6 ao vivo nao confirmou o prompt esperado: ${generation.promptVersion || 'ausente'}`);
   }
   if (generation.knowledgeVersion !== 'celeste-knowledge-v2') {
@@ -500,6 +521,8 @@ module.exports = {
   AI_REPORT_RETENTION_DAYS,
   COMPLETE_JOURNEY_DAILY_UNITS,
   GENERATION_QUOTA_SCHEMA_VERSION,
+  LIVE_SUITE_ATTEMPTS,
+  LIVE_SUITE_TIMEOUT_MS,
   LOCAL_PUBLIC_KEY_ALIASES,
   OPERATION_QUOTA_REQUIREMENTS,
   PRODUCTION_BACKEND_ALIASES,
@@ -508,7 +531,9 @@ module.exports = {
   anonymousSignupHeaders,
   aiReportRolloutMode,
   extractAnonymousAccessToken,
+  liveSuiteRetryable,
   parseDeploymentOutput,
+  runLiveSuite,
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
   validateLocalBuildEnvironment,

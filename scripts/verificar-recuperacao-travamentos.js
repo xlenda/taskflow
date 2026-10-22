@@ -303,8 +303,11 @@ async function run() {
       addManifestationBlock.indexOf('void generatePersonalizedScene({'),
     'cena remota ainda bloqueia a recompensa local do onboarding'
   );
+  // the app waits longer than api/gerar-cena.js can live (vercel.json), always behind the saved local reward
+  const clientTimeoutMs = Number((sceneClient.match(/API_TIMEOUT_MS = (\d+);/) || [])[1]);
+  const sceneMaxDurationMs = JSON.parse(read('vercel.json')).functions['api/gerar-cena.js'].maxDuration * 1000;
   assert.ok(
-    sceneClient.includes('API_TIMEOUT_MS = 56000'),
+    clientTimeoutMs > sceneMaxDurationMs,
     'cliente precisa cobrir geracao e finalizacao sem bloquear a recompensa local'
   );
   assert.ok(deploy.includes('verificar-recuperacao-travamentos.js'), 'deploy ignora teste de travamento');

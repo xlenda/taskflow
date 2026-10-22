@@ -1,9 +1,28 @@
 const assert = require('node:assert');
+const fs = require('node:fs');
+const Module = require('node:module');
+const path = require('node:path');
 const test = require('node:test');
+const { transformSync } = require('@babel/core');
 
 const provider = require('../api/_text-provider');
 const sceneEndpoint = require('../api/gerar-cena');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { JOURNEY_CATEGORIES, createPersonalContentSuite } = require('../utils/personalContentSuite');
+
+function loadExpoModule(relativePath) {
+  const file = path.join(__dirname, '..', relativePath);
+  const compiled = transformSync(fs.readFileSync(file, 'utf8'), {
+    filename: file,
+    presets: ['babel-preset-expo'],
+    sourceType: 'module',
+  }).code;
+  const loaded = new Module(file, module);
+  loaded.filename = file;
+  loaded.paths = Module._nodeModulePaths(path.dirname(file));
+  loaded._compile(compiled, file);
+  return loaded.exports;
+}
 
 const ENV_KEYS = [
   'ANTHROPIC_API_KEY',
@@ -178,10 +197,43 @@ function routeResponse() {
   };
 }
 
-async function invokeScene() {
+async function invokeScene(body = validBody()) {
   const res = routeResponse();
-  await sceneEndpoint(routeRequest(), res);
+  await sceneEndpoint({ ...routeRequest(), body }, res);
   return res;
+}
+
+function suiteBody() {
+  return { ...validBody(), includeJourneySuite: true };
+}
+
+function validSuite() {
+  const body = validBody();
+  return createPersonalContentSuite({ desire: body.desire, profile: body.profile, lang: 'pt', category: body.category });
+}
+
+function anthropicSuitePayload(suite) {
+  return {
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify({ visions: suite.visions, affirmations: suite.affirmations }) }],
+    usage: { input_tokens: 120, cache_creation_input_tokens: 300, output_tokens: 900 },
+  };
+}
+
+// the 6+6 call is the one whose structured output asks for visions (Anthropic or OpenAI request shape)
+function isSuiteCall(body) {
+  const schema = (body.output_config && body.output_config.format.schema) || (body.text && body.text.format.schema);
+  return Boolean(schema && schema.properties && schema.properties.visions);
+}
+
+function hangUntilAborted(signal) {
+  return new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    });
+  });
 }
 
 function configureSceneRoute() {
@@ -216,7 +268,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       calls.push({ url, options });
       return response(200, anthropicPayload());
     };
-    const session = provider.createSession({ deadlineAt: Date.now() + 20_000 });
+    const session = provider.createSession({ deadlineAt: Date.now() + 120_000 });
     const result = await session.generate(SPEC);
     assert.strictEqual(result.provider, 'anthropic');
     assert.strictEqual(result.fallbackUsed, false);
@@ -241,7 +293,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
         ? response(429, {})
         : response(200, openAiPayload());
     };
-    const session = provider.createSession({ deadlineAt: Date.now() + 20_000 });
+    const session = provider.createSession({ deadlineAt: Date.now() + 120_000 });
     const result = await session.generate(SPEC);
     assert.strictEqual(result.provider, 'openai');
     assert.strictEqual(result.fallbackUsed, true);
@@ -262,7 +314,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
         calls += 1;
         return response(status, {});
       };
-      const session = provider.createSession({ deadlineAt: Date.now() + 20_000 });
+      const session = provider.createSession({ deadlineAt: Date.now() + 120_000 });
       await assert.rejects(
         session.generate(SPEC),
         (error) => error.code === 'text_provider_unavailable' && error.retryable === false
@@ -278,7 +330,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       calls += 1;
       return response(200, anthropicPayload(`call-${calls}`));
     };
-    const session = provider.createSession({ deadlineAt: Date.now() + 20_000 });
+    const session = provider.createSession({ deadlineAt: Date.now() + 120_000 });
     await session.generate(SPEC, { provider: 'anthropic' });
     await session.generate(SPEC, { provider: 'anthropic' });
     await assert.rejects(
@@ -414,5 +466,213 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     assert.strictEqual(res.statusCode, 422);
     assert.deepStrictEqual(res.body, { error: 'generation_blocked' });
     assert.strictEqual(calls, 1);
+  });
+
+  // 22/10: every scene + 6+6 request died at the 30 s abort in production. The scene and the suite are now two calls
+  // in parallel, each with room to finish, inside one deadline that the function, the app and the deploy smoke outlive.
+  await t.test('timeouts line up: a call can finish, the deadline holds a repair, the function and the app outlive it', async () => {
+    const { minimumCallMs, providerTimeoutMs, defaultSessionDeadlineMs } = provider._internals;
+    const sceneCall = minimumCallMs({ maxOutputTokens: 1_800 });
+    const suiteCall = minimumCallMs({ maxOutputTokens: 4_800 });
+    const largestCall = minimumCallMs({ maxOutputTokens: 6_000 });
+    // connection + first token, then max_tokens (output + 1,536) at 60 tokens/s
+    assert.strictEqual(suiteCall, 5_000 + Math.ceil(((4_800 + 1_536) * 1_000) / 60));
+    assert.ok(sceneCall < suiteCall && suiteCall < largestCall, 'a bigger answer needs more time');
+    assert.ok(providerTimeoutMs({}) >= largestCall, 'every call that may start can finish inside its own timeout');
+    assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '999999' }), providerTimeoutMs({}), 'the env only lowers it');
+    assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '1000' }), 1_000);
+
+    const deadline = sceneEndpoint._internals.generationDeadlineMs();
+    assert.strictEqual(defaultSessionDeadlineMs(), deadline, 'a session without a deadline gets the same one');
+    assert.ok(deadline >= 10_000 + 2 * suiteCall, 'identity + quota, the suite and one repair of it fit in the deadline');
+
+    const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
+    const maxDurationMs = vercel.functions['api/gerar-cena.js'].maxDuration * 1_000;
+    assert.ok(maxDurationMs >= deadline + 20_000, 'the function outlives the deadline, so its clean error always gets out');
+    assert.ok(maxDurationMs <= 800_000, 'inside the Pro + Fluid compute maximum (800 s)');
+
+    const client = loadExpoModule('services/generatePersonalizedScene.js');
+    assert.ok(client.API_TIMEOUT_MS > maxDurationMs, 'the app waits longer than the function can live');
+    const delays = [];
+    const realSetTimeout = global.setTimeout;
+    global.setTimeout = (callback, ms, ...args) => {
+      delays.push(ms);
+      return realSetTimeout(callback, ms, ...args);
+    };
+    try {
+      await client.generatePersonalizedScene({
+        desire: 'construir uma vida criativa e tranquila',
+        category: 'Career',
+        lang: 'pt',
+        profile: validBody().profile,
+        fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ scene: validScene(), generation: {} }) }),
+      });
+    } finally {
+      global.setTimeout = realSetTimeout;
+    }
+    assert.ok(delays.includes(client.API_TIMEOUT_MS), 'the app aborts its request after API_TIMEOUT_MS, not sooner');
+  });
+
+  await t.test('a call starts only when it can finish before the deadline (no tokens for a certain timeout)', async () => {
+    configureBoth();
+    process.env.CELESTE_TEXT_FALLBACK = 'none';
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return response(200, anthropicPayload());
+    };
+    const needed = provider._internals.minimumCallMs(SPEC);
+    const now = 1_000_000;
+    const short = provider.createSession({ deadlineAt: now + needed - 1, clock: () => now });
+    await assert.rejects(short.generate(SPEC), (error) => error.code === 'text_provider_timeout');
+    assert.strictEqual(calls, 0, 'nothing is sent when the answer cannot finish in time');
+    assert.strictEqual(short.remainingCalls(), 2, 'a call that was not sent is not counted');
+    const enough = provider.createSession({ deadlineAt: now + needed, clock: () => now });
+    await enough.generate(SPEC);
+    assert.strictEqual(calls, 1);
+  });
+
+  await t.test('scene + 6+6 suite: two calls in parallel, merged in order, the suite prompt on its own', async () => {
+    configureSceneRoute();
+    const suite = validSuite();
+    const arrivals = [];
+    let bothInFlight;
+    const barrier = new Promise((resolve) => { bothInFlight = resolve; });
+    global.fetch = async (url, options) => {
+      const body = JSON.parse(options.body);
+      const kind = isSuiteCall(body) ? 'suite' : 'scene';
+      arrivals.push({ kind, body });
+      if (arrivals.length === 2) bothInFlight();
+      // no answer leaves before BOTH calls are out: one call after the other never gets past this line
+      await Promise.race([
+        barrier,
+        new Promise((_resolve, reject) => setTimeout(() => reject(new Error('calls_not_parallel')), 2_000)),
+      ]);
+      // the suite answers first: the merge does not depend on which answer arrives first
+      if (kind === 'scene') await new Promise((resolve) => setTimeout(resolve, 20));
+      return response(200, kind === 'suite' ? anthropicSuitePayload(suite) : anthropicScenePayload());
+    };
+    const res = await invokeScene(suiteBody());
+    assert.strictEqual(res.statusCode, 200, JSON.stringify(res.body));
+    assert.deepStrictEqual(arrivals.map((call) => call.kind).sort(), ['scene', 'suite']);
+    assert.strictEqual(res.body.generation.source, 'celeste-ai');
+    assert.strictEqual(res.body.generation.provider, 'anthropic');
+    assert.strictEqual(res.body.generation.promptVersion, 'celeste-journey-suite-v4');
+    assert.strictEqual(res.body.scene.story, validScene().story, 'the scene comes from the scene call');
+    const { visions, affirmations } = res.body.journeySuite;
+    assert.deepStrictEqual(visions.map((item) => item.category), JOURNEY_CATEGORIES, 'six visions, in area order');
+    assert.deepStrictEqual(affirmations.map((item) => item.category), JOURNEY_CATEGORIES, 'six affirmations, in area order');
+    assert.deepStrictEqual(visions.map((item) => item.story), suite.visions.map((item) => item.story));
+    assert.deepStrictEqual(affirmations.map((item) => item.text), suite.affirmations.map((item) => item.text));
+    assert.strictEqual(new Set([...visions, ...affirmations].map((item) => item.visualBrief)).size, 12, 'twelve different briefs');
+
+    const scenePrompt = arrivals.find((call) => call.kind === 'scene').body;
+    const suitePrompt = arrivals.find((call) => call.kind === 'suite').body;
+    assert.match(scenePrompt.system[0].text, /^You write one personalized Celeste Anchor Scene/);
+    assert.doesNotMatch(scenePrompt.system[0].text, /Scene hints for this person|exactly six visions/, 'the scene call writes only the scene');
+    assert.strictEqual(scenePrompt.max_tokens, 1_800 + 1_536);
+    assert.match(suitePrompt.system[0].text, /^You write the personalized Celeste journey suite/);
+    for (const rule of [/Scene hints for this person/, /Never begin two visions/, /at most three of the six affirmations/, /natural spoken language/]) {
+      assert.match(suitePrompt.system[0].text, rule, `the suite keeps its variety rules: ${rule}`);
+    }
+    assert.doesNotMatch(suitePrompt.system[0].text, /Required contract:|anchorStep|affirmationFieldsUsed/, 'no scene contract in the suite call');
+    assert.strictEqual(suitePrompt.max_tokens, 4_800 + 1_536);
+    assert.strictEqual(JSON.parse(suitePrompt.messages[0].content[0].text).task, 'create_journey_suite');
+  });
+
+  await t.test('a refused suite is repaired alone; refused twice, the request fails whole', async () => {
+    configureSceneRoute();
+    const suite = validSuite();
+    const fiveVisions = { ...suite, visions: suite.visions.slice(0, 5) };
+    for (const [label, answers, expected] of [
+      ['repaired', [fiveVisions, suite], { status: 200, suiteCalls: 2 }],
+      ['refused twice', [fiveVisions, fiveVisions], { status: 502, suiteCalls: 2 }],
+    ]) {
+      const calls = [];
+      global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body);
+        const kind = isSuiteCall(body) ? 'suite' : 'scene';
+        calls.push({ kind, system: body.system[0].text });
+        if (kind === 'scene') return response(200, anthropicScenePayload());
+        return response(200, anthropicSuitePayload(answers[calls.filter((call) => call.kind === 'suite').length - 1]));
+      };
+      const res = await invokeScene(suiteBody());
+      const suiteCalls = calls.filter((call) => call.kind === 'suite');
+      assert.strictEqual(res.statusCode, expected.status, `${label}: ${JSON.stringify(res.body)}`);
+      assert.strictEqual(calls.filter((call) => call.kind === 'scene').length, 1, `${label}: the valid scene is not written again`);
+      assert.strictEqual(suiteCalls.length, expected.suiteCalls, label);
+      assert.doesNotMatch(suiteCalls[0].system, /QUALITY REPAIR FOR THIS RETRY/);
+      assert.match(suiteCalls[1].system, /QUALITY REPAIR FOR THIS RETRY/, `${label}: the second suite call carries the repair`);
+      if (expected.status === 200) {
+        assert.strictEqual(res.body.journeySuite.visions.length, 6);
+      } else {
+        assert.deepStrictEqual(res.body, { error: 'invalid_generation' }, 'no scene without its suite, no partial suite');
+      }
+    }
+  });
+
+  await t.test('one part failing stops the other and fails the request cleanly', async () => {
+    configureSceneRoute();
+    process.env.CELESTE_TEXT_FALLBACK = 'none';
+    let suiteSignal = null;
+    global.fetch = (url, options) => {
+      const body = JSON.parse(options.body);
+      if (isSuiteCall(body)) {
+        suiteSignal = options.signal;
+        return hangUntilAborted(options.signal);
+      }
+      return Promise.resolve(response(200, {
+        stop_reason: 'refusal',
+        content: [],
+        usage: { input_tokens: 20, output_tokens: 1 },
+      }));
+    };
+    let res = await invokeScene(suiteBody());
+    assert.strictEqual(res.statusCode, 422);
+    assert.deepStrictEqual(res.body, { error: 'generation_blocked' }, 'a refused scene: no suite goes out alone');
+    assert.ok(suiteSignal && suiteSignal.aborted, 'the suite call still being written was stopped');
+
+    // the suite running out of its call time: 504, nothing partial
+    configureSceneRoute();
+    process.env.CELESTE_TEXT_FALLBACK = 'none';
+    process.env.CELESTE_TEXT_PROVIDER_TIMEOUT_MS = '40';
+    global.fetch = (url, options) => {
+      const body = JSON.parse(options.body);
+      if (isSuiteCall(body)) return hangUntilAborted(options.signal);
+      return Promise.resolve(response(200, anthropicScenePayload()));
+    };
+    res = await invokeScene(suiteBody());
+    delete process.env.CELESTE_TEXT_PROVIDER_TIMEOUT_MS;
+    assert.strictEqual(res.statusCode, 504);
+    assert.deepStrictEqual(res.body, { error: 'generation_timeout' }, 'a scene whose suite timed out is not served');
+  });
+
+  await t.test('a suite repair that cannot finish before the deadline is never started', async () => {
+    const suite = validSuite();
+    const suiteCall = provider._internals.minimumCallMs({ maxOutputTokens: 4_800 });
+    const deadline = sceneEndpoint._internals.generationDeadlineMs();
+    for (const [label, leftAfterFirstAnswer, expected] of [
+      ['too little time for the repair', suiteCall - 1, { status: 504, suiteCalls: 1 }],
+      ['time for the repair', suiteCall + 1_000, { status: 200, suiteCalls: 2 }],
+    ]) {
+      configureSceneRoute();
+      process.env.CELESTE_TEXT_FALLBACK = 'none';
+      const start = 50_000;
+      let now = start;
+      sceneEndpoint._internals.setGenerationClockForTests(() => now);
+      let suiteCalls = 0;
+      global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body);
+        if (!isSuiteCall(body)) return response(200, anthropicScenePayload());
+        suiteCalls += 1;
+        if (suiteCalls > 1) return response(200, anthropicSuitePayload(suite));
+        now = start + deadline - leftAfterFirstAnswer; // a slow first answer, and an invalid one
+        return response(200, anthropicSuitePayload({ ...suite, visions: suite.visions.slice(0, 5) }));
+      };
+      const res = await invokeScene(suiteBody());
+      assert.strictEqual(res.statusCode, expected.status, `${label}: ${JSON.stringify(res.body)}`);
+      assert.strictEqual(suiteCalls, expected.suiteCalls, label);
+      if (expected.status === 504) assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
+    }
   });
 });

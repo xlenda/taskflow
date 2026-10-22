@@ -662,7 +662,7 @@ test('migrations 008-012 and paid routes keep operation accounting fail-closed',
   assert.match(paidSource, /operationQuota:\s*'enforced'/);
 
   const routeMarkers = [
-    ['api/gerar-cena.js', 'providerSession.generate('],
+    ['api/gerar-cena.js', 'await generateWithProviders('],
     ['api/traduzir-cena.js', 'requestGemini(validated.value'],
     ['api/transformar-sonho.js', 'dream = await requestGemini('],
     ['api/gerar-audio.js', 'requestElevenLabs(validated.value'],

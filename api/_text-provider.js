@@ -11,10 +11,16 @@ const PROVIDERS = new Set(['anthropic', 'openai']);
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,99}$/;
 const SCHEMA_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
-const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
+// 20-22/10 in production every scene + 6+6 suite request died at the old 30 s abort (Claude Sonnet 5 writes
+// 73-95 tokens/s; the suite is thousands of tokens). A call now has room to write its whole answer, and the
+// request deadline (api/gerar-cena.js) bounds the total.
+const DEFAULT_PROVIDER_TIMEOUT_MS = 140_000;
 const DEFAULT_FALLBACK_RESERVE_MS = 12_000;
-const DEFAULT_SESSION_DEADLINE_MS = 48_000;
-const MIN_CALL_BUDGET_MS = 250;
+const DEFAULT_SESSION_DEADLINE_MS = 240_000;
+// A call starts only when it can finish: connection and first token, then its whole max_tokens at a slow output
+// rate (below the slowest production rate). Otherwise no tokens are paid for an answer the deadline would cut.
+const CALL_START_ALLOWANCE_MS = 5_000;
+const SLOW_OUTPUT_TOKENS_PER_SECOND = 60;
 const MAX_PROVIDER_CALLS = 2;
 
 class TextProviderError extends Error {
@@ -128,10 +134,18 @@ function schemaName(value) {
   return SCHEMA_NAME_PATTERN.test(normalized) ? normalized : 'celeste_response';
 }
 
+function providerMaxTokens(request) {
+  return Math.min(8_000, request.maxOutputTokens + 1_536);
+}
+
+function minimumCallMs(request) {
+  return CALL_START_ALLOWANCE_MS + Math.ceil((providerMaxTokens(request) * 1_000) / SLOW_OUTPUT_TOKENS_PER_SECOND);
+}
+
 function buildAnthropicRequest(config, request) {
   return {
     model: config.model,
-    max_tokens: Math.min(8_000, request.maxOutputTokens + 1_536),
+    max_tokens: providerMaxTokens(request),
     system: [{
       type: 'text',
       text: request.system,
@@ -164,7 +178,7 @@ function buildOpenAIRequest(config, request) {
       },
     },
     reasoning: { effort: config.effort },
-    max_output_tokens: Math.min(8_000, request.maxOutputTokens + 1_536),
+    max_output_tokens: providerMaxTokens(request),
     store: false,
   };
 }
@@ -298,7 +312,7 @@ function providerTimeoutMs(env = process.env) {
     env.CELESTE_TEXT_PROVIDER_TIMEOUT_MS,
     DEFAULT_PROVIDER_TIMEOUT_MS,
     20,
-    30_000
+    DEFAULT_PROVIDER_TIMEOUT_MS
   );
 }
 
@@ -316,7 +330,7 @@ function remainingMs(deadlineAt, clock) {
   return Math.max(0, Math.floor(deadlineAt - clock()));
 }
 
-async function fetchProvider(config, request, timeoutBudget) {
+async function fetchProvider(config, request, timeoutBudget, signal) {
   if (typeof fetch !== 'function') {
     throw new TextProviderError('text_provider_unavailable', {
       provider: config.name,
@@ -325,6 +339,9 @@ async function fetchProvider(config, request, timeoutBudget) {
   }
   const outgoing = buildProviderRequest(config, request);
   const controller = new AbortController();
+  // the request gave up (the other half of the scene + suite failed): stop this answer too
+  const cancel = () => controller.abort();
+  if (signal) signal.addEventListener('abort', cancel, { once: true });
   let timer;
   const timeout = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
@@ -376,6 +393,7 @@ async function fetchProvider(config, request, timeoutBudget) {
     return { data, usage: normalizeUsage(config.name, payload) };
   } finally {
     clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', cancel);
   }
 }
 
@@ -389,6 +407,7 @@ function emitUsageEvent(event) {
     fallbackUsed: event.fallbackUsed === true,
     status: Number.isInteger(event.status) ? event.status : 0,
     code: cleanText(event.code, 60),
+    durationMs: nonNegativeInteger(event.durationMs),
     ...(event.usage ? { usage: event.usage } : {}),
   };
   console.info(JSON.stringify(safe));
@@ -433,8 +452,12 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
       : chain.providers;
     if (!candidates.length) throw new TextProviderError('text_provider_not_configured');
 
+    const signal = options.signal;
     let lastError;
     for (let index = 0; index < candidates.length; index += 1) {
+      if (signal && signal.aborted) {
+        throw lastError || new TextProviderError('text_provider_cancelled');
+      }
       if (remainingCalls() < 1) {
         throw lastError || new TextProviderError('text_provider_attempt_limit');
       }
@@ -442,8 +465,8 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
       const hasOperationalFallback = !preferred && index < candidates.length - 1 && remainingCalls() > 1;
       const available = remainingMs(effectiveDeadlineAt, sessionClock);
       const reserved = hasOperationalFallback ? fallbackReserveMs() : 0;
-      const budget = Math.min(providerTimeoutMs(), Math.max(0, available - reserved));
-      if (budget < MIN_CALL_BUDGET_MS) {
+      const room = Math.max(0, available - reserved);
+      if (room < minimumCallMs(normalizedRequest)) {
         lastError = new TextProviderError('text_provider_timeout', {
           provider: config.name,
           retryable: true,
@@ -451,10 +474,12 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
         if (hasOperationalFallback) continue;
         throw lastError;
       }
+      const budget = Math.min(providerTimeoutMs(), room);
 
       calls += 1;
+      const startedAt = sessionClock();
       try {
-        const result = await fetchProvider(config, normalizedRequest, budget);
+        const result = await fetchProvider(config, normalizedRequest, budget, signal);
         const fallbackUsed = config.name !== chain.primaryName;
         emitUsageEvent({
           event: 'celeste_text_success',
@@ -462,6 +487,7 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
           provider: config.name,
           model: config.model,
           fallbackUsed,
+          durationMs: sessionClock() - startedAt,
           usage: result.usage,
         });
         return {
@@ -487,8 +513,11 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
           fallbackUsed: config.name !== chain.primaryName,
           status: safeError.status,
           code: safeError.code,
+          durationMs: sessionClock() - startedAt,
         });
-        if (!hasOperationalFallback || safeError.retryable !== true) throw safeError;
+        if (!hasOperationalFallback || safeError.retryable !== true || (signal && signal.aborted)) {
+          throw safeError;
+        }
       }
     }
     throw lastError || new TextProviderError('text_provider_unavailable');
@@ -515,5 +544,7 @@ module.exports = {
     retryableStatus,
     standardizeSchema,
     defaultSessionDeadlineMs: () => DEFAULT_SESSION_DEADLINE_MS,
+    minimumCallMs,
+    providerTimeoutMs,
   },
 };

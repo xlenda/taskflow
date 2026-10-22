@@ -9,10 +9,12 @@ const puppeteer = require('puppeteer-core');
 const { loadProjectEnv } = require('@expo/env');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const {
+  LIVE_SUITE_TIMEOUT_MS,
   anonymousSignupHeaders,
   aiReportRolloutMode,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  runLiveSuite,
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
   validateActorQuotaBackend,
@@ -829,8 +831,9 @@ async function liveGeminiChecks(
       '--lang=pt-BR',
     ],
     defaultViewport: { width: 420, height: 900 },
-    // one evaluate runs the scene + 6+6 suite, translation, dream, image and voice: more than the default 180 s per call
-    protocolTimeout: 420_000,
+    // per evaluate: the scene + 6+6 suite call (the page gives up only after LIVE_SUITE_TIMEOUT_MS), then translation,
+    // dream, image and voice together; both need more than the default 180 s
+    protocolTimeout: LIVE_SUITE_TIMEOUT_MS + 120_000,
   });
   let results;
   try {
@@ -844,9 +847,42 @@ async function liveGeminiChecks(
       waitUntil: 'networkidle2',
       timeout: 60000,
     });
+    // ONE call per deploy (12 units); a second only when the first fails the server's validator after its own repair
+    // (24 units at most, inside the 32 a day of this fresh anonymous user). The policy lives in deploy-celeste-guards.
+    const suite = await runLiveSuite(() => page.evaluate(async ({ accessToken: sessionToken, suiteBody: suiteInput, timeoutMs }) => {
+      const random = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const startedAt = Date.now();
+      try {
+        const response = await fetch('/api/gerar-cena', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+            'Content-Type': 'application/json',
+            'X-Celeste-Client': 'web',
+            'X-Celeste-Request-Id': `celeste-live-${Date.now().toString(36)}-${random}`.slice(0, 90),
+          },
+          cache: 'no-store',
+          body: JSON.stringify(suiteInput),
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        let payload;
+        try { payload = JSON.parse(text); } catch (_error) { payload = { invalidJson: text.slice(0, 180) }; }
+        return { status: response.status, payload, elapsedMs: Date.now() - startedAt };
+      } catch (error) {
+        const reason = error && error.name === 'AbortError' ? 'smoke_timeout' : 'smoke_network_error';
+        return { status: 0, payload: { error: reason }, elapsedMs: Date.now() - startedAt };
+      } finally {
+        clearTimeout(timer);
+      }
+    }, { accessToken, suiteBody, timeoutMs: LIVE_SUITE_TIMEOUT_MS }));
+    console.log(`Cena-Ancora + suite 6+6 ao vivo: HTTP ${suite.status} em ${Math.round(suite.elapsedMs / 1000)} s`);
     results = await page.evaluate(async ({
       accessToken: sessionToken,
-      suiteBody: suiteInput,
       translationBody: translationInput,
       dreamBody: dreamInput,
       visualBody: visualInput,
@@ -874,19 +910,6 @@ async function liveGeminiChecks(
         let payload;
         try { payload = JSON.parse(text); } catch (_error) { payload = { invalidJson: text.slice(0, 180) }; }
         return { status: response.status, payload };
-      };
-      // one call per deploy (12 units); a second only when the first comes back as a transient refusal or timeout
-      // (24 units at most, inside the 32 a day of this fresh anonymous user)
-      const postSuite = async () => {
-        let result;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          result = await post('/api/gerar-cena', suiteInput);
-          const transient =
-            (result.status === 502 && ['invalid_generation', 'upstream_error'].includes(result.payload?.error)) ||
-            (result.status === 504 && result.payload?.error === 'generation_timeout');
-          if (!transient) return result;
-        }
-        return result;
       };
       const postAudio = async () => {
         const response = await fetch('/api/gerar-audio', {
@@ -916,7 +939,6 @@ async function liveGeminiChecks(
           afterData: ascii(36, 40) === 'data' ? ascii(44 + dataSize, 48 + dataSize) : '',
         };
       };
-      const suite = await postSuite();
       const translation = await post('/api/traduzir-cena', translationInput);
       const dream = await post('/api/transformar-sonho', dreamInput);
       const visualResult = await post('/api/gerar-visual', visualInput);
@@ -939,8 +961,9 @@ async function liveGeminiChecks(
           error: visualResult.payload?.error,
         },
       };
-      return { suite, translation, dream, visual, audio };
-    }, { accessToken, suiteBody, translationBody, dreamBody, visualBody, audioBody });
+      return { translation, dream, visual, audio };
+    }, { accessToken, translationBody, dreamBody, visualBody, audioBody });
+    results.suite = suite;
   } finally {
     await browser.close();
   }

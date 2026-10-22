@@ -10,10 +10,13 @@ const {
   AI_REPORT_RETENTION_DAYS,
   COMPLETE_JOURNEY_DAILY_UNITS,
   GENERATION_QUOTA_SCHEMA_VERSION,
+  LIVE_SUITE_ATTEMPTS,
+  LIVE_SUITE_TIMEOUT_MS,
   anonymousSignupHeaders,
   aiReportRolloutMode,
   extractAnonymousAccessToken,
   parseDeploymentOutput,
+  runLiveSuite,
   validateAiReportGatewayBackend,
   validateActorQuotaBackend,
   validateLiveSceneSuite,
@@ -475,7 +478,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'o smoke usa o validador da suite do proprio servidor'
   );
   assert.strictEqual(
-    (deploySource.match(/post\('\/api\/gerar-cena'/g) || []).length,
+    (deploySource.match(/(?:post|fetch)\('\/api\/gerar-cena'/g) || []).length,
     1,
     'uma chamada de texto por deploy: sem a cena avulsa alem da suite'
   );
@@ -511,18 +514,23 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /results\.audio\.afterData === 'ctim'/,
     'smoke de producao precisa provar o tempo das letras (ctim) da voz real'
   );
-  // fix round 1 (21/10): one live 6+6 suite per deploy through the production text provider (a second call only on
-  // a transient refusal), validated as six visions and six affirmations in the six areas, different, with the prompt
+  // fix round 1 (21/10): one live 6+6 suite per deploy through the production text provider, validated as six visions
+  // and six affirmations in the six areas, different, with the prompt. 22/10: the call runs on its own (the retry
+  // policy is runLiveSuite, tested below) and the page waits LIVE_SUITE_TIMEOUT_MS before giving up.
   const suiteBodySource = deploySource.slice(deploySource.indexOf('const suiteBody = {'), deploySource.indexOf('const translationBody = {'));
   assert.match(suiteBodySource, /includeJourneySuite: true,/, 'smoke de producao precisa pedir a suite 6+6 de verdade');
   assert.match(suiteBodySource, /profile: \{\s*name: '[^']+',\s*city:/, 'a suite ao vivo usa um perfil comum, com respostas');
-  assert.match(deploySource, /const suite = await postSuite\(\);/);
-  assert.match(
-    deploySource,
-    /for \(let attempt = 0; attempt < 2; attempt \+= 1\) \{\s*result = await post\('\/api\/gerar-cena', suiteInput\);/,
-    'a suite ao vivo faz no maximo duas chamadas'
+  assert.match(deploySource, /const suite = await runLiveSuite\(\(\) => page\.evaluate\(/, 'a suite ao vivo segue a politica testada');
+  const liveSuiteSource = deploySource.slice(
+    deploySource.indexOf('const suite = await runLiveSuite('),
+    deploySource.indexOf('results = await page.evaluate(')
   );
-  assert.match(deploySource, /protocolTimeout: 420_000/, 'a chamada unica do navegador cabe a suite alem das outras rotas');
+  assert.match(liveSuiteSource, /fetch\('\/api\/gerar-cena'/);
+  assert.match(liveSuiteSource, /setTimeout\(\(\) => controller\.abort\(\), timeoutMs\)/, 'a pagina desiste so depois do prazo');
+  assert.match(liveSuiteSource, /signal: controller\.signal/);
+  assert.match(liveSuiteSource, /timeoutMs: LIVE_SUITE_TIMEOUT_MS/);
+  assert.doesNotMatch(deploySource, /\/api\/gerar-cena', suiteInput/, 'a suite nao volta para o evaluate das outras rotas');
+  assert.match(deploySource, /protocolTimeout: LIVE_SUITE_TIMEOUT_MS \+ 120_000/, 'cada evaluate cabe no tempo do protocolo');
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);
@@ -628,7 +636,7 @@ test('smoke ao vivo da Cena-Ancora + suite 6+6: regras do servidor, cota pulada 
         source: 'celeste-ai',
         provider: 'anthropic',
         model: 'claude-teste',
-        promptVersion: 'celeste-journey-suite-v3',
+        promptVersion: 'celeste-journey-suite-v4',
         knowledgeVersion: 'celeste-knowledge-v2',
         ...generation,
       },
@@ -665,7 +673,7 @@ test('smoke ao vivo da Cena-Ancora + suite 6+6: regras do servidor, cota pulada 
     ['sem cena', ok(suite, {}, null), /scene/],
     ['outra fonte', ok(suite, { source: 'local' }), /scene/],
     ['outro provedor', ok(suite, { provider: 'openai' }), /Anthropic/],
-    ['outro prompt', ok(suite, { promptVersion: 'celeste-journey-suite-v2' }), /prompt/],
+    ['outro prompt', ok(suite, { promptVersion: 'celeste-journey-suite-v3' }), /prompt/],
     ['outra base', ok(suite, { knowledgeVersion: 'celeste-knowledge-v1' }), /base/],
     ['sem suite', ok(null), /regras do servidor/],
     ['cinco visoes', ok({ ...suite, visions: suite.visions.slice(0, 5) }), /regras do servidor/],
@@ -674,6 +682,32 @@ test('smoke ao vivo da Cena-Ancora + suite 6+6: regras do servidor, cota pulada 
   ]) {
     assert.throws(() => check(result), pattern, label);
   }
+});
+
+test('smoke ao vivo da suite: uma chamada; a segunda so depois de um 502 do validador, nunca depois de um 504', async () => {
+  const invalid = { status: 502, payload: { error: 'invalid_generation' } };
+  for (const [label, answers, calls, status] of [
+    ['200 de primeira', [{ status: 200 }], 1, 200],
+    ['504: o servidor ja gastou o prazo inteiro (com o conserto dele)', [{ status: 504, payload: { error: 'generation_timeout' } }, { status: 200 }], 1, 504],
+    ['429 da cota diaria', [{ status: 429, payload: { error: 'daily_generation_limit_reached' } }, { status: 200 }], 1, 429],
+    ['o navegador desistiu', [{ status: 0, payload: { error: 'smoke_timeout' } }, { status: 200 }], 1, 0],
+    ['502 do validador e depois 200', [invalid, { status: 200 }], 2, 200],
+    ['502 nas duas: para na segunda', [invalid, invalid, { status: 200 }], LIVE_SUITE_ATTEMPTS, 502],
+  ]) {
+    let posted = 0;
+    const result = await runLiveSuite(async () => answers[posted++]);
+    assert.strictEqual(posted, calls, `${label}: chamadas`);
+    assert.strictEqual(result.status, status, label);
+  }
+  assert.strictEqual(LIVE_SUITE_ATTEMPTS, 2, 'no maximo 24 unidades das 32 do dia da pessoa anonima');
+  // the page waits longer than the function lives, so the smoke always reads the server's own answer
+  const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+  const maxDurationMs = vercel.functions['api/gerar-cena.js'].maxDuration * 1_000;
+  assert.ok(LIVE_SUITE_TIMEOUT_MS > maxDurationMs, 'o navegador espera mais do que a funcao pode viver');
+  assert.ok(
+    require('../api/gerar-cena')._internals.generationDeadlineMs() < maxDurationMs,
+    'o prazo da geracao acaba antes da funcao: o 504 limpo chega ao smoke'
+  );
 });
 
 test('o E2E de producao bloqueia e anota no navegador as rotas pagas do smoke', () => {

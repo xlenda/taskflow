@@ -4,9 +4,9 @@ import {
   hasCurrentCloudConsentVersion,
 } from '../constants/cloudConsent';
 
-// The server may spend up to 48 s producing the high-quality scene. Generation
-// runs behind the saved local reward and leaves headroom inside the 60 s function.
-const API_TIMEOUT_MS = 56000;
+// The server may spend up to 240 s on the scene + 6+6 suite (vercel.json gives the function 270 s). The app waits
+// longer than the function can live, so it always gets the server's answer; this runs behind the saved local reward.
+export const API_TIMEOUT_MS = 290000;
 const PROD_API_URL = 'https://celeste-jet-two.vercel.app';
 export const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 export const JOURNEY_CATEGORIES = Object.freeze([
