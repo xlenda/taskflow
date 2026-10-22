@@ -852,12 +852,13 @@ function googleAndSupabase(state) {
     }
     if (url.startsWith('https://api.elevenlabs.io/')) {
       state.elevenLabs += 1;
-      const pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]);
+      // /with-timestamps: o som PCM em base64 (e o tempo das letras, aqui sem)
+      const body = JSON.stringify({ audio_base64: Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]).toString('base64'), alignment: null });
       return {
         ok: true,
         status: 200,
-        headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'audio/pcm' : null) },
-        arrayBuffer: async () => pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength),
+        headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+        text: async () => body,
       };
     }
     throw new Error(`URL inesperada no teste Play Integrity: ${url}`);

@@ -22,7 +22,7 @@ import {
   requestNarrationAudio,
   splitNarrationText,
 } from '../services/generateNarrationAudio';
-import { CHARS_PER_SECOND } from '../utils/captionProgress';
+import { CHARS_PER_SECOND, letterTimesFromWav, lettersSpoken } from '../utils/captionProgress';
 
 const NarrationCtx = createContext(null);
 let nativeFileSequence = 0;
@@ -81,11 +81,13 @@ function aggregatePlaybackMetrics(chunkProgress, localTime, localDuration) {
   const localRatio = safeLocalDuration
     ? Math.max(0, Math.min(1, safeLocalTime / safeLocalDuration))
     : 0;
+  // With the time of each letter (sent by the server with the Celeste voice), the letters she has actually said;
+  // audio cached before that is proportional to the chunk's time, as before.
+  const current = chunkProgress.letters
+    ? lettersSpoken({ letters: chunkProgress.letters, text: chunkProgress.text, seconds: safeLocalTime })
+    : currentWeight * localRatio;
   const progress = totalWeight
-    ? Math.max(
-        0,
-        Math.min(1, (completedWeight + currentWeight * localRatio) / totalWeight)
-      )
+    ? Math.max(0, Math.min(1, (completedWeight + current) / totalWeight))
     : 0;
   const totalDuration = safeLocalDuration && currentWeight
     ? (safeLocalDuration * totalWeight) / currentWeight
@@ -244,6 +246,8 @@ export function NarrationProvider({ children }) {
   // which voice the active narration uses ('cloud' | 'device'), and the device voice's clock (no audio file to time)
   const [voice, setVoice] = useState(null);
   const [deviceClock, setDeviceClock] = useState({ currentTime: 0, duration: 0 });
+  // the audio position read on the frame the voice reached a new word (only with the letters' times)
+  const [wordClock, setWordClock] = useState(null);
   const [chunkProgress, setChunkProgress] = useState({
     index: 0,
     count: 0,
@@ -266,6 +270,8 @@ export function NarrationProvider({ children }) {
   const playbackRateRef = useRef(1);
   const mountedRef = useRef(true);
   const deviceSpeechRef = useRef(null); // the device utterance speaking now
+  const statusRef = useRef(status); // the latest player status, for the per-frame clock
+  statusRef.current = status;
 
   const ensureWebAudio = useCallback(() => {
     if (Platform.OS !== 'web' || typeof Audio === 'undefined') return null;
@@ -600,6 +606,9 @@ export function NarrationProvider({ children }) {
         completedWeight: sequence.weightOffsets[index],
         currentWeight: sequence.chunkWeights[index],
         totalWeight: sequence.totalWeight,
+        // when the server sent them with the voice: the ms each letter of this chunk starts (the caption follows them)
+        letters: sequence.request.mode === 'personal' ? letterTimesFromWav(bytes, sequence.chunks[index].length) : null,
+        text: sequence.chunks[index],
       });
       let readyForGesture = false;
       if (Platform.OS === 'web') {
@@ -800,11 +809,13 @@ export function NarrationProvider({ children }) {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const playbackId = selectedPlaybackId(request.playbackId);
       const { playbackId: _ignoredPlaybackId, text: _ignoredText, ...baseRequest } = request;
+      // Each chunk's letters; the space that joins it to the next counts once the next starts, so the weights add up
+      // to the narrated text and the caption lands on the letter the voice is on.
       const chunkWeights = chunks.map((chunk) => Math.max(1, String(chunk || '').length));
       const weightOffsets = chunkWeights.map((_, index) =>
-        chunkWeights.slice(0, index).reduce((sum, weight) => sum + weight, 0)
+        chunkWeights.slice(0, index).reduce((sum, weight) => sum + weight + 1, 0)
       );
-      const totalWeight = chunkWeights.reduce((sum, weight) => sum + weight, 0);
+      const totalWeight = chunkWeights.reduce((sum, weight) => sum + weight, 0) + chunks.length - 1;
       const sequence = {
         epoch,
         playbackId,
@@ -1071,6 +1082,36 @@ export function NarrationProvider({ children }) {
     return () => clearInterval(timer);
   }, [phase, voice]);
 
+  // With the letters' times the caption follows the voice word by word: timeupdate (web) and the player status (app)
+  // come only every ~250 ms, so each frame works out where the audio is and updates only when she reaches a new word.
+  // Website: the <audio> clock itself. App: the last status, run on by the frame clock (reading player.currentTime
+  // would block the JS thread on the main thread every frame), at most 0.3 s past it if the statuses stop (a stall).
+  useEffect(() => {
+    const { letters, text } = chunkProgress;
+    if (phase !== 'playing' || !letters || typeof requestAnimationFrame !== 'function') return undefined;
+    let frame = 0;
+    let reached = -1;
+    let anchor = null;
+    const read = (frameTime) => {
+      let seconds;
+      if (Platform.OS === 'web') {
+        seconds = Number(webAudioRef.current && webAudioRef.current.currentTime) || 0;
+      } else {
+        const reported = Number(statusRef.current.currentTime) || 0;
+        if (!anchor || anchor.time !== reported) anchor = { time: reported, at: frameTime };
+        seconds = reported + Math.min(0.3, Math.max(0, frameTime - anchor.at) / 1000) * playbackRateRef.current;
+      }
+      const spoken = lettersSpoken({ letters, text, seconds });
+      if (spoken !== reached) {
+        reached = spoken;
+        setWordClock({ letters, seconds });
+      }
+      frame = requestAnimationFrame(read);
+    };
+    frame = requestAnimationFrame(read);
+    return () => cancelAnimationFrame(frame);
+  }, [chunkProgress, phase]);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -1097,11 +1138,15 @@ export function NarrationProvider({ children }) {
 
   const value = useMemo(
     () => {
-      const localTime = voice === 'device'
+      const playerTime = voice === 'device'
         ? deviceClock.currentTime
         : Platform.OS === 'web'
         ? webProgress.currentTime
         : Number(status.currentTime) || 0;
+      // the same audio clock read on a later frame (this chunk only)
+      const localTime = wordClock && wordClock.letters === chunkProgress.letters
+        ? Math.max(playerTime, wordClock.seconds)
+        : playerTime;
       const localDuration = voice === 'device'
         ? deviceClock.duration
         : Platform.OS === 'web'
@@ -1151,6 +1196,8 @@ export function NarrationProvider({ children }) {
       chunkProgress.count,
       chunkProgress.currentWeight,
       chunkProgress.index,
+      chunkProgress.letters,
+      chunkProgress.text,
       chunkProgress.totalWeight,
       deviceClock.currentTime,
       deviceClock.duration,
@@ -1172,6 +1219,7 @@ export function NarrationProvider({ children }) {
       voice,
       webProgress.currentTime,
       webProgress.duration,
+      wordClock,
     ]
   );
 

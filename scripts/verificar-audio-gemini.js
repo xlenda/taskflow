@@ -106,19 +106,22 @@ function res() {
   };
 }
 
+// a resposta de /with-timestamps da ElevenLabs: o som PCM em base64 (o tempo das letras tem portão proprio:
+// scripts/verificar-legenda-sincronizada.js)
 function upstream(pcm = Buffer.from([0, 0, 1, 0, 255, 255, 2, 0]), overrides = {}) {
+  const body = JSON.stringify({ audio_base64: pcm.toString('base64'), alignment: null });
   return {
     ok: true,
     status: 200,
     headers: {
       get: (name) =>
         name.toLowerCase() === 'content-type'
-          ? 'audio/pcm'
+          ? 'application/json'
           : name.toLowerCase() === 'content-length'
-            ? String(pcm.length)
+            ? String(body.length)
             : null,
     },
-    arrayBuffer: async () => pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength),
+    text: async () => body,
     ...overrides,
   };
 }
@@ -365,12 +368,12 @@ async function main() {
   assert.strictEqual(sentUrl.origin, 'https://api.elevenlabs.io');
   assert.strictEqual(
     sentUrl.pathname,
-    `/v1/text-to-speech/${endpoint._internals.NARRATOR_VOICES.atlas.voiceId}`
+    `/v1/text-to-speech/${endpoint._internals.NARRATOR_VOICES.atlas.voiceId}/with-timestamps`
   );
   assert.strictEqual(sentUrl.searchParams.get('output_format'), 'pcm_24000');
   assert.strictEqual(sentUrl.searchParams.get('enable_logging'), 'false');
   assert.strictEqual(sent.options.headers['xi-api-key'], process.env.ELEVENLABS_API_KEY);
-  assert.strictEqual(sent.options.headers.Accept, 'audio/pcm');
+  assert.strictEqual(sent.options.headers.Accept, 'application/json');
   assert.deepStrictEqual(
     sent.body,
     endpoint._internals.buildElevenLabsRequest(

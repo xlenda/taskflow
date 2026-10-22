@@ -43,7 +43,7 @@
     "verify:morning": "node scripts/verificar-ritual-matinal.js",
     "verify:alarm": "node scripts/verificar-alarme-afirmacao.js",
     "verify:alarm-screen": "node scripts/verificar-tela-despertador.js",
-    "verify:android-release": "node scripts/verificar-fronteira-release-android.js && node scripts/verificar-deep-links-seguros.js",
+    "verify:android-release": "node scripts/verificar-fronteira-release-android.js && node scripts/verificar-legenda-sincronizada.js && node scripts/verificar-deep-links-seguros.js",
     "verify:deep-links": "node scripts/verificar-deep-links-seguros.js",
     "verify:practice-plan:utils": "node scripts/verificar-plano-celeste-utils.js",
     "verify:practice-plan:reminders": "node scripts/verificar-plano-celeste-lembretes.js",
