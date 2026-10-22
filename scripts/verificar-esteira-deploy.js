@@ -426,6 +426,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'verificar-fronteira-api-nativa.js',
     'verificar-vozes-android.js',
     'verificar-conteudo-pessoal-suite.js',
+    'verificar-legenda-sincronizada.js',
   ]) {
     assert.ok(deploySource.includes(script), `gate obrigatorio ausente: ${script}`);
   }
@@ -503,6 +504,13 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   );
   assert.match(deploySource, /results\.audio\.riff === 'RIFF'/);
   assert.match(deploySource, /results\.audio\.wave === 'WAVE'/);
+  // a voz real precisa voltar com o tempo das letras: o pedaço logo depois do 'data' é 'ctim'
+  assert.match(deploySource, /afterData: ascii\(36, 40\) === 'data' \? ascii\(44 \+ dataSize, 48 \+ dataSize\) : ''/);
+  assert.match(
+    deploySource,
+    /results\.audio\.afterData === 'ctim'/,
+    'smoke de producao precisa provar o tempo das letras (ctim) da voz real'
+  );
   // fix round 1 (21/10): one live 6+6 suite per deploy through the production text provider (a second call only on
   // a transient refusal), validated as six visions and six affirmations in the six areas, different, with the prompt
   const suiteBodySource = deploySource.slice(deploySource.indexOf('const suiteBody = {'), deploySource.indexOf('const translationBody = {'));

@@ -83,6 +83,7 @@ const STATIC_GATES = [
   ['scripts/verificar-despertar-sequencia.js', 'Despertar em sequencia falhou'],
   ['scripts/verificar-vozes-android.js', 'Vozes da Celeste no Android (voz escolhida, aviso da voz do aparelho, denuncia) falharam'],
   ['scripts/verificar-conteudo-pessoal-suite.js', 'Suite 6+6 (local variada, prompt da IA e aberturas repetidas) falhou'],
+  ['scripts/verificar-legenda-sincronizada.js', 'Legenda no ritmo da voz (tempo de cada letra no WAV, palavra dita na tela) falhou'],
 ];
 
 function assert(condition, message) {
@@ -902,12 +903,17 @@ async function liveGeminiChecks(
         const contentType = response.headers.get('content-type') || '';
         const bytes = new Uint8Array(await response.arrayBuffer());
         const ascii = (from, to) => String.fromCharCode(...bytes.slice(from, to));
+        // o pedaço logo depois do som: 'ctim' (o tempo de cada letra) prova que a rota com tempo funciona em produção
+        const dataSize = bytes.length >= 44
+          ? (bytes[40] | (bytes[41] << 8) | (bytes[42] << 16) | (bytes[43] << 24)) >>> 0
+          : 0;
         return {
           status: response.status,
           contentType,
           bytes: bytes.length,
           riff: ascii(0, 4),
           wave: ascii(8, 12),
+          afterData: ascii(36, 40) === 'data' ? ascii(44 + dataSize, 48 + dataSize) : '',
         };
       };
       const suite = await postSuite();
@@ -987,10 +993,14 @@ async function liveGeminiChecks(
       results.audio.wave === 'WAVE',
     `ElevenLabs ao vivo nao devolveu WAV valido: ${JSON.stringify(results.audio)}`
   );
+  assert(
+    results.audio.afterData === 'ctim',
+    `ElevenLabs ao vivo sem o tempo das letras (pedaco 'ctim' depois do som): ${JSON.stringify(results.audio)}`
+  );
   const sceneSuiteLabel = sceneSuite.skipped
     ? 'Cena-Ancora + suite 6+6 PULADAS (cota diaria)'
     : `Celeste AI (Cena-Ancora + suite 6+6) ${sceneSuite.provider}/${sceneSuite.model}`;
-  console.log(`BotID bloqueou cliente nu; ${sceneSuiteLabel}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
+  console.log(`BotID bloqueou cliente nu; ${sceneSuiteLabel}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs (com o tempo das letras) passaram no navegador real`);
 }
 
 async function candidateChecks(vercelCli, candidate, env) {

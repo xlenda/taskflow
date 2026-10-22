@@ -10,6 +10,13 @@ const AUDIO_CHARS_PER_UNIT_STEP = 160;
 const AUDIO_UNITS_PER_STEP = 4;
 const MAX_AUDIO_UNITS = 20;
 const MAX_PCM_BYTES = 4_000_000;
+// /with-timestamps devolve JSON: o som em base64 e o tempo de cada letra do texto enviado
+const MAX_TIMED_RESPONSE_CHARS = Math.ceil(MAX_PCM_BYTES / 3) * 4 + 200_000;
+// a rota com tempo recusou ou falhou sem cobrar (não a conta nem o limite): a voz vem pela rota sem tempo. 502, 504 e
+// tempo esgotado não repetem (essa geração pode ter sido cobrada)
+const TIMESTAMPS_REJECTED = new Set([400, 404, 405, 422, 500, 503]);
+// alinhamento que recua mais que isso, ou cuja última letra cai fora do áudio, não vira tempo
+const LETTER_TIMES_SLACK_MS = 250;
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
 const PCM_BITS_PER_SAMPLE = 16;
@@ -208,15 +215,39 @@ function timeoutMs() {
   return Math.min(30_000, Math.max(2_000, Math.floor(configured)));
 }
 
-function pcmToWav(pcm) {
+// O ms em que a voz começa cada letra, só quando o alinhamento é do texto enviado letra por letra e cabe no som de
+// durationMs: nenhuma letra recua mais de 250 ms e a última começa entre a metade do som e o fim + 250 ms. Senão
+// null: o app segue a legenda por letras, como antes.
+function letterTimes(alignment, text, durationMs) {
+  const characters = alignment && Array.isArray(alignment.characters) ? alignment.characters : null;
+  const starts = alignment && Array.isArray(alignment.character_start_times_seconds)
+    ? alignment.character_start_times_seconds
+    : null;
+  if (!characters || !starts || starts.length !== text.length || characters.join('') !== text) return null;
+  let last = 0;
+  const times = [];
+  for (const start of starts) {
+    const ms = Number(start) * 1000;
+    if (!(ms >= 0) || ms < last - LETTER_TIMES_SLACK_MS) return null; // !(ms >= 0): negativo ou sem número
+    last = Math.max(last, Math.round(ms));
+    times.push(last);
+  }
+  return last <= durationMs + LETTER_TIMES_SLACK_MS && last >= durationMs / 2 ? times : null;
+}
+
+// O WAV de sempre (cabeçalho de 44 bytes + PCM). Com os tempos das letras, eles vão DEPOIS do som num pedaço 'ctim'
+// (JSON): os tocadores param no fim do pedaço 'data' e o cache do app guarda os dois juntos.
+function pcmToWav(pcm, times = null) {
   if (!Buffer.isBuffer(pcm) || !pcm.length || pcm.length > MAX_PCM_BYTES || pcm.length % 2 !== 0) {
     throw new AudioGenerationError('invalid_audio');
   }
+  const timing = times ? Buffer.from(JSON.stringify(times), 'ascii') : null;
+  const extra = timing ? 8 + timing.length + (timing.length % 2) : 0;
   const header = Buffer.alloc(44);
   const blockAlign = (PCM_CHANNELS * PCM_BITS_PER_SAMPLE) / 8;
   const byteRate = PCM_SAMPLE_RATE * blockAlign;
   header.write('RIFF', 0, 'ascii');
-  header.writeUInt32LE(36 + pcm.length, 4);
+  header.writeUInt32LE(36 + pcm.length + extra, 4);
   header.write('WAVE', 8, 'ascii');
   header.write('fmt ', 12, 'ascii');
   header.writeUInt32LE(16, 16);
@@ -228,17 +259,25 @@ function pcmToWav(pcm) {
   header.writeUInt16LE(PCM_BITS_PER_SAMPLE, 34);
   header.write('data', 36, 'ascii');
   header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
+  if (!timing) return Buffer.concat([header, pcm]);
+  const chunk = Buffer.alloc(extra);
+  chunk.write('ctim', 0, 'ascii');
+  chunk.writeUInt32LE(timing.length, 4);
+  timing.copy(chunk, 8);
+  return Buffer.concat([header, pcm, chunk]);
 }
 
-async function requestElevenLabs(input, model, apiKey) {
+// A voz com o tempo de cada letra (/with-timestamps, o mesmo corpo): a legenda do app anda com ela. Se essa rota
+// recusar o pedido, a voz vem pela rota de antes (timed = false), sem os tempos.
+async function requestElevenLabs(input, model, apiKey, timed = true) {
   if (typeof fetch !== 'function') throw new AudioGenerationError('audio_unavailable');
   const narrator = NARRATOR_VOICES[input.narratorId];
   const query = new URLSearchParams({
     output_format: `pcm_${PCM_SAMPLE_RATE}`,
     enable_logging: 'false',
   });
-  const endpoint = `${ELEVENLABS_TTS_ENDPOINT}/${encodeURIComponent(narrator.voiceId)}?${query}`;
+  const route = timed ? '/with-timestamps' : '';
+  const endpoint = `${ELEVENLABS_TTS_ENDPOINT}/${encodeURIComponent(narrator.voiceId)}${route}?${query}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
   try {
@@ -246,7 +285,7 @@ async function requestElevenLabs(input, model, apiKey) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'audio/pcm',
+        Accept: timed ? 'application/json' : 'audio/pcm',
         'xi-api-key': apiKey,
       },
       body: JSON.stringify(buildElevenLabsRequest(input, model)),
@@ -259,12 +298,28 @@ async function requestElevenLabs(input, model, apiKey) {
       if (response && (response.status === 401 || response.status === 403)) {
         throw new AudioGenerationError('audio_not_configured');
       }
+      if (timed && response && TIMESTAMPS_REJECTED.has(response.status)) {
+        return requestElevenLabs(input, model, apiKey, false);
+      }
       throw new AudioGenerationError('audio_unavailable');
     }
     const contentType = cleanText(
       response.headers && response.headers.get ? response.headers.get('content-type') || '' : '',
       120
     ).toLowerCase();
+    if (timed) {
+      // um 200 já cobrado: lido como JSON mesmo sem o rótulo application/json (com o teto de tamanho)
+      const raw = await response.text();
+      if (raw.length > MAX_TIMED_RESPONSE_CHARS) throw new AudioGenerationError('audio_too_large');
+      let payload = null;
+      try {
+        payload = JSON.parse(raw);
+      } catch (_error) {}
+      const pcm = Buffer.from(payload && typeof payload.audio_base64 === 'string' ? payload.audio_base64 : '', 'base64');
+      if (pcm.length > MAX_PCM_BYTES) throw new AudioGenerationError('audio_too_large');
+      const durationMs = (pcm.length / (PCM_SAMPLE_RATE * PCM_CHANNELS * (PCM_BITS_PER_SAMPLE / 8))) * 1000;
+      return pcmToWav(pcm, letterTimes(payload && payload.alignment, input.text, durationMs));
+    }
     if (!/^audio\/(?:pcm|l16|raw)(?:;|$)/.test(contentType)) {
       throw new AudioGenerationError('invalid_audio');
     }
