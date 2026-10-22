@@ -287,6 +287,17 @@ for (const lang of ['pt', 'en']) {
       () => endpoint._internals.validateGeneratedJourneySuite(suite, { lang, availablePersonalization: new Set(['desire']) }),
       `${label}: a suite local passa nos validadores do servidor`
     );
+    // the opener of an affirmation ("No meu ritmo, eu...") never echoes later in the same affirmation
+    const openerWords = lang === 'pt' ? ['hoje', 'leveza', 'ritmo', 'certeza', 'dia'] : ['today', 'gently', 'pace', 'certainty', 'day'];
+    suite.affirmations.forEach((item) => {
+      const words = wordsFolded(item.text);
+      for (const word of openerWords) {
+        assert.ok(
+          words.filter((candidate) => candidate === word).length <= 1,
+          `${label}: "${word}" se repete na mesma afirmacao: ${item.text}`
+        );
+      }
+    });
     const visionTexts = suite.visions.map((item) => skeleton(item.story.slice(FUTURE_FRAME[lang].length), person, lang));
     const affirmationTexts = suite.affirmations.map((item) => skeleton(item.text, person, lang));
     for (const [kind, texts] of [['visoes', visionTexts], ['afirmacoes', affirmationTexts]]) {

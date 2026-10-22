@@ -587,9 +587,9 @@ const AFFIRMATIONS = {
         'trato meu talento com seriedade e paciência.',
       ],
       seconds: [
-        (f) => (f.work ? `Eu reconheço o valor do que faço no dia a dia: ${lowerFirst(f.work)}.` : ''),
+        (f) => (f.work ? `Eu reconheço o valor do que já faço: ${lowerFirst(f.work)}.` : ''),
         () => 'Eu posso crescer sem me desgastar.',
-        () => 'Meu ritmo também é uma forma de competência.',
+        () => 'Minha constância também é uma forma de competência.',
         () => 'Eu dou crédito ao que já construí.',
       ],
     },
@@ -627,7 +627,7 @@ const AFFIRMATIONS = {
     Peace: {
       bodies: [
         'protejo minha atenção e crio espaço interno.',
-        'escolho o que merece entrar no meu dia.',
+        'escolho o que pode entrar na minha rotina.',
         'volto ao que importa com calma e discernimento.',
         'desacelero sem culpa.',
         'respiro antes de responder.',
@@ -641,7 +641,7 @@ const AFFIRMATIONS = {
     },
   },
   en: {
-    openers: ['I', 'Today I', 'Gently, I', 'At my own pace, I', 'Even without certainty, I', 'Day by day, I'],
+    openers: ['I', 'Today I', 'Gently, I', 'At my own pace, I', 'Even without certainty, I', 'Each day, I'],
     Love: {
       bodies: [
         'cultivate love through reciprocity, clarity, and respect.',
@@ -681,9 +681,9 @@ const AFFIRMATIONS = {
         'treat my talent with seriousness and patience.',
       ],
       seconds: [
-        (f) => (f.work ? `I recognize the value of what I do every day: ${lowerFirst(f.work)}.` : ''),
+        (f) => (f.work ? `I recognize the value of what I already do: ${lowerFirst(f.work)}.` : ''),
         () => 'I can grow without wearing myself out.',
-        () => 'My pace is also a form of competence.',
+        () => 'My consistency is also a form of competence.',
         () => 'I give credit to what I have already built.',
       ],
     },
@@ -721,7 +721,7 @@ const AFFIRMATIONS = {
     Peace: {
       bodies: [
         'protect my attention and create inner room.',
-        'choose what deserves to enter my day.',
+        'choose what gets into my routine.',
         'return to what matters with calm and discernment.',
         'slow down without guilt.',
         'breathe before I answer.',
