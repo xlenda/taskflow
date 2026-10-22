@@ -459,6 +459,41 @@ function extractAnonymousAccessToken(payload) {
   return token;
 }
 
+// The live text smoke is ONE /api/gerar-cena call with the 6+6 suite (12 'scene' units): the Anchor Scene, the
+// provider and the suite are all checked on that response. 'scene' is capped at 32 units per user and 64 per actor
+// per day (migration 010) and gerar-cena commits the units before generating, so a quota refusal proves the spend
+// guard, not a broken deploy: skipped with a loud warning, never a rollback. The suite is checked with the server's
+// own validator (`validateJourneySuite`), so a valid 200 always passes; anything else throws and rolls back.
+function validateLiveSceneSuite(result, validateJourneySuite) {
+  if (result && result.status === 429 && result.payload && result.payload.error === 'daily_generation_limit_reached') {
+    return { skipped: true };
+  }
+  if (!result || result.status !== 200) {
+    throw new Error(`Cena-Ancora + suite 6+6 ao vivo falhou: ${JSON.stringify(result || null).slice(0, 800)}`);
+  }
+  const payload = result.payload || {};
+  const generation = payload.generation || {};
+  if (!payload.scene || typeof payload.scene.story !== 'string' || !payload.scene.story.trim() || generation.source !== 'celeste-ai') {
+    throw new Error('Celeste AI nao devolveu scene/source=celeste-ai');
+  }
+  if (generation.provider !== 'anthropic') {
+    throw new Error(`Celeste AI nao confirmou Anthropic como provider primario: ${generation.provider || 'ausente'}`);
+  }
+  if (generation.promptVersion !== 'celeste-journey-suite-v3') {
+    throw new Error(`Suite 6+6 ao vivo nao confirmou o prompt esperado: ${generation.promptVersion || 'ausente'}`);
+  }
+  if (generation.knowledgeVersion !== 'celeste-knowledge-v2') {
+    throw new Error('Celeste AI nao confirmou a base esperada');
+  }
+  try {
+    validateJourneySuite(payload.journeySuite, { lang: 'pt' });
+  } catch (error) {
+    const issue = error && error.evaluation && error.evaluation.issues && error.evaluation.issues[0];
+    throw new Error(`Suite 6+6 ao vivo reprovada pelas regras do servidor: ${(issue && issue.code) || (error && (error.code || error.message))}`);
+  }
+  return { skipped: false, provider: generation.provider, model: generation.model };
+}
+
 module.exports = {
   AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION,
   AI_REPORT_GATEWAY_SCHEMA_VERSION,
@@ -478,6 +513,7 @@ module.exports = {
   validateAiReportGatewayPayload,
   validateLocalBuildEnvironment,
   validateActorQuotaBackend,
+  validateLiveSceneSuite,
   validateOperationQuotaPayload,
   validateProductionEnvironmentOutput,
 };

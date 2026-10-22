@@ -16,6 +16,7 @@ const {
   parseDeploymentOutput,
   validateAiReportGatewayBackend,
   validateActorQuotaBackend,
+  validateLiveSceneSuite,
   validateLocalBuildEnvironment,
   validateProductionEnvironmentOutput,
 } = require('./deploy-celeste-guards');
@@ -460,11 +461,35 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /process\.env\.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY \|\|\s*process\.env\.EXPO_PUBLIC_SUPABASE_ANON_KEY/
   );
   assert.match(deploySource, /Authorization:\s*`Bearer \$\{sessionToken\}`/);
+  // final round (21/10): the scene, Claude as the main writer and the suite come from ONE text call (12 units), checked
+  // by validateLiveSceneSuite (behavior in its own test below) with the server's own suite validator
   assert.match(
     deploySource,
-    /generation\.generation\?\.provider === 'anthropic'/,
-    'smoke de producao precisa confirmar Claude como escritor principal'
+    /const sceneSuite = validateLiveSceneSuite\(results\.suite, validateGeneratedJourneySuite\);/,
+    'smoke de producao precisa confirmar Claude, a cena e a suite pela mesma resposta'
   );
+  assert.match(
+    deploySource,
+    /const \{ validateGeneratedJourneySuite \} = require\('\.\.\/api\/gerar-cena'\)\._internals;/,
+    'o smoke usa o validador da suite do proprio servidor'
+  );
+  assert.strictEqual(
+    (deploySource.match(/post\('\/api\/gerar-cena'/g) || []).length,
+    1,
+    'uma chamada de texto por deploy: sem a cena avulsa alem da suite'
+  );
+  assert.doesNotMatch(deploySource, /postGeneration|generationBody/, 'a cena avulsa (mais 4 a 12 unidades) saiu do smoke');
+  assert.match(
+    deploySource,
+    /if \(sceneSuite\.skipped\) \{\s*console\.warn\(/,
+    'cota esgotada no smoke: aviso alto, sem rollback'
+  );
+  const afterSceneSuite = deploySource.slice(
+    deploySource.indexOf('const sceneSuite = validateLiveSceneSuite('),
+    deploySource.indexOf('assert(results.translation.status === 200')
+  );
+  assert.ok(afterSceneSuite.length > 0, 'o smoke da cena + suite vem antes da traducao');
+  assert.doesNotMatch(afterSceneSuite, /\bassert\(|\bthrow\b/, 'nenhuma recusa depois do aviso de cota: o deploy segue');
   assert.match(deploySource, /post\('\/api\/transformar-sonho', dreamInput\)/);
   assert.match(
     deploySource,
@@ -489,10 +514,6 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     /for \(let attempt = 0; attempt < 2; attempt \+= 1\) \{\s*result = await post\('\/api\/gerar-cena', suiteInput\);/,
     'a suite ao vivo faz no maximo duas chamadas'
   );
-  assert.match(deploySource, /suitePayload\.generation\?\.promptVersion === 'celeste-journey-suite-v3'/);
-  assert.match(deploySource, /items\.length === 6 && items\.map\(\(item\) => item\.category\)\.join\(\) === SUITE_AREAS\.join\(\)/);
-  assert.match(deploySource, /new Set\(texts\)\.size === 6/);
-  assert.match(deploySource, /new Set\(openings\)\.size === 6/);
   assert.match(deploySource, /protocolTimeout: 420_000/, 'a chamada unica do navegador cabe a suite alem das outras rotas');
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);
   assert.match(e2eSource, /const paidUiSmokeAttempts = \[\]/);
@@ -578,6 +599,73 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   );
   assert.match(deploySource, /'--prod',\s*'--skip-domain'/);
   assert.match(deploySource, /Rollback automatico para o deployment anterior falhou/);
+});
+
+test('smoke ao vivo da Cena-Ancora + suite 6+6: regras do servidor, cota pulada com aviso, falha real reverte', () => {
+  const { validateGeneratedJourneySuite } = require('../api/gerar-cena')._internals;
+  const { createPersonalContentSuite } = require('../utils/personalContentSuite');
+  const suite = createPersonalContentSuite({
+    desire: 'ter uma rotina mais calma e tempo para minha familia',
+    profile: { name: 'Clara', city: 'Belo Horizonte', work: 'professora', obstacle: 'tempo ou energia' },
+    lang: 'pt',
+    category: 'Peace',
+  });
+  const copy = () => JSON.parse(JSON.stringify(suite));
+  const ok = (journeySuite = suite, generation = {}, scene = { story: 'Uma manha calma em Belo Horizonte.' }) => ({
+    status: 200,
+    payload: {
+      scene,
+      journeySuite,
+      generation: {
+        source: 'celeste-ai',
+        provider: 'anthropic',
+        model: 'claude-teste',
+        promptVersion: 'celeste-journey-suite-v3',
+        knowledgeVersion: 'celeste-knowledge-v2',
+        ...generation,
+      },
+    },
+  });
+  const check = (result) => validateLiveSceneSuite(result, validateGeneratedJourneySuite);
+
+  assert.deepStrictEqual(check(ok()), { skipped: false, provider: 'anthropic', model: 'claude-teste' });
+  // 'scene' tem 32 unidades por pessoa e 64 por ator ao dia: a cota esgotada prova o guarda de gasto, nao um deploy
+  // quebrado (o deploy imprime o aviso alto e segue, sem rollback)
+  assert.deepStrictEqual(check({ status: 429, payload: { error: 'daily_generation_limit_reached' } }), { skipped: true });
+
+  // nunca mais rigido que o servidor: afirmacao de 25 caracteres (o servidor aceita a partir de 20) e o enquadramento
+  // de futuro com outra pontuacao (o servidor compara o texto normalizado) passam
+  const looser = copy();
+  looser.affirmations[3].text = 'Meu corpo pede calma hoje.';
+  looser.visions[0].story = looser.visions[0].story.replace(
+    'Imagine uma possibilidade do seu futuro:',
+    'Imagine uma possibilidade do seu futuro —'
+  );
+  assert.notStrictEqual(looser.visions[0].story, suite.visions[0].story);
+  validateGeneratedJourneySuite(looser, { lang: 'pt' });
+  assert.strictEqual(check(ok(looser)).skipped, false, 'o que o servidor aprova, o smoke aprova');
+
+  const repeated = copy();
+  repeated.affirmations[1].text = `${repeated.affirmations[0].text.split(' ').slice(0, 3).join(' ')} o que me faz bem, no meu tempo.`;
+  const noFrame = copy();
+  noFrame.visions[2].story = noFrame.visions[2].story.replace('Imagine uma possibilidade do seu futuro:', 'Hoje:');
+  for (const [label, result, pattern] of [
+    ['falha da geracao (502)', { status: 502, payload: { error: 'invalid_generation' } }, /falhou/],
+    ['tempo esgotado (504)', { status: 504, payload: { error: 'generation_timeout' } }, /falhou/],
+    ['outro 429', { status: 429, payload: { error: 'too_many_requests' } }, /falhou/],
+    ['sem resposta', undefined, /falhou/],
+    ['sem cena', ok(suite, {}, null), /scene/],
+    ['outra fonte', ok(suite, { source: 'local' }), /scene/],
+    ['outro provedor', ok(suite, { provider: 'openai' }), /Anthropic/],
+    ['outro prompt', ok(suite, { promptVersion: 'celeste-journey-suite-v2' }), /prompt/],
+    ['outra base', ok(suite, { knowledgeVersion: 'celeste-knowledge-v1' }), /base/],
+    ['sem suite', ok(null), /regras do servidor/],
+    ['cinco visoes', ok({ ...suite, visions: suite.visions.slice(0, 5) }), /regras do servidor/],
+    ['aberturas repetidas', ok(repeated), /journey_repeated_openings/],
+    ['visao sem o enquadramento de futuro', ok(noFrame), /regras do servidor/],
+  ]) {
+    assert.throws(() => check(result), pattern, label);
+  }
 });
 
 test('o E2E de producao bloqueia e anota no navegador as rotas pagas do smoke', () => {

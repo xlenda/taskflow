@@ -16,10 +16,13 @@ const {
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
   validateActorQuotaBackend,
+  validateLiveSceneSuite,
   validateLocalBuildEnvironment,
   validateOperationQuotaPayload,
   validateProductionEnvironmentOutput,
 } = require('./deploy-celeste-guards');
+// the live 6+6 smoke checks the suite with the server's own rules, so a valid 200 never rolls a deploy back
+const { validateGeneratedJourneySuite } = require('../api/gerar-cena')._internals;
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.resolve(ROOT, 'dist');
@@ -734,17 +737,9 @@ async function liveGeminiChecks(
 
   const accessToken = await createAnonymousSmokeAccessToken();
 
-  const generationBody = {
-    desire: 'uma rotina criativa com calma',
-    category: 'Career',
-    lang: 'pt',
-    profile: {},
-    cloudConsent: true,
-    cloudConsentVersion: CLOUD_CONSENT_VERSION,
-    adultConfirmed: true,
-  };
-  // One live 6+6 suite per deploy through the production text provider (the owner authorized the call), with an
-  // ordinary profile: the provider that writes the Anchor suite for real people has to pass the same validation.
+  // ONE live text call per deploy (12 'scene' units of the 32 per user / 64 per actor a day): the Anchor Scene and the
+  // 6+6 suite through the production text provider (the owner authorized the call), with an ordinary profile. The
+  // scene, the provider and the suite are all checked on that response; there is no separate plain-scene call.
   const suiteBody = {
     desire: 'ter uma rotina mais calma e tempo para minha familia',
     category: 'Peace',
@@ -833,7 +828,7 @@ async function liveGeminiChecks(
       '--lang=pt-BR',
     ],
     defaultViewport: { width: 420, height: 900 },
-    // one evaluate runs scene, 6+6 suite, translation, dream, image and voice: more than the default 180 s per call
+    // one evaluate runs the scene + 6+6 suite, translation, dream, image and voice: more than the default 180 s per call
     protocolTimeout: 420_000,
   });
   let results;
@@ -850,7 +845,6 @@ async function liveGeminiChecks(
     });
     results = await page.evaluate(async ({
       accessToken: sessionToken,
-      generationBody: generationInput,
       suiteBody: suiteInput,
       translationBody: translationInput,
       dreamBody: dreamInput,
@@ -880,19 +874,8 @@ async function liveGeminiChecks(
         try { payload = JSON.parse(text); } catch (_error) { payload = { invalidJson: text.slice(0, 180) }; }
         return { status: response.status, payload };
       };
-      const postGeneration = async () => {
-        let result;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          result = await post('/api/gerar-cena', generationInput);
-          const transientInvalid =
-            result.status === 502 &&
-            ['invalid_generation', 'upstream_error'].includes(result.payload?.error);
-          if (!transientInvalid) return result;
-          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-        }
-        return result;
-      };
-      // one call per deploy; a second only when the first comes back as a transient refusal or timeout
+      // one call per deploy (12 units); a second only when the first comes back as a transient refusal or timeout
+      // (24 units at most, inside the 32 a day of this fresh anonymous user)
       const postSuite = async () => {
         let result;
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -927,7 +910,6 @@ async function liveGeminiChecks(
           wave: ascii(8, 12),
         };
       };
-      const generation = await postGeneration();
       const suite = await postSuite();
       const translation = await post('/api/traduzir-cena', translationInput);
       const dream = await post('/api/transformar-sonho', dreamInput);
@@ -951,50 +933,22 @@ async function liveGeminiChecks(
           error: visualResult.payload?.error,
         },
       };
-      return { generation, suite, translation, dream, visual, audio };
-    }, { accessToken, generationBody, suiteBody, translationBody, dreamBody, visualBody, audioBody });
+      return { suite, translation, dream, visual, audio };
+    }, { accessToken, suiteBody, translationBody, dreamBody, visualBody, audioBody });
   } finally {
     await browser.close();
   }
 
-  assert(results.generation.status === 200, `Celeste AI/BotID ao vivo falhou: ${JSON.stringify(results.generation)}`);
-  const generation = results.generation.payload;
-  assert(
-    generation.scene && generation.generation?.source === 'celeste-ai',
-    'Celeste AI nao devolveu scene/source=celeste-ai'
-  );
-  assert(
-    generation.generation?.provider === 'anthropic',
-    `Celeste AI nao confirmou Anthropic como provider primario: ${generation.generation?.provider || 'ausente'}`
-  );
-  assert(generation.generation.promptVersion === 'celeste-scene-v8', 'Celeste AI nao confirmou o prompt de cena esperado');
-  assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v2', 'Celeste AI nao confirmou a base esperada');
-
-  // the 6+6 suite the production provider writes for a real person: six visions and six affirmations, one per area
-  // in order, all different, the visions with the future framing, no two opening with the same three words
-  assert(results.suite.status === 200, `Suite 6+6 ao vivo falhou: ${JSON.stringify(results.suite).slice(0, 800)}`);
-  const suitePayload = results.suite.payload;
-  assert(
-    suitePayload.generation?.promptVersion === 'celeste-journey-suite-v3',
-    `Suite 6+6 ao vivo nao confirmou o prompt esperado: ${suitePayload.generation?.promptVersion || 'ausente'}`
-  );
-  const SUITE_AREAS = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
-  const FUTURE_FRAME = 'Imagine uma possibilidade do seu futuro:';
-  for (const kind of ['visions', 'affirmations']) {
-    const items = Array.isArray(suitePayload.journeySuite?.[kind]) ? suitePayload.journeySuite[kind] : [];
-    assert(
-      items.length === 6 && items.map((item) => item.category).join() === SUITE_AREAS.join(),
-      `Suite 6+6 ao vivo: ${kind} fora das seis areas`
+  // the Anchor Scene and the 6+6 suite the production provider writes for a real person, from the one text call: the
+  // scene with source/provider/prompt/knowledge, the suite by the server's own validator (six areas in order, lengths,
+  // future framing, first person, no promise, all different, no two openings alike). A quota refusal is not a defect.
+  const sceneSuite = validateLiveSceneSuite(results.suite, validateGeneratedJourneySuite);
+  if (sceneSuite.skipped) {
+    console.warn(
+      `\n${'!'.repeat(78)}\nAVISO: smoke da Cena-Ancora + suite 6+6 PULADO: a cota diaria de cenas acabou (429 ` +
+        'daily_generation_limit_reached).\nO deploy NAO foi revertido por isso. Depois de 00:00 UTC, prove o texto ao ' +
+        `vivo com: node scripts/deploy-celeste.js --validate-production\n${'!'.repeat(78)}\n`
     );
-    const texts = items.map((item) => String((kind === 'visions' ? item.story : item.text) || '').trim());
-    assert(texts.every((text) => text.length >= 40) && new Set(texts).size === 6, `Suite 6+6 ao vivo: ${kind} vazias ou repetidas`);
-    if (kind === 'visions') {
-      assert(texts.every((text) => text.startsWith(FUTURE_FRAME)), 'Suite 6+6 ao vivo: visao sem o enquadramento de futuro');
-    }
-    const openings = texts.map((text) =>
-      (kind === 'visions' ? text.slice(FUTURE_FRAME.length) : text).trim().toLowerCase().split(/\s+/).slice(0, 3).join(' ')
-    );
-    assert(new Set(openings).size === 6, `Suite 6+6 ao vivo: ${kind} com a mesma abertura`);
   }
 
   assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);
@@ -1033,7 +987,10 @@ async function liveGeminiChecks(
       results.audio.wave === 'WAVE',
     `ElevenLabs ao vivo nao devolveu WAV valido: ${JSON.stringify(results.audio)}`
   );
-  console.log(`BotID bloqueou cliente nu; Celeste AI ${generation.generation.provider}/${generation.generation.model}, suite 6+6 ${suitePayload.generation.provider}/${suitePayload.generation.model}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
+  const sceneSuiteLabel = sceneSuite.skipped
+    ? 'Cena-Ancora + suite 6+6 PULADAS (cota diaria)'
+    : `Celeste AI (Cena-Ancora + suite 6+6) ${sceneSuite.provider}/${sceneSuite.model}`;
+  console.log(`BotID bloqueou cliente nu; ${sceneSuiteLabel}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs passaram no navegador real`);
 }
 
 async function candidateChecks(vercelCli, candidate, env) {
