@@ -16,16 +16,26 @@ um runtime Android, a mesma fronteira continua ativa.
   ficam visíveis. A narração completa começa somente depois de um toque e
   precisa terminar, ou a leitura integral precisa ser confirmada pela alternativa
   acessível, antes de liberar duas repetições da afirmação para registrar
-  a conclusão por voz (`1/2` e `2/2`).
+  a conclusão por voz (`1/2` e `2/2`);
+- desde 21/10, nuvem só para voz e textos: depois do consentimento adulto
+  (pedido no primeiro toque para ouvir ou ao criar um desejo na Home; controle
+  "Voz e textos da Celeste na nuvem" no Perfil) e só quando o servidor confirma a
+  verificação Play Integrity (`api/_play-integrity.js`, operações `audio`,
+  `scene` e `translation`): a voz escolhida da ElevenLabs ao tocar para ouvir
+  (inclusive a visão do Plano Celeste), a Cena-Âncora e as visões e afirmações
+  das seis áreas escritas pela IA e a tradução da cena pelo Google Gemini quando
+  a pessoa troca o idioma. Sem o consentimento, sem a verificação ou sem
+  internet, os textos ficam os montados no aparelho e a voz é a do aparelho (com
+  aviso, depois do consentimento).
 
 ## O que não aparece no Android
 
 - aba, atalho e deep link da Comunidade pública;
 - card, CTA de sonho, tela e deep link do despertador com conteúdo pessoal;
 - sincronização em segundo plano do despertador nativo;
-- pergunta, controle e chamadas de processamento pago em nuvem. A criação usa
-  o caminho local nesta primeira versão. A narração do Plano usa o sintetizador
-  do sistema, não ElevenLabs.
+- imagem gerada por IA, sonho em nuvem e Espelho Vivo: o app recusa essas
+  chamadas antes de criar sessão e o servidor responde 403
+  `native_attestation_required` (`operation_not_allowed` no log).
 
 A Comunidade e o despertador continuam disponíveis no site e no iOS. Uma build
 Android local dedicada pode definir a flag como `0` para exercitar apenas a UI
@@ -53,9 +63,12 @@ celular. `Agora não` e `Adiar 10 min` permanecem disponíveis sem exigir fala.
 
 ## Narração da visão no Plano Celeste
 
-`expo-speech` entrega ao sintetizador do sistema o texto completo da visão ou
-Cena-Âncora somente depois que a pessoa toca em ouvir. A Celeste não grava um
-novo arquivo de áudio e a biblioteca não acrescenta permissão sensível. Os
+A narração da visão ou Cena-Âncora começa somente depois que a pessoa toca em
+ouvir. Com o consentimento ativo e a verificação Play Integrity aprovada no
+servidor, toca a voz escolhida da ElevenLabs; caso contrário, `expo-speech`
+entrega o texto completo ao sintetizador do sistema. Nesse caminho local, a
+Celeste não grava um novo arquivo de áudio e a biblioteca não acrescenta
+permissão sensível. Os
 controles de repetição e o microfone só são liberados depois que a narração
 termina ou que a pessoa confirma ter lido a visão completa.
 
@@ -82,9 +95,12 @@ mínimo da prática, como dia, horário, método e pontuação de correspondênc
 o texto reconhecido. A pessoa pode cancelar a escuta a qualquer momento.
 
 A interface nativa acompanha a mesma fronteira do backend: o onboarding cria a
-primeira prática localmente e não pede consentimento de nuvem. Home e Perfil não
-oferecem esse controle quando a sessão nativa não pode ser atestada. O site
-preserva o opt-in posterior para a experiência opcional em nuvem.
+primeira prática localmente e não pede consentimento de nuvem. Depois dele, o
+Android pede o consentimento adulto (voz e textos, sem imagens) no primeiro toque
+para ouvir ou ao criar um desejo na Home, e o Perfil tem o controle "Voz e textos
+da Celeste na nuvem"; sem a verificação Play Integrity confirmada no servidor,
+nada disso gera conteúdo em nuvem. O site preserva o opt-in posterior para a
+experiência opcional em nuvem completa.
 
 Antes de testar uma build v1 em aparelho que recebeu protótipos Android antigos
 do despertador, desinstale a versão anterior para que nenhum alarme do protótipo

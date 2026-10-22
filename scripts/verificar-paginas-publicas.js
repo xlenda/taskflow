@@ -94,16 +94,24 @@ assert(
   'Privacy EN não descreve onboarding local, despertador completo e Plano com Anchor Scene'
 );
 
-// Android (21/10): when she changes the language, the AI-written scene goes to Google Gemini to be translated. The
-// policies (site and app) say so, and no public, store or guide text still says translation stays on the website.
+// Android (21/10): when she changes the language, the scene being translated goes to Google Gemini: the AI-written one
+// or, if the AI has not rewritten it, the one assembled on the device, with the identity phrase, the bridge step and
+// the labels of the answers it used (services/translateManifestationScene.js). The policies (site and app) say exactly
+// that, and no public, store or guide text still says translation stays on the website or lists only part of it.
 const oneLine = (text) => text.replace(/\s+/g, ' ');
 const legal = read(path.join('constants', 'legal.js'));
 assert(
-  oneLine(privacyPt).includes('quando você troca o idioma do app, a cena escrita pela IA (título, intenção, afirmação e história) é enviada') &&
-    oneLine(privacyEn).includes('when you change the app language, the AI-written scene (title, intention, affirmation and story) is sent') &&
-    legal.includes('the Google Gemini translation of that scene when you change the language') &&
-    legal.includes('a tradução dessa cena pelo Google Gemini quando você troca o idioma'),
-  'Privacidade: a tradução da cena pelo Google Gemini no Android não está declarada'
+  oneLine(privacyPt).includes('quando você troca o idioma do app, a cena que vai ser traduzida (a escrita pela IA ou, se a IA não chegou a reescrevê-la, a montada no aparelho com as suas respostas) é enviada') &&
+    oneLine(privacyPt).includes('a frase de identidade e o passo da ponte para hoje e os rótulos das respostas usadas nela') &&
+    oneLine(privacyEn).includes('when you change the app language, the scene being translated (the AI-written one or, if the AI has not rewritten it, the one assembled on the device from your answers) is sent') &&
+    oneLine(privacyEn).includes('the identity phrase and step of the bridge to today, and the labels of the answers it used') &&
+    legal.includes('a cena que vai ser traduzida (a escrita pela IA ou, se a IA não chegou a reescrevê-la, a montada no celular com as suas respostas)') &&
+    legal.includes('a frase de identidade e o passo da ponte para hoje e os rótulos das respostas usadas nela') &&
+    legal.includes('the scene being translated (the AI-written one or, if the AI has not rewritten it, the one assembled on your phone from your answers)') &&
+    legal.includes('the identity phrase and step of the bridge to today, and the labels of the answers it used') &&
+    legal.includes('the Google Gemini translation of the scene when you change the language') &&
+    legal.includes('a tradução da cena pelo Google Gemini quando você troca o idioma'),
+  'Privacidade: a tradução da cena pelo Google Gemini no Android não está declarada por inteiro'
 );
 for (const [label, text] of [
   ['privacidade PT', privacyPt],
@@ -118,6 +126,21 @@ for (const [label, text] of [
   assert(
     !/sonhos?, traduç(?:ão|ões) e Espelho|dreams, translations and the Living Mirror|(?:imagem, sonho, tradução|tradução, imagem, sonho) (?:e|ou) Espelho|image, dream, translation and Living Mirror/i.test(oneLine(text)),
     `${label}: ainda diz que a tradução fica só no site no Android`
+  );
+  assert(
+    !/\((?:título, intenção, afirmação e história|title, intention, affirmation and story)\b|tradução (?:da|dessa) cena escrita pela IA|tradução dessa cena|translation of (?:the AI-written|that) scene|AI-written scene is translated|traduz a Cena-Âncora escrita pela IA/i.test(oneLine(text)),
+    `${label}: a tradução no Android aparece menor que no código (só a cena da IA, sem identidade, passo e rótulos)`
+  );
+}
+// the Android boundary docs no longer say the app has no cloud, no AI or no ElevenLabs (voices, texts and translation
+// pass with Play Integrity since 21/10; images, dream and the Living Mirror stay on the website)
+for (const [label, file] of [
+  ['android-store-v1-boundary.md', path.join('docs', 'android-store-v1-boundary.md')],
+  ['store-submission-pending.md', path.join('docs', 'store-submission-pending.md')],
+]) {
+  assert(
+    !/não ElevenLabs|bloqueia ElevenLabs|bloqueia as APIs pagas de cena|bloqueia geracao e narracao pagas|chamadas de processamento pago em nuvem\. A criação usa\s+o caminho local/i.test(oneLine(read(file))),
+    `${label}: ainda diz que o Android não tem nuvem, IA ou ElevenLabs`
   );
 }
 

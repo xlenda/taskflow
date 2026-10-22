@@ -39,7 +39,8 @@ Respostas candidatas para o questionário vigente de cada console:
 - conteúdo gerado/personalizado: sim; na v1 Android a criação paga em nuvem
   fica bloqueada, exceto a voz da narração (ElevenLabs), os textos da
   Cena-Âncora e das visões e afirmações (provedor de texto de cena) e a tradução
-  dessa cena pelo Google Gemini quando a pessoa troca o idioma, desde 21/10, com
+  da cena (escrita pela IA ou montada no aparelho) pelo Google Gemini quando a
+  pessoa troca o idioma, desde 21/10, com
   consentimento adulto e verificação Play Integrity; o conteúdo local permanece
   disponível e existe denúncia dentro do app em toda tela que mostra por inteiro
   texto escrito pela IA ou onde a voz gerada toca;
@@ -91,11 +92,15 @@ selecionadas do questionário (inclusive nome e cidade) e a sessão anônima vã
 ao backend, que confere a verificação Play Integrity e repassa o pedido reduzido
 ao provedor de texto de cena (Anthropic; OpenAI como failover; Gemini só se
 nenhum dos dois estiver configurado) para escrever a Cena-Âncora e as visões e
-afirmações das seis áreas. O quarto, também desde 21/10, é a tradução dessa cena:
-quando a pessoa troca o idioma do app, a cena escrita pela IA (título, intenção,
-afirmação e história, sem os nomes guardados) vai pelo mesmo backend, com a mesma
-verificação Play Integrity, ao Google Gemini para ser traduzida. O preenchimento
-exato está em `google-play-console-prefill.md`.
+afirmações das seis áreas. O quarto, também desde 21/10, é a tradução da cena:
+quando a pessoa troca o idioma do app, a cena que vai ser traduzida (a escrita
+pela IA ou, se a IA não a reescreveu, a montada no aparelho com as respostas) vai
+pelo mesmo backend, com a mesma verificação Play Integrity, ao Google Gemini para
+ser traduzida: título, intenção, afirmação, história, frase de identidade e passo
+da ponte e os rótulos das respostas usadas, com os nomes guardados de filhos,
+pessoas importantes e da pessoa específica trocados por "uma pessoa próxima"
+(`services/translateManifestationScene.js`). O preenchimento exato está em
+`google-play-console-prefill.md`.
 
 O Plano Celeste mostra a imagem e o texto da visão ou Cena-Âncora. A narração
 completa começa somente após toque e, no Android, usa a voz escolhida da
@@ -113,7 +118,7 @@ e novos binários Android/iOS; publicar somente a web não atualiza o app instal
 
 As linhas de provedores pagos abaixo continuam sendo o inventário para web/iOS;
 na v1 Android valem somente as linhas de nome próprio e de respostas e desejos
-(textos com IA), a da tradução da cena escrita pela IA (Google Gemini), a da
+(textos com IA), a da tradução da cena (Google Gemini), a da
 narração ElevenLabs, a da verificação Play Integrity, a de IP/logs e a da
 denúncia. A linha do sintetizador do sistema
 ou navegador também deve ser conferida na plataforma em que a prática for
@@ -126,7 +131,7 @@ executada.
 | Nome próprio | personalização em nuvem autorizada | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; Gemini somente quando nenhum deles estiver configurado e o processamento aprovado estiver disponível; no Android, só com Play Integrity confirmado; confirmar retenção |
 | Respostas e desejos | geração autorizada da cena e das visões e afirmações | funcionalidade do app | opcional | não identificado | Anthropic; OpenAI como failover; mesmo fallback condicionado para Gemini; no Android, só com Play Integrity confirmado |
 | Cena salva e contexto visual reduzido | tradução ou imagem autorizada | funcionalidade do app | opcional | não identificado | Google Gemini |
-| Cena escrita pela IA (título, intenção, afirmação e história) e idiomas | troca do idioma do app no Android, com o consentimento ativo | traduzir a cena | opcional | não identificado | Google Gemini; só com Play Integrity confirmado; nomes guardados ficam no aparelho |
+| Cena que vai ser traduzida, escrita pela IA ou montada no aparelho (título, intenção, afirmação, história, frase de identidade, passo da ponte e rótulos das respostas usadas) e idiomas | troca do idioma do app no Android, com o consentimento ativo | traduzir a cena | opcional | não identificado | Google Gemini; só com Play Integrity confirmado; nomes guardados de filhos, pessoas importantes e da pessoa específica trocados por "uma pessoa próxima" antes do envio |
 | Texto da narração, idioma e narrador | toque em Play quando o consentimento de nuvem já está ativo | gerar áudio neural | opcional | não identificado | ElevenLabs TTS; no Android, só com Play Integrity confirmado |
 | Verificação Play Integrity (token do pedido, conferido pelo Google) | pedido de voz, de textos ou de tradução no Android | prevenção de abuso | opcional | não identificado | Google Play; o pedido vai preso por hash, sem o texto nem as respostas |
 | Texto da visão e idioma | toque em ouvir sem consentimento de nuvem ativo | sintetizar a narração no ambiente da pessoa | opcional | não identificado | sintetizador do sistema ou navegador; confirmar se a voz efetiva usa rede e como o fornecedor trata o texto |

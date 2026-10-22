@@ -20,8 +20,9 @@ Vivo em nuvem. Desde 21/10, há duas exceções, as duas só depois do
 consentimento adulto e só quando o servidor confirma a verificação Play
 Integrity: a narração com a voz escolhida (ElevenLabs) e os textos com IA (a
 Cena-Âncora e as visões e afirmações das seis áreas, escritas pelo provedor de
-texto de cena a partir do desejo e das respostas da pessoa, e a tradução dessa
-cena pelo Google Gemini quando a pessoa troca o idioma). Depois do
+texto de cena a partir do desejo e das respostas da pessoa, e a tradução da cena
+pelo Google Gemini quando a pessoa troca o idioma: a escrita pela IA ou, se a IA
+não a reescreveu, a montada no aparelho). Depois do
 consentimento, sem a verificação ou sem internet, toca a voz do aparelho com
 aviso e os textos ficam os montados no aparelho com as respostas, sem IA; sem o
 consentimento, a narração não toca e a tela oferece o texto (o despertar e a
@@ -47,7 +48,7 @@ montados no aparelho.
 | Reprodução em segundo plano / lockscreen | Não | `enableBackgroundPlayback=false`; `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK` bloqueadas na v1 |
 | APIs pagas de imagem, sonho e Espelho Vivo | Bloqueadas no Android | `services/celesteApiSession.js` falha antes de criar sessão ou chamar o backend |
 | API de texto (Cena-Âncora, visões e afirmações) | Liberada no Android desde 21/10, com a mesma trava da voz | depois do consentimento adulto, o pedido leva desejo, área, idioma e respostas selecionadas reduzidas ao provedor de texto de cena (Anthropic; OpenAI como failover; Gemini só se nenhum dos dois estiver configurado); o servidor só o aceita com token Play Integrity verificado no Google e aplica o mesmo guarda de gasto do site; sem a verificação, 403 `native_attestation_required` e o app mantém os textos montados no aparelho, sem aviso de erro |
-| API de tradução da cena | Liberada no Android desde 21/10, com a mesma trava | quando a pessoa troca o idioma do app com o consentimento ativo, a cena escrita pela IA (título, intenção, afirmação e história, sem os nomes guardados) vai pelo backend ao Google Gemini para ser traduzida; o servidor só aceita com token Play Integrity verificado para a operação `translation` |
+| API de tradução da cena | Liberada no Android desde 21/10, com a mesma trava | quando a pessoa troca o idioma do app com o consentimento ativo, a cena que vai ser traduzida (a escrita pela IA ou, se a IA não a reescreveu, a montada no aparelho com as respostas) vai pelo backend ao Google Gemini para ser traduzida: título, intenção, afirmação, história, frase de identidade e passo da ponte e os rótulos das respostas usadas, com os nomes guardados de filhos, pessoas importantes e da pessoa específica trocados por "uma pessoa próxima" (`services/translateManifestationScene.js`); o servidor só aceita com token Play Integrity verificado para a operação `translation` |
 | API de voz (ElevenLabs) | Liberada no Android desde 21/10, com trava | o servidor só aceita o pedido nativo com token Play Integrity verificado no Google (pacote do pedido e do app, `PLAY_RECOGNIZED`, `MEETS_DEVICE_INTEGRITY`, hash do pedido e da sessão, token recente); cada pessoa gasta a própria cota diária, e todas dividem o teto global do servidor (o mesmo do site); sem a verificação, 403 `native_attestation_required` |
 | Conteúdo local | Sim | cenas, afirmações, ritual, sonhos e jornada possuem implementação local |
 | Denúncia de conteúdo gerado | Sim, dentro do app | as telas que mostram por inteiro texto escrito pela IA (visões, afirmações, Cena-Âncora/manifestação, revelação e rituais) e toda tela onde a voz da ElevenLabs toca enviam somente a saída gerada escolhida (ou referência visual) pelo gateway; o Perfil oferece exclusão confirmada; migrations `013`/`014` limitam retenção a 180 dias e fecham a RPC legada |
@@ -195,8 +196,9 @@ Responder pelo build Android, não por recursos existentes no site ou no iOS:
 - Se perguntar se o app gera conteúdo com IA: **Sim**. Desde 21/10, o Android
   gera com IA, depois do consentimento adulto, os textos da Cena-Âncora e das
   visões e afirmações das seis áreas (a partir do desejo e das respostas da
-  própria pessoa), a tradução dessa cena (Google Gemini, quando ela troca o
-  idioma) e a voz de narração (ElevenLabs, a partir do texto dela); as imagens do
+  própria pessoa), a tradução da cena, escrita pela IA ou montada no aparelho
+  (Google Gemini, quando ela troca o idioma), e a voz de narração (ElevenLabs, a
+  partir do texto dela); as imagens do
   Android continuam as prontas, empacotadas no app. Isso coloca o app na política
   de conteúdo gerado por IA, que exige denúncia "without needing to exit the
   app": o botão fica em toda tela que mostra esses textos por inteiro e em toda
@@ -229,7 +231,8 @@ dados pseudônimos. Portanto, **não** marcar “nenhum dado coletado”: ao env
 uma denúncia, o app grava a evidência no Supabase para moderação; desde 21/10,
 ao pedir a voz em nuvem, o texto escolhido também sai do aparelho para virar
 áudio e, depois do mesmo consentimento, o desejo e as respostas selecionadas do
-questionário saem do aparelho para a IA escrever os textos.
+questionário saem do aparelho para a IA escrever os textos e, quando a pessoa
+troca o idioma do app, a cena sai do aparelho para ser traduzida.
 
 O Plano Celeste pede `RECORD_AUDIO`, mas o fluxo de reconhecimento não transmite
 áudio ou transcrição para fora do aparelho. A afirmação permanece visível; após
@@ -265,6 +268,21 @@ e afirmações das seis áreas. O backend não grava as respostas nem os textos:
 registro de limite guarda o mesmo que na voz. Os textos devolvidos ficam no
 aparelho. Sem o consentimento, sem a verificação ou sem internet, os textos são
 montados no aparelho e nada disso sai dele.
+
+A tradução da cena é outro fluxo. Com o mesmo consentimento e Play Integrity
+confirmado no servidor para a operação `translation`, quando a pessoa troca o
+idioma do app, a cena que vai ser traduzida — a escrita pela IA ou, se a IA não a
+reescreveu, a montada no aparelho com as respostas dela — segue com a sessão
+anônima ao backend (Vercel), que a repassa ao Google Gemini: título, intenção,
+afirmação, história, frase de identidade e passo da ponte para hoje e os rótulos
+das respostas usadas (`services/translateManifestationScene.js`). Antes do envio,
+os nomes guardados de filhos, de pessoas importantes e da pessoa específica são
+trocados por "uma pessoa próxima"; o nome dela e detalhes das respostas (cidade,
+trabalho, casa, o que importa) podem estar no texto da cena. O backend não grava
+a cena nem a tradução: o registro de limite guarda o mesmo que na voz. A cena
+traduzida fica no aparelho. Sem o consentimento, sem a verificação ou sem
+internet, a outra língua fica com um texto neutro montado no aparelho e nada
+disso sai dele.
 
 ### Data collection and security
 
@@ -311,10 +329,12 @@ O que cada linha representa:
   pedido dos textos com IA.
 - **Other user-generated content:** nota opcional digitada pela pessoa, o
   conteúdo gerado que ela escolheu encaminhar para análise, desde 21/10 o texto
-  que ela pediu para ouvir (enviado à ElevenLabs para virar voz) e o desejo e as
-  respostas livres do questionário (enviados para a IA escrever os textos).
+  que ela pediu para ouvir (enviado à ElevenLabs para virar voz), o desejo e as
+  respostas livres do questionário (enviados para a IA escrever os textos) e a
+  cena que vai ser traduzida quando ela troca o idioma (a escrita pela IA ou a
+  montada no aparelho com as respostas dela, enviada ao Google Gemini).
 - **Other actions:** tipo do conteúdo e motivo escolhido no diálogo de denúncia,
-  e os pedidos de narração e de textos registrados no limite de gasto.
+  e os pedidos de narração, de textos e de tradução registrados no limite de gasto.
 - **Device or other IDs:** verificação Play Integrity. O token sai do aparelho e
   o Google o confere; o resultado que o servidor recebe traz selos (app
   reconhecido, aparelho certificado), não um identificador do aparelho ou da
@@ -331,9 +351,10 @@ Para todos os tipos marcados:
 - `Processed ephemerally`: **No**, pois a tabela de moderação retém o registro e
   não há como provar que ElevenLabs e Google descartam o dado na hora;
 - `Retention`: no máximo **180 dias** para as linhas de denúncia; o texto da voz,
-  as respostas e os textos escritos pela IA não são gravados pelo backend (os
-  textos ficam no aparelho), e a retenção da ElevenLabs e dos provedores de texto
-  segue o aviso de prazo externo da política;
+  as respostas, a cena enviada para tradução e os textos escritos pela IA não são
+  gravados pelo backend (os textos ficam no aparelho), e a retenção da ElevenLabs,
+  do Google Gemini e dos provedores de texto segue o aviso de prazo externo da
+  política;
 - `Required or optional`: **Users can choose whether this data is collected**:
   a voz e os textos em nuvem só ligam com o consentimento e, sem ele, o app
   funciona com a voz do aparelho e os textos montados no aparelho; a denúncia
@@ -447,7 +468,7 @@ final e manter `nativeScreenshots` como pendente até essa evidência existir.
 Texto preparado para o campo de notas, se aparecer (o mesmo de
 `review-notes.md`, atualizado em 21/10):
 
-> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images with AI. Its AI features are text and voice, both made from the user's own content and only after consent. The first time the user taps to listen, or creates a new desire on Home, a dialog asks them to confirm they are 18 or older and to allow the AI voice and AI-written texts. Texts: Celeste's server then has an AI text model rewrite the Anchor Scene and the visions and affirmations for six life areas from the user's desire and selected onboarding answers (Visions and Affirmations tabs); before consent, or without a connection, these texts are assembled on the device from the same answers. When the user switches the app language, the AI-written scene is translated by Google Gemini through Celeste's server, with the same Play Integrity check. Voice: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts AI text and voice requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the texts stay the on-device versions and the device's built-in voice plays with a notice. Reporting: on every screen that shows AI-written text in full or plays the AI voice, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
+> No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images with AI. Its AI features are text and voice, both made from the user's own content and only after consent. The first time the user taps to listen, or creates a new desire on Home, a dialog asks them to confirm they are 18 or older and to allow the AI voice and AI-written texts. Texts: Celeste's server then has an AI text model rewrite the Anchor Scene and the visions and affirmations for six life areas from the user's desire and selected onboarding answers (Visions and Affirmations tabs); before consent, or without a connection, these texts are assembled on the device from the same answers. When the user switches the app language, the scene is translated by Google Gemini through Celeste's server, with the same Play Integrity check: the AI-written scene or, if the AI has not rewritten it, the on-device one (title, intention, affirmation, story, identity phrase, bridge step and the labels of the answers it used), with saved names of the user's children and other people replaced by "someone close to me". Voice: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts AI text and voice requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the texts stay the on-device versions and the device's built-in voice plays with a notice. Reporting: on every screen that shows AI-written text in full or plays the AI voice, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
 
 ## 8. O que somente a titular pode preencher ou confirmar
 

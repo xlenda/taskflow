@@ -85,8 +85,8 @@
               needed for the chosen feature. After onboarding, one adult control in Profile allows
               or prevents new optional requests for scenes, dreams, images, translations and neural
               narration. In the Android app, that control enables neural narration, the AI-written
-              Anchor Scene, visions and affirmations, and the translation of the AI-written scene when
-              you change the language; cloud images, dreams and the Living Mirror remain website-only.
+              Anchor Scene, visions and affirmations, and the translation of the scene when you change
+              the language; cloud images, dreams and the Living Mirror remain website-only.
             </p>
             <div class="processor-list" aria-label="Services and purposes">
               <div class="processor">
@@ -178,10 +178,13 @@
               passes that minimized request to the same scene-text providers as the website:
               Anthropic, with OpenAI as failover, and Google Gemini only if neither is configured.
               They act as processors to write the texts. On Android, when you change the app
-              language, the AI-written scene (title, intention, affirmation and story) is sent through
-              the same backend, with the same check, to Google Gemini, which acts as a processor to
-              translate it; saved names of children and important people stay on the device. No
-              images are generated on Android.
+              language, the scene being translated (the AI-written one or, if the AI has not rewritten
+              it, the one assembled on the device from your answers) is sent through the same backend,
+              with the same check, to Google Gemini, which acts as a processor to translate it: its
+              title, intention, affirmation, story, the identity phrase and step of the bridge to
+              today, and the labels of the answers it used. Before sending, saved names of children,
+              important people and the specific person are replaced with “someone close to me”; those
+              names stay on the device. No images are generated on Android.
             </p>
             <p>
               As with narration, the request carries a Google Play Integrity check bound to it by a

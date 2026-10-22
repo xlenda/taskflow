@@ -73,10 +73,12 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   para o revisor chegar ao Plano Celeste. `RECORD_AUDIO` serve apenas a escuta
   iniciada por toque; o audio e a transcricao nao sao coletados nem
   compartilhados. Confirmar essa afirmacao novamente no AAB final.
-- A v1 Android bloqueia ElevenLabs, mas o Plano pode narrar a visao por
-  `expo-speech` depois de um toque. A biblioteca nao acrescenta permissao
-  sensivel; ainda assim, confirmar no trafego se a engine/voz padrao usa rede e,
-  se usar, revisar a declaracao do texto transmitido.
+- Desde 21/10, a v1 Android usa a voz da ElevenLabs (inclusive na visao do
+  Plano) so com consentimento adulto e Play Integrity confirmado no servidor;
+  fora disso, o Plano narra a visao por `expo-speech` depois de um toque. A
+  biblioteca nao acrescenta permissao sensivel; ainda assim, confirmar no trafego
+  se a engine/voz padrao usa rede e, se usar, revisar a declaracao do texto
+  transmitido.
 - Nao preencher declaracao de alarme exato para o Plano Celeste: ele usa
   lembretes comuns, nao pede `SCHEDULE_EXACT_ALARM` ou `USE_EXACT_ALARM` e pode
   sofrer atraso imposto pelo sistema. A ficha nao deve prometer horario exato,
@@ -104,17 +106,23 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - Chamadas iOS/Android sem Origin estao fechadas no backend. O cabecalho
   `X-Celeste-Client` identifica apenas uma alegacao do cliente e nunca prova que
   a requisicao veio do app oficial.
-- Na v1 Android, o cliente tambem bloqueia geracao e narracao pagas antes de
-  criar sessao Supabase ou chamar o backend. A experiencia usa o caminho local
-  do app e o sintetizador do sistema; este ultimo nao deve ser chamado de
-  necessariamente offline ate a engine efetiva ser validada.
+- Na v1 Android, o cliente recusa imagem, sonho em nuvem e Espelho Vivo antes de
+  criar sessao Supabase ou chamar o backend. Desde 21/10, voz (ElevenLabs),
+  textos com IA (Cena-Ancora e suite 6+6) e traducao da cena (Google Gemini) vao
+  ao backend so depois do consentimento adulto e com token Play Integrity, que o
+  servidor confere com o Google (operacoes `audio`, `scene` e `translation`);
+  sem isso, a experiencia usa o caminho local do app e o sintetizador do
+  sistema, que nao deve ser chamado de necessariamente offline ate a engine
+  efetiva ser validada.
 - No iOS, habilitar App Attest para o Team ID e o bundle
   `com.celesteapp.affirmations`, enviar atestacao/assertion por chamada e guardar no
   servidor a chave publica e o contador de cada instalacao.
-- Antes de habilitar nuvem paga numa versao Android futura, vincular
-  `com.celesteapp.affirmations` e a Play App Signing a um projeto Google Cloud com Play
-  Integrity, enviar Standard Integrity Token e valida-lo no backend com uma
-  conta de servico autorizada.
+- A validacao do Standard Integrity Token no backend ja existe
+  (`api/_play-integrity.js`); falta a titular vincular
+  `com.celesteapp.affirmations` e a Play App Signing a um projeto Google Cloud com
+  Play Integrity e cadastrar a conta de servico e o numero do projeto
+  (`docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`). Sem isso, o Android fica com a voz
+  do aparelho e os textos montados no aparelho.
 - Nunca substituir atestacao por segredo embutido, identificador do aparelho ou
   apenas conta anonima.
 
@@ -129,7 +137,9 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
 - As politicas remotas da Comunidade continuam desabilitadas por padrao; aba,
   atalho e deep link nao entram na v1 Android.
 - A v1 Android exclui o despertador exato, seu modulo e suas permissoes, e
-  bloqueia as APIs pagas de cena, traducao, imagem, sonho e voz.
+  bloqueia as APIs pagas de imagem, sonho e Espelho Vivo. Desde 21/10, voz,
+  textos com IA e traducao da cena passam so com consentimento adulto e Play
+  Integrity confirmado no servidor.
 - A exportação manual cria JSON legível e sem criptografia: o app abre a folha
   de compartilhamento do sistema e a web baixa o arquivo. O backup exclui
   denúncias, consentimentos, notificações agendadas e arquivos de imagem.
