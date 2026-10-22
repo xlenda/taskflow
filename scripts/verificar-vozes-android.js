@@ -1602,7 +1602,8 @@ async function main() {
       affirmations: localSuite.affirmations.map((item) => ({ ...item, text: `${item.text} Escrito para mim.` })),
     };
     const sha256Hex = (value) => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
-    async function androidTextsWith({ projectNumber, server, storage, anchor: launchAnchor }) {
+    // `act` (optional): what she does herself after the launch (a new desire, a language switch)
+    async function androidTextsWith({ projectNumber, server, storage, anchor: launchAnchor, act }) {
       const requests = [];
       const tokens = [];
       const supabase = { calls: 0 };
@@ -1653,6 +1654,10 @@ async function main() {
           },
         });
         await settle(provider);
+        if (act) {
+          await act(context, provider);
+          await settle(provider);
+        }
         const anchor = context().state.manifestations.find((item) => item.id === 'm1');
         const result = {
           anchor,
@@ -1735,30 +1740,82 @@ async function main() {
       assert.strictEqual(outcome.storageError, false, `${label}: nenhum erro na tela`);
     }
 
-    // 5b2) depois de uma recusa (403: verificação reprovada; 502: o servidor não conseguiu conferir), o aparelho
-    //      espera um dia antes de pedir sozinho de novo: um celular que não passa na verificação não gasta uma
-    //      conferência do Google a cada abertura do app; outra falha (500, rede) não pausa nada
+    // 5b2) depois de uma recusa da verificação (403 native_attestation_required), o aparelho espera um dia antes de
+    //      pedir sozinho de novo: um celular que não passa na verificação não gasta uma conferência do Google a cada
+    //      abertura do app. Uma geração reprovada (502 invalid_generation: não é a verificação), outra recusa 403 ou
+    //      outra falha (500, rede) não pausa nada (final round, 21/10)
     const PAUSE_KEY = '@celeste_automatic_texts_paused_until_v1';
     const remoteOk = async () => remoteResponse();
-    for (const status of [403, 502]) {
-      const launches = new Map();
-      const first = await androidTextsWith({
+    const launches = new Map();
+    const first = await androidTextsWith({
+      projectNumber: '123456789012',
+      server: async () => response(403, { json: { error: 'native_attestation_required' } }),
+      storage: launches,
+    });
+    assert.strictEqual(first.requests.length, 1, '403 da verificação: um pedido');
+    const pausedUntil = Number(launches.get(PAUSE_KEY));
+    assert.ok(
+      pausedUntil > Date.now() + 23 * 3600e3 && pausedUntil <= Date.now() + 24 * 3600e3,
+      `403 da verificação: o aparelho espera um dia (${pausedUntil - Date.now()} ms)`
+    );
+    const nextLaunch = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
+    assert.deepStrictEqual(nextLaunch.requests, [], 'na abertura seguinte, dentro do dia, nada é pedido sozinho');
+    launches.set(PAUSE_KEY, String(Date.now() - 1));
+    const dayAfter = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
+    assert.strictEqual(dayAfter.requests.length, 1, 'passado o dia, pede de novo');
+    assert.strictEqual(dayAfter.anchor.journeySuiteByLang.pt.source, 'remote', 'e a suíte da IA chega');
+    for (const [status, error] of [[502, 'invalid_generation'], [403, 'cloud_consent_required']]) {
+      const noPause = new Map();
+      const refusedOther = await androidTextsWith({
         projectNumber: '123456789012',
-        server: async () => response(status, { json: { error: status === 403 ? 'native_attestation_required' : 'integrity_unavailable' } }),
-        storage: launches,
+        server: async () => response(status, { json: { error } }),
+        storage: noPause,
       });
-      assert.strictEqual(first.requests.length, 1, `${status}: um pedido`);
-      const pausedUntil = Number(launches.get(PAUSE_KEY));
-      assert.ok(
-        pausedUntil > Date.now() + 23 * 3600e3 && pausedUntil <= Date.now() + 24 * 3600e3,
-        `${status}: o aparelho espera um dia (${pausedUntil - Date.now()} ms)`
+      assert.strictEqual(refusedOther.requests.length, 1, `${status} ${error}: um pedido`);
+      assert.strictEqual(noPause.has(PAUSE_KEY), false, `${status} ${error}: não é a verificação, não pausa`);
+    }
+    // o que ela pede (um desejo novo na Início, a troca de idioma) não espera; quando dá certo, a verificação passou
+    // e a pausa acaba: na abertura seguinte os textos voltam a ser pedidos sozinhos
+    const translated = {
+      scene: {
+        title: 'Living by the sea',
+        intention: 'Living by the sea with presence.',
+        affirmation: 'I choose calm by the sea.',
+        story: 'Imagine the tide going out slowly while you choose, unhurried, the next possible gesture.',
+        anchorIdentity: 'I practice calm.',
+        anchorStep: 'Walk five minutes looking at the horizon.',
+        personalizedWith: [],
+      },
+      generation: { source: 'gemini-translation', model: 'gemini', promptVersion: 'celeste-translation-v1' },
+    };
+    const manualRequests = [
+      ['desejo novo na Início', '/api/gerar-cena', async (context) => {
+        await context().addManifestation({ title: 'Uma rotina criativa', category: 'Career', lang: 'pt' });
+      }],
+      ['troca de idioma', '/api/traduzir-cena', async (context, provider) => {
+        context().setLang('en');
+        provider.flush();
+        // a tradução começa 350 ms depois da troca
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        provider.flush();
+      }],
+    ];
+    for (const [label, route, act] of manualRequests) {
+      const paused = new Map([[PAUSE_KEY, String(Date.now() + 3600e3)]]);
+      const manual = await androidTextsWith({
+        projectNumber: '123456789012',
+        server: async (url) => (url.endsWith('/api/traduzir-cena') ? response(200, { json: translated }) : remoteResponse()),
+        storage: paused,
+        act,
+      });
+      assert.deepStrictEqual(
+        manual.requests.map((request) => request.url.slice(request.url.indexOf('/api/'))),
+        [route],
+        `${label}: com a pausa, nada sozinho; o pedido dela sai na hora`
       );
-      const nextLaunch = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
-      assert.deepStrictEqual(nextLaunch.requests, [], `${status}: na abertura seguinte, dentro do dia, nada é pedido sozinho`);
-      launches.set(PAUSE_KEY, String(Date.now() - 1));
-      const dayAfter = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: launches });
-      assert.strictEqual(dayAfter.requests.length, 1, `${status}: passado o dia, pede de novo`);
-      assert.strictEqual(dayAfter.anchor.journeySuiteByLang.pt.source, 'remote', `${status}: e a suíte da IA chega`);
+      assert.strictEqual(paused.has(PAUSE_KEY), false, `${label} deu certo: a pausa acaba`);
+      const resumed = await androidTextsWith({ projectNumber: '123456789012', server: remoteOk, storage: paused });
+      assert.strictEqual(resumed.requests.length, 1, `${label}: na abertura seguinte, os textos voltam a ser pedidos sozinhos`);
     }
     // a Âncora já escrita pela IA com a suíte ainda local: o pedido só da suíte 6+6 também espera o dia
     const suiteLaunches = new Map();

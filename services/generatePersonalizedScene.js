@@ -637,7 +637,15 @@ export async function generatePersonalizedScene({
       signal: controller ? controller.signal : undefined,
       body: payload,
     });
-    if (!response.ok) throw new Error(`scene_api_${response.status}`);
+    if (!response.ok) {
+      // the server's refusal code travels with the error: on Android, 403 native_attestation_required (the Play
+      // Integrity check failed) is told apart from a failed generation (502 invalid_generation)
+      const failure = new Error(`scene_api_${response.status}`);
+      failure.code = await Promise.resolve()
+        .then(() => response.json())
+        .then((body) => (body && typeof body.error === 'string' ? body.error : ''), () => '');
+      throw failure;
+    }
     return validateScene(await response.json(), includeJourneySuite === true, locale);
   } finally {
     if (timer) clearTimeout(timer);
