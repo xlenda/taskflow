@@ -79,6 +79,7 @@ const STATIC_GATES = [
   ['scripts/verificar-compartilhar.js', 'Compartilhar imagem e video falhou'],
   ['scripts/verificar-despertar-sequencia.js', 'Despertar em sequencia falhou'],
   ['scripts/verificar-vozes-android.js', 'Vozes da Celeste no Android (voz escolhida, aviso da voz do aparelho, denuncia) falharam'],
+  ['scripts/verificar-conteudo-pessoal-suite.js', 'Suite 6+6 (local variada, prompt da IA e aberturas repetidas) falhou'],
 ];
 
 function assert(condition, message) {
@@ -929,7 +930,7 @@ async function liveGeminiChecks(
     generation.generation?.provider === 'anthropic',
     `Celeste AI nao confirmou Anthropic como provider primario: ${generation.generation?.provider || 'ausente'}`
   );
-  assert(generation.generation.promptVersion === 'celeste-scene-v7', 'Celeste AI nao confirmou o prompt de cena esperado');
+  assert(generation.generation.promptVersion === 'celeste-scene-v8', 'Celeste AI nao confirmou o prompt de cena esperado');
   assert(generation.generation.knowledgeVersion === 'celeste-knowledge-v2', 'Celeste AI nao confirmou a base esperada');
 
   assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);

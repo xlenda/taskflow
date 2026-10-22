@@ -424,6 +424,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'verificar-despertar-sequencia.js',
     'verificar-fronteira-api-nativa.js',
     'verificar-vozes-android.js',
+    'verificar-conteudo-pessoal-suite.js',
   ]) {
     assert.ok(deploySource.includes(script), `gate obrigatorio ausente: ${script}`);
   }

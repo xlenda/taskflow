@@ -10,9 +10,9 @@ const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent')
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const PROMPT_VERSION = 'celeste-scene-v7';
-const LEGACY_PROMPT_VERSION = 'celeste-scene-v7';
-const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v1';
+const PROMPT_VERSION = 'celeste-scene-v8';
+const LEGACY_PROMPT_VERSION = 'celeste-scene-v8';
+const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v2';
 const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
@@ -664,8 +664,11 @@ function buildSystemInstruction(input = {}) {
         'The Anchor Scene remains the source of identity and direction. Each journey item must derive from the same desire and personal map without copying the Anchor Scene.',
         'A vision is a possible future, not a prediction. In Portuguese, every vision story must begin exactly with "Imagine uma possibilidade do seu futuro:". In English, every vision story must begin exactly with "Imagine one possibility in your future:".',
         'After that future framing, write the vision as an immersive sensory scene. Keep each vision between 70 and 130 words and make setting, action, emotional texture, and wording genuinely different across categories.',
+        'Each vision is a moment she lives, doing something, not a description of a photograph or of objects on a table (photographic language belongs in visualBrief); do not repeat the same objects or materials across visions.',
+        'Ground every vision in at least one concrete detail drawn from her own answers that fits that area, named with at least one of her own key words, with a different detail in each: Love with her partner wish or how she describes herself; Wealth with her home, place or reason; Career with her work; Health with her reason or the people she cares for; Confidence with her qualities or the obstacle she named; Peace with her place or reason. When a detail is missing, use the desire from a new angle.',
+        'Never begin two visions (after the future framing) or two affirmations with the same three words. Vary the first sentence of the visions (a moment of the day, a sound, something in her hands, an action already under way, a line someone says, a place), vary verbs and rhythm, and at most three of the six affirmations may begin with Eu or I.',
         'Love concerns reciprocity and belonging; Wealth concerns meaningful resources and choice; Career concerns contribution and authorship; Health concerns sustainable care without medical claims; Confidence concerns grounded agency; Peace concerns attention and restoration.',
-        'Every journey affirmation must be first person and grammatical present. Prefer I choose/I can/I cultivate/I practice or their natural Portuguese equivalents. Never use I will, I am going to, eu vou, serei, terei, or other promises of a future outcome.',
+        'Every journey affirmation must be in the grammatical present and contain a first-person word (eu, meu, minha, meus, minhas, mim, me or comigo in Portuguese; I, my, mine, me or myself in English). Never use I will, I am going to, eu vou, serei, terei, or other promises of a future outcome. An affirmation must not repeat the opening words or the main image of the vision of the same area.',
         'Each affirmation must be personally connected to the desire or a safe profile fact, but must reinterpret meaning naturally instead of copying a raw answer or trait list.',
         'Every visualBrief is a concise, text-free premium editorial photography direction. Give it one specific subject or environment, one distinctive real-light behavior, one tactile material detail, one memorable camera viewpoint, and one physically believable visual hook. It must feel authored and emotionally resonant at phone size, not like a generic stock photo, catalog room, vision board, wellness cliché, or literal checklist of goals. Keep all twelve briefs visibly distinct in subject, setting, color story, light, viewpoint, and composition. Never request a person, face, body, words, logo, UI, watermark, luxury status symbol, supernatural effect, or unsupported biographical detail.',
         'Do not reuse the same sentence, scene, title, or visualBrief in two categories.',
@@ -684,6 +687,8 @@ function buildSystemInstruction(input = {}) {
     ...journeySuiteInstructions,
     'Do not provide medical, legal, financial, investment, gambling, or crisis advice.',
     'Keep the tone intimate, specific, grounded, warm, and non-dependent. Avoid hype, pressure, and generic coaching copy.',
+    'Write like a perceptive person who listened to her, in natural spoken language: concrete nouns, mixed sentence lengths, no coaching jargon.',
+    'Avoid stock self-help phrases and clichés (universe, vibration, abundance flows, best version of yourself, journey, shine, inner light, and their Portuguese equivalents). Apart from her own words that the field receipts require, never reuse the same distinctive phrase in two outputs.',
     'Create recognition through truthful detail and continuity, never through flattery, loyalty tests, guilt, loneliness, or telling the user an unsupported thing merely because they may want to hear it.',
     'Belonging must point back to the user\'s values, chosen relationships, and wider human community. Never make Celeste the exclusive source of understanding, safety, or progress.',
     'Use profile details selectively and naturally. Never recite the profile or force every available detail into one scene.',
@@ -1112,9 +1117,11 @@ function validateGeneratedJourneySuite(raw, input) {
     return { key: `vision:${category}`, category, title, story, visualBrief };
   });
 
+  // Affirmations that do not open with Eu/I still speak in the first person ("Reconheço em mim..."); the app's
+  // validator (services/generatePersonalizedScene.js) accepts exactly the same words.
   const firstPerson = input.lang === 'pt'
-    ? /\b(eu|meu|minha|meus|minhas)\b/i
-    : /\b(i|my|mine)\b/i;
+    ? /\b(eu|meu|minha|meus|minhas|mim|me|comigo)\b/i
+    : /\b(i|my|mine|me|myself)\b/i;
   const futurePromise = input.lang === 'pt'
     ? /\b(eu\s+vou|vou\s+(?:ser|ter|conseguir|alcan[c\u00e7]ar)|serei|terei|estarei|conseguirei|alcan[c\u00e7]arei)\b/i
     : /\b(i\s+will|i['\u2019]ll|i\s+am\s+going\s+to|i['\u2019]m\s+going\s+to)\b/i;
@@ -1140,6 +1147,26 @@ function validateGeneratedJourneySuite(raw, input) {
     [...visions, ...affirmations].map((item) => ({ visualBrief: item.visualBrief })),
     ['visualBrief']
   );
+  // Near-duplicate openings read as a template: no two visions (after the fixed future framing) and no two
+  // affirmations may begin with the same three words. The retry gets a targeted repair.
+  const opening = (text) => text.split(' ').slice(0, 3).join(' ');
+  const visionOpenings = visions.map((item) => opening(comparisonText(item.story).slice(visionPrefix.length).trim()));
+  const affirmationOpenings = affirmations.map((item) => opening(comparisonText(item.text)));
+  if (
+    new Set(visionOpenings).size !== visionOpenings.length ||
+    new Set(affirmationOpenings).size !== affirmationOpenings.length
+  ) {
+    throw new GenerationError('invalid_generation', {
+      lang: input.lang,
+      issues: [
+        {
+          code: 'journey_repeated_openings',
+          message:
+            'Rewrite journeySuite so that no two visions (after the required future framing) and no two affirmations begin with the same three words; give each area its own opening words and sentence shape, and keep every other rule.',
+        },
+      ],
+    });
+  }
   return {
     version: JOURNEY_SUITE_VERSION,
     visions,

@@ -481,9 +481,10 @@ export function validatePersonalContentSuitePayload(value, lang = 'pt') {
       visualBrief,
     };
   });
+  // Same first-person words as the server (api/gerar-cena.js): an affirmation may open without Eu/I.
   const firstPerson = lang === 'en'
-    ? /\b(i|my|mine)\b/i
-    : /\b(eu|meu|minha|meus|minhas)\b/i;
+    ? /\b(i|my|mine|me|myself)\b/i
+    : /\b(eu|meu|minha|meus|minhas|mim|me|comigo)\b/i;
   const futurePromise = lang === 'en'
     ? /\b(i\s+will|i['\u2019]ll|i\s+am\s+going\s+to|i['\u2019]m\s+going\s+to)\b/i
     : /\b(eu\s+vou|vou\s+(?:ser|ter|conseguir|alcan[c\u00e7]ar)|serei|terei|estarei|conseguirei|alcan[c\u00e7]arei)\b/i;

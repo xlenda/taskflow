@@ -68,7 +68,8 @@ function normalizePersonalJourneySuite(value, fallback) {
   };
 }
 
-function buildPersonalJourneySuites({ desire, profile, stored, originLang } = {}) {
+// `category` is the area of the desire (the manifestation's category): the local suite places her desire there.
+function buildPersonalJourneySuites({ desire, profile, stored, originLang, category } = {}) {
   const source = sourceObject(stored);
   const sourceLang = source.originLang === 'en' || source.originLang === 'pt'
     ? source.originLang
@@ -79,6 +80,7 @@ function buildPersonalJourneySuites({ desire, profile, stored, originLang } = {}
     desire: lang === sourceLang ? desire : '',
     profile: lang === sourceLang ? profile : {},
     lang,
+    category,
   });
   const ptFallback = fallbackFor('pt');
   const enFallback = fallbackFor('en');

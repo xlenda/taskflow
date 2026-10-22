@@ -610,6 +610,7 @@ function mergeDefensivo(parsed) {
       profile: journeyProfile,
       stored: m.journeySuiteByLang,
       originLang: journeyOriginLang,
+      category,
     });
     const evidence = (Array.isArray(m.evidence) ? m.evidence : [])
       .filter((entry) => entry && typeof entry === 'object' && typeof entry.text === 'string' && entry.text.trim())
@@ -941,6 +942,7 @@ export function AppProvider({ children }) {
           desire: current.title,
           profile: current.anchorAnswers || currentState.profile,
           originLang: current.originLang || current.lang,
+          category: current.category,
         })[lang];
       const journeySuiteByLang = remote.journeySuite
         ? {
@@ -2170,6 +2172,7 @@ export function AppProvider({ children }) {
       desire: data.title,
       profile,
       originLang: lang,
+      category: data.category,
     });
     const item = {
       id,
@@ -2521,6 +2524,7 @@ export function AppProvider({ children }) {
                     ? { ...(s.profile || {}), ...m.anchorAnswers }
                     : s.profile,
                   originLang: journeyOriginLang,
+                  category: patch.category || m.category,
                 }),
               }
             : {}),

@@ -652,7 +652,7 @@ test('Gemini scene API contract', async (t) => {
     assert.strictEqual(first.body.generation.provider, 'gemini');
     assert.strictEqual(first.body.generation.fallbackUsed, false);
     assert.strictEqual(first.body.generation.model, 'gemini-3.7-flash');
-    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v7');
+    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v8');
     assert.strictEqual(first.body.generation.knowledgeVersion, 'celeste-knowledge-v2');
     assert.strictEqual(first.body.generation.seed, second.body.generation.seed);
     assert.deepStrictEqual(first.body.scene.affirmationPersonalizedWith, [

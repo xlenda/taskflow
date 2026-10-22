@@ -366,6 +366,6 @@ test('Espelho Vivo scene continuity contract', async (t) => {
 
     const res = await invoke(baseBody({ continuity: continuity() }));
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(res.body.generation.promptVersion, 'celeste-scene-v7');
+    assert.strictEqual(res.body.generation.promptVersion, 'celeste-scene-v8');
   });
 });
