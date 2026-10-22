@@ -33,7 +33,7 @@ const HOME_CHIPS = {
   'Suburban Mansion': { pt: 'uma casa ampla no subúrbio', en: 'a spacious house in the suburbs' },
   Farmhouse: { pt: 'uma casa de fazenda', en: 'a farmhouse' },
   Cabin: { pt: 'uma cabana', en: 'a cabin' },
-  'Tiny Home': { pt: 'uma mini casa', en: 'a tiny home' },
+  'Tiny Home': { pt: 'uma minicasa', en: 'a tiny home' },
 };
 
 // The chip said in the language ('' when the answer is not a chip).

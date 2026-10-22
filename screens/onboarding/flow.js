@@ -447,7 +447,7 @@ export const FLOW = [
       { en: 'Suburban Mansion', pt: 'Mansão no Subúrbio' },
       { en: 'Farmhouse', pt: 'Fazenda' },
       { en: 'Cabin', pt: 'Cabana' },
-      { en: 'Tiny Home', pt: 'Mini Casa' },
+      { en: 'Tiny Home', pt: 'Minicasa' },
     ],
     wrap: true,
     needsContinue: true,

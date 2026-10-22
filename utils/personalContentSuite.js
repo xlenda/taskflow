@@ -76,7 +76,8 @@ function placeInSentence(value) {
 const HERE_CHIPS = new Set(['onde moro hoje, mas do meu jeito', 'where i live now, but better']);
 
 // The work chips are stored as her answer phrase and only some describe a job; free text describes her job unless it
-// says she is between jobs or retired. Each kind has its own sentences, so "a aposentadoria" never reads as a job.
+// says she studies, is between jobs, retired or not working. Each kind has its own sentences, so "a aposentadoria" or
+// "Não trabalho" never reads as a job.
 const WORK_KINDS = {
   'um emprego em uma empresa': 'employee',
   'a job at a company': 'employee',
@@ -98,10 +99,13 @@ function workKind(work) {
   if (!work) return '';
   const chip = WORK_KINDS[work.toLocaleLowerCase()];
   if (chip) return chip;
+  if (/\b(estudante|student)\b/i.test(work)) return 'study';
   if (/desempregad|sem emprego|sem trabalho|procurando (um )?(emprego|trabalho)|entre (um )?trabalhos?|unemployed|out of work|between jobs|looking for (a )?(job|work)/i.test(work)) {
     return 'transition';
   }
-  return /aposentad|retired/i.test(work) ? 'retired' : 'job';
+  if (/aposentad|retired/i.test(work)) return 'retired';
+  // "Não trabalho (no momento)", "I don't work", "not working": no job to quote
+  return /\bn[aã]o (trabalho|estou trabalhando)\b|\b(don['’]?t|do not) work\b|\bnot (currently )?working\b/i.test(work) ? 'transition' : 'job';
 }
 
 function profileFacts(profile, lang) {
@@ -273,7 +277,7 @@ const BANKS = {
         (f) => (f.homeChip ? `A casa lembra a que você imaginou — ${f.homeChip} — com espaço para receber quem chega.` : ''),
         (f) => (f.homeChip ? `Há algo da casa que você escolheu, ${f.homeChip}, no jeito como o espaço acolhe a rotina.` : ''),
         (f) => (f.homeText ? `A casa lembra a que você descreveu, “${f.homeText}”, com espaço para receber quem chega.` : ''),
-        (f) => (!f.homeChip && !f.homeText && f.dreamPlace ? `O lugar tem a atmosfera que você descreveu, “${f.dreamPlace}”, e cada canto parece escolhido.` : ''),
+        (f) => (!f.homeChip && !f.homeText && f.dreamPlace ? `Você mora onde se imaginou morando — “${f.dreamPlace}” — e cada canto parece escolhido.` : ''),
         (f) => (!f.homeChip && !f.homeText && !f.dreamPlace && f.city ? `Sem mudar de cidade — “${f.city}” —, a casa ganha o seu jeito e cada canto parece escolhido.` : ''),
         (f) => (!f.homeChip && !f.homeText && !f.dreamPlace && !f.city && f.here ? 'Sem mudar de cidade, a casa ganha o seu jeito e cada canto parece escolhido.' : ''),
       ],
@@ -451,7 +455,7 @@ const BANKS = {
         (f) => (f.homeChip ? `The home recalls the one you pictured — ${f.homeChip} — with room to welcome whoever arrives.` : ''),
         (f) => (f.homeChip ? `Something of the home you chose, ${f.homeChip}, lives in the way the space welcomes your routine.` : ''),
         (f) => (f.homeText ? `The home recalls the one you described, “${f.homeText}”, with room to welcome whoever arrives.` : ''),
-        (f) => (!f.homeChip && !f.homeText && f.dreamPlace ? `The place has the atmosphere you described, “${f.dreamPlace}”, and every corner feels chosen.` : ''),
+        (f) => (!f.homeChip && !f.homeText && f.dreamPlace ? `You live where you pictured yourself living — “${f.dreamPlace}” — and every corner feels chosen.` : ''),
         (f) => (!f.homeChip && !f.homeText && !f.dreamPlace && f.city ? `Without changing cities — “${f.city}” — home takes on your way of living and every corner feels chosen.` : ''),
         (f) => (!f.homeChip && !f.homeText && !f.dreamPlace && !f.city && f.here ? 'Without changing cities, home takes on your way of living and every corner feels chosen.' : ''),
       ],

@@ -480,7 +480,7 @@ const { homeInLanguage } = require('../utils/profileSemantics');
 const SANITY = {
   pt: {
     desires: ['abrir minha confeitaria', 'ter estabilidade financeira', 'encontrar um amor de verdade', 'dormir bem de novo', 'ter coragem de falar em público', 'ter mais tempo para mim'],
-    work: ['TI', 'UX designer', 'professora', 'Sou enfermeira', 'desempregada', 'RH de uma empresa', 'um emprego em uma empresa', 'trabalho autônomo ou freelancer', 'a construção do meu próprio negócio', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', ''],
+    work: ['TI', 'UX designer', 'professora', 'Sou enfermeira', 'desempregada', 'RH de uma empresa', 'um emprego em uma empresa', 'trabalho autônomo ou freelancer', 'a construção do meu próprio negócio', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', 'Não trabalho', 'não trabalho no momento', 'estudante', ''],
     partnerDesire: ['Quero alguém leal', 'alguém que me apoie', 'Que ele me respeite', 'lealdade e confiança, além de apoio aos meus sonhos', ''],
     dreamHome: ['Tiny Home', 'Farmhouse', 'Luxury Penthouse', 'Uma casa com quintal', ''],
     place: [{ dreamLocation: 'Na praia ou no litoral' }, { dreamLocation: 'Onde moro hoje, mas do meu jeito', city: 'Recife' }, { city: 'Lisboa' }, { dreamLocation: 'Em outro país', city: 'São Paulo' }, {}],
@@ -490,7 +490,7 @@ const SANITY = {
   },
   en: {
     desires: ['open my bakery', 'have financial stability', 'find real love', 'sleep well again', 'speak up in public', 'have more time for myself'],
-    work: ['IT', 'UX designer', "I'm a nurse", 'unemployed', 'HR at a bank', 'a job at a company', 'freelance or self-employed work', 'building a business', 'studying', 'caring for my home or family', 'a career transition', 'retirement', ''],
+    work: ['IT', 'UX designer', "I'm a nurse", 'unemployed', 'HR at a bank', 'a job at a company', 'freelance or self-employed work', 'building a business', 'studying', 'caring for my home or family', 'a career transition', 'retirement', "I don't work", 'not working', 'student', ''],
     partnerDesire: ['I want someone kind', 'someone loyal', 'loyalty and trust, as well as support for my dreams', ''],
     dreamHome: ['Tiny Home', 'Farmhouse', 'Luxury Penthouse', 'A house with a garden', ''],
     place: [{ dreamLocation: 'By the beach or coast' }, { dreamLocation: 'Where I live now, but better', city: 'Chicago' }, { city: 'Lisbon' }, { dreamLocation: 'In another country', city: 'Austin' }, {}],
@@ -502,7 +502,12 @@ const SANITY = {
 const SANITY_SIZE = 2400;
 const PLACE_CHIP = /^(Onde|Em|Na|No|Viajando|Where|In|By|Traveling)\b/;
 const HERE_CHIP = /^(Onde moro hoje, mas do meu jeito|Where I live now, but better)$/;
-const NON_JOB_WORK = new Set(['desempregada', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', 'unemployed', 'studying', 'caring for my home or family', 'a career transition', 'retirement']);
+const NON_JOB_WORK = new Set(['desempregada', 'meus estudos', 'o cuidado da casa ou da família', 'uma transição de carreira', 'a aposentadoria', 'unemployed', 'studying', 'caring for my home or family', 'a career transition', 'retirement', 'Não trabalho', 'não trabalho no momento', 'estudante', "I don't work", 'not working', 'student']);
+// final round (21/10): a student is not "between jobs"; a place answer ("em outro país") is not "the atmosphere you
+// described" (it can still say where the place is: "o lugar que você imagina, “em outro país”")
+const STUDENT_WORK = new Set(['estudante', 'student']);
+const TRANSITION_FRAMES = /transição que você|Entre um trabalho e outro|transition you are going through|Between one job and the next/;
+const PLACE_AS_ATMOSPHERE = /atmosfera que você|atmosphere you/i;
 const WORK_CHIPS = new Set([...NON_JOB_WORK, 'um emprego em uma empresa', 'trabalho autônomo ou freelancer', 'a construção do meu próprio negócio', 'a job at a company', 'freelance or self-employed work', 'building a business']);
 const JOB_FRAMES = /deixa de ser só tarefa|O que você já faz hoje|contou do seu trabalho|do que faço no meu trabalho|stops being just tasks|What you already do|shared about your work|what I do at work/;
 const OBSTACLE_MARKERS = { pt: /caminho|pesa|obstáculo/, en: /\bway\b|weighs|obstacle/ };
@@ -605,6 +610,10 @@ for (const lang of ['pt', 'en']) {
     if (NON_JOB_WORK.has(answers.work) && JOB_FRAMES.test(`${career} ${careerAffirmation}`)) {
       note('trabalho que nao e emprego dentro de uma frase de emprego', `${answers.work}: ${career}`);
     }
+    if (STUDENT_WORK.has(answers.work) && TRANSITION_FRAMES.test(`${career} ${careerAffirmation}`)) {
+      note('estudante numa frase de quem esta entre trabalhos', `${answers.work}: ${career}`);
+    }
+    if (lang === 'pt' && all.some((text) => /\bmini casa\b/i.test(text))) note('"mini casa" (em portugues e "minicasa")', answers.dreamHome);
     if ((careerAffirmation.match(/\bvalor\b|\bvalue\b/gi) || []).length > 1) note('"valor" duas vezes na afirmacao de Carreira', careerAffirmation);
     if (answers.obstacle) {
       for (const text of all) {
@@ -639,6 +648,9 @@ for (const lang of ['pt', 'en']) {
         ? answers.dreamLocation.charAt(0).toLocaleLowerCase() + answers.dreamLocation.slice(1)
         : answers.dreamLocation;
       seen('dreamPlace', answers.dreamLocation, `“${form}”`, all);
+      for (const sentence of all.flatMap(sentencesIn)) {
+        if (sentence.includes(`“${form}”`) && PLACE_AS_ATMOSPHERE.test(sentence)) note('lugar dos sonhos tratado como atmosfera', sentence);
+      }
     }
     if (answers.city && !answers.dreamLocation) seen('city', answers.city, `“${answers.city}”`, all);
   }
