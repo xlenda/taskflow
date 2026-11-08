@@ -712,6 +712,10 @@ function journeySuiteInstructions(input, standalone) {
     'Love concerns reciprocity and belonging; Wealth concerns meaningful resources and choice; Career concerns contribution and authorship; Health concerns sustainable care without medical claims; Confidence concerns grounded agency; Peace concerns attention and restoration.',
     'Every journey affirmation must be in the grammatical present and contain a first-person word (eu, meu, minha, meus, minhas, mim, me or comigo in Portuguese; I, my, mine, me or myself in English). Never use I will, I am going to, eu vou, serei, terei, or other promises of a future outcome. An affirmation must not repeat the opening words or the main image of the vision of the same area.',
     'Each affirmation must be personally connected to the desire or a safe profile fact, but must reinterpret meaning naturally instead of copying a raw answer or trait list.',
+    // alone, the suite no longer reads the scene's affirmation rules: the two that matter for the six affirmations
+    ...(standalone
+      ? ['Treat every affirmation as values-based reflection, not a magical positive statement: never state that an unachieved outcome already exists, is already hers, is on its way, or will happen because she repeats it.']
+      : []),
     'Every visualBrief is a concise, text-free premium editorial photography direction. Give it one specific subject or environment, one distinctive real-light behavior, one tactile material detail, one memorable camera viewpoint, and one physically believable visual hook. It must feel authored and emotionally resonant at phone size, not like a generic stock photo, catalog room, vision board, wellness cliché, or literal checklist of goals. Keep all twelve briefs visibly distinct in subject, setting, color story, light, viewpoint, and composition. Never request a person, face, body, words, logo, UI, watermark, luxury status symbol, supernatural effect, or unsupported biographical detail.',
     'Do not reuse the same sentence, scene, title, or visualBrief in two categories.',
   ];
@@ -1267,12 +1271,13 @@ function validateGeneratedJourneySuite(raw, input) {
     new Set(affirmationOpenings).size !== affirmationOpenings.length
   ) {
     throw new GenerationError('invalid_generation', {
+      kind: 'journey_suite',
       lang: input.lang,
       issues: [
         {
           code: 'journey_repeated_openings',
           message:
-            'Rewrite journeySuite so that no two visions (after the required future framing) and no two affirmations begin with the same three words; give each area its own opening words and sentence shape, and keep every other rule.',
+            'Rewrite the visions and affirmations so that no two visions (after the required future framing) and no two affirmations begin with the same three words; give each area its own opening words and sentence shape, and keep every other rule.',
         },
       ],
     });
@@ -1427,6 +1432,7 @@ async function generateWithProviders(input, seed, deadlineAt) {
   return {
     scene: scenePart.value,
     journeySuite: suitePart ? suitePart.value : undefined,
+    // provider/model are the scene part's (both parts use the same chain); fallbackUsed covers either part
     providerReceipt: {
       provider: scenePart.receipt.provider,
       model: scenePart.receipt.model,

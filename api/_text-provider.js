@@ -339,9 +339,12 @@ async function fetchProvider(config, request, timeoutBudget, signal) {
   }
   const outgoing = buildProviderRequest(config, request);
   const controller = new AbortController();
-  // the request gave up (the other half of the scene + suite failed): stop this answer too
+  // the request gave up (the other half of the scene + suite failed): stop this answer too. A signal that is
+  // already aborted never fires 'abort', so it aborts the call at once.
   const cancel = () => controller.abort();
-  if (signal) signal.addEventListener('abort', cancel, { once: true });
+  if (signal && signal.aborted) controller.abort();
+  else if (signal) signal.addEventListener('abort', cancel, { once: true });
+  const cancelled = () => new TextProviderError('text_provider_cancelled', { provider: config.name });
   let timer;
   const timeout = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
@@ -366,6 +369,7 @@ async function fetchProvider(config, request, timeoutBudget, signal) {
       ]);
     } catch (error) {
       if (error instanceof TextProviderError) throw error;
+      if (signal && signal.aborted) throw cancelled();
       throw new TextProviderError(
         error && error.name === 'AbortError' ? 'text_provider_timeout' : 'text_provider_unavailable',
         { provider: config.name, retryable: true }
@@ -385,6 +389,7 @@ async function fetchProvider(config, request, timeoutBudget, signal) {
       payload = await Promise.race([response.json(), timeout]);
     } catch (error) {
       if (error instanceof TextProviderError) throw error;
+      if (signal && signal.aborted) throw cancelled();
       throw new TextProviderError('invalid_provider_response', { provider: config.name });
     }
     const data = config.name === 'anthropic'
@@ -455,6 +460,7 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
     const signal = options.signal;
     let lastError;
     for (let index = 0; index < candidates.length; index += 1) {
+      // every call goes through here (first try, fallback, repair): once the request gave up, nothing more is sent
       if (signal && signal.aborted) {
         throw lastError || new TextProviderError('text_provider_cancelled');
       }
@@ -465,8 +471,9 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
       const hasOperationalFallback = !preferred && index < candidates.length - 1 && remainingCalls() > 1;
       const available = remainingMs(effectiveDeadlineAt, sessionClock);
       const reserved = hasOperationalFallback ? fallbackReserveMs() : 0;
-      const room = Math.max(0, available - reserved);
-      if (room < minimumCallMs(normalizedRequest)) {
+      // the call's real time: the per-call cap (an env may lower it) or what is left of the deadline
+      const budget = Math.min(providerTimeoutMs(), Math.max(0, available - reserved));
+      if (budget < minimumCallMs(normalizedRequest)) {
         lastError = new TextProviderError('text_provider_timeout', {
           provider: config.name,
           retryable: true,
@@ -474,7 +481,6 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
         if (hasOperationalFallback) continue;
         throw lastError;
       }
-      const budget = Math.min(providerTimeoutMs(), room);
 
       calls += 1;
       const startedAt = sessionClock();
@@ -515,9 +521,7 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
           code: safeError.code,
           durationMs: sessionClock() - startedAt,
         });
-        if (!hasOperationalFallback || safeError.retryable !== true || (signal && signal.aborted)) {
-          throw safeError;
-        }
+        if (!hasOperationalFallback || safeError.retryable !== true) throw safeError;
       }
     }
     throw lastError || new TextProviderError('text_provider_unavailable');

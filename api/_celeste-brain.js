@@ -1384,7 +1384,11 @@ function buildRepairInstruction(evaluation) {
   }
   if (!evaluation.issues.length) return 'No repair is required. Preserve the validated output exactly.';
   const language = evaluation.lang === 'en' ? 'natural English' : 'Brazilian Portuguese';
-  const kind = evaluation.kind === 'dream' ? 'dream reflection' : 'Celeste scene';
+  const kind = evaluation.kind === 'dream'
+    ? 'dream reflection'
+    : evaluation.kind === 'journey_suite'
+    ? 'six visions and six affirmations'
+    : 'Celeste scene';
   const instructions = evaluation.issues
     .map((issue) => {
       const code = normalizeIdentifier(issue && issue.code);

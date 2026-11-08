@@ -520,7 +520,11 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   const suiteBodySource = deploySource.slice(deploySource.indexOf('const suiteBody = {'), deploySource.indexOf('const translationBody = {'));
   assert.match(suiteBodySource, /includeJourneySuite: true,/, 'smoke de producao precisa pedir a suite 6+6 de verdade');
   assert.match(suiteBodySource, /profile: \{\s*name: '[^']+',\s*city:/, 'a suite ao vivo usa um perfil comum, com respostas');
-  assert.match(deploySource, /const suite = await runLiveSuite\(\(\) => page\.evaluate\(/, 'a suite ao vivo segue a politica testada');
+  assert.match(
+    deploySource,
+    /const suite = await runLiveSuite\(async \(\) => \{\s*const attempt = await page\.evaluate\(/,
+    'a suite ao vivo segue a politica testada'
+  );
   const liveSuiteSource = deploySource.slice(
     deploySource.indexOf('const suite = await runLiveSuite('),
     deploySource.indexOf('results = await page.evaluate(')
@@ -529,6 +533,11 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(liveSuiteSource, /setTimeout\(\(\) => controller\.abort\(\), timeoutMs\)/, 'a pagina desiste so depois do prazo');
   assert.match(liveSuiteSource, /signal: controller\.signal/);
   assert.match(liveSuiteSource, /timeoutMs: LIVE_SUITE_TIMEOUT_MS/);
+  assert.match(
+    liveSuiteSource,
+    /console\.log\([\s\S]*attempt\.elapsedMs[\s\S]*parte da cena[\s\S]*return attempt;/,
+    'cada tentativa imprime o proprio tempo e diz que provider/modelo sao da parte da cena'
+  );
   assert.doesNotMatch(deploySource, /\/api\/gerar-cena', suiteInput/, 'a suite nao volta para o evaluate das outras rotas');
   assert.match(deploySource, /protocolTimeout: LIVE_SUITE_TIMEOUT_MS \+ 120_000/, 'cada evaluate cabe no tempo do protocolo');
   assert.match(e2eSource, /headless: USE_GEMINI \? false : 'new'/);

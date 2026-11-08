@@ -849,7 +849,8 @@ async function liveGeminiChecks(
     });
     // ONE call per deploy (12 units); a second only when the first fails the server's validator after its own repair
     // (24 units at most, inside the 32 a day of this fresh anonymous user). The policy lives in deploy-celeste-guards.
-    const suite = await runLiveSuite(() => page.evaluate(async ({ accessToken: sessionToken, suiteBody: suiteInput, timeoutMs }) => {
+    const suite = await runLiveSuite(async () => {
+      const attempt = await page.evaluate(async ({ accessToken: sessionToken, suiteBody: suiteInput, timeoutMs }) => {
       const random = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
         : Math.random().toString(36).slice(2);
@@ -879,8 +880,15 @@ async function liveGeminiChecks(
       } finally {
         clearTimeout(timer);
       }
-    }, { accessToken, suiteBody, timeoutMs: LIVE_SUITE_TIMEOUT_MS }));
-    console.log(`Cena-Ancora + suite 6+6 ao vivo: HTTP ${suite.status} em ${Math.round(suite.elapsedMs / 1000)} s`);
+      }, { accessToken, suiteBody, timeoutMs: LIVE_SUITE_TIMEOUT_MS });
+      // every attempt's real time; provider/model in the receipt are the scene part's (fallbackUsed covers both)
+      const generation = (attempt.payload && attempt.payload.generation) || {};
+      console.log(
+        `Cena-Ancora + suite 6+6 ao vivo: HTTP ${attempt.status} em ${Math.round(attempt.elapsedMs / 1000)} s` +
+          (generation.provider ? ` (parte da cena: ${generation.provider}/${generation.model})` : '')
+      );
+      return attempt;
+    });
     results = await page.evaluate(async ({
       accessToken: sessionToken,
       translationBody: translationInput,
