@@ -7,7 +7,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -21,7 +20,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 
-import { ThemeProvider, useSetTheme, useTheme } from './ui/theme';
+import { ThemeProvider, useSetTheme } from './ui/theme';
 import { AppProvider, useApp } from './context/AppContext';
 import { NarrationProvider, useNarration } from './context/NarrationContext';
 import { useT } from './utils/useT';
@@ -38,6 +37,7 @@ import { initCelesteBotProtection } from './utils/botProtection';
 import { sweepShareCache } from './utils/shareContent';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 import NarrationPlaybackControls from './components/NarrationPlaybackControls';
+import PearlTabBar from './components/PearlTabBar';
 import {
   cancelOrphanedDailyRitualReminders,
   configureDailyRitualNotifications,
@@ -626,39 +626,16 @@ function VisionStackNav() {
 }
 
 function Tabs() {
-  const theme = useTheme();
   // Tabs é componente, então pode ler o idioma pelo hook — é assim que os
   // rótulos das abas ficam em português sem tocar no `name` das rotas.
   const { t } = useT();
-  const { width } = useWindowDimensions();
-  const compactTabs = width < 360;
   return (
     <Tab.Navigator
+      // Barra Pérola: cápsula de vidro perolado com a pílula ativa deslizando (components/PearlTabBar.js)
+      tabBar={(props) => <PearlTabBar {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarHideOnKeyboard: true,
-        tabBarActiveTintColor: theme.accent,
-        tabBarInactiveTintColor: theme.textMuted,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border || 'rgba(0,0,0,0.06)',
-          borderTopWidth: 1,
-          height: 84,
-          paddingTop: compactTabs ? 7 : 8,
-          paddingBottom: 26,
-          shadowColor: '#10182A',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: theme.dark ? 0.28 : 0.08,
-          shadowRadius: 14,
-          elevation: 12,
-        },
-        tabBarItemStyle: { minWidth: 0, minHeight: 48 },
-        tabBarLabelStyle: {
-          fontSize: compactTabs ? 10 : 11,
-          lineHeight: compactTabs ? 12 : 14,
-          fontWeight: '700',
-          letterSpacing: 0,
-        },
         tabBarIcon: ({ color, size, focused }) => {
           const map = {
             Manifest: focused ? 'sparkles' : 'sparkles-outline',
@@ -667,24 +644,7 @@ function Tabs() {
             Journey: focused ? 'stats-chart' : 'stats-chart-outline',
             Community: focused ? 'people' : 'people-outline',
           };
-          return (
-            <View
-              style={{
-                width: 38,
-                height: 30,
-                borderRadius: 15,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: focused ? theme.accentSoft : 'transparent',
-              }}
-            >
-              <Ionicons
-                name={map[route.name]}
-                size={compactTabs ? 19 : focused ? (size ? size - 1 : 23) : size ? size - 2 : 22}
-                color={color}
-              />
-            </View>
-          );
+          return <Ionicons name={map[route.name]} size={size} color={color} />;
         },
       })}
     >

@@ -86,6 +86,7 @@ const STATIC_GATES = [
   ['scripts/verificar-vozes-android.js', 'Vozes da Celeste no Android (voz escolhida, aviso da voz do aparelho, denuncia) falharam'],
   ['scripts/verificar-conteudo-pessoal-suite.js', 'Suite 6+6 (local variada, prompt da IA e aberturas repetidas) falhou'],
   ['scripts/verificar-legenda-sincronizada.js', 'Legenda no ritmo da voz (tempo de cada letra no WAV, palavra dita na tela) falhou'],
+  ['scripts/verificar-barra-perola.js', 'Barra Perola (abas acessiveis, pilula deslizante, reduzir movimento, teclado no fluxo) falhou'],
 ];
 
 function assert(condition, message) {
