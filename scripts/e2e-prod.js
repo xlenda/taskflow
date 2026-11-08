@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { assertBundleCloudConfig } = require('./bundle-nuvem');
 
 const URL = process.env.TARGET_URL || 'https://celeste-jet-two.vercel.app';
 const USE_GEMINI = process.env.E2E_GEMINI === '1';
@@ -575,6 +576,7 @@ function paidRequestGuard(attempts, phaseNow) {
 }
 
 async function main() {
+  await assertBundleCloudConfig(URL);
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: USE_GEMINI ? false : 'new',

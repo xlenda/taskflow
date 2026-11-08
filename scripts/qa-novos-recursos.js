@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+const { assertBundleCloudConfig } = require('./bundle-nuvem');
 
 const URL = process.env.TARGET_URL || 'http://127.0.0.1:4181';
 const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
@@ -100,6 +101,7 @@ async function fillCommunityStory(page, value) {
 let browser;
 
 (async () => {
+  await assertBundleCloudConfig(URL);
   browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-sandbox'] });
   const seed = await browser.newPage();
   await seed.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
