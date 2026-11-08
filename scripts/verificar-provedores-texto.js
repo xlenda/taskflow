@@ -747,6 +747,23 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     assert.ok(suiteFailure, 'the stopped suite call is logged');
     assert.strictEqual(suiteFailure.event, 'celeste_text_failure');
     assert.strictEqual(suiteFailure.code, 'text_provider_cancelled', 'a call the request stopped is not a timeout');
+
+    // a signal that is already aborted never fires 'abort': the call itself starts aborted (a real fetch then sends nothing)
+    const stopped = new AbortController();
+    stopped.abort();
+    const seen = [];
+    global.fetch = (url, options) => {
+      seen.push(options.signal.aborted);
+      return options.signal.aborted
+        ? Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+        : Promise.resolve(response(200, anthropicPayload()));
+    };
+    const config = { name: 'anthropic', key: 'k', model: 'claude-sonnet-5', effort: 'medium' };
+    await assert.rejects(
+      provider._internals.fetchProvider(config, SPEC, 60_000, stopped.signal),
+      (error) => error.code === 'text_provider_cancelled'
+    );
+    assert.deepStrictEqual(seen, [true], 'the call went out already aborted');
   });
 
   await t.test('a suite repair that cannot finish before the deadline is never started', async () => {

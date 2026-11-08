@@ -548,6 +548,7 @@ module.exports = {
     retryableStatus,
     standardizeSchema,
     defaultSessionDeadlineMs: () => DEFAULT_SESSION_DEADLINE_MS,
+    fetchProvider,
     minimumCallMs,
     providerTimeoutMs,
   },
