@@ -46,14 +46,21 @@ const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
 const CONTINUITY_MAX_BYTES = 12 * 1024;
-// Covers the scene and the suite in parallel plus one repair of the slower part (each provider call needs at most
-// ~111 s for the suite's 6,336 tokens at a slow 60 tokens/s); vercel.json gives the function 270 s.
-const GENERATION_DEADLINE_MS = 240_000;
+// Covers the scene and the suite in parallel plus one more call of the slower part (a suite call needs at most
+// ~141 s: 9,536 tokens at a slow 70 tokens/s); vercel.json gives the function 330 s.
+const GENERATION_DEADLINE_MS = 300_000;
 const MIN_REPAIR_BUDGET_MS = 5_000;
 const SCENE_UNITS = 4;
 const JOURNEY_SUITE_UNITS = 12;
 const TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 6_000;
 const JOURNEY_SUITE_MAX_OUTPUT_TOKENS = 4_800;
+// Claude/OpenAI answer budgets (Gemini keeps its own above). 22/10 smoke: the scene's first call hit 3,336 tokens
+// (Sonnet 5 thinks 1.0-2.7k tokens before ~0.7k of JSON) and the suite was still writing after 52 s (~5k tokens).
+const SCENE_PROVIDER_MAX_OUTPUT_TOKENS = 4_500;
+const JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS = 8_000;
+const PROVIDER_MAX_OUTPUT_TOKENS = 8_000;
+// answer + one truncation retry + one quality repair, per part
+const PROVIDER_PART_CALLS = 3;
 const JOURNEY_CATEGORIES = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
 const CATEGORIES = new Set(JOURNEY_CATEGORIES);
 const FIELD_KEYS = [
@@ -206,10 +213,12 @@ let botVerifier = checkBotId;
 let generationClock = () => Date.now();
 
 class GenerationError extends Error {
-  constructor(code, evaluation) {
+  constructor(code, evaluation, reason) {
     super(code);
     this.code = code;
     if (evaluation) this.evaluation = evaluation;
+    // which validator rule refused the answer (logged, never shown): e.g. scene:anchor_step_if_then
+    if (reason) this.reason = reason;
   }
 }
 
@@ -954,8 +963,8 @@ function buildTextSpec(input, seed, repairInstruction = '', maxOutputTokens) {
     schema: request.generationConfig.responseSchema,
     schemaName: 'celeste_scene',
     maxOutputTokens: Number.isInteger(maxOutputTokens)
-      ? Math.min(6_000, Math.max(request.generationConfig.maxOutputTokens, maxOutputTokens))
-      : request.generationConfig.maxOutputTokens,
+      ? Math.min(PROVIDER_MAX_OUTPUT_TOKENS, Math.max(SCENE_PROVIDER_MAX_OUTPUT_TOKENS, maxOutputTokens))
+      : SCENE_PROVIDER_MAX_OUTPUT_TOKENS,
   };
 }
 
@@ -967,8 +976,8 @@ function buildJourneySuiteTextSpec(input, repairInstruction = '', maxOutputToken
     schema: journeySuiteSchema(),
     schemaName: 'celeste_journey_suite',
     maxOutputTokens: Number.isInteger(maxOutputTokens)
-      ? Math.min(6_000, Math.max(JOURNEY_SUITE_MAX_OUTPUT_TOKENS, maxOutputTokens))
-      : JOURNEY_SUITE_MAX_OUTPUT_TOKENS,
+      ? Math.min(PROVIDER_MAX_OUTPUT_TOKENS, Math.max(JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS, maxOutputTokens))
+      : JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS,
   };
 }
 
@@ -1041,7 +1050,7 @@ function fieldIsGrounded(key, text, input) {
 }
 
 function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_KEYS) {
-  if (!Array.isArray(raw[property])) throw new GenerationError('invalid_generation');
+  if (!Array.isArray(raw[property])) throw new GenerationError('invalid_generation', undefined, `scene:${property}_missing`);
   const seen = new Set();
   const used = [];
   for (const key of raw[property]) {
@@ -1050,14 +1059,14 @@ function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_
       !input.availablePersonalization.has(key) ||
       !fieldIsGrounded(key, output, input)
     ) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, `scene:${property}:${allowedKeys.includes(key) ? key : 'unknown_key'}`);
     }
     if (!seen.has(key)) {
       seen.add(key);
       used.push(key);
     }
   }
-  if (!seen.has('desire')) throw new GenerationError('invalid_generation');
+  if (!seen.has('desire')) throw new GenerationError('invalid_generation', undefined, `scene:${property}:no_desire`);
   return used;
 }
 
@@ -1101,13 +1110,13 @@ function repeatsPreviousChapter(scene, previousScene) {
 }
 
 function validateGeneratedScene(raw, input) {
-  if (!isPlainObject(raw)) throw new GenerationError('invalid_generation');
+  if (!isPlainObject(raw)) throw new GenerationError('invalid_generation', undefined, 'scene:not_object');
   const scene = {};
   for (const [field, limits] of Object.entries(OUTPUT_LIMITS)) {
-    if (typeof raw[field] !== 'string') throw new GenerationError('invalid_generation');
+    if (typeof raw[field] !== 'string') throw new GenerationError('invalid_generation', undefined, `scene:${field}_missing`);
     const text = cleanText(raw[field], limits[1]);
     if (text.length < limits[0] || raw[field].trim().length > limits[1]) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, `scene:${field}_length`);
     }
     scene[field] = text;
   }
@@ -1116,25 +1125,25 @@ function validateGeneratedScene(raw, input) {
     input.continuity?.previousScene &&
     repeatsPreviousChapter(scene, input.continuity.previousScene)
   ) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:repeats_previous_chapter');
   }
 
   const combined = Object.values(scene).join(' ');
   if (UNSAFE_OUTPUT.some((pattern) => pattern.test(combined))) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:unsafe_claim');
   }
 
   const firstPerson = input.lang === 'pt'
     ? /\b(eu|meu|minha|meus|minhas)\b/i
     : /\b(i|my|mine)\b/i;
   if (!firstPerson.test(scene.affirmation)) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_first_person');
   }
   if (UNBELIEVABLE_AFFIRMATION.some((pattern) => pattern.test(scene.affirmation))) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_unbelievable');
   }
   if (RAW_PROFILE_DUMP.some((pattern) => pattern.test(scene.affirmation))) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_profile_dump');
   }
 
   const affirmationUsed = validateFieldReceipt(
@@ -1148,7 +1157,7 @@ function validateGeneratedScene(raw, input) {
     (key) => key !== 'desire' && input.availablePersonalization.has(key)
   );
   if (safeProfileFields.length && !affirmationUsed.some((key) => key !== 'desire')) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_no_profile_field');
   }
   const storyUsed = validateFieldReceipt(raw, 'storyFieldsUsed', scene.story, input);
   if (input.availablePersonalization.has('obstacle')) {
@@ -1156,7 +1165,7 @@ function validateGeneratedScene(raw, input) {
       ? /\b(se|quando)\b.{2,180}\b(ent[aã]o|vou|farei|irei)\b/i
       : /\b(if|when)\b.{2,180}\b(then|i will|i'll)\b/i;
     if (!conditionalPlan.test(scene.anchorStep) || !fieldIsGrounded('obstacle', scene.anchorStep, input)) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, 'scene:anchor_step_if_then');
     }
   }
   const allUsed = [...new Set([...affirmationUsed, ...storyUsed])];
@@ -1166,7 +1175,10 @@ function validateGeneratedScene(raw, input) {
   scene.storyPersonalizedWith = storyUsed.map((key) => RECEIPT_LABELS[input.lang][key]);
   scene.personalizedWith = allUsed.map((key) => RECEIPT_LABELS[input.lang][key]);
   const evaluation = celesteBrain.evaluateScene(scene, input);
-  if (!evaluation.ok) throw new GenerationError('invalid_generation', evaluation);
+  if (!evaluation.ok) {
+    const issue = evaluation.issues && evaluation.issues[0];
+    throw new GenerationError('invalid_generation', evaluation, `scene:quality:${(issue && issue.code) || 'rejected'}`);
+  }
   return scene;
 }
 
@@ -1178,10 +1190,10 @@ const JOURNEY_OUTPUT_LIMITS = Object.freeze({
 });
 
 function requiredJourneyText(raw, field, limits) {
-  if (typeof raw[field] !== 'string') throw new GenerationError('invalid_generation');
+  if (typeof raw[field] !== 'string') throw new GenerationError('invalid_generation', undefined, `suite:${field}_missing`);
   const text = cleanText(raw[field], limits[1]);
   if (text.length < limits[0] || raw[field].trim().length > limits[1]) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, `suite:${field}_length`);
   }
   return text;
 }
@@ -1190,25 +1202,25 @@ function ensureUniqueJourneyValues(items, fields) {
   for (const field of fields) {
     const normalized = items.map((item) => comparisonText(item[field]));
     if (normalized.some((value) => !value) || new Set(normalized).size !== normalized.length) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, `suite:duplicate_${field}`);
     }
   }
 }
 
 function validateGeneratedJourneySuite(raw, input) {
-  if (!isPlainObject(raw)) throw new GenerationError('invalid_generation');
+  if (!isPlainObject(raw)) throw new GenerationError('invalid_generation', undefined, 'suite:not_object');
   if (
     !Array.isArray(raw.visions) ||
     !Array.isArray(raw.affirmations) ||
     raw.visions.length !== JOURNEY_CATEGORIES.length ||
     raw.affirmations.length !== JOURNEY_CATEGORIES.length
   ) {
-    throw new GenerationError('invalid_generation');
+    throw new GenerationError('invalid_generation', undefined, 'suite:not_six_and_six');
   }
 
   const validateCategory = (item, index) => {
     if (!isPlainObject(item) || item.category !== JOURNEY_CATEGORIES[index]) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, 'suite:category_order');
     }
     return item.category;
   };
@@ -1223,10 +1235,10 @@ function validateGeneratedJourneySuite(raw, input) {
     const story = requiredJourneyText(item, 'story', JOURNEY_OUTPUT_LIMITS.story);
     const visualBrief = requiredJourneyText(item, 'visualBrief', JOURNEY_OUTPUT_LIMITS.visualBrief);
     if (!comparisonText(story).startsWith(visionPrefix)) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, 'suite:vision_future_frame');
     }
     if (UNSAFE_OUTPUT.some((pattern) => pattern.test(`${title} ${story} ${visualBrief}`))) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, 'suite:vision_unsafe_claim');
     }
     return { key: `vision:${category}`, category, title, story, visualBrief };
   });
@@ -1250,7 +1262,7 @@ function validateGeneratedJourneySuite(raw, input) {
       RAW_PROFILE_DUMP.some((pattern) => pattern.test(text)) ||
       UNSAFE_OUTPUT.some((pattern) => pattern.test(`${text} ${visualBrief}`))
     ) {
-      throw new GenerationError('invalid_generation');
+      throw new GenerationError('invalid_generation', undefined, 'suite:affirmation_rules');
     }
     return { key: `affirmation:${category}`, category, text, visualBrief };
   });
@@ -1280,7 +1292,7 @@ function validateGeneratedJourneySuite(raw, input) {
             'Rewrite the visions and affirmations so that no two visions (after the required future framing) and no two affirmations begin with the same three words; give each area its own opening words and sentence shape, and keep every other rule.',
         },
       ],
-    });
+    }, 'suite:repeated_openings');
   }
   return {
     version: JOURNEY_SUITE_VERSION,
@@ -1381,36 +1393,60 @@ function requireGenerationBudget(deadlineAt, minimumMs = 1) {
   return remaining;
 }
 
+// 22/10: "concisely" made the retried scene drop what the validator requires (the receipts' own words, the if-then
+// step), and that failure was final. The answer was cut by its private reasoning, not by the JSON being long.
 const TRUNCATION_REPAIR =
-  'The previous response reached its output-token limit. Return the complete JSON object concisely, preserving every required field and using only supplied facts.';
+  'The previous response reached its output-token limit before the JSON was complete. Return the complete JSON object again, following every rule above for every field and using only supplied facts; keep your private reasoning brief so the whole answer fits.';
 
-// One Claude/OpenAI call and at most one repair on the same provider (invalid or truncated answer), in its own
-// two-call session. The provider never starts a call that cannot finish before the deadline.
+// One Claude/OpenAI part (the scene or the suite) in its own three-call session: the answer, one retry if it was cut
+// by max_tokens and one repair if the validator refused it — a truncation retry never uses up the repair. The
+// provider never starts a call that cannot finish before the deadline. Every refusal is logged with its rule.
 async function generateProviderPart(part, deadlineAt, signal) {
-  const session = textProvider.createSession({ deadlineAt, clock: generationClock });
-  let repairInstruction = '';
+  const session = textProvider.createSession({ deadlineAt, clock: generationClock, maxCalls: PROVIDER_PART_CALLS });
+  let truncationRetried = false;
+  let qualityRepair = '';
   let maxOutputTokens;
   let options = { signal };
-  let receipt = null;
-  for (let attempt = 0; ; attempt += 1) {
+  for (;;) {
+    const repairInstruction = [truncationRetried ? TRUNCATION_REPAIR : '', qualityRepair].filter(Boolean).join('\n');
+    const spec = part.spec(repairInstruction, maxOutputTokens);
+    let receipt;
     try {
-      receipt = await session.generate(part.spec(repairInstruction, maxOutputTokens), options);
+      receipt = await session.generate(spec, options);
+    } catch (error) {
+      if (error?.code !== 'text_provider_truncated' || truncationRetried || session.remainingCalls() < 1) throw error;
+      truncationRetried = true;
+      maxOutputTokens = TRUNCATION_RETRY_MAX_OUTPUT_TOKENS;
+      const provider = cleanText(error.provider || '', 20).toLowerCase();
+      options = provider ? { provider, signal } : { signal };
+      continue;
+    }
+    try {
       return { receipt, value: part.validate(receipt.data) };
     } catch (error) {
-      const truncated = error?.code === 'text_provider_truncated';
-      if (attempt > 0 || !(truncated || error?.code === 'invalid_generation') || session.remainingCalls() < 1) {
-        throw error;
+      if (error?.code === 'invalid_generation') {
+        textProvider.logTextEvent({
+          event: 'celeste_text_failure',
+          operation: spec.operation,
+          provider: receipt.provider,
+          model: receipt.model,
+          code: 'invalid_generation',
+          reason: error.reason || 'unknown',
+        });
       }
-      const provider = cleanText(error?.provider || receipt?.provider || '', 20).toLowerCase();
-      options = provider ? { provider, signal } : { signal };
-      maxOutputTokens = truncated ? TRUNCATION_RETRY_MAX_OUTPUT_TOKENS : undefined;
-      repairInstruction = truncated ? TRUNCATION_REPAIR : celesteBrain.buildRepairInstruction(error.evaluation);
+      if (error?.code !== 'invalid_generation' || qualityRepair || session.remainingCalls() < 1) throw error;
+      qualityRepair = [
+        celesteBrain.buildRepairInstruction(error.evaluation),
+        error.reason ? `The previous answer failed the check "${error.reason}": fix that and keep every other rule.` : '',
+      ].filter(Boolean).join('\n');
+      options = { provider: receipt.provider, signal };
     }
   }
 }
 
 // The Anchor Scene and the 6+6 suite are two calls in parallel: as one JSON they outgrew the old 30 s limit (every
-// suite request timed out in production on 20-22/10). All or nothing: a failed part stops the other one.
+// suite request timed out in production on 20-22/10). All or nothing: only a part's final failure stops the other
+// one; a part that succeeds just waits for its sibling.
 async function generateWithProviders(input, seed, deadlineAt) {
   const controller = new AbortController();
   const parts = [{
@@ -1645,6 +1681,12 @@ module.exports._internals = {
   validateInput,
   knowledgeVersion: CELESTE_KNOWLEDGE.version,
   generationDeadlineMs: () => GENERATION_DEADLINE_MS,
+  providerBudgets: () => ({
+    scene: SCENE_PROVIDER_MAX_OUTPUT_TOKENS,
+    suite: JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS,
+    truncationRetry: TRUNCATION_RETRY_MAX_OUTPUT_TOKENS,
+    partCalls: PROVIDER_PART_CALLS,
+  }),
   minimumRepairBudgetMs: () => MIN_REPAIR_BUDGET_MS,
   sceneUnits: () => SCENE_UNITS,
   journeySuiteUnits: () => JOURNEY_SUITE_UNITS,

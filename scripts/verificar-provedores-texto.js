@@ -226,6 +226,11 @@ function isSuiteCall(body) {
   return Boolean(schema && schema.properties && schema.properties.visions);
 }
 
+// the deadline must hold the slower part's two calls (the parts run in parallel), plus identity and quota
+function deadlineForParts(sceneCall, sceneRetryCall, suiteCall) {
+  return 10_000 + Math.max(sceneCall + sceneRetryCall, 2 * suiteCall);
+}
+
 function hangUntilAborted(signal) {
   return new Promise((_resolve, reject) => {
     signal.addEventListener('abort', () => {
@@ -338,6 +343,15 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       (error) => error.code === 'text_provider_attempt_limit'
     );
     assert.strictEqual(calls, 2);
+
+    // a caller may allow three (answer, truncation retry, quality repair), never more
+    for (const [maxCalls, allowed] of [[3, 3], [9, 3]]) {
+      calls = 0;
+      const wider = provider.createSession({ deadlineAt: Date.now() + 120_000, maxCalls });
+      for (let index = 0; index < allowed; index += 1) await wider.generate(SPEC, { provider: 'anthropic' });
+      await assert.rejects(wider.generate(SPEC, { provider: 'anthropic' }), (error) => error.code === 'text_provider_attempt_limit');
+      assert.strictEqual(calls, allowed, `maxCalls ${maxCalls} sends at most ${allowed}`);
+    }
   });
 
   await t.test('a session without an explicit deadline gets a bounded default', async () => {
@@ -472,12 +486,22 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
   // in parallel, each with room to finish, inside one deadline that the function, the app and the deploy smoke outlive.
   await t.test('timeouts line up: a call can finish, the deadline holds a repair, the function and the app outlive it', async () => {
     const { minimumCallMs, providerTimeoutMs, defaultSessionDeadlineMs } = provider._internals;
-    const sceneCall = minimumCallMs({ maxOutputTokens: 1_800 });
-    const suiteCall = minimumCallMs({ maxOutputTokens: 4_800 });
-    const largestCall = minimumCallMs({ maxOutputTokens: 6_000 });
-    // connection + first token, then max_tokens (output + 1,536) at 60 tokens/s
-    assert.strictEqual(suiteCall, 5_000 + Math.ceil(((4_800 + 1_536) * 1_000) / 60));
-    assert.ok(sceneCall < suiteCall && suiteCall < largestCall, 'a bigger answer needs more time');
+    const budgets = sceneEndpoint._internals.providerBudgets();
+    const sceneCall = minimumCallMs({ maxOutputTokens: budgets.scene });
+    const sceneRetryCall = minimumCallMs({ maxOutputTokens: Math.max(budgets.scene, budgets.truncationRetry) });
+    const suiteCall = minimumCallMs({ maxOutputTokens: budgets.suite });
+    const largestCall = minimumCallMs({ maxOutputTokens: provider._internals.maxOutputTokens() });
+    // connection + first token, then max_tokens (output + 1,536) at 70 tokens/s (22/10 production: 94-101 tokens/s)
+    assert.strictEqual(suiteCall, 5_000 + Math.ceil(((budgets.suite + 1_536) * 1_000) / 70));
+    assert.ok(sceneCall < suiteCall && suiteCall <= largestCall, 'a bigger answer needs more time');
+    // 22/10 smoke: the scene's first call was cut at 3,336 tokens twice; the suite was still writing after 52 s
+    assert.ok(budgets.scene + 1_536 >= 6_000, 'the scene answer has room for its thinking and its JSON');
+    assert.ok(budgets.suite + 1_536 >= 9_000, 'the suite answer has room for its thinking and its JSON');
+    assert.ok(budgets.suite <= provider._internals.maxOutputTokens(), 'the provider accepts the suite budget whole');
+    assert.ok(
+      deadlineForParts(sceneCall, sceneRetryCall, suiteCall) <= sceneEndpoint._internals.generationDeadlineMs(),
+      'scene answer + its truncation retry, and the suite + one more call, fit the deadline'
+    );
     assert.ok(providerTimeoutMs({}) >= largestCall, 'every call that may start can finish inside its own timeout');
     assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '999999' }), providerTimeoutMs({}), 'the env only lowers it');
     assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '1000' }), 1_000);
@@ -582,7 +606,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     const suitePrompt = arrivals.find((call) => call.kind === 'suite').body;
     assert.match(scenePrompt.system[0].text, /^You write one personalized Celeste Anchor Scene/);
     assert.doesNotMatch(scenePrompt.system[0].text, /Scene hints for this person|exactly six visions/, 'the scene call writes only the scene');
-    assert.strictEqual(scenePrompt.max_tokens, 1_800 + 1_536);
+    assert.strictEqual(scenePrompt.max_tokens, sceneEndpoint._internals.providerBudgets().scene + 1_536);
     assert.match(suitePrompt.system[0].text, /^You write the personalized Celeste journey suite/);
     for (const rule of [
       /Scene hints for this person/,
@@ -596,7 +620,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       assert.match(suitePrompt.system[0].text, rule, `the suite keeps its variety rules: ${rule}`);
     }
     assert.doesNotMatch(suitePrompt.system[0].text, /Required contract:|anchorStep|affirmationFieldsUsed/, 'no scene contract in the suite call');
-    assert.strictEqual(suitePrompt.max_tokens, 4_800 + 1_536);
+    assert.strictEqual(suitePrompt.max_tokens, sceneEndpoint._internals.providerBudgets().suite + 1_536);
     assert.strictEqual(JSON.parse(suitePrompt.messages[0].content[0].text).task, 'create_journey_suite');
   });
 
@@ -768,7 +792,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
 
   await t.test('a suite repair that cannot finish before the deadline is never started', async () => {
     const suite = validSuite();
-    const suiteCall = provider._internals.minimumCallMs({ maxOutputTokens: 4_800 });
+    const suiteCall = provider._internals.minimumCallMs({ maxOutputTokens: sceneEndpoint._internals.providerBudgets().suite });
     const deadline = sceneEndpoint._internals.generationDeadlineMs();
     for (const [label, leftAfterFirstAnswer, expected] of [
       ['too little time for the repair', suiteCall - 1, { status: 504, suiteCalls: 1 }],
@@ -793,5 +817,93 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       assert.strictEqual(suiteCalls, expected.suiteCalls, label);
       if (expected.status === 504) assert.deepStrictEqual(res.body, { error: 'generation_timeout' });
     }
+  });
+
+  // 22/10 deploy smoke (c7a67af), both attempts: scene call 1 -> max_tokens; scene call 2 -> an answer the validator
+  // refused (logged as a provider success) -> the suite, still being written, cancelled at that very moment -> 502.
+  // Replayed: the truncation retry used the part's only second call, so the refusal was final and stopped the suite.
+  await t.test('replay of the 22/10 smoke: a cut scene answer is retried, then repaired, and the suite is never cancelled', async () => {
+    const suite = validSuite();
+    const noIfThenStep = validScene({ anchorStep: 'Dedicar dez minutos ao projeto mais concreto hoje.' });
+    for (const [label, sceneAnswers, expected] of [
+      ['cut, then a valid answer', ['cut', validScene()], { status: 200, sceneCalls: 2 }],
+      ['cut, refused (no if-then step on her obstacle), then repaired', ['cut', noIfThenStep, validScene()], { status: 200, sceneCalls: 3 }],
+      ['cut, refused, refused again: the part stops at three calls', ['cut', noIfThenStep, noIfThenStep, validScene()], { status: 502, sceneCalls: 3 }],
+    ]) {
+      configureSceneRoute();
+      process.env.CELESTE_TEXT_FALLBACK = 'none';
+      process.env.CELESTE_TEXT_LOG_USAGE = '1';
+      const sceneCalls = [];
+      let suiteSignal = null;
+      let suiteAnswered = false;
+      global.fetch = (url, options) => {
+        const body = JSON.parse(options.body);
+        if (isSuiteCall(body)) {
+          suiteSignal = options.signal;
+          // the suite answers only after the scene part is done (production: it was still writing at 52-54 s)
+          return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+              suiteAnswered = true;
+              resolve(response(200, anthropicSuitePayload(suite)));
+            }, 80);
+            options.signal.addEventListener('abort', () => {
+              clearTimeout(timer);
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+            });
+          });
+        }
+        sceneCalls.push(body);
+        const answer = sceneAnswers[sceneCalls.length - 1];
+        return Promise.resolve(response(200, answer === 'cut'
+          ? anthropicScenePayload(validScene(), { stop_reason: 'max_tokens', content: [] })
+          : anthropicScenePayload(answer)));
+      };
+      const lines = [];
+      const realInfo = console.info;
+      console.info = (line) => lines.push(JSON.parse(String(line)));
+      let res;
+      try {
+        res = await invokeScene(suiteBody());
+      } finally {
+        console.info = realInfo;
+        delete process.env.CELESTE_TEXT_LOG_USAGE;
+      }
+      assert.strictEqual(res.statusCode, expected.status, `${label}: ${JSON.stringify(res.body)}`);
+      assert.strictEqual(sceneCalls.length, expected.sceneCalls, `${label}: scene calls`);
+      assert.ok(sceneCalls[1].max_tokens > sceneCalls[0].max_tokens, `${label}: the retry after a cut gets more room`);
+      assert.doesNotMatch(sceneCalls[1].system[0].text, /concisely/, 'the retry never asks to shorten what the validator needs');
+      assert.match(sceneCalls[1].system[0].text, /keep your private reasoning brief/);
+      if (expected.status === 200) {
+        assert.ok(suiteAnswered && !suiteSignal.aborted, `${label}: the suite was never cancelled`);
+        assert.strictEqual(res.body.journeySuite.visions.length, 6);
+      } else {
+        assert.deepStrictEqual(res.body, { error: 'invalid_generation' }, 'no scene and no partial suite');
+      }
+      const refusals = lines.filter((event) => event.code === 'invalid_generation');
+      if (sceneCalls.length === 3) {
+        assert.strictEqual(refusals[0].operation, 'scene');
+        assert.strictEqual(refusals[0].reason, 'scene:anchor_step_if_then', 'the log names the rule that refused the answer');
+        const repair = sceneCalls[2].system[0].text;
+        assert.match(repair, /QUALITY REPAIR FOR THIS RETRY:[\s\S]*keep your private reasoning brief[\s\S]*failed the check "scene:anchor_step_if_then"/);
+      } else {
+        assert.deepStrictEqual(refusals, [], 'a valid retry is never refused');
+      }
+    }
+  });
+
+  await t.test('a part that succeeds never cancels the other one', async () => {
+    configureSceneRoute();
+    process.env.CELESTE_TEXT_FALLBACK = 'none';
+    const suite = validSuite();
+    let suiteSignal = null;
+    global.fetch = (url, options) => {
+      const body = JSON.parse(options.body);
+      if (!isSuiteCall(body)) return Promise.resolve(response(200, anthropicScenePayload()));
+      suiteSignal = options.signal;
+      return new Promise((resolve) => setTimeout(() => resolve(response(200, anthropicSuitePayload(suite))), 60));
+    };
+    const res = await invokeScene(suiteBody());
+    assert.strictEqual(res.statusCode, 200, JSON.stringify(res.body));
+    assert.strictEqual(suiteSignal.aborted, false, 'the slower suite was left to finish');
   });
 });

@@ -12,16 +12,21 @@ const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,99}$/;
 const SCHEMA_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 // 20-22/10 in production every scene + 6+6 suite request died at the old 30 s abort (Claude Sonnet 5 writes
-// 73-95 tokens/s; the suite is thousands of tokens). A call now has room to write its whole answer, and the
+// 73-101 tokens/s; the suite is thousands of tokens). A call now has room to write its whole answer, and the
 // request deadline (api/gerar-cena.js) bounds the total.
-const DEFAULT_PROVIDER_TIMEOUT_MS = 140_000;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 150_000;
 const DEFAULT_FALLBACK_RESERVE_MS = 12_000;
-const DEFAULT_SESSION_DEADLINE_MS = 240_000;
+const DEFAULT_SESSION_DEADLINE_MS = 300_000;
 // A call starts only when it can finish: connection and first token, then its whole max_tokens at a slow output
-// rate (below the slowest production rate). Otherwise no tokens are paid for an answer the deadline would cut.
+// rate. Measured per call in production on 22/10 (durationMs): 94-101 tokens/s; 70 stays below every sample.
+// Otherwise no tokens are paid for an answer the deadline would cut.
 const CALL_START_ALLOWANCE_MS = 5_000;
-const SLOW_OUTPUT_TOKENS_PER_SECOND = 60;
-const MAX_PROVIDER_CALLS = 2;
+const SLOW_OUTPUT_TOKENS_PER_SECOND = 70;
+// The largest answer a caller may ask for (the 6+6 suite: Sonnet 5's adaptive thinking + about 3k tokens of JSON).
+const MAX_OUTPUT_TOKENS = 8_000;
+// A session sends 2 calls by default; a caller may allow 3 (answer, truncation retry, quality repair).
+const DEFAULT_PROVIDER_CALLS = 2;
+const MAX_PROVIDER_CALLS = 3;
 
 class TextProviderError extends Error {
   constructor(code, details = {}) {
@@ -135,7 +140,7 @@ function schemaName(value) {
 }
 
 function providerMaxTokens(request) {
-  return Math.min(8_000, request.maxOutputTokens + 1_536);
+  return Math.min(MAX_OUTPUT_TOKENS + 1_536, request.maxOutputTokens + 1_536);
 }
 
 function minimumCallMs(request) {
@@ -412,13 +417,15 @@ function emitUsageEvent(event) {
     fallbackUsed: event.fallbackUsed === true,
     status: Number.isInteger(event.status) ? event.status : 0,
     code: cleanText(event.code, 60),
+    // which validator rule refused an answer (e.g. scene:anchor_step_if_then), never any of the text itself
+    ...(event.reason ? { reason: cleanText(event.reason, 80) } : {}),
     durationMs: nonNegativeInteger(event.durationMs),
     ...(event.usage ? { usage: event.usage } : {}),
   };
   console.info(JSON.stringify(safe));
 }
 
-function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PROVIDER_CALLS } = {}) {
+function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = DEFAULT_PROVIDER_CALLS } = {}) {
   const sessionClock = typeof clock === 'function' ? clock : () => Date.now();
   if (deadlineAt !== undefined && !Number.isFinite(deadlineAt)) {
     throw new TextProviderError('invalid_text_provider_deadline');
@@ -427,7 +434,7 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
     ? sessionClock() + DEFAULT_SESSION_DEADLINE_MS
     : deadlineAt;
   const chain = providerChain();
-  const callLimit = boundedInteger(maxCalls, MAX_PROVIDER_CALLS, 1, MAX_PROVIDER_CALLS);
+  const callLimit = boundedInteger(maxCalls, DEFAULT_PROVIDER_CALLS, 1, MAX_PROVIDER_CALLS);
   let calls = 0;
 
   function remainingCalls() {
@@ -445,7 +452,7 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = MAX_PR
         request && request.maxOutputTokens,
         2_000,
         256,
-        6_000
+        MAX_OUTPUT_TOKENS
       ),
     };
     if (!normalizedRequest.system || !normalizedRequest.user || !normalizedRequest.schema) {
@@ -538,6 +545,7 @@ module.exports = {
   TextProviderError,
   createSession,
   hasConfiguredProvider,
+  logTextEvent: emitUsageEvent,
   providerChain,
   _internals: {
     buildAnthropicRequest,
@@ -549,6 +557,7 @@ module.exports = {
     standardizeSchema,
     defaultSessionDeadlineMs: () => DEFAULT_SESSION_DEADLINE_MS,
     fetchProvider,
+    maxOutputTokens: () => MAX_OUTPUT_TOKENS,
     minimumCallMs,
     providerTimeoutMs,
   },

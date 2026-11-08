@@ -464,10 +464,10 @@ function extractAnonymousAccessToken(payload) {
 // per day (migration 010) and gerar-cena commits the units before generating, so a quota refusal proves the spend
 // guard, not a broken deploy: skipped with a loud warning, never a rollback. The suite is checked with the server's
 // own validator (`validateJourneySuite`), so a valid 200 always passes; anything else throws and rolls back.
-// The browser waits longer than api/gerar-cena.js can live (vercel.json maxDuration 270 s), so the answer is always
+// The browser waits longer than api/gerar-cena.js can live (vercel.json maxDuration 330 s), so the answer is always
 // the server's. A second call only when the server's validator refused the answer even after its own repair (502);
 // a 504 means the server already spent its whole deadline, so a second call would only wait it all again.
-const LIVE_SUITE_TIMEOUT_MS = 300_000;
+const LIVE_SUITE_TIMEOUT_MS = 360_000;
 const LIVE_SUITE_ATTEMPTS = 2;
 
 function liveSuiteRetryable(result) {
