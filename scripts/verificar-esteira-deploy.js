@@ -442,6 +442,17 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   );
   assert.match(deploySource, /await validateActorQuotaBackend\(/);
   assert.match(deploySource, /await validateAiReportGatewayBackend\(/);
+
+  // Supabase CLI 3 (08/11): consulta num banco hospedado só sem confirmação com --read-only;
+  // --db-url some na v4 e @latest muda a chamada sem aviso — versão maior travada.
+  const contractQuery = deploySource.slice(
+    deploySource.indexOf('async function validateBackendContractsThroughDatabase()'),
+    deploySource.indexOf('async function', deploySource.indexOf('async function validateBackendContractsThroughDatabase()') + 10)
+  );
+  assert.match(contractQuery, /'supabase@3'/, 'CLI do Supabase precisa ter a versao maior travada');
+  assert.doesNotMatch(contractQuery, /supabase@latest|'--db-url'/, 'consulta de contratos nao pode depender de @latest nem de --db-url');
+  assert.match(contractQuery, /`--remote=\$\{rawDbUrl\}`/, 'consulta de contratos precisa mirar o banco por --remote=<url>');
+  assert.match(contractQuery, /'--read-only'/, 'consulta de contratos precisa ser declarada so leitura');
   assert.match(
     deploySource,
     /fs\.existsSync\(path\.join\(apiTarget, 'denunciar-conteudo-ia\.js'\)\)/,

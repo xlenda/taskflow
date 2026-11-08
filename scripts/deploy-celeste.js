@@ -215,11 +215,15 @@ async function validateBackendContractsThroughDatabase() {
     [
       resolveNpxCli(),
       '--yes',
-      'supabase@latest',
+      // Versão maior travada: o @latest virou 3.0 em 08/11 e mudou a chamada sem aviso.
+      // --read-only declara a consulta como só leitura (a 3.x exige consentimento para
+      // qualquer outra coisa num banco hospedado) e --remote=<url> substitui o --db-url,
+      // que some na v4.
+      'supabase@3',
       'db',
       'query',
-      '--db-url',
-      rawDbUrl,
+      `--remote=${rawDbUrl}`,
+      '--read-only',
       '--output-format',
       'json',
       sql,
