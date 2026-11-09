@@ -576,40 +576,82 @@ function paidRequestGuard(attempts, phaseNow) {
   };
 }
 
+// Espião do sonho na nuvem (gancho do teste): anota status e corpo de cada resposta de /api/transformar-sonho lendo uma
+// CÓPIA do corpo. O app descarta a resposta de erro sem ler o corpo (`dream_api_503`) e, nesse caso, o Chrome nunca
+// termina de carregar a resposta: o response.json() do Puppeteer espera para sempre (09/11: 1h30 parado no "Tentar
+// reflexão em nuvem" de produção, com a página respondendo normalmente; medido com e sem interceptação).
+function installDreamResponseSpy() {
+  window.__celesteDreamResponses = [];
+  const originalFetch = window.fetch;
+  window.fetch = function dreamSpiedFetch(...args) {
+    let pathname = '';
+    try {
+      const target = typeof args[0] === 'string' ? args[0] : args[0] && args[0].url;
+      pathname = new URL(target, location.href).pathname;
+    } catch (_error) {}
+    if (pathname !== '/api/transformar-sonho') return originalFetch.apply(this, args);
+    const entry = { at: Date.now(), status: null, payload: null, error: null, done: false };
+    window.__celesteDreamResponses.push(entry);
+    return originalFetch.apply(this, args).then(
+      (response) => {
+        entry.status = response.status;
+        response
+          .clone()
+          .text()
+          .then((text) => {
+            try {
+              entry.payload = JSON.parse(text);
+            } catch (_error) {}
+            entry.done = true;
+          })
+          .catch((error) => {
+            entry.error = String((error && error.name) || error);
+            entry.done = true;
+          });
+        return response;
+      },
+      (error) => {
+        entry.error = String((error && error.name) || error);
+        entry.done = true;
+        throw error;
+      }
+    );
+  };
+}
+
 // o sonho caiu no gerador local: toca em "Tentar reflexão em nuvem" e espera o sonho da nuvem, olhando a resposta do
-// pedido que ESSE toque fez. O 503 provider_billing é a cobrança do Gemini (a conta do dono, não o deploy): devolve
-// 'billing' (PULADO; o E2E fecha com o mesmo aviso alto do smoke). Qualquer outro erro do servidor falha na hora, sem
-// esperar o prazo.
+// pedido que ESSE toque fez (pelo espião da página, nunca pelo corpo via Puppeteer). O 503 provider_billing é a cobrança
+// do Gemini (a conta do dono, não o deploy): devolve 'billing' (PULADO; o E2E fecha com o mesmo aviso alto do smoke).
+// Qualquer outro erro do servidor falha na hora, sem esperar o prazo.
 async function retryDreamCloud(page, timeout = 30000) {
   await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { visible: true, timeout: 10000 });
   await page.waitForSelector('[data-testid="retry-dream-cloud"]', { visible: true, timeout: 10000 });
-  const retryRequest = page.waitForRequest((request) => {
-    try {
-      return request.method() === 'POST' && new globalThis.URL(request.url()).pathname === '/api/transformar-sonho';
-    } catch (_error) {
-      return false;
-    }
-  }, { timeout: 10000 });
+  const index = await page.evaluate(() => window.__celesteDreamResponses.length);
   await clickTestId(page, 'retry-dream-cloud');
-  const request = await retryRequest;
-  const deadline = Date.now() + timeout;
+  const clickedAt = Date.now();
+  const deadline = clickedAt + timeout;
   for (;;) {
-    const cloud = await page.evaluate(() => {
+    const seen = await page.evaluate((wanted) => {
       const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
-      return entries[0]?.generatorVersion === 'celeste-dream-v3';
-    });
-    if (cloud) break;
-    const response = request.response();
-    if (response && response.status() >= 400) {
-      let payload = null;
-      try {
-        payload = await response.json();
-      } catch (_error) {}
-      if (liveProviderBilling({ status: response.status(), payload })) {
+      return {
+        cloud: entries[0]?.generatorVersion === 'celeste-dream-v3',
+        response: window.__celesteDreamResponses[wanted] || null,
+      };
+    }, index);
+    if (seen.cloud) break;
+    const response = seen.response;
+    if (!response && Date.now() > clickedAt + 10000) {
+      throw new Error('Sonho: o "Tentar reflexão em nuvem" não chamou /api/transformar-sonho em 10 s');
+    }
+    if (response && response.error) throw new Error(`Sonho na nuvem falhou no navegador: ${response.error}`);
+    if (response && response.done && response.status >= 400) {
+      if (liveProviderBilling({ status: response.status, payload: response.payload })) {
         await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { visible: true, timeout: 10000 });
         return 'billing';
       }
-      throw new Error(`Sonho na nuvem falhou no servidor: HTTP ${response.status()} ${(payload && payload.error) || 'sem_erro'}`);
+      throw new Error(
+        `Sonho na nuvem falhou no servidor: HTTP ${response.status} ${(response.payload && response.payload.error) || 'sem_erro'}`
+      );
     }
     if (Date.now() > deadline) throw new Error(`Sonho na nuvem não chegou em ${timeout / 1000} s`);
     await sleep(200);
@@ -645,6 +687,7 @@ async function assertDreamCloudPolicy(browser, page) {
         localStorage.setItem('@stella_state_v2', JSON.stringify(saved));
         sessionStorage.setItem('__celeste_dream_probe', '1');
       }, storage, CLOUD_CONSENT_VERSION);
+      await tab.evaluateOnNewDocument(installDreamResponseSpy);
       await tab.setRequestInterception(true);
       tab.on('request', (request) => {
         let pathname = '';
@@ -749,6 +792,8 @@ async function main() {
   // Espião de voz: anota quando a fala do aparelho ou um elemento de áudio começa,
   // para provar que a 3ª estrela do despertar (e o ▶ da história) inicia a voz dentro do toque.
   await page.evaluateOnNewDocument(installVoiceSpy);
+  // Espião do sonho na nuvem: o passo "Tentar reflexão em nuvem" lê status e corpo por aqui (ver installDreamResponseSpy)
+  await page.evaluateOnNewDocument(installDreamResponseSpy);
   // Espião do compartilhar (gancho do teste): o navigator.share descreve o que recebeu — imagem decodificada (largura,
   // altura, cores, data URL), vídeo (tipo, tamanho, nome) —, o texto do envio e se o toque ainda valia como gesto
   await page.evaluateOnNewDocument(() => {

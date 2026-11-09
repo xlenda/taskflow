@@ -576,6 +576,26 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(e2eSource, /attemptsBeforeCloudConsent\.length/);
   assert.match(e2eSource, /afterClick: \(\) => \{\s*uiSmokeCloudPhase = 'after-consent'/);
   assert.match(e2eSource, /clickTestId\(page, 'retry-dream-cloud'\)/);
+  // 09/11: o app descarta a resposta de erro sem ler o corpo e o Chrome nunca termina de carregá-la; o response.json()
+  // do Puppeteer esperava para sempre (1h30 parado em produção). O passo lê a resposta pelo espião da página.
+  const retryDreamSource = e2eSource.slice(
+    e2eSource.indexOf('async function retryDreamCloud('),
+    e2eSource.indexOf('async function assertDreamCloudPolicy(')
+  );
+  assert.ok(retryDreamSource.length > 0, 'retryDreamCloud vem antes de assertDreamCloudPolicy');
+  assert.match(retryDreamSource, /window\.__celesteDreamResponses\[wanted\]/, 'o passo le a resposta pelo espiao da pagina');
+  assert.doesNotMatch(
+    retryDreamSource,
+    /\.(json|text|buffer)\(\)|request\.response\(\)|waitForRequest\(/,
+    'nunca espera o corpo pelo Puppeteer: trava para sempre quando o app nao le o corpo da resposta de erro'
+  );
+  assert.match(
+    e2eSource,
+    /function installDreamResponseSpy\(\)[\s\S]*?response\s*\.clone\(\)\s*\.text\(\)/,
+    'o espiao le uma COPIA do corpo, sem roubar a resposta do app'
+  );
+  assert.match(e2eSource, /await page\.evaluateOnNewDocument\(installDreamResponseSpy\);/, 'espiao na pagina principal (producao)');
+  assert.match(e2eSource, /await tab\.evaluateOnNewDocument\(installDreamResponseSpy\);/, 'espiao nas abas do transformador de mentira (E2E local)');
   assert.match(e2eSource, /entries\[0\]\?\.generatorVersion === 'celeste-dream-v3'/);
   assert.match(
     e2eSource,
