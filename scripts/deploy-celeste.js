@@ -1052,7 +1052,20 @@ async function liveGeminiChecks(
   const sceneSuiteLabel = sceneSuite.skipped
     ? 'Cena-Ancora + suite 6+6 PULADAS (cota diaria)'
     : `Celeste AI (Cena-Ancora + suite 6+6) ${sceneSuite.provider}/${sceneSuite.model}`;
-  console.log(`BotID bloqueou cliente nu; ${sceneSuiteLabel}, traducao ${translation.generation.model}, sonho ${dream.generation.model}, visual ${visual.generation.model} e voz ElevenLabs (com o tempo das letras) passaram no navegador real`);
+  // O resumo le os resultados brutos: um smoke pulado por cobranca nao tem payload validado
+  // (foi isso que derrubou o deploy #5 de 08/11 com "translation is not defined").
+  console.log(
+    `BotID bloqueou cliente nu; ${sceneSuiteLabel}, traducao ${liveModelLabel(results.translation)}, ` +
+      `sonho ${liveModelLabel(results.dream)}, visual ${liveModelLabel(results.visual)} e voz ElevenLabs ` +
+      '(com o tempo das letras) passaram no navegador real'
+  );
+}
+
+// Rotulo do modelo de um smoke ao vivo; "PULADO (cobranca)" quando o Gemini recusou por credito.
+function liveModelLabel(result) {
+  if (liveProviderBilling(result)) return 'PULADO (cobranca)';
+  const model = result && result.payload && result.payload.generation && result.payload.generation.model;
+  return model ? String(model) : 'ok';
 }
 
 async function candidateChecks(vercelCli, candidate, env) {

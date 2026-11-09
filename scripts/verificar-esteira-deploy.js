@@ -447,6 +447,22 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(deploySource, /await validateActorQuotaBackend\(/);
   assert.match(deploySource, /await validateAiReportGatewayBackend\(/);
 
+  // Resumo pós-promoção (08/11, deploy #5): com o Gemini pulado por cobrança não existe payload
+  // validado de tradução/sonho/imagem — o resumo tem que ler os resultados brutos pelo rótulo.
+  const summary = deploySource.slice(
+    deploySource.indexOf('const sceneSuiteLabel = sceneSuite.skipped'),
+    deploySource.indexOf('async function candidateChecks(')
+  );
+  assert.match(summary, /liveModelLabel\(results\.translation\)/, 'resumo da traducao precisa vir do resultado bruto');
+  assert.match(summary, /liveModelLabel\(results\.dream\)/, 'resumo do sonho precisa vir do resultado bruto');
+  assert.match(summary, /liveModelLabel\(results\.visual\)/, 'resumo do visual precisa vir do resultado bruto');
+  assert.doesNotMatch(
+    summary,
+    /\$\{(translation|dream|visual)\.generation/,
+    'resumo nao pode usar variaveis de bloco dos smokes (quebra quando o Gemini e pulado por cobranca)'
+  );
+  assert.match(summary, /if \(liveProviderBilling\(result\)\) return 'PULADO \(cobranca\)'/, 'rotulo do smoke pulado por cobranca');
+
   // Supabase CLI 3 (08/11): consulta num banco hospedado só sem confirmação com --read-only;
   // --db-url some na v4 e @latest muda a chamada sem aviso — versão maior travada.
   const contractQuery = deploySource.slice(
