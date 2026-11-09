@@ -8,6 +8,7 @@ const path = require('path');
 const puppeteer = require('puppeteer-core');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const { assertBundleCloudConfig } = require('./bundle-nuvem');
+const { liveProviderBilling, providerBillingWarning } = require('./deploy-celeste-guards');
 
 const URL = process.env.TARGET_URL || 'https://celeste-jet-two.vercel.app';
 const USE_GEMINI = process.env.E2E_GEMINI === '1';
@@ -573,6 +574,129 @@ function paidRequestGuard(attempts, phaseNow) {
     }
     void request.continue().catch(() => {});
   };
+}
+
+// o sonho caiu no gerador local: toca em "Tentar reflexão em nuvem" e espera o sonho da nuvem, olhando a resposta do
+// pedido que ESSE toque fez. O 503 provider_billing é a cobrança do Gemini (a conta do dono, não o deploy): devolve
+// 'billing' (PULADO; o E2E fecha com o mesmo aviso alto do smoke). Qualquer outro erro do servidor falha na hora, sem
+// esperar o prazo.
+async function retryDreamCloud(page, timeout = 30000) {
+  await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { visible: true, timeout: 10000 });
+  await page.waitForSelector('[data-testid="retry-dream-cloud"]', { visible: true, timeout: 10000 });
+  const retryRequest = page.waitForRequest((request) => {
+    try {
+      return request.method() === 'POST' && new globalThis.URL(request.url()).pathname === '/api/transformar-sonho';
+    } catch (_error) {
+      return false;
+    }
+  }, { timeout: 10000 });
+  await clickTestId(page, 'retry-dream-cloud');
+  const request = await retryRequest;
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const cloud = await page.evaluate(() => {
+      const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
+      return entries[0]?.generatorVersion === 'celeste-dream-v3';
+    });
+    if (cloud) break;
+    const response = request.response();
+    if (response && response.status() >= 400) {
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_error) {}
+      if (liveProviderBilling({ status: response.status(), payload })) {
+        await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { visible: true, timeout: 10000 });
+        return 'billing';
+      }
+      throw new Error(`Sonho na nuvem falhou no servidor: HTTP ${response.status()} ${(payload && payload.error) || 'sem_erro'}`);
+    }
+    if (Date.now() > deadline) throw new Error(`Sonho na nuvem não chegou em ${timeout / 1000} s`);
+    await sleep(200);
+  }
+  await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { hidden: true, timeout: 10000 });
+  return 'cloud';
+}
+
+// local (sem nuvem de verdade): o mesmo passo de produção num perfil à parte (armazenamento isolado, nuvem permitida,
+// sessão anônima e transformador de mentira). No "Tentar de novo", 503 provider_billing tem de virar PULADO e um 503
+// qualquer falha na hora; a 1ª chamada recebe o outro erro, para provar que só conta a resposta do novo toque.
+async function assertDreamCloudPolicy(browser, page) {
+  const storage = await page.evaluate(() => Object.entries(localStorage));
+  for (const [error, firstError] of [
+    ['provider_billing', 'generation_unavailable'],
+    ['generation_unavailable', 'provider_billing'],
+  ]) {
+    let dreamCalls = 0;
+    const context = await browser.createBrowserContext();
+    try {
+      const tab = await context.newPage();
+      await tab.evaluateOnNewDocument((entries, version) => {
+        if (sessionStorage.getItem('__celeste_dream_probe') === '1') return;
+        entries.forEach(([key, value]) => localStorage.setItem(key, value));
+        const saved = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}');
+        saved.profile = {
+          ...saved.profile,
+          cloudConsentVersion: version,
+          cloudPersonalization: true,
+          cloudDreamConsent: true,
+          cloudAdultConfirmed: true,
+        };
+        localStorage.setItem('@stella_state_v2', JSON.stringify(saved));
+        sessionStorage.setItem('__celeste_dream_probe', '1');
+      }, storage, CLOUD_CONSENT_VERSION);
+      await tab.setRequestInterception(true);
+      tab.on('request', (request) => {
+        let pathname = '';
+        try {
+          pathname = new globalThis.URL(request.url()).pathname;
+        } catch (_error) {}
+        // a sessão de mentira vem de outra origem (Supabase): precisa do CORS, senão o app nunca chega ao transformador
+        const cors = {
+          'Access-Control-Allow-Origin': request.headers().origin || '*',
+          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        };
+        const respond = (status, body) =>
+          request
+            .respond({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) })
+            .catch(() => {});
+        if (pathname.endsWith('/auth/v1/signup') && request.method() === 'OPTIONS') {
+          request.respond({ status: 204, headers: cors }).catch(() => {});
+        } else if (request.method() !== 'POST') {
+          request.continue().catch(() => {});
+        } else if (pathname.endsWith('/auth/v1/signup')) {
+          respond(200, storySession());
+        } else if (pathname === '/api/transformar-sonho') {
+          dreamCalls += 1;
+          respond(503, { error: dreamCalls === 1 ? firstError : error });
+        } else if (paidApiPaths.has(pathname)) {
+          respond(403, { error: 'automated_request_blocked' });
+        } else {
+          request.continue().catch(() => {});
+        }
+      });
+      await tab.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
+      await clickTestId(tab, 'open-dream-journal');
+      await tab.waitForSelector('[data-testid="dream-report-input"]', { visible: true, timeout: 20000 });
+      await tab.type('[data-testid="dream-report-input"]', 'Eu caminhava por um jardim tranquilo.', { delay: 5 });
+      await clickTestId(tab, 'dream-feeling-calm');
+      await clickTestId(tab, 'transform-dream');
+      const started = Date.now();
+      const outcome = await retryDreamCloud(tab).catch((failure) => failure);
+      const seconds = (Date.now() - started) / 1000;
+      if (dreamCalls !== 2) throw new Error(`Sonho: esperava 2 chamadas ao transformador (1ª + tentar de novo), vieram ${dreamCalls}`);
+      if (error === 'provider_billing' && outcome !== 'billing') {
+        throw new Error(`Sonho: 503 provider_billing não virou PULADO (${String(outcome).slice(0, 160)})`);
+      }
+      if (error !== 'provider_billing' && !(outcome instanceof Error && outcome.message.includes(`HTTP 503 ${error}`) && seconds < 10)) {
+        throw new Error(`Sonho: 503 ${error} não falhou na hora (${seconds.toFixed(1)} s: ${String(outcome).slice(0, 160)})`);
+      }
+      console.log(`  [sonho na nuvem ok] 503 ${error} de mentira: ${error === 'provider_billing' ? 'PULADO' : 'falhou'} em ${seconds.toFixed(1)} s`);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
 }
 
 async function main() {
@@ -1176,6 +1300,8 @@ async function main() {
     );
     await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
     await waitForText(page, 'Manifestar', 20000);
+  } else {
+    await assertDreamCloudPolicy(browser, page);
   }
   await clickTestId(page, 'open-dream-journal');
   await waitForText(page, 'Meus sonhos', 20000);
@@ -1213,27 +1339,10 @@ async function main() {
     USE_GEMINI
   );
   const dreamVersion = await dreamVersionHandle.jsonValue();
-  if (USE_GEMINI && dreamVersion === 'dream-local-v4') {
-    await page.waitForSelector('[data-testid="dream-cloud-fallback"]', {
-      visible: true,
-      timeout: 10000,
-    });
-    await page.waitForSelector('[data-testid="retry-dream-cloud"]', {
-      visible: true,
-      timeout: 10000,
-    });
-    await clickTestId(page, 'retry-dream-cloud');
-    await page.waitForFunction(
-      () => {
-        const entries = JSON.parse(localStorage.getItem('@stella_state_v2') || '{}').morningRitual?.entries || [];
-        return entries[0]?.generatorVersion === 'celeste-dream-v3';
-      },
-      { timeout: 30000, polling: 200 }
-    );
-    await page.waitForSelector('[data-testid="dream-cloud-fallback"]', {
-      hidden: true,
-      timeout: 10000,
-    });
+  const dreamCloudSkipped =
+    USE_GEMINI && dreamVersion === 'dream-local-v4' && (await retryDreamCloud(page)) === 'billing';
+  if (dreamCloudSkipped) {
+    console.log('  [sonho] nuvem PULADO (cobranca do Gemini, 503 provider_billing): fica o sonho local com "Tentar reflexão em nuvem"');
   }
   await sleep(900);
   // o sonho ganhou a cena viva: sem imagem do sonho, a cena pronta, com o rótulo honesto
@@ -1666,7 +1775,12 @@ async function main() {
   }
   await duplicateTemplate.close();
 
-  console.log('✅ E2E COMPLETO PASSOU: onboarding + persistência + idempotência + links órfãos + app principal');
+  if (dreamCloudSkipped) console.warn(providerBillingWarning(['transformar-sonho (Portao E2E)']));
+  console.log(
+    `✅ E2E COMPLETO PASSOU: onboarding + persistência + idempotência + links órfãos + app principal${
+      dreamCloudSkipped ? ' (sonho na nuvem PULADO: cobranca do Gemini)' : ''
+    }`
+  );
   await browser.close();
 }
 

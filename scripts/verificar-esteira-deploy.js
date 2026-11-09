@@ -577,6 +577,16 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(e2eSource, /afterClick: \(\) => \{\s*uiSmokeCloudPhase = 'after-consent'/);
   assert.match(e2eSource, /clickTestId\(page, 'retry-dream-cloud'\)/);
   assert.match(e2eSource, /entries\[0\]\?\.generatorVersion === 'celeste-dream-v3'/);
+  assert.match(
+    e2eSource,
+    /\} else \{\s*await assertDreamCloudPolicy\(browser, page\);/,
+    'o E2E local prova com o transformador de mentira: 503 provider_billing vira PULADO e outro 503 falha na hora'
+  );
+  assert.match(
+    e2eSource,
+    /USE_GEMINI && dreamVersion === 'dream-local-v4' && \(await retryDreamCloud\(page\)\) === 'billing'/,
+    'em producao o sonho na nuvem passa pelo mesmo passo que o E2E local prova'
+  );
   const blockedUiSmokeRoutes = e2eSource.slice(
     e2eSource.indexOf('const paidPathsBlockedInUiSmoke'),
     e2eSource.indexOf('const paidApiPaths')
