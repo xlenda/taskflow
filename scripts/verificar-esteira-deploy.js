@@ -578,11 +578,13 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
   assert.match(e2eSource, /clickTestId\(page, 'retry-dream-cloud'\)/);
   // 09/11: o app descarta a resposta de erro sem ler o corpo e o Chrome nunca termina de carregá-la; o response.json()
   // do Puppeteer esperava para sempre (1h30 parado em produção). O passo lê a resposta pelo espião da página.
-  const retryDreamSource = e2eSource.slice(
-    e2eSource.indexOf('async function retryDreamCloud('),
-    e2eSource.indexOf('async function assertDreamCloudPolicy(')
+  const retryDreamStart = e2eSource.indexOf('async function retryDreamCloud(');
+  const retryDreamEnd = e2eSource.indexOf('async function assertDreamCloudPolicy(');
+  assert.ok(
+    retryDreamStart >= 0 && retryDreamEnd > retryDreamStart,
+    'retryDreamCloud existe e vem antes de assertDreamCloudPolicy'
   );
-  assert.ok(retryDreamSource.length > 0, 'retryDreamCloud vem antes de assertDreamCloudPolicy');
+  const retryDreamSource = e2eSource.slice(retryDreamStart, retryDreamEnd);
   assert.match(retryDreamSource, /window\.__celesteDreamResponses\[wanted\]/, 'o passo le a resposta pelo espiao da pagina');
   assert.doesNotMatch(
     retryDreamSource,

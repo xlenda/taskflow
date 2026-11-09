@@ -20,6 +20,9 @@ const QA_JOURNEY = buildPersonalJourneySuites({
   desire: 'Meu caminho',
   profile: QA_PROFILE,
   originLang: 'pt',
+  // a mesma categoria da manifestacao semeada abaixo: o app passa m.category e ela entra na semente dos textos
+  // (bancos de variedade); sem ela a lista esperada nao bate com a tela (09/11)
+  category: 'Career',
 });
 const QA_AFFIRMATION_TEXTS = QA_JOURNEY.pt.affirmations.map((item) => item.text);
 const SEED = {

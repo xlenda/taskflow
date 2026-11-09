@@ -586,7 +586,8 @@ function installDreamResponseSpy() {
   window.fetch = function dreamSpiedFetch(...args) {
     let pathname = '';
     try {
-      const target = typeof args[0] === 'string' ? args[0] : args[0] && args[0].url;
+      // string, URL ou Request (um invólucro acima do espião pode chamar fetch(new URL(...)))
+      const target = typeof Request !== 'undefined' && args[0] instanceof Request ? args[0].url : String(args[0]);
       pathname = new URL(target, location.href).pathname;
     } catch (_error) {}
     if (pathname !== '/api/transformar-sonho') return originalFetch.apply(this, args);
@@ -641,9 +642,18 @@ async function retryDreamCloud(page, timeout = 30000) {
     if (seen.cloud) break;
     const response = seen.response;
     if (!response && Date.now() > clickedAt + 10000) {
-      throw new Error('Sonho: o "Tentar reflexão em nuvem" não chamou /api/transformar-sonho em 10 s');
+      throw new Error(
+        'Sonho: nenhum pedido a /api/transformar-sonho em 10 s após "Tentar reflexão em nuvem" ' +
+          '(botão sem pedido, ou o BotID barrou no cliente antes do fetch)'
+      );
     }
-    if (response && response.error) throw new Error(`Sonho na nuvem falhou no navegador: ${response.error}`);
+    if (response && response.error) {
+      throw new Error(
+        response.error === 'AbortError'
+          ? 'Sonho na nuvem: o app desistiu antes da resposta (API_TIMEOUT_MS de services/transformDream.js)'
+          : `Sonho na nuvem falhou no navegador: ${response.error}`
+      );
+    }
     if (response && response.done && response.status >= 400) {
       if (liveProviderBilling({ status: response.status, payload: response.payload })) {
         await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { visible: true, timeout: 10000 });
@@ -653,7 +663,10 @@ async function retryDreamCloud(page, timeout = 30000) {
         `Sonho na nuvem falhou no servidor: HTTP ${response.status} ${(response.payload && response.payload.error) || 'sem_erro'}`
       );
     }
-    if (Date.now() > deadline) throw new Error(`Sonho na nuvem não chegou em ${timeout / 1000} s`);
+    if (Date.now() > deadline) {
+      const seenLabel = response ? `HTTP ${response.status}, corpo ${response.done ? 'lido' : 'pendente'}` : 'sem resposta';
+      throw new Error(`Sonho na nuvem não chegou em ${timeout / 1000} s (espião: ${seenLabel})`);
+    }
     await sleep(200);
   }
   await page.waitForSelector('[data-testid="dream-cloud-fallback"]', { hidden: true, timeout: 10000 });
