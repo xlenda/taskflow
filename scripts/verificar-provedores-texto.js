@@ -614,6 +614,10 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     const scenePrompt = arrivals.find((call) => call.kind === 'scene').body;
     const suitePrompt = arrivals.find((call) => call.kind === 'suite').body;
     assert.match(scenePrompt.system[0].text, /^You write one personalized Celeste Anchor Scene/);
+    // deploy #4: the receipts list the answers drawn on, paraphrase included; no demand to echo her words
+    assert.match(scenePrompt.system[0].text, /A natural paraphrase of an answer counts as drawing on it/);
+    assert.match(scenePrompt.system[0].text, /never give her a person, place, job, or possession she did not mention/);
+    assert.doesNotMatch(scenePrompt.system[0].text, /at least two must appear|reuse a distinctive short phrase/);
     assert.doesNotMatch(scenePrompt.system[0].text, /Scene hints for this person|exactly six visions/, 'the scene call writes only the scene');
     assert.strictEqual(scenePrompt.max_tokens, sceneEndpoint._internals.providerBudgets().scene + 1_536);
     assert.match(suitePrompt.system[0].text, /^You write the personalized Celeste journey suite/);
