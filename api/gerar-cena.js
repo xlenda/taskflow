@@ -10,10 +10,11 @@ const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent')
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const PROMPT_VERSION = 'celeste-scene-v8';
-const LEGACY_PROMPT_VERSION = 'celeste-scene-v8';
-// v4: with Claude/OpenAI the 6+6 suite has its own call, in parallel with the Anchor Scene
-const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v4';
+// v9: the field receipts list the answers drawn on, paraphrase included (no echo of her exact words)
+const PROMPT_VERSION = 'celeste-scene-v9';
+const LEGACY_PROMPT_VERSION = 'celeste-scene-v9';
+// v4: with Claude/OpenAI the 6+6 suite has its own call, in parallel with the Anchor Scene; v5: the scene part's v9
+const JOURNEY_SUITE_PROMPT_VERSION = 'celeste-journey-suite-v5';
 // Different people kept getting the same cups, mint water and notebooks: each request gets its own imagined settings
 // and senses for the six visions, chosen from its own data (the same person always gets the same hints).
 const JOURNEY_SETTINGS = [
@@ -784,9 +785,8 @@ function buildSystemInstruction(input = {}) {
     'The anchorIdentity is a process identity the user can practice regardless of the outcome.',
     'The anchorStep is one safe, concrete action of ten minutes or less, fully under the user\'s control.',
     'When obstacle is present, write anchorStep as an explicit if-then plan that repeats the user\'s obstacle as a recognizable cue: If/When [cue], then I will [small action].',
-    'affirmationFieldsUsed must list only source field keys visibly woven into the affirmation.',
-    'storyFieldsUsed must list only source field keys visibly woven into the story.',
-    'For every listed field, reuse a distinctive short phrase in that specific output. When the source has multiple meaningful words, at least two must appear so the personalization receipt can be verified.',
+    'affirmationFieldsUsed must list only the answers the affirmation actually draws on; storyFieldsUsed must list only the answers the story actually draws on.',
+    'A natural paraphrase of an answer counts as drawing on it; you do not need to repeat her exact words. Never list a field you did not use, and never give her a person, place, job, or possession she did not mention.',
     'Both field lists must include desire because both the affirmation and story must be anchored in what the user asked for.',
     'Return JSON that follows the response schema and nothing else.',
   ].join('\n');
@@ -1052,18 +1052,23 @@ function fieldIsGrounded(key, text, input) {
   return matched.length >= requiredMatches;
 }
 
-function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_KEYS) {
+// The receipt must be truthful: every listed field is an answer she actually gave (non-empty). Paraphrase counts as
+// use, so her words need not be echoed (deploy #4: realistic profiles were refused twice per attempt for not echoing
+// two words of a field — real users' AI scenes fell back to the local one). A field whose words are not found is only
+// noted (receipt_unverified), never refused.
+function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_KEYS, notes) {
   if (!Array.isArray(raw[property])) throw new GenerationError('invalid_generation', undefined, `scene:${property}_missing`);
   const seen = new Set();
   const used = [];
   for (const key of raw[property]) {
-    if (
-      !allowedKeys.includes(key) ||
-      !input.availablePersonalization.has(key) ||
-      !fieldIsGrounded(key, output, input)
-    ) {
-      throw new GenerationError('invalid_generation', undefined, `scene:${property}:${allowedKeys.includes(key) ? key : 'unknown_key'}`);
+    if (!allowedKeys.includes(key) || !input.availablePersonalization.has(key)) {
+      throw new GenerationError(
+        'invalid_generation',
+        undefined,
+        `scene:${property}:${allowedKeys.includes(key) ? key : 'unknown_key'}:not_answered`
+      );
     }
+    if (notes && !fieldIsGrounded(key, output, input)) notes.push(`receipt_unverified:${property}:${key}`);
     if (!seen.has(key)) {
       seen.add(key);
       used.push(key);
@@ -1071,6 +1076,41 @@ function validateFieldReceipt(raw, property, output, input, allowedKeys = FIELD_
   }
   if (!seen.has('desire')) throw new GenerationError('invalid_generation', undefined, `scene:${property}:no_desire`);
   return used;
+}
+
+// A capitalized word in the middle of a sentence names someone or somewhere. When none of her answers contains it, it
+// is a person or place she never mentioned, written as part of her life: an invented personal fact. Accents and case
+// do not matter; sentence and quote openings are skipped.
+const PROPER_NOUN_ALLOWED = new Set([
+  'celeste', 'deus', 'god', 'mom', 'dad', 'mum',
+  // the app's own words: Cena-Âncora / Anchor Scene, Jornada / Journey and the six areas
+  'cena', 'ancora', 'anchor', 'scene', 'jornada', 'journey', 'espelho', 'vivo', 'living', 'mirror',
+  'amor', 'prosperidade', 'carreira', 'saude', 'confianca', 'paz',
+  'love', 'wealth', 'career', 'health', 'confidence', 'peace',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+]);
+
+function inventsProperNoun(texts, input) {
+  // without her answers there is nothing to compare with (the deploy smoke re-checks a suite with { lang } only)
+  if (!input || !input.desire) return false;
+  const known = matchWords([input.desire, ...Object.values(input.profile || {})].join(' '));
+  const isKnown = (word) => known.some((candidate) =>
+    candidate === word ||
+    (Math.min(candidate.length, word.length) >= 5 && (candidate.startsWith(word) || word.startsWith(candidate)))
+  );
+  for (const text of texts) {
+    const value = String(text || '');
+    const pattern = /(^|[^\p{L}\p{N}])(\p{Lu}\p{Ll}{2,})/gu;
+    let match;
+    while ((match = pattern.exec(value))) {
+      const before = value.slice(0, match.index + match[1].length).replace(/\s+$/, '');
+      if (!before || /[.!?:;…"“”'‘’([—–-]$/.test(before)) continue;
+      const word = matchWords(match[2])[0];
+      if (word && !PROPER_NOUN_ALLOWED.has(word) && !isKnown(word)) return true;
+    }
+  }
+  return false;
 }
 
 function comparisonText(value) {
@@ -1112,7 +1152,7 @@ function repeatsPreviousChapter(scene, previousScene) {
   return comparableFields.length >= 3 && wordSimilarity(currentCombined, previousCombined) >= 0.86;
 }
 
-function validateGeneratedScene(raw, input) {
+function validateGeneratedScene(raw, input, notes) {
   if (!isPlainObject(raw)) throw new GenerationError('invalid_generation', undefined, 'scene:not_object');
   const scene = {};
   for (const [field, limits] of Object.entries(OUTPUT_LIMITS)) {
@@ -1148,13 +1188,17 @@ function validateGeneratedScene(raw, input) {
   if (RAW_PROFILE_DUMP.some((pattern) => pattern.test(scene.affirmation))) {
     throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_profile_dump');
   }
+  if (inventsProperNoun(Object.values(scene), input)) {
+    throw new GenerationError('invalid_generation', undefined, 'scene:invented_proper_noun');
+  }
 
   const affirmationUsed = validateFieldReceipt(
     raw,
     'affirmationFieldsUsed',
     scene.affirmation,
     input,
-    AFFIRMATION_FIELD_KEYS
+    AFFIRMATION_FIELD_KEYS,
+    notes
   );
   const safeProfileFields = AFFIRMATION_FIELD_KEYS.filter(
     (key) => key !== 'desire' && input.availablePersonalization.has(key)
@@ -1162,14 +1206,16 @@ function validateGeneratedScene(raw, input) {
   if (safeProfileFields.length && !affirmationUsed.some((key) => key !== 'desire')) {
     throw new GenerationError('invalid_generation', undefined, 'scene:affirmation_no_profile_field');
   }
-  const storyUsed = validateFieldReceipt(raw, 'storyFieldsUsed', scene.story, input);
+  const storyUsed = validateFieldReceipt(raw, 'storyFieldsUsed', scene.story, input, FIELD_KEYS, notes);
   if (input.availablePersonalization.has('obstacle')) {
     const conditionalPlan = input.lang === 'pt'
       ? /\b(se|quando)\b.{2,180}\b(ent[aã]o|vou|farei|irei)\b/i
       : /\b(if|when)\b.{2,180}\b(then|i will|i'll)\b/i;
-    if (!conditionalPlan.test(scene.anchorStep) || !fieldIsGrounded('obstacle', scene.anchorStep, input)) {
+    // the if-then shape is required; her obstacle as the cue may be paraphrased ("quando o cansaço apertar")
+    if (!conditionalPlan.test(scene.anchorStep)) {
       throw new GenerationError('invalid_generation', undefined, 'scene:anchor_step_if_then');
     }
+    if (notes && !fieldIsGrounded('obstacle', scene.anchorStep, input)) notes.push('receipt_unverified:anchorStep:obstacle');
   }
   const allUsed = [...new Set([...affirmationUsed, ...storyUsed])];
   scene.affirmationPersonalizedWith = affirmationUsed.map(
@@ -1270,6 +1316,9 @@ function validateGeneratedJourneySuite(raw, input) {
     return { key: `affirmation:${category}`, category, text, visualBrief };
   });
 
+  if (inventsProperNoun([...visions.map((item) => item.story), ...affirmations.map((item) => item.text)], input)) {
+    throw new GenerationError('invalid_generation', undefined, 'suite:invented_proper_noun');
+  }
   ensureUniqueJourneyValues(visions, ['title', 'story', 'visualBrief']);
   ensureUniqueJourneyValues(affirmations, ['text', 'visualBrief']);
   ensureUniqueJourneyValues(
@@ -1425,7 +1474,20 @@ async function generateProviderPart(part, deadlineAt, signal) {
       continue;
     }
     try {
-      return { receipt, value: part.validate(receipt.data) };
+      const notes = [];
+      const value = part.validate(receipt.data, notes);
+      // soft signals of an accepted answer (e.g. a receipt field paraphrased beyond recognition): logged, never refused
+      for (const note of notes) {
+        textProvider.logTextEvent({
+          event: 'celeste_text_note',
+          operation: spec.operation,
+          provider: receipt.provider,
+          model: receipt.model,
+          code: 'receipt_unverified',
+          reason: note,
+        });
+      }
+      return { receipt, value };
     } catch (error) {
       if (error?.code === 'invalid_generation') {
         textProvider.logTextEvent({
@@ -1455,7 +1517,7 @@ async function generateWithProviders(input, seed, deadlineAt) {
   const parts = [{
     spec: (repair, maxTokens) => buildTextSpec({ ...input, includeJourneySuite: false }, seed, repair, maxTokens),
     retryMaxOutputTokens: SCENE_RETRY_MAX_OUTPUT_TOKENS,
-    validate: (data) => validateGeneratedScene(data, input),
+    validate: (data, notes) => validateGeneratedScene(data, input, notes),
   }];
   if (input.includeJourneySuite) {
     parts.push({

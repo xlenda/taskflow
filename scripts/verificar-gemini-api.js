@@ -547,12 +547,23 @@ test('Gemini scene API contract', async (t) => {
       }, validated.value),
       /invalid_generation/
     );
+    // deploy #4: a receipt may claim an answer the text paraphrases (her words need not be echoed) — only noted;
+    // a field she never answered can never be claimed
+    const notes = [];
+    assert.doesNotThrow(() => endpoint._internals.validateGeneratedScene({
+      ...raw,
+      affirmationFieldsUsed: ['desire', 'dreamHome'],
+    }, validated.value, notes));
+    assert.ok(notes.includes('receipt_unverified:affirmationFieldsUsed:dreamHome'), notes.join(', '));
+    const unanswered = endpoint._internals.validateInput(validBody({
+      profile: { ...validBody().profile, dreamHome: '', workFeeling: '' },
+    })).value;
     assert.throws(
       () => endpoint._internals.validateGeneratedScene({
         ...raw,
         affirmationFieldsUsed: ['desire', 'dreamHome'],
-      }, validated.value),
-      /invalid_generation/
+      }, unanswered),
+      (error) => error.reason === 'scene:affirmationFieldsUsed:dreamHome:not_answered'
     );
     assert.throws(
       () => endpoint._internals.validateGeneratedScene({
@@ -573,9 +584,9 @@ test('Gemini scene API contract', async (t) => {
     assert.throws(
       () => endpoint._internals.validateGeneratedScene({
         ...raw,
-        storyFieldsUsed: [...raw.storyFieldsUsed, 'workFeeling'],
-      }, validated.value),
-      /invalid_generation/
+        storyFieldsUsed: [...raw.storyFieldsUsed.filter((key) => key !== 'dreamHome'), 'workFeeling'],
+      }, unanswered),
+      (error) => error.reason === 'scene:storyFieldsUsed:workFeeling:not_answered'
     );
 
     const roughProfile = endpoint._internals.validateInput(validBody({
@@ -652,7 +663,7 @@ test('Gemini scene API contract', async (t) => {
     assert.strictEqual(first.body.generation.provider, 'gemini');
     assert.strictEqual(first.body.generation.fallbackUsed, false);
     assert.strictEqual(first.body.generation.model, 'gemini-3.7-flash');
-    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v8');
+    assert.strictEqual(first.body.generation.promptVersion, 'celeste-scene-v9');
     assert.strictEqual(first.body.generation.knowledgeVersion, 'celeste-knowledge-v2');
     assert.strictEqual(first.body.generation.seed, second.body.generation.seed);
     assert.deepStrictEqual(first.body.scene.affirmationPersonalizedWith, [

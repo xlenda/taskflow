@@ -602,7 +602,7 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     assert.deepStrictEqual(arrivals.map((call) => call.kind).sort(), ['scene', 'suite']);
     assert.strictEqual(res.body.generation.source, 'celeste-ai');
     assert.strictEqual(res.body.generation.provider, 'anthropic');
-    assert.strictEqual(res.body.generation.promptVersion, 'celeste-journey-suite-v4');
+    assert.strictEqual(res.body.generation.promptVersion, 'celeste-journey-suite-v5');
     assert.strictEqual(res.body.scene.story, validScene().story, 'the scene comes from the scene call');
     const { visions, affirmations } = res.body.journeySuite;
     assert.deepStrictEqual(visions.map((item) => item.category), JOURNEY_CATEGORIES, 'six visions, in area order');
@@ -988,5 +988,130 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
       assert.strictEqual(sent.suite.effort, expectedSuiteEffort, `${label}: suite effort`);
       assert.strictEqual(sent.suite.model, sent.scene.model, `${label}: same model for both parts`);
     }
+  });
+
+  // deploy #4 (production smoke, the deploy's own profile): the scene was refused twice per attempt because a receipt
+  // field was paraphrased instead of echoed (2 words of the answer required). Attempt 1: storyFieldsUsed:partnerDesire,
+  // then affirmationFieldsUsed:aboutYou; attempt 2: storyFieldsUsed:aboutYou, then storyFieldsUsed:location -> 502.
+  const claraBody = () => ({
+    desire: 'ter uma rotina mais calma e tempo para minha familia',
+    category: 'Peace',
+    lang: 'pt',
+    profile: {
+      name: 'Clara',
+      city: 'Belo Horizonte',
+      work: 'professora',
+      whyMatters: 'estar presente com minha familia',
+      obstacle: 'tempo ou energia',
+      aboutYou: 'organizada, carinhosa e um pouco ansiosa',
+      dreamHome: 'Cozy Cottage',
+      partnerDesire: 'companheirismo e amizade',
+      cloudPersonalization: true,
+      cloudAdultConfirmed: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    },
+    cloudConsent: true,
+    cloudConsentVersion: CLOUD_CONSENT_VERSION,
+    adultConfirmed: true,
+    includeJourneySuite: true,
+  });
+  const claraScene = (overrides = {}) => ({
+    intention: 'Viver dias mais calmos, com tempo de verdade para quem eu amo.',
+    affirmation: 'Eu escolho uma rotina mais calma para estar presente com a minha familia todos os dias.',
+    story: 'O sinal da ultima aula toca e voce, professora, junta os cadernos sem pressa. Em Belo Horizonte o fim de tarde chega dourado pela janela da sala. A rotina mais calma que voce quer aparece num gesto pequeno: voce deixa o celular na bolsa e pensa no jantar com a familia. Ao seu lado, alguem que divide a vida com voce como um bom amigo pergunta como foi o dia, e voce responde inteira. O cansaco ainda pode voltar amanha, e tudo bem; hoje voce escolhe estar presente.',
+    anchorIdentity: 'Eu protejo o meu tempo para estar presente com quem importa.',
+    anchorStep: 'Quando eu sentir que o cansaco apertou, entao vou respirar por dois minutos antes de abrir as mensagens.',
+    affirmationFieldsUsed: ['desire', 'whyMatters'],
+    storyFieldsUsed: ['desire', 'work', 'location', 'partnerDesire', 'whyMatters'],
+    ...overrides,
+  });
+
+  await t.test('replay of deploy #4: paraphrased receipts are accepted (both logged attempts now 200 on the first call)', async () => {
+    const suite = createPersonalContentSuite({ desire: claraBody().desire, profile: claraBody().profile, lang: 'pt', category: 'Peace' });
+    // each answer is one that master 81b0e84 refused with exactly the logged reason (the old rule, kept here as
+    // fieldIsGrounded, finds fewer than two of her words), and the new rule only notes
+    const attempts = [
+      // attempt 1: the partner wish as "alguem que divide a vida como um bom amigo"; the repair paraphrased aboutYou
+      ['attempt 1', ['storyFieldsUsed', 'partnerDesire'], ['affirmationFieldsUsed', 'aboutYou'], [claraScene(), claraScene({
+        affirmation: 'Eu escolho uma rotina mais calma e tempo para minha familia, com o cuidado sereno que me define.',
+        affirmationFieldsUsed: ['desire', 'aboutYou'],
+      })]],
+      // attempt 2: herself as "atenta e afetuosa"; the repair named her city as "a capital mineira"
+      ['attempt 2', ['storyFieldsUsed', 'aboutYou'], ['storyFieldsUsed', 'location'], [
+        claraScene({ storyFieldsUsed: ['desire', 'work', 'aboutYou'], story: claraScene().story.replace('Ao seu lado,', 'Atenta e afetuosa como sempre, voce sorri; ao seu lado,') }),
+        claraScene({ storyFieldsUsed: ['desire', 'work', 'location'], story: claraScene().story.replace('Em Belo Horizonte', 'Na capital mineira') }),
+      ]],
+    ];
+    const replayInput = sceneEndpoint._internals.validateInput(claraBody()).value;
+    for (const [label, firstRefusal, repairRefusal, answers] of attempts) {
+      for (const [[property, field], answer] of [[firstRefusal, answers[0]], [repairRefusal, answers[1]]]) {
+        const text = property === 'storyFieldsUsed' ? answer.story : answer.affirmation;
+        assert.strictEqual(sceneEndpoint._internals.fieldIsGrounded(field, text, replayInput), false, `${label}: ${property}:${field} was not echoed`);
+      }
+    }
+    for (const [label, firstRefusal, , answers] of attempts) {
+      configureSceneRoute();
+      process.env.CELESTE_TEXT_FALLBACK = 'none';
+      process.env.CELESTE_TEXT_LOG_USAGE = '1';
+      let sceneCalls = 0;
+      global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body);
+        if (isSuiteCall(body)) return response(200, anthropicSuitePayload(suite));
+        sceneCalls += 1;
+        return response(200, anthropicScenePayload(answers[Math.min(sceneCalls, answers.length) - 1]));
+      };
+      const lines = [];
+      const realInfo = console.info;
+      console.info = (line) => lines.push(JSON.parse(String(line)));
+      let res;
+      try {
+        res = await invokeScene(claraBody());
+      } finally {
+        console.info = realInfo;
+        delete process.env.CELESTE_TEXT_LOG_USAGE;
+      }
+      assert.strictEqual(res.statusCode, 200, `${label}: ${JSON.stringify(res.body)}`);
+      assert.strictEqual(sceneCalls, 1, `${label}: the first answer is served, no repair`);
+      assert.deepStrictEqual(lines.filter((event) => event.code === 'invalid_generation'), [], `${label}: nothing refused`);
+      const notes = lines.filter((event) => event.event === 'celeste_text_note').map((event) => event.reason);
+      assert.ok(notes.includes(`receipt_unverified:${firstRefusal.join(':')}`), `${label}: the paraphrase is noted (${notes.join(', ')})`);
+      assert.ok(res.body.scene.personalizedWith.length >= 2, `${label}: the receipt still lists what she shared`);
+    }
+    // the repairs of both attempts pass the validator too
+    for (const [, , , answers] of attempts) {
+      for (const answer of answers) assert.doesNotThrow(() => sceneEndpoint._internals.validateGeneratedScene(answer, replayInput));
+    }
+  });
+
+  await t.test('receipts stay truthful: an unanswered field or an invented person or place is refused', () => {
+    const input = sceneEndpoint._internals.validateInput(claraBody()).value;
+    const reasonOf = (scene, value = input) => {
+      try {
+        sceneEndpoint._internals.validateGeneratedScene(scene, value);
+        return 'accepted';
+      } catch (error) {
+        return error.reason;
+      }
+    };
+    // a field she never answered
+    assert.strictEqual(reasonOf(claraScene({ storyFieldsUsed: ['desire', 'pastInfluence'] })), 'scene:storyFieldsUsed:pastInfluence:not_answered');
+    assert.strictEqual(reasonOf(claraScene({ affirmationFieldsUsed: ['desire', 'partner'] })), 'scene:affirmationFieldsUsed:unknown_key:not_answered');
+    // a place or a person she never mentioned, written as part of her life (case and accents do not matter)
+    assert.strictEqual(reasonOf(claraScene({ story: claraScene().story.replace('Em Belo Horizonte', 'No apartamento em Curitiba') })), 'scene:invented_proper_noun');
+    assert.strictEqual(reasonOf(claraScene({ story: claraScene().story.replace('alguem que divide', 'o Joaquim, que divide') })), 'scene:invented_proper_noun');
+    assert.strictEqual(reasonOf(claraScene({ intention: 'Viver dias calmos com a Júlia e com tempo para quem eu amo.' })), 'scene:invented_proper_noun');
+    // her own place, with or without accents, and the app's words are not inventions
+    const accented = sceneEndpoint._internals.validateInput({ ...claraBody(), profile: { ...claraBody().profile, city: 'Sao Paulo' } }).value;
+    assert.strictEqual(reasonOf(claraScene({ story: claraScene().story.replace('Em Belo Horizonte', 'Em São Paulo') }), accented), 'accepted');
+    assert.strictEqual(reasonOf(claraScene({ story: claraScene().story.replace('Em Belo Horizonte', 'Na sua Cena Âncora') })), 'accepted');
+    // honesty rules stay strict
+    assert.strictEqual(reasonOf(claraScene({ affirmation: 'Eu já sou a pessoa que tem uma rotina calma; isso está vindo na minha direção.' })), 'scene:affirmation_unbelievable');
+    assert.strictEqual(reasonOf(claraScene({ story: `${claraScene().story} Isso vai acontecer em 3 meses, garantido.` })), 'scene:unsafe_claim');
+    assert.strictEqual(reasonOf(claraScene({ anchorStep: 'Respirar por dois minutos antes de abrir as mensagens.' })), 'scene:anchor_step_if_then');
+    // the suite: an invented place in a vision is refused too
+    const suite = createPersonalContentSuite({ desire: input.desire, profile: claraBody().profile, lang: 'pt', category: 'Peace' });
+    const invented = { ...suite, visions: suite.visions.map((item, index) => (index === 2 ? { ...item, story: `${item.story} Depois, voce caminha pela orla de Copacabana.` } : item)) };
+    assert.throws(() => sceneEndpoint._internals.validateGeneratedJourneySuite(invented, input), (error) => error.reason === 'suite:invented_proper_noun');
+    assert.doesNotThrow(() => sceneEndpoint._internals.validateGeneratedJourneySuite(suite, input));
   });
 });

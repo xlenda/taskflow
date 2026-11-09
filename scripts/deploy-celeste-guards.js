@@ -516,7 +516,7 @@ function validateLiveSceneSuite(result, validateJourneySuite) {
   if (generation.provider !== 'anthropic') {
     throw new Error(`Celeste AI nao confirmou Anthropic como provider primario: ${generation.provider || 'ausente'}`);
   }
-  if (generation.promptVersion !== 'celeste-journey-suite-v4') {
+  if (generation.promptVersion !== 'celeste-journey-suite-v5') {
     throw new Error(`Suite 6+6 ao vivo nao confirmou o prompt esperado: ${generation.promptVersion || 'ausente'}`);
   }
   if (generation.knowledgeVersion !== 'celeste-knowledge-v2') {
