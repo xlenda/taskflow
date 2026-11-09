@@ -15,7 +15,9 @@ const {
   anonymousSignupHeaders,
   aiReportRolloutMode,
   extractAnonymousAccessToken,
+  liveProviderBilling,
   parseDeploymentOutput,
+  providerBillingWarning,
   runLiveSuite,
   validateAiReportGatewayBackend,
   validateActorQuotaBackend,
@@ -431,6 +433,7 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     'verificar-conteudo-pessoal-suite.js',
     'verificar-legenda-sincronizada.js',
     'verificar-barra-perola.js',
+    'verificar-cobranca-provedor.js',
   ]) {
     assert.ok(deploySource.includes(script), `gate obrigatorio ausente: ${script}`);
   }
@@ -703,6 +706,42 @@ test('smoke ao vivo da Cena-Ancora + suite 6+6: regras do servidor, cota pulada 
   ]) {
     assert.throws(() => check(result), pattern, label);
   }
+});
+
+// 08/11: Gemini without prepaid credit (402) took translation, dream and images down for everyone; the routes say
+// 503 provider_billing. On those smokes that is the owner's billing: skipped with a loud warning, never a rollback.
+test('smoke ao vivo do Gemini: cobranca (provider_billing) avisa e pula; qualquer outra falha reverte', () => {
+  assert.strictEqual(liveProviderBilling({ status: 503, payload: { error: 'provider_billing' } }), true);
+  assert.strictEqual(liveProviderBilling({ status: 503, payload: { error: 'provider_billing', stage: 'provider' } }), true, 'formato do visual');
+  for (const result of [
+    { status: 503, payload: { error: 'translation_unavailable' } },
+    { status: 503, payload: { error: 'generation_unavailable' } },
+    { status: 503, payload: { error: 'visual_unavailable', stage: 'provider' } },
+    { status: 504, payload: { error: 'translation_timeout' } },
+    { status: 402, payload: { error: 'provider_billing' } },
+    { status: 200, payload: {} },
+    { status: 503, payload: null },
+    undefined,
+  ]) {
+    assert.strictEqual(liveProviderBilling(result), false, `nao e cobranca: ${JSON.stringify(result)}`);
+  }
+  const warning = providerBillingWarning(['traducao', 'imagem']);
+  assert.match(warning, /traducao, imagem PULADO/);
+  assert.match(warning, /NAO foi revertido/);
+  assert.match(warning, /https:\/\/ai\.studio\/projects -> Billing/);
+  // each Gemini smoke: billing skips; anything else keeps the full checks (and a failure rolls back)
+  for (const [key, label, check] of [
+    ['translation', 'traducao', /Traducao\/BotID ao vivo falhou/],
+    ['dream', 'sonho', /Sonho\/BotID ao vivo falhou/],
+    ['visual', 'imagem', /Visual\/BotID ao vivo falhou/],
+  ]) {
+    const guard = new RegExp(
+      `if \\(liveProviderBilling\\(results\\.${key}\\)\\) billingSkipped\\.push\\('${label}'\\);\\s*else \\{\\s*assert\\(results\\.${key}\\.status === 200`
+    );
+    assert.match(deploySource, guard, `${key}: cobranca pula, o resto e conferido`);
+    assert.match(deploySource, check);
+  }
+  assert.match(deploySource, /if \(billingSkipped\.length\) console\.warn\(providerBillingWarning\(billingSkipped\)\);/);
 });
 
 test('smoke ao vivo da suite: uma chamada; a segunda so depois de um 502 do validador, nunca depois de um 504', async () => {

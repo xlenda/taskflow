@@ -32,6 +32,8 @@ const ENV_KEYS = [
   'CELESTE_ALLOWED_ORIGINS',
   'CELESTE_TEXT_FALLBACK',
   'CELESTE_TEXT_FALLBACK_RESERVE_MS',
+  'CELESTE_SUITE_TEXT_EFFORT',
+  'CELESTE_TEXT_LOG_USAGE',
   'CELESTE_TEXT_PRIMARY',
   'CELESTE_TEXT_PROVIDER_TIMEOUT_MS',
   'GEMINI_API_KEY',
@@ -224,11 +226,6 @@ function anthropicSuitePayload(suite) {
 function isSuiteCall(body) {
   const schema = (body.output_config && body.output_config.format.schema) || (body.text && body.text.format.schema);
   return Boolean(schema && schema.properties && schema.properties.visions);
-}
-
-// the deadline must hold the slower part's two calls (the parts run in parallel), plus identity and quota
-function deadlineForParts(sceneCall, sceneRetryCall, suiteCall) {
-  return 10_000 + Math.max(sceneCall + sceneRetryCall, 2 * suiteCall);
 }
 
 function hangUntilAborted(signal) {
@@ -486,29 +483,41 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
   // in parallel, each with room to finish, inside one deadline that the function, the app and the deploy smoke outlive.
   await t.test('timeouts line up: a call can finish, the deadline holds a repair, the function and the app outlive it', async () => {
     const { minimumCallMs, providerTimeoutMs, defaultSessionDeadlineMs } = provider._internals;
+    const allowance = provider._internals.thinkingAllowanceTokens();
+    const rate = provider._internals.slowOutputTokensPerSecond();
     const budgets = sceneEndpoint._internals.providerBudgets();
-    const sceneCall = minimumCallMs({ maxOutputTokens: budgets.scene });
-    const sceneRetryCall = minimumCallMs({ maxOutputTokens: Math.max(budgets.scene, budgets.truncationRetry) });
-    const suiteCall = minimumCallMs({ maxOutputTokens: budgets.suite });
-    const largestCall = minimumCallMs({ maxOutputTokens: provider._internals.maxOutputTokens() });
-    // connection + first token, then max_tokens (output + 1,536) at 70 tokens/s (22/10 production: 94-101 tokens/s)
-    assert.strictEqual(suiteCall, 5_000 + Math.ceil(((budgets.suite + 1_536) * 1_000) / 70));
-    assert.ok(sceneCall < suiteCall && suiteCall <= largestCall, 'a bigger answer needs more time');
-    // 22/10 smoke: the scene's first call was cut at 3,336 tokens twice; the suite was still writing after 52 s
-    assert.ok(budgets.scene + 1_536 >= 6_000, 'the scene answer has room for its thinking and its JSON');
-    assert.ok(budgets.suite + 1_536 >= 9_000, 'the suite answer has room for its thinking and its JSON');
-    assert.ok(budgets.suite <= provider._internals.maxOutputTokens(), 'the provider accepts the suite budget whole');
-    assert.ok(
-      deadlineForParts(sceneCall, sceneRetryCall, suiteCall) <= sceneEndpoint._internals.generationDeadlineMs(),
-      'scene answer + its truncation retry, and the suite + one more call, fit the deadline'
-    );
+    const callMs = (budget) => minimumCallMs({ maxOutputTokens: budget });
+    const sceneCall = callMs(budgets.scene);
+    const sceneRetryCall = callMs(budgets.sceneRetry);
+    const suiteCall = callMs(budgets.suite);
+    const suiteRetryCall = callMs(budgets.suiteRetry);
+    const largestCall = callMs(provider._internals.maxOutputTokens());
+    // connection + first token, then max_tokens (answer budget + allowance) at the slow rate, below every production
+    // sample (94-101 tokens/s per call)
+    assert.ok(rate < 94, 'the floor stays under the slowest measured rate');
+    assert.strictEqual(suiteCall, 5_000 + Math.ceil(((budgets.suite + allowance) * 1_000) / rate));
+    assert.ok(sceneCall < sceneRetryCall && sceneRetryCall < suiteCall && suiteCall < suiteRetryCall, 'a bigger answer needs more time');
+    assert.strictEqual(suiteRetryCall, largestCall, 'the suite retry is the largest answer the provider accepts');
+    // deploy #3 (production): the scene used up to 2,879 tokens; the suite 8,980 (6,033 thinking), cut twice at 9,536
+    for (const [label, budget, used, factor] of [
+      ['scene', budgets.scene, 2_879, 2], ['scene retry', budgets.sceneRetry, 2_879, 2.8],
+      ['suite', budgets.suite, 8_980, 1.35], ['suite retry', budgets.suiteRetry, 8_980, 1.8],
+    ]) {
+      assert.ok(budget + allowance >= used * factor, `${label}: max_tokens ${budget + allowance} has room over the ${used} tokens seen`);
+    }
+    // the per-call cap holds the largest call and stays under Node fetch's 300 s headers timeout (a non-streaming
+    // answer only sends headers when complete)
     assert.ok(providerTimeoutMs({}) >= largestCall, 'every call that may start can finish inside its own timeout');
+    assert.ok(providerTimeoutMs({}) < 300_000, 'under undici\'s 300 s headers timeout');
     assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '999999' }), providerTimeoutMs({}), 'the env only lowers it');
     assert.strictEqual(providerTimeoutMs({ CELESTE_TEXT_PROVIDER_TIMEOUT_MS: '1000' }), 1_000);
 
     const deadline = sceneEndpoint._internals.generationDeadlineMs();
     assert.strictEqual(defaultSessionDeadlineMs(), deadline, 'a session without a deadline gets the same one');
-    assert.ok(deadline >= 10_000 + 2 * suiteCall, 'identity + quota, the suite and one repair of it fit in the deadline');
+    assert.ok(
+      deadline >= 10_000 + Math.max(sceneCall + sceneRetryCall, suiteCall + suiteRetryCall),
+      'identity + quota, then each part\'s answer and its truncation retry (in parallel), fit the deadline'
+    );
 
     const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
     const maxDurationMs = vercel.functions['api/gerar-cena.js'].maxDuration * 1_000;
@@ -905,5 +914,79 @@ test('Celeste text providers are bounded, structured, and fail over only when sa
     const res = await invokeScene(suiteBody());
     assert.strictEqual(res.statusCode, 200, JSON.stringify(res.body));
     assert.strictEqual(suiteSignal.aborted, false, 'the slower suite was left to finish');
+  });
+
+  // deploy #3 (production): the suite's first call was cut at 9,536 and its retry fit with 8,980 tokens (6,033 of them
+  // thinking). Replayed with the new budgets: a cut first suite answer is retried with the largest budget, and every
+  // call's log line tells the margin (max_tokens sent, why it stopped, the effort used).
+  await t.test('replay of deploy #3: a cut suite is retried with 16,384 tokens and the logs show the margin', async () => {
+    configureSceneRoute();
+    process.env.CELESTE_TEXT_FALLBACK = 'none';
+    process.env.CELESTE_TEXT_LOG_USAGE = '1';
+    const suite = validSuite();
+    const suiteCalls = [];
+    let sceneMaxTokens = 0;
+    global.fetch = async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (!isSuiteCall(body)) {
+        sceneMaxTokens = body.max_tokens;
+        return response(200, anthropicScenePayload());
+      }
+      suiteCalls.push(body.max_tokens);
+      return response(200, suiteCalls.length === 1
+        ? { stop_reason: 'max_tokens', content: [], usage: { input_tokens: 10, output_tokens: body.max_tokens } }
+        : { ...anthropicSuitePayload(suite), usage: { input_tokens: 10, output_tokens: 8_980, output_tokens_details: { thinking_tokens: 6_033 } } });
+    };
+    const lines = [];
+    const realInfo = console.info;
+    console.info = (line) => lines.push(JSON.parse(String(line)));
+    let res;
+    try {
+      res = await invokeScene(suiteBody());
+    } finally {
+      console.info = realInfo;
+      delete process.env.CELESTE_TEXT_LOG_USAGE;
+    }
+    assert.strictEqual(res.statusCode, 200, JSON.stringify(res.body));
+    assert.deepStrictEqual(suiteCalls, [12_288, 16_384], 'suite: 12,288 first, 16,384 after a cut');
+    assert.strictEqual(sceneMaxTokens, 6_036);
+    const suiteEvents = lines.filter((event) => event.operation === 'journey_suite');
+    assert.deepStrictEqual(
+      suiteEvents.map((event) => [event.event, event.code, event.maxTokens, event.stopReason, event.effort]),
+      [
+        ['celeste_text_failure', 'text_provider_truncated', 12_288, 'max_tokens', 'medium'],
+        ['celeste_text_success', '', 16_384, 'end_turn', 'medium'],
+      ]
+    );
+    assert.strictEqual(suiteEvents[1].usage.reasoningTokens, 6_033, 'the thinking share is in the log');
+    assert.ok(lines.every((event) => !JSON.stringify(event).includes('anthropic-test-key')), 'no key in any log line');
+  });
+
+  await t.test('CELESTE_SUITE_TEXT_EFFORT changes only the suite\'s effort, never the model; unset keeps today\'s', async () => {
+    for (const [label, value, expectedSuiteEffort] of [
+      ['unset', undefined, 'medium'],
+      ['low for the suite', 'low', 'low'],
+      ['HIGH (case-insensitive)', 'HIGH', 'high'],
+      ['invalid value', 'turbo', 'medium'],
+    ]) {
+      configureSceneRoute();
+      process.env.CELESTE_TEXT_FALLBACK = 'none';
+      if (value === undefined) delete process.env.CELESTE_SUITE_TEXT_EFFORT;
+      else process.env.CELESTE_SUITE_TEXT_EFFORT = value;
+      const sent = {};
+      const suite = validSuite();
+      global.fetch = async (url, options) => {
+        const body = JSON.parse(options.body);
+        const kind = isSuiteCall(body) ? 'suite' : 'scene';
+        sent[kind] = { effort: body.output_config.effort, model: body.model };
+        return response(200, kind === 'suite' ? anthropicSuitePayload(suite) : anthropicScenePayload());
+      };
+      const res = await invokeScene(suiteBody());
+      delete process.env.CELESTE_SUITE_TEXT_EFFORT;
+      assert.strictEqual(res.statusCode, 200, `${label}: ${JSON.stringify(res.body)}`);
+      assert.strictEqual(sent.scene.effort, 'medium', `${label}: the scene keeps ANTHROPIC_TEXT_EFFORT`);
+      assert.strictEqual(sent.suite.effort, expectedSuiteEffort, `${label}: suite effort`);
+      assert.strictEqual(sent.suite.model, sent.scene.model, `${label}: same model for both parts`);
+    }
   });
 });

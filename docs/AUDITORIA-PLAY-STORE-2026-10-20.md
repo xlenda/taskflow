@@ -28,6 +28,7 @@ O que já foi corrigido no código e o que continua com você. As seções abaix
 | Revisão final: despertar parava quando a tela apagava | **Corrigido:** a tela fica acesa enquanto a voz fala, sem permissão nova | 9a2a383 |
 | Vozes da ElevenLabs no Android (sua decisão de 21/10) | **Textos prontos:** política v1.6.0, ficha, nota ao revisor, Data safety e declarações de IA. **Falta você:** configurar a Play Integrity (`docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`) e testar a voz pela trilha interna | docs de 21/10 |
 | Textos com IA no Android (sua decisão de 21/10): Cena-Âncora e visões e afirmações das seis áreas | **Textos prontos:** política v1.7.0, ficha, nota ao revisor, Data safety (agora com nome, cidade e outras informações) e declarações de IA. **Falta você:** a mesma Play Integrity da voz, sem passo extra, e testar os textos pela trilha interna | docs de 21/10 |
+| Créditos pré-pagos do Gemini (08/11: 402 "prepayment credits are depleted") | **Você:** recarregar em https://ai.studio/projects → Billing. Sintomas: tradução, sonho e imagens indisponíveis (as rotas respondem 503 `provider_billing` e logam `celeste_provider_billing`); o deploy avisa e não reverte. A cena e as 6+6 não dependem disso (Claude) | fix/suite-budget |
 
 **Atenção (21/10):** o Android passou a gerar voz e textos com IA. Nas seções abaixo, frases como "não usa IA no Android", "o Android não gera conteúdo com IA" e "Play Integrity não necessário na v1" descrevem a versão auditada em 20/10. O que vale agora é esta tabela e a seção "O que o Lenda faz no Play Console".
 
@@ -451,6 +452,10 @@ Definir quem lê a fila de denúncias e com que frequência. Já é exigido para
 
 ### 7. Play Integrity (para a voz e os textos com IA no Android)
 Depois de criar o app (passo 1), siga `docs/PLAY-INTEGRITY-PASSO-A-PASSO.md`: vincular um projeto do Google Cloud, criar a chave, colocá-la na Vercel e pôr o número do projeto no EAS. A mesma configuração libera a voz e os textos com IA, sem passo extra. Sem isso o app funciona, mas toca sempre a voz do celular e os textos ficam os montados no celular com as respostas.
+
+
+### 8. Créditos pré-pagos do Gemini
+Tradução da cena, transformador de sonhos e imagens personalizadas usam o Gemini com crédito pré-pago. Quando o crédito acaba, o Google responde 402 ("Your prepayment credits are depleted") e essas três funções ficam indisponíveis para todo mundo: o app mostra o aviso de indisponível de sempre, o log da Vercel mostra `celeste_provider_billing` e o deploy imprime um AVISO sem reverter. Para resolver: recarregar em https://ai.studio/projects → Billing e depois rodar `node scripts/deploy-celeste.js --validate-production`.
 
 ---
 

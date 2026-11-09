@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/gerar-cena.js": { "maxDuration": 330 },
+    "api/gerar-cena.js": { "maxDuration": 460 },
     "api/gerar-visual.js": { "maxDuration": 60 }
   },
   "crons": [{ "path": "/api/manter-supabase", "schedule": "17 9 * * *" }],

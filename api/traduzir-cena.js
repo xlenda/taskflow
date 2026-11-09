@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { checkBotId } = require('botid/server');
 const celesteBrain = require('./_celeste-brain');
 const paidAccess = require('./_paid-access');
+const providerBilling = require('./_provider-billing');
 const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent');
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
@@ -250,6 +251,10 @@ async function requestGemini(input, model, apiKey, seed) {
   } finally {
     clearTimeout(timer);
   }
+  if (await providerBilling.isBillingRefusal(response)) {
+    providerBilling.logBillingRefusal('gemini', 'traduzir-cena');
+    throw new TranslationError('provider_billing');
+  }
   if (!response || !response.ok) throw new TranslationError('translation_unavailable');
   let payload;
   try {
@@ -358,6 +363,7 @@ async function handler(req, res) {
   } catch (error) {
     if (error && error.code === 'translation_blocked') return sendJson(res, 422, 'translation_blocked');
     if (error && error.code === 'translation_timeout') return sendJson(res, 504, 'translation_timeout');
+    if (error && error.code === 'provider_billing') return sendJson(res, 503, 'provider_billing');
     if (error && (error.code === 'invalid_translation' || error.code === 'invalid_upstream_json')) {
       return sendJson(res, 502, 'invalid_translation');
     }

@@ -1,6 +1,7 @@
 const { checkBotId } = require('botid/server');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const paidAccess = require('./_paid-access');
+const providerBilling = require('./_provider-billing');
 
 const GEMINI_INTERACTIONS_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/interactions';
@@ -391,6 +392,10 @@ async function requestGemini(input, apiKey) {
       body: JSON.stringify(buildGeminiRequest(input)),
       signal: controller.signal,
     });
+    if (await providerBilling.isBillingRefusal(response)) {
+      providerBilling.logBillingRefusal('gemini', 'gerar-visual');
+      throw new VisualGenerationError('provider_billing');
+    }
     if (!response || !response.ok) throw new VisualGenerationError('visual_unavailable');
     let payload;
     try {
@@ -529,6 +534,7 @@ async function handler(req, res) {
     ) {
       return sendError(res, 502, error.code, 'provider_response');
     }
+    if (error && error.code === 'provider_billing') return sendError(res, 503, error.code, 'provider');
     return sendError(res, 503, 'visual_unavailable', 'provider');
   }
 }

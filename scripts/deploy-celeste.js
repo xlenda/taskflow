@@ -13,7 +13,9 @@ const {
   anonymousSignupHeaders,
   aiReportRolloutMode,
   extractAnonymousAccessToken,
+  liveProviderBilling,
   parseDeploymentOutput,
+  providerBillingWarning,
   runLiveSuite,
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
@@ -85,6 +87,7 @@ const STATIC_GATES = [
   ['scripts/verificar-despertar-sequencia.js', 'Despertar em sequencia falhou'],
   ['scripts/verificar-vozes-android.js', 'Vozes da Celeste no Android (voz escolhida, aviso da voz do aparelho, denuncia) falharam'],
   ['scripts/verificar-conteudo-pessoal-suite.js', 'Suite 6+6 (local variada, prompt da IA e aberturas repetidas) falhou'],
+  ['scripts/verificar-cobranca-provedor.js', 'Cobranca do Gemini (credito esgotado = 503 provider_billing; o smoke avisa e nao reverte) falhou'],
   ['scripts/verificar-legenda-sincronizada.js', 'Legenda no ritmo da voz (tempo de cada letra no WAV, palavra dita na tela) falhou'],
   ['scripts/verificar-barra-perola.js', 'Barra Perola (abas acessiveis, pilula deslizante, reduzir movimento, teclado no fluxo) falhou'],
 ];
@@ -993,34 +996,47 @@ async function liveGeminiChecks(
     );
   }
 
-  assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);
-  const translation = results.translation.payload;
-  const translatedText = Object.values(translation.scene || {}).flat().join(' ');
-  assert(translation.generation?.source === 'gemini-translation', 'Traducao nao confirmou source=gemini-translation');
-  assert(/blue mug/i.test(translatedText) && /27/.test(translatedText), 'Traducao perdeu o detalhe sentinela blue mug 27');
-  assert(/\b(I|my|mine)\b/i.test(translation.scene.affirmation || ''), 'Afirmacao traduzida nao esta em primeira pessoa');
-  assert(results.dream.status === 200, `Sonho/BotID ao vivo falhou: ${JSON.stringify(results.dream)}`);
-  const dream = results.dream.payload;
-  assert(
-    dream.dream?.reflection && dream.dream?.affirmation,
-    'Sonho ao vivo nao devolveu reflexao e afirmacao'
-  );
-  assert(dream.generation?.source === 'gemini-dream', 'Sonho nao confirmou source=gemini-dream');
-  assert(dream.generation?.promptVersion === 'celeste-dream-v3', 'Sonho nao confirmou o prompt esperado');
-  assert(results.visual.status === 200, `Visual/BotID ao vivo falhou: ${JSON.stringify(results.visual)}`);
-  const visual = results.visual.payload;
-  assert(
-    visual.image?.mimeType === 'image/jpeg' &&
-      visual.image.aspectRatio === '4:5' &&
-      visual.image.imageSize === '1K' &&
-      visual.image.dataLength > 1000 &&
-      visual.image.jpegPrefix === '/9j/',
-    `Visual ao vivo nao devolveu JPEG 4:5 valido: ${JSON.stringify(visual)}`
-  );
-  assert(
-    visual.generation?.source === 'gemini-image',
-    'Visual ao vivo nao confirmou source=gemini-image'
-  );
+  // Gemini refusing for billing (prepaid credits depleted -> 503 provider_billing) is the owner's account, not a
+  // broken deploy: that route is skipped with a loud warning, never a rollback. Any other failure still rolls back.
+  const billingSkipped = [];
+  if (liveProviderBilling(results.translation)) billingSkipped.push('traducao');
+  else {
+    assert(results.translation.status === 200, `Traducao/BotID ao vivo falhou: ${JSON.stringify(results.translation)}`);
+    const translation = results.translation.payload;
+    const translatedText = Object.values(translation.scene || {}).flat().join(' ');
+    assert(translation.generation?.source === 'gemini-translation', 'Traducao nao confirmou source=gemini-translation');
+    assert(/blue mug/i.test(translatedText) && /27/.test(translatedText), 'Traducao perdeu o detalhe sentinela blue mug 27');
+    assert(/\b(I|my|mine)\b/i.test(translation.scene.affirmation || ''), 'Afirmacao traduzida nao esta em primeira pessoa');
+  }
+  if (liveProviderBilling(results.dream)) billingSkipped.push('sonho');
+  else {
+    assert(results.dream.status === 200, `Sonho/BotID ao vivo falhou: ${JSON.stringify(results.dream)}`);
+    const dream = results.dream.payload;
+    assert(
+      dream.dream?.reflection && dream.dream?.affirmation,
+      'Sonho ao vivo nao devolveu reflexao e afirmacao'
+    );
+    assert(dream.generation?.source === 'gemini-dream', 'Sonho nao confirmou source=gemini-dream');
+    assert(dream.generation?.promptVersion === 'celeste-dream-v3', 'Sonho nao confirmou o prompt esperado');
+  }
+  if (liveProviderBilling(results.visual)) billingSkipped.push('imagem');
+  else {
+    assert(results.visual.status === 200, `Visual/BotID ao vivo falhou: ${JSON.stringify(results.visual)}`);
+    const visual = results.visual.payload;
+    assert(
+      visual.image?.mimeType === 'image/jpeg' &&
+        visual.image.aspectRatio === '4:5' &&
+        visual.image.imageSize === '1K' &&
+        visual.image.dataLength > 1000 &&
+        visual.image.jpegPrefix === '/9j/',
+      `Visual ao vivo nao devolveu JPEG 4:5 valido: ${JSON.stringify(visual)}`
+    );
+    assert(
+      visual.generation?.source === 'gemini-image',
+      'Visual ao vivo nao confirmou source=gemini-image'
+    );
+  }
+  if (billingSkipped.length) console.warn(providerBillingWarning(billingSkipped));
   assert(
     results.audio.status === 200 &&
       /^audio\/wav(?:;|$)/i.test(results.audio.contentType) &&

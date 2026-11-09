@@ -13,17 +13,23 @@ const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,99}$/;
 const SCHEMA_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 // 20-22/10 in production every scene + 6+6 suite request died at the old 30 s abort (Claude Sonnet 5 writes
 // 73-101 tokens/s; the suite is thousands of tokens). A call now has room to write its whole answer, and the
-// request deadline (api/gerar-cena.js) bounds the total.
-const DEFAULT_PROVIDER_TIMEOUT_MS = 150_000;
+// request deadline (api/gerar-cena.js) bounds the total. The per-call cap stays under the 300 s headers timeout
+// of Node's fetch (undici): a non-streaming answer only sends its headers when it is complete.
+const DEFAULT_PROVIDER_TIMEOUT_MS = 240_000;
 const DEFAULT_FALLBACK_RESERVE_MS = 12_000;
-const DEFAULT_SESSION_DEADLINE_MS = 300_000;
+const DEFAULT_SESSION_DEADLINE_MS = 430_000;
 // A call starts only when it can finish: connection and first token, then its whole max_tokens at a slow output
-// rate. Measured per call in production on 22/10 (durationMs): 94-101 tokens/s; 70 stays below every sample.
+// rate. Measured per call in production (durationMs): 94-101 tokens/s; 70 stays below every sample.
 // Otherwise no tokens are paid for an answer the deadline would cut.
 const CALL_START_ALLOWANCE_MS = 5_000;
 const SLOW_OUTPUT_TOKENS_PER_SECOND = 70;
-// The largest answer a caller may ask for (the 6+6 suite: Sonnet 5's adaptive thinking + about 3k tokens of JSON).
-const MAX_OUTPUT_TOKENS = 8_000;
+// max_tokens = the caller's answer budget + this; the largest answer a caller may ask for is the suite's truncation
+// retry (deploy #3: the suite used 8,980 tokens, 6,033 of them adaptive thinking) -> max_tokens 16,384.
+const THINKING_ALLOWANCE_TOKENS = 1_536;
+const MAX_OUTPUT_TOKENS = 16_384 - THINKING_ALLOWANCE_TOKENS;
+// Per-operation effort knob, never a model change: CELESTE_SUITE_TEXT_EFFORT lets the 6+6 suite think less (or more)
+// than the scene. Unset or invalid = the provider's effort (ANTHROPIC_TEXT_EFFORT / OPENAI_TEXT_REASONING_EFFORT).
+const OPERATION_EFFORT_ENV = Object.freeze({ journey_suite: 'CELESTE_SUITE_TEXT_EFFORT' });
 // A session sends 2 calls by default; a caller may allow 3 (answer, truncation retry, quality repair).
 const DEFAULT_PROVIDER_CALLS = 2;
 const MAX_PROVIDER_CALLS = 3;
@@ -36,6 +42,7 @@ class TextProviderError extends Error {
     this.provider = details.provider || '';
     this.status = Number.isInteger(details.status) ? details.status : 0;
     this.retryable = details.retryable === true;
+    if (details.stopReason) this.stopReason = details.stopReason;
   }
 }
 
@@ -72,6 +79,12 @@ function configuredEffort(provider, env = process.env) {
     : 'OPENAI_TEXT_REASONING_EFFORT';
   const configured = cleanText(env[envName], 20).toLowerCase();
   return EFFORTS.has(configured) ? configured : 'medium';
+}
+
+function operationEffort(operation, providerEffort, env = process.env) {
+  const envName = OPERATION_EFFORT_ENV[operation];
+  const configured = envName ? cleanText(env[envName], 20).toLowerCase() : '';
+  return EFFORTS.has(configured) ? configured : providerEffort;
 }
 
 function providerConfig(provider, env = process.env) {
@@ -140,7 +153,7 @@ function schemaName(value) {
 }
 
 function providerMaxTokens(request) {
-  return Math.min(MAX_OUTPUT_TOKENS + 1_536, request.maxOutputTokens + 1_536);
+  return Math.min(MAX_OUTPUT_TOKENS, request.maxOutputTokens) + THINKING_ALLOWANCE_TOKENS;
 }
 
 function minimumCallMs(request) {
@@ -273,7 +286,7 @@ function parseAnthropicResponse(payload) {
     throw new TextProviderError('text_provider_blocked', { provider: 'anthropic' });
   }
   if (payload.stop_reason === 'max_tokens') {
-    throw new TextProviderError('text_provider_truncated', { provider: 'anthropic' });
+    throw new TextProviderError('text_provider_truncated', { provider: 'anthropic', stopReason: 'max_tokens' });
   }
   const text = (Array.isArray(payload.content) ? payload.content : [])
     .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
@@ -295,7 +308,7 @@ function parseOpenAIResponse(payload) {
         : reason === 'max_output_tokens'
         ? 'text_provider_truncated'
         : 'invalid_provider_response',
-      { provider: 'openai' }
+      { provider: 'openai', stopReason: cleanText(reason, 40) || 'incomplete' }
     );
   }
   const content = (Array.isArray(payload.output) ? payload.output : [])
@@ -400,7 +413,8 @@ async function fetchProvider(config, request, timeoutBudget, signal) {
     const data = config.name === 'anthropic'
       ? parseAnthropicResponse(payload)
       : parseOpenAIResponse(payload);
-    return { data, usage: normalizeUsage(config.name, payload) };
+    const stopReason = cleanText(config.name === 'anthropic' ? payload.stop_reason : payload.status, 40);
+    return { data, usage: normalizeUsage(config.name, payload), stopReason };
   } finally {
     clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', cancel);
@@ -419,6 +433,10 @@ function emitUsageEvent(event) {
     code: cleanText(event.code, 60),
     // which validator rule refused an answer (e.g. scene:anchor_step_if_then), never any of the text itself
     ...(event.reason ? { reason: cleanText(event.reason, 80) } : {}),
+    // the margin: the budget sent, why the answer stopped and the effort used (no text, no key)
+    ...(Number.isInteger(event.maxTokens) ? { maxTokens: event.maxTokens } : {}),
+    ...(event.stopReason ? { stopReason: cleanText(event.stopReason, 40) } : {}),
+    ...(event.effort ? { effort: cleanText(event.effort, 20) } : {}),
     durationMs: nonNegativeInteger(event.durationMs),
     ...(event.usage ? { usage: event.usage } : {}),
   };
@@ -491,8 +509,10 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = DEFAUL
 
       calls += 1;
       const startedAt = sessionClock();
+      const callConfig = { ...config, effort: operationEffort(normalizedRequest.operation, config.effort) };
+      const margin = { maxTokens: providerMaxTokens(normalizedRequest), effort: callConfig.effort };
       try {
-        const result = await fetchProvider(config, normalizedRequest, budget, signal);
+        const result = await fetchProvider(callConfig, normalizedRequest, budget, signal);
         const fallbackUsed = config.name !== chain.primaryName;
         emitUsageEvent({
           event: 'celeste_text_success',
@@ -500,6 +520,8 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = DEFAUL
           provider: config.name,
           model: config.model,
           fallbackUsed,
+          ...margin,
+          stopReason: result.stopReason,
           durationMs: sessionClock() - startedAt,
           usage: result.usage,
         });
@@ -526,6 +548,8 @@ function createSession({ deadlineAt, clock = () => Date.now(), maxCalls = DEFAUL
           fallbackUsed: config.name !== chain.primaryName,
           status: safeError.status,
           code: safeError.code,
+          ...margin,
+          stopReason: safeError.stopReason,
           durationMs: sessionClock() - startedAt,
         });
         if (!hasOperationalFallback || safeError.retryable !== true) throw safeError;
@@ -558,6 +582,8 @@ module.exports = {
     defaultSessionDeadlineMs: () => DEFAULT_SESSION_DEADLINE_MS,
     fetchProvider,
     maxOutputTokens: () => MAX_OUTPUT_TOKENS,
+    thinkingAllowanceTokens: () => THINKING_ALLOWANCE_TOKENS,
+    slowOutputTokensPerSecond: () => SLOW_OUTPUT_TOKENS_PER_SECOND,
     minimumCallMs,
     providerTimeoutMs,
   },

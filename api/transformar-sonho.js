@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { checkBotId } = require('botid/server');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const paidAccess = require('./_paid-access');
+const providerBilling = require('./_provider-billing');
 const celesteBrain = require('./_celeste-brain');
 const CELESTE_KNOWLEDGE = require('../knowledge/celeste-core-v2.json');
 const { isNonInformativeProfileAnswer } = require('../utils/profileSemantics');
@@ -21,6 +22,7 @@ const SAFE_GENERATION_LOG_CODES = new Set([
   'generation_truncated',
   'generation_unavailable',
   'invalid_generation',
+  'provider_billing',
 ]);
 const SAFE_EVALUATION_LOG_CODES = new Set([
   'affirmation_not_first_person',
@@ -470,6 +472,10 @@ async function requestGemini(
       }
       throw new DreamGenerationError('generation_unavailable');
     }
+    if (await providerBilling.isBillingRefusal(response)) {
+      providerBilling.logBillingRefusal('gemini', 'transformar-sonho');
+      throw new DreamGenerationError('provider_billing');
+    }
     if (!response || !response.ok) throw new DreamGenerationError('generation_unavailable');
     let payload;
     try {
@@ -638,6 +644,7 @@ async function handler(req, res) {
     if (error && error.code === 'generation_timeout') return sendError(res, 504, error.code);
     if (error && error.code === 'generation_truncated') return sendError(res, 502, 'invalid_generation');
     if (error && error.code === 'invalid_generation') return sendError(res, 502, error.code);
+    if (error && error.code === 'provider_billing') return sendError(res, 503, error.code);
     return sendError(res, 503, 'generation_unavailable');
   }
 }

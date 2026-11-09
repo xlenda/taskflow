@@ -46,19 +46,22 @@ const JOURNEY_SUITE_VERSION = 'celeste-journey-suite-v1';
 const BRAIN_VERSION = 'celeste-brain-v1';
 const MAX_BODY_BYTES = 24 * 1024;
 const CONTINUITY_MAX_BYTES = 12 * 1024;
-// Covers the scene and the suite in parallel plus one more call of the slower part (a suite call needs at most
-// ~141 s: 9,536 tokens at a slow 70 tokens/s); vercel.json gives the function 330 s.
-const GENERATION_DEADLINE_MS = 300_000;
+// Holds the slower part's answer + its truncation retry, in parallel with the other part: the suite needs at most
+// 180.5 s + 239.1 s at a slow 70 tokens/s (+10 s identity/quota); vercel.json gives the function 460 s.
+const GENERATION_DEADLINE_MS = 430_000;
 const MIN_REPAIR_BUDGET_MS = 5_000;
 const SCENE_UNITS = 4;
 const JOURNEY_SUITE_UNITS = 12;
-const TRUNCATION_RETRY_MAX_OUTPUT_TOKENS = 6_000;
 const JOURNEY_SUITE_MAX_OUTPUT_TOKENS = 4_800;
-// Claude/OpenAI answer budgets (Gemini keeps its own above). 22/10 smoke: the scene's first call hit 3,336 tokens
-// (Sonnet 5 thinks 1.0-2.7k tokens before ~0.7k of JSON) and the suite was still writing after 52 s (~5k tokens).
-const SCENE_PROVIDER_MAX_OUTPUT_TOKENS = 4_500;
-const JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS = 8_000;
-const PROVIDER_MAX_OUTPUT_TOKENS = 8_000;
+// Claude/OpenAI answer budgets, written as the max_tokens each call sends (the provider adds 1,536 to the answer
+// budget); Gemini keeps its own above. Measured in production (deploy #3): the scene used 2,671-2,879 tokens
+// (2,057-2,166 of them adaptive thinking); the suite used 8,980 (6,033 thinking) and was cut twice at 9,536.
+const PROVIDER_THINKING_ALLOWANCE = 1_536;
+const SCENE_PROVIDER_MAX_OUTPUT_TOKENS = 6_036 - PROVIDER_THINKING_ALLOWANCE;
+const SCENE_RETRY_MAX_OUTPUT_TOKENS = 8_192 - PROVIDER_THINKING_ALLOWANCE;
+const JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS = 12_288 - PROVIDER_THINKING_ALLOWANCE;
+const JOURNEY_SUITE_RETRY_MAX_OUTPUT_TOKENS = 16_384 - PROVIDER_THINKING_ALLOWANCE;
+const PROVIDER_MAX_OUTPUT_TOKENS = JOURNEY_SUITE_RETRY_MAX_OUTPUT_TOKENS;
 // answer + one truncation retry + one quality repair, per part
 const PROVIDER_PART_CALLS = 3;
 const JOURNEY_CATEGORIES = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
@@ -1416,7 +1419,7 @@ async function generateProviderPart(part, deadlineAt, signal) {
     } catch (error) {
       if (error?.code !== 'text_provider_truncated' || truncationRetried || session.remainingCalls() < 1) throw error;
       truncationRetried = true;
-      maxOutputTokens = TRUNCATION_RETRY_MAX_OUTPUT_TOKENS;
+      maxOutputTokens = part.retryMaxOutputTokens;
       const provider = cleanText(error.provider || '', 20).toLowerCase();
       options = provider ? { provider, signal } : { signal };
       continue;
@@ -1451,11 +1454,13 @@ async function generateWithProviders(input, seed, deadlineAt) {
   const controller = new AbortController();
   const parts = [{
     spec: (repair, maxTokens) => buildTextSpec({ ...input, includeJourneySuite: false }, seed, repair, maxTokens),
+    retryMaxOutputTokens: SCENE_RETRY_MAX_OUTPUT_TOKENS,
     validate: (data) => validateGeneratedScene(data, input),
   }];
   if (input.includeJourneySuite) {
     parts.push({
       spec: (repair, maxTokens) => buildJourneySuiteTextSpec(input, repair, maxTokens),
+      retryMaxOutputTokens: JOURNEY_SUITE_RETRY_MAX_OUTPUT_TOKENS,
       validate: (data) => validateGeneratedJourneySuite(data, input),
     });
   }
@@ -1683,8 +1688,9 @@ module.exports._internals = {
   generationDeadlineMs: () => GENERATION_DEADLINE_MS,
   providerBudgets: () => ({
     scene: SCENE_PROVIDER_MAX_OUTPUT_TOKENS,
+    sceneRetry: SCENE_RETRY_MAX_OUTPUT_TOKENS,
     suite: JOURNEY_SUITE_PROVIDER_MAX_OUTPUT_TOKENS,
-    truncationRetry: TRUNCATION_RETRY_MAX_OUTPUT_TOKENS,
+    suiteRetry: JOURNEY_SUITE_RETRY_MAX_OUTPUT_TOKENS,
     partCalls: PROVIDER_PART_CALLS,
   }),
   minimumRepairBudgetMs: () => MIN_REPAIR_BUDGET_MS,
