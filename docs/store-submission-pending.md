@@ -28,8 +28,8 @@ concluidas e estao registradas mais abaixo; nao sao bloqueios externos.
   VenuzPay (entidade `VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA`, Team ID
   `68VRL5BCA7`, Apple ID da conta `payvenuz@gmail.com`). Bundle
   `com.celesteapp.affirmations` registrado; ficha criada com o nome
-  `Celeste: Manifestação` (o nome pesquisado `Celeste: Afirmações Diárias` fica
-  como recomendacao se a Apple aceitar a troca), ASC App ID `6833663415`, SKU
+  `Celeste: Manifestação` ("Celeste" sozinho ja era de outro app; a ficha
+  pt-BR/apple/name.txt usa o mesmo nome), ASC App ID `6833663415`, SKU
   `celeste-ios-001`, idioma principal pt-BR. `eas.json` aponta o envio iOS para
   essa ficha e `scripts/publicar-app-store.ps1` e o unico caminho de build/envio.
 - Concluido em 11/11/2026: nome legal do controlador publicado em `/privacidade`

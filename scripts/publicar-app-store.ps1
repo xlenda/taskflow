@@ -10,6 +10,9 @@ iPhone); por isso o primeiro build e interativo. O script nunca pede senha, nunc
 grava credencial e nunca envia o app para revisao: "Adicionar para revisao"
 continua manual no App Store Connect.
 
+O envio ao TestFlight exige que as paginas de privacidade NO AR ja mostrem o
+controlador (a Apple abre a URL da ficha na revisao). O build em si nao exige.
+
 .PARAMETER CheckOnly
 Executa os portoes sem iniciar build nem envio.
 
@@ -17,8 +20,8 @@ Executa os portoes sem iniciar build nem envio.
 Inicia um build iOS production no EAS e retorna sem esperar a compilacao terminar.
 
 .PARAMETER Submit
-Envia ao App Store Connect (TestFlight). Sozinho: o ultimo build iOS concluido.
-Com -StartBuild: envia automaticamente quando o build terminar.
+Envia ao App Store Connect (TestFlight). Sozinho: o build iOS production concluido
+deste mesmo commit (HEAD). Com -StartBuild: envia automaticamente ao terminar.
 
 .PARAMETER NonInteractive
 Usa as credenciais Apple ja guardadas no EAS sem perguntar nada. So funciona
@@ -57,6 +60,7 @@ $ErrorActionPreference = 'Stop'
 $AscAppId = '6833663415'
 $AppleTeamId = '68VRL5BCA7'
 $BundleId = 'com.celesteapp.affirmations'
+$ControllerCnpj = '56.970.099/0001-09'
 
 function Show-ReleaseHelp {
   @'
@@ -86,24 +90,40 @@ if (-not $CheckOnly -and -not $StartBuild -and -not $Submit) {
 # Funcoes compartilhadas com publicar-google-play.ps1 (Node, EAS CLI, variaveis e portoes).
 . (Join-Path $PSScriptRoot 'celeste-release-lib.ps1')
 
-$root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
-foreach ($file in @('package.json', 'app.json', 'eas.json', '.easignore')) {
-  if (-not (Test-Path -LiteralPath (Join-Path $root $file) -PathType Leaf)) {
-    throw "Arquivo obrigatorio ausente: $file"
+function Test-CelesteLegalPagesLive {
+  # A ficha da App Store aponta para /privacidade (e /privacy); a Apple abre essas
+  # URLs na revisao. Devolve a lista de problemas; vazia = controlador ja no ar.
+  param([string]$StoreDir, [string]$Cnpj)
+  $urls = Get-Content -LiteralPath (Join-Path $StoreDir 'urls.json') -Raw | ConvertFrom-Json
+  $privacy = [string]$urls.privacy
+  $problems = @()
+  foreach ($url in @($privacy, ($privacy -replace '/privacidade$', '/privacy'))) {
+    $html = ''
+    try {
+      $html = [string](Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30).Content
+    } catch {
+      $problems += "$url nao respondeu: $($_.Exception.Message)"
+      continue
+    }
+    if ($html -match 'data-owner-required=') { $problems += "$url ainda mostra item pendente do titular" }
+    if ($html -notmatch [regex]::Escape($Cnpj)) { $problems += "$url ainda nao mostra o controlador (CNPJ)" }
   }
-}
-$package = Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
-$app = Get-Content -LiteralPath (Join-Path $root 'app.json') -Raw | ConvertFrom-Json
-$easConfig = Get-Content -LiteralPath (Join-Path $root 'eas.json') -Raw | ConvertFrom-Json
-if ($package.name -ne 'celeste' -or $app.expo.ios.bundleIdentifier -ne $BundleId) {
-  throw "Este script so publica a Celeste ($BundleId)."
+  return ,$problems
 }
 
-$projectId = ''
-try { $projectId = [string]$app.expo.extra.eas.projectId } catch {}
-$parsedId = [guid]::Empty
-if (-not $projectId -or -not [guid]::TryParse($projectId, [ref]$parsedId)) {
-  throw 'extra.eas.projectId ausente ou invalido. Vincule a conta Expo proprietaria antes da release.'
+$root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
+$project = Read-CelesteReleaseProject -ProjectRoot $root -EasIgnoreRules @(
+  '.env.*',
+  '*.p8',
+  '*.p12',
+  '*.pem',
+  'scripts/e2e-shots/'
+)
+$app = $project.App
+$easConfig = $project.Eas
+$projectId = $project.ProjectId
+if ($app.expo.ios.bundleIdentifier -ne $BundleId) {
+  throw "Este script so publica a Celeste ($BundleId)."
 }
 
 $iosSubmitOk = $false
@@ -114,18 +134,6 @@ try {
 } catch { $iosSubmitOk = $false }
 if (-not $iosSubmitOk) {
   throw "eas.json: submit.production.ios precisa apontar para a ficha $AscAppId da equipe $AppleTeamId."
-}
-
-$ignoreLines = Get-Content -LiteralPath (Join-Path $root '.easignore') |
-  ForEach-Object { $_.Trim() }
-foreach ($rule in @(
-  '.env.*',
-  '*.p8',
-  '*.p12',
-  '*.pem',
-  'scripts/e2e-shots/'
-)) {
-  if ($ignoreLines -notcontains $rule) { throw ".easignore precisa bloquear $rule" }
 }
 
 $git = Get-Command git.exe -ErrorAction SilentlyContinue
@@ -141,61 +149,33 @@ Push-Location $root
 try {
   $env:Path = "$($node.Home);$env:Path"
   $env:EXPO_NO_DOCTOR = '1'
-  # O EAS CLI trata CI=1 como modo sem perguntas. O primeiro build iOS precisa
-  # perguntar (login Apple, certificado, perfil), entao CI so entra com -NonInteractive.
-  if ($NonInteractive) { $env:CI = '1' }
+  # CI=1 deixa whoami/env:list/build:list sem perguntas: uma pergunta ali cairia no
+  # buffer capturado e o script travaria em silencio. CI sai so na hora do eas
+  # build/submit interativo, que precisa do dialogo de login Apple.
+  $env:CI = '1'
 
-  $dirty = @(& $git.Source status --porcelain=v1 --untracked-files=all)
-  if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel verificar o Git.' }
-  # Capturas de QA sao do titular e ficam fora do upload pelo .easignore; qualquer
-  # outra alteracao ainda bloqueia a release.
-  $ignoredQaShots = @(
-    $dirty | Where-Object { $_ -match '^.. scripts/e2e-shots/.+$' }
-  )
-  $blockingDirty = @(
-    $dirty | Where-Object { $_ -notmatch '^.. scripts/e2e-shots/.+$' }
-  )
-  if ($blockingDirty.Count) {
-    throw "O worktree tem $($blockingDirty.Count) alteracao(oes) fora de scripts/e2e-shots; faca commit primeiro."
-  }
-  if ($ignoredQaShots.Count) {
-    Write-Warning "$($ignoredQaShots.Count) captura(s) local(is) de QA serao ignoradas pelo EAS."
-  }
-  & $git.Source fetch --quiet
-  if ($LASTEXITCODE -ne 0) { throw 'git fetch falhou.' }
-  $localHead = & $git.Source rev-parse HEAD
-  $remoteHead = & $git.Source rev-parse '@{u}' 2>$null
-  if ($LASTEXITCODE -ne 0 -or $localHead -ne $remoteHead) {
-    throw 'O commit local nao coincide com o upstream do GitHub.'
-  }
-
+  $head = Assert-CelesteWorktreeReady -GitPath $git.Source
   Write-Host "Node compativel: $($node.Version)"
   $script:EasCli = Resolve-EasCli -ProjectRoot $root -NodeHome $node.Home
-  $versionResult = Invoke-EasCapture @('--version')
-  $versionMatch = [regex]::Match($versionResult.Text, '(?<!\d)(\d+\.\d+\.\d+)(?!\d)')
-  if ($versionResult.Code -ne 0 -or -not $versionMatch.Success) {
-    throw 'Nao foi possivel validar o EAS CLI.'
-  }
-  if ([version]$versionMatch.Groups[1].Value -lt [version]'22.6.0') {
-    throw 'EAS CLI >=22.6.0 e obrigatorio.'
-  }
-
-  $who = Invoke-EasCapture @('whoami')
-  if ($who.Code -ne 0 -or -not $who.Text.Trim() -or $who.Text -match '(?i)not logged|login required') {
-    throw 'Login EAS ausente. Faca login fora deste script; ele nunca pede senha.'
-  }
-  $info = Invoke-EasCapture @('project:info')
-  if ($info.Code -ne 0 -or $info.Text -notmatch [regex]::Escape($projectId)) {
-    throw 'A conta EAS atual nao confirmou o projectId do app.json.'
-  }
-
+  Assert-CelesteEasReady -ProjectId $projectId
   $null = Assert-CelesteEasProductionEnv
   Write-Host 'Login, projectId e variaveis EAS: OK (valores ocultos)'
 
-  # A ficha da App Store aponta para /privacidade e /suporte; os dois portoes
-  # garantem que as paginas e os textos da loja continuam coerentes com o app.
+  # Fonte das paginas e textos da loja coerentes com o app.
   Invoke-NpmGate -Npm $npm -Name 'verify:public-pages'
   Invoke-NpmGate -Npm $npm -Name 'verify:store'
+
+  # Paginas no ar: bloqueia o envio ao TestFlight, so avisa para build/checagem.
+  $liveProblems = @(Test-CelesteLegalPagesLive -StoreDir (Join-Path $root 'store-listing') -Cnpj $ControllerCnpj)
+  if ($liveProblems.Count) {
+    $detail = $liveProblems -join '; '
+    if ($Submit) {
+      throw "As paginas de privacidade no ar ainda nao trazem o controlador; rode scripts/deploy-web-from-vercel.ps1 antes de enviar ao TestFlight. Detalhe: $detail"
+    }
+    Write-Warning "Paginas de privacidade no ar desatualizadas (o build pode seguir, o envio nao): $detail"
+  } else {
+    Write-Host 'Paginas de privacidade no ar: controlador publicado.'
+  }
 
   if ($CheckOnly) {
     Write-Host 'CHECK ONLY aprovado; nenhum build ou envio foi iniciado.'
@@ -212,6 +192,7 @@ O EAS vai perguntar, nesta ordem (responda com o iPhone na mao):
   4. "Set up Push Notifications key?"                 -> Y (lembretes locais nao precisam, mas nao atrapalha)
 A senha vai direto para a Apple pelo EAS CLI; este script nao a ve nem guarda.
 '@ | Write-Host
+      Remove-Item Env:CI -ErrorAction SilentlyContinue
     }
     $arguments = @('build', '--platform', 'ios', '--profile', 'production', '--no-wait')
     if ($NonInteractive) { $arguments += @('--non-interactive', '--freeze-credentials') }
@@ -225,10 +206,31 @@ A senha vai direto para a Apple pelo EAS CLI; este script nao a ve nem guarda.
     return
   }
 
-  $arguments = @('submit', '--platform', 'ios', '--profile', 'production', '--latest')
+  # -Submit sozinho: so um build iOS production concluido deste mesmo commit, nunca
+  # "o ultimo que apareceu" (poderia ser de outro commit ou de outro perfil).
+  $list = Invoke-EasCapture @(
+    'build:list', '--platform', 'ios', '--build-profile', 'production',
+    '--status', 'finished', '--git-commit-hash', $head, '--limit', '1',
+    '--json', '--non-interactive'
+  )
+  if ($list.Code -ne 0) { throw 'Nao foi possivel listar os builds iOS concluidos.' }
+  $jsonStart = $list.Text.IndexOf('[')
+  if ($jsonStart -lt 0) { throw 'O EAS nao devolveu a lista de builds em JSON.' }
+  $builds = @()
+  try {
+    $parsed = $list.Text.Substring($jsonStart) | ConvertFrom-Json
+    $builds = @($parsed | ForEach-Object { $_ })
+  } catch { throw 'A lista de builds do EAS nao e JSON valido.' }
+  if (-not $builds.Count) {
+    throw "Nenhum build iOS production concluido para o commit $head. Gere um com -StartBuild (ou -StartBuild -Submit)."
+  }
+  $buildId = [string]$builds[0].id
+  if (-not $buildId) { throw 'O build listado pelo EAS veio sem id.' }
+  if (-not $NonInteractive) { Remove-Item Env:CI -ErrorAction SilentlyContinue }
+  $arguments = @('submit', '--platform', 'ios', '--profile', 'production', '--id', $buildId)
   if ($NonInteractive) { $arguments += '--non-interactive' }
   Invoke-EasVisible -Arguments $arguments
-  Write-Host 'Ultimo build iOS enviado ao App Store Connect (TestFlight). "Adicionar para revisao" continua manual.'
+  Write-Host "Build $buildId (commit $head) enviado ao App Store Connect (TestFlight). 'Adicionar para revisao' continua manual."
 } finally {
   [Environment]::SetEnvironmentVariable('Path', $oldPath, 'Process')
   [Environment]::SetEnvironmentVariable('CI', $oldCI, 'Process')

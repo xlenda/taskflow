@@ -4,8 +4,8 @@
 export const SUPPORT_EMAIL = 'suporte@celestegroup.biz';
 
 export const LEGAL_UPDATED = {
-  en: 'Updated October 21, 2026',
-  pt: 'Atualizado em 21 de outubro de 2026',
+  en: 'Updated November 11, 2026',
+  pt: 'Atualizado em 11 de novembro de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -19,6 +19,10 @@ export const PRIVACY_SECTIONS = [
       {
         en: 'Your onboarding answers personalize the experience. Onboarding creates the first practice on the device and leaves cloud processing off. After onboarding, a single adult cloud control covers optional requests through Celeste\'s backend. Anthropic normally generates personalized scene text and OpenAI is its failover; if neither text provider is configured and approved Gemini processing is available, Google Gemini may generate the scene. Gemini also handles translations, images and dream interpretations, while ElevenLabs handles text-to-speech. In the Android app, that control enables ElevenLabs narration, the AI-written Anchor Scene, visions and affirmations, and the Google Gemini translation of the scene when you change the language; images, dreams and the Living Mirror remain website-only. Profiles marked Under 18 always use the on-device options.',
         pt: 'Suas respostas do questionário personalizam a experiência. O questionário cria a primeira prática no aparelho e deixa o processamento em nuvem desligado. Depois do questionário, um único controle adulto de nuvem abrange solicitações opcionais pelo backend do Celeste. A Anthropic normalmente gera textos de cenas personalizadas e a OpenAI é sua alternativa; se nenhum desses provedores de texto estiver configurado e o processamento aprovado do Gemini estiver disponível, o Google Gemini poderá gerar a cena. O Gemini também faz traduções, imagens e interpretações de sonhos, enquanto a ElevenLabs faz texto para fala. No app Android, esse controle libera a narração da ElevenLabs, a Cena-Âncora, as visões e as afirmações escritas com IA e a tradução da cena pelo Google Gemini quando você troca o idioma; imagens, sonhos e Espelho Vivo ficam apenas no site. Perfis marcados como Menos de 18 sempre usam as opções no aparelho.',
+      },
+      {
+        en: `The data controller is VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (CNPJ 56.970.099/0001-09, Ibipitanga, BA, Brazil), holder of the Celeste account on the App Store and Google Play. Public support and privacy contact: ${SUPPORT_EMAIL}.`,
+        pt: `O controlador dos dados é a VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (CNPJ 56.970.099/0001-09, Ibipitanga, BA, Brasil), titular da conta da Celeste na App Store e no Google Play. Contato público de suporte e privacidade: ${SUPPORT_EMAIL}.`,
       },
     ],
   },

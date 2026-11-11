@@ -300,6 +300,14 @@ try {
 } catch (error) {
   fail(`console-fields.json is invalid: ${error.message}`);
 }
+// The App Store Connect record (2026-11-11) carries the name Apple accepted; the pt-BR listing name must be that
+// exact string so nobody pastes a different title over the record.
+if (consoleFields) {
+  const ascName = consoleFields.apple?.appStoreConnectName;
+  const ptName = read('pt-BR/apple/name.txt');
+  if (!ascName) fail('console-fields.json: apple.appStoreConnectName missing');
+  else if (ascName !== ptName) fail(`pt-BR Apple name "${ptName}" differs from the App Store Connect record "${ascName}"`);
+}
 
 const appConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8'));
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));

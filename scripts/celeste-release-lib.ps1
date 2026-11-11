@@ -158,6 +158,97 @@ function Invoke-NpmGate {
   }
 }
 
+function Read-CelesteReleaseProject {
+  # Le package.json, app.json e eas.json, confirma o projectId do EAS e as regras
+  # do .easignore que o upload do build nunca pode deixar passar.
+  param([string]$ProjectRoot, [string[]]$EasIgnoreRules)
+
+  foreach ($file in @('package.json', 'app.json', 'eas.json', '.easignore')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $file) -PathType Leaf)) {
+      throw "Arquivo obrigatorio ausente: $file"
+    }
+  }
+  $package = Get-Content -LiteralPath (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json
+  $app = Get-Content -LiteralPath (Join-Path $ProjectRoot 'app.json') -Raw | ConvertFrom-Json
+  $easConfig = Get-Content -LiteralPath (Join-Path $ProjectRoot 'eas.json') -Raw | ConvertFrom-Json
+  if ($package.name -ne 'celeste') { throw 'Este script so publica a Celeste.' }
+
+  $projectId = ''
+  try { $projectId = [string]$app.expo.extra.eas.projectId } catch {}
+  $parsedId = [guid]::Empty
+  if (-not $projectId -or -not [guid]::TryParse($projectId, [ref]$parsedId)) {
+    throw 'extra.eas.projectId ausente ou invalido. Vincule a conta Expo proprietaria antes da release.'
+  }
+
+  $ignoreLines = Get-Content -LiteralPath (Join-Path $ProjectRoot '.easignore') |
+    ForEach-Object { $_.Trim() }
+  foreach ($rule in $EasIgnoreRules) {
+    if ($ignoreLines -notcontains $rule) { throw ".easignore precisa bloquear $rule" }
+  }
+  return [pscustomobject]@{
+    Package = $package
+    App = $app
+    Eas = $easConfig
+    ProjectId = $projectId
+  }
+}
+
+function Assert-CelesteWorktreeReady {
+  # Worktree limpo (fora das capturas de QA) e HEAD igual ao upstream do GitHub.
+  # Devolve o hash do HEAD, que e o commit que o EAS vai compilar.
+  param([string]$GitPath)
+
+  $dirty = @(& $GitPath status --porcelain=v1 --untracked-files=all)
+  if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel verificar o Git.' }
+  # Capturas de QA pertencem ao titular e sao explicitamente excluidas do
+  # upload pelo .easignore. Elas podem permanecer no worktree sem contaminar o
+  # binario; qualquer outra alteracao ainda bloqueia a release.
+  $ignoredQaShots = @(
+    $dirty | Where-Object { $_ -match '^.. scripts/e2e-shots/.+$' }
+  )
+  $blockingDirty = @(
+    $dirty | Where-Object { $_ -notmatch '^.. scripts/e2e-shots/.+$' }
+  )
+  if ($blockingDirty.Count) {
+    throw "O worktree tem $($blockingDirty.Count) alteracao(oes) fora de scripts/e2e-shots; faca commit primeiro."
+  }
+  if ($ignoredQaShots.Count) {
+    Write-Warning "$($ignoredQaShots.Count) captura(s) local(is) de QA serao ignoradas pelo EAS."
+  }
+  & $GitPath fetch --quiet
+  if ($LASTEXITCODE -ne 0) { throw 'git fetch falhou.' }
+  $localHead = [string](& $GitPath rev-parse HEAD)
+  $remoteHead = & $GitPath rev-parse '@{u}' 2>$null
+  if ($LASTEXITCODE -ne 0 -or $localHead -ne [string]$remoteHead) {
+    throw 'O commit local nao coincide com o upstream do GitHub.'
+  }
+  return $localHead.Trim()
+}
+
+function Assert-CelesteEasReady {
+  # EAS CLI em versao suportada, login presente e projectId confirmado pela conta.
+  # Usa $script:EasCli, que o chamador define com Resolve-EasCli.
+  param([string]$ProjectId)
+
+  $versionResult = Invoke-EasCapture @('--version')
+  $versionMatch = [regex]::Match($versionResult.Text, '(?<!\d)(\d+\.\d+\.\d+)(?!\d)')
+  if ($versionResult.Code -ne 0 -or -not $versionMatch.Success) {
+    throw 'Nao foi possivel validar o EAS CLI.'
+  }
+  if ([version]$versionMatch.Groups[1].Value -lt [version]'22.6.0') {
+    throw 'EAS CLI >=22.6.0 e obrigatorio.'
+  }
+
+  $who = Invoke-EasCapture @('whoami')
+  if ($who.Code -ne 0 -or -not $who.Text.Trim() -or $who.Text -match '(?i)not logged|login required') {
+    throw 'Login EAS ausente. Faca login fora deste script; ele nunca pede senha.'
+  }
+  $info = Invoke-EasCapture @('project:info')
+  if ($info.Code -ne 0 -or $info.Text -notmatch [regex]::Escape($ProjectId)) {
+    throw 'A conta EAS atual nao confirmou o projectId do app.json.'
+  }
+}
+
 function Assert-CelesteEasProductionEnv {
   # Confere as variaveis publicas do EAS production que os dois binarios precisam,
   # sem imprimir valor algum. Devolve o mapa nome -> escopo para o chamador

@@ -110,6 +110,13 @@ assert(
 const oneLine = (text) => text.replace(/\s+/g, ' ');
 const legal = read(path.join('constants', 'legal.js'));
 assert(
+  legal.includes('VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA') &&
+    legal.includes('56.970.099/0001-09') &&
+    legal.includes('Atualizado em 11 de novembro de 2026') &&
+    legal.includes('Updated November 11, 2026'),
+  'constants/legal.js: a política dentro do app não traz o controlador e a data da política pública'
+);
+assert(
   oneLine(privacyPt).includes('quando você troca o idioma do app, a cena que vai ser traduzida (a escrita pela IA ou, se a IA não chegou a reescrevê-la, a montada no aparelho com as suas respostas) é enviada') &&
     oneLine(privacyPt).includes('a frase de identidade e o passo da ponte para hoje e os rótulos das respostas usadas nela') &&
     oneLine(privacyEn).includes('when you change the app language, the scene being translated (the AI-written one or, if the AI has not rewritten it, the one assembled on the device from your answers) is sent') &&

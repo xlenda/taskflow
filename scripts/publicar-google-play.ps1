@@ -77,38 +77,21 @@ if ($StartBuild -and $SubmitInternal -and -not $ConfirmPlayPrerequisites) {
 . (Join-Path $PSScriptRoot 'celeste-release-lib.ps1')
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
-foreach ($file in @('package.json', 'app.json', 'eas.json', '.easignore')) {
-  if (-not (Test-Path -LiteralPath (Join-Path $root $file) -PathType Leaf)) {
-    throw "Arquivo obrigatorio ausente: $file"
-  }
-}
-$package = Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
-$app = Get-Content -LiteralPath (Join-Path $root 'app.json') -Raw | ConvertFrom-Json
-$easConfig = Get-Content -LiteralPath (Join-Path $root 'eas.json') -Raw | ConvertFrom-Json
-if ($package.name -ne 'celeste' -or $app.expo.android.package -ne 'com.celesteapp.affirmations') {
-  throw 'Este script so publica a Celeste (com.celesteapp.affirmations).'
-}
-
-$projectId = ''
-try { $projectId = [string]$app.expo.extra.eas.projectId } catch {}
-$parsedId = [guid]::Empty
-if (-not $projectId -or -not [guid]::TryParse($projectId, [ref]$parsedId)) {
-  throw 'extra.eas.projectId ausente ou invalido. Vincule a conta Expo proprietaria antes da release.'
-}
-if ($SubmitInternal -and $easConfig.submit.production.android.track -ne 'internal') {
-  throw 'Auto-submit bloqueado: eas.json deve apontar exatamente para internal.'
-}
-
-$ignoreLines = Get-Content -LiteralPath (Join-Path $root '.easignore') |
-  ForEach-Object { $_.Trim() }
-foreach ($rule in @(
+$project = Read-CelesteReleaseProject -ProjectRoot $root -EasIgnoreRules @(
   '.env.*',
   'google-service-account*.json',
   '*.jks',
   '*.keystore',
   'scripts/e2e-shots/'
-)) {
-  if ($ignoreLines -notcontains $rule) { throw ".easignore precisa bloquear $rule" }
+)
+$app = $project.App
+$easConfig = $project.Eas
+$projectId = $project.ProjectId
+if ($app.expo.android.package -ne 'com.celesteapp.affirmations') {
+  throw 'Este script so publica a Celeste (com.celesteapp.affirmations).'
+}
+if ($SubmitInternal -and $easConfig.submit.production.android.track -ne 'internal') {
+  throw 'Auto-submit bloqueado: eas.json deve apontar exatamente para internal.'
 }
 
 $git = Get-Command git.exe -ErrorAction SilentlyContinue
@@ -126,50 +109,11 @@ try {
   $env:CI = '1'
   $env:EXPO_NO_DOCTOR = '1'
 
-  $dirty = @(& $git.Source status --porcelain=v1 --untracked-files=all)
-  if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel verificar o Git.' }
-  # Capturas de QA pertencem ao titular e sao explicitamente excluidas do
-  # upload pelo .easignore. Elas podem permanecer no worktree sem contaminar o
-  # AAB; qualquer outra alteracao ainda bloqueia a release.
-  $ignoredQaShots = @(
-    $dirty | Where-Object { $_ -match '^.. scripts/e2e-shots/.+$' }
-  )
-  $blockingDirty = @(
-    $dirty | Where-Object { $_ -notmatch '^.. scripts/e2e-shots/.+$' }
-  )
-  if ($blockingDirty.Count) {
-    throw "O worktree tem $($blockingDirty.Count) alteracao(oes) fora de scripts/e2e-shots; faca commit primeiro."
-  }
-  if ($ignoredQaShots.Count) {
-    Write-Warning "$($ignoredQaShots.Count) captura(s) local(is) de QA serao ignoradas pelo EAS."
-  }
-  & $git.Source fetch --quiet
-  if ($LASTEXITCODE -ne 0) { throw 'git fetch falhou.' }
-  $localHead = & $git.Source rev-parse HEAD
-  $remoteHead = & $git.Source rev-parse '@{u}' 2>$null
-  if ($LASTEXITCODE -ne 0 -or $localHead -ne $remoteHead) {
-    throw 'O commit local nao coincide com o upstream do GitHub.'
-  }
+  $null = Assert-CelesteWorktreeReady -GitPath $git.Source
 
   Write-Host "Node compativel: $($node.Version)"
   $script:EasCli = Resolve-EasCli -ProjectRoot $root -NodeHome $node.Home
-  $versionResult = Invoke-EasCapture @('--version')
-  $versionMatch = [regex]::Match($versionResult.Text, '(?<!\d)(\d+\.\d+\.\d+)(?!\d)')
-  if ($versionResult.Code -ne 0 -or -not $versionMatch.Success) {
-    throw 'Nao foi possivel validar o EAS CLI.'
-  }
-  if ([version]$versionMatch.Groups[1].Value -lt [version]'22.6.0') {
-    throw 'EAS CLI >=22.6.0 e obrigatorio.'
-  }
-
-  $who = Invoke-EasCapture @('whoami')
-  if ($who.Code -ne 0 -or -not $who.Text.Trim() -or $who.Text -match '(?i)not logged|login required') {
-    throw 'Login EAS ausente. Faca login fora deste script; ele nunca pede senha.'
-  }
-  $info = Invoke-EasCapture @('project:info')
-  if ($info.Code -ne 0 -or $info.Text -notmatch [regex]::Escape($projectId)) {
-    throw 'A conta EAS atual nao confirmou o projectId do app.json.'
-  }
+  Assert-CelesteEasReady -ProjectId $projectId
 
   $scopes = Assert-CelesteEasProductionEnv
   # Sem o numero do projeto do Google Cloud o AAB sai sem Play Integrity: no

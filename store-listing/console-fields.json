@@ -24,7 +24,7 @@
     "appleTeamId": "68VRL5BCA7",
     "sku": "celeste-ios-001",
     "appStoreConnectName": "Celeste: Manifestação",
-    "appStoreConnectNameNote": "Nome aceito pela Apple em 11/11/2026; a ficha pesquisada em pt-BR/apple/name.txt continua sendo a recomendada se a Apple aceitar a troca."
+    "appStoreConnectNameNote": "Nome aceito pela Apple em 11/11/2026 (\"Celeste\" sozinho ja era de outro app); pt-BR/apple/name.txt usa o mesmo nome e o subtitulo carrega \"afirmacoes diarias\"."
   },
   "googlePlay": {
     "packageName": "com.celesteapp.affirmations",
