@@ -108,7 +108,7 @@ function Test-CelesteLegalPagesLive {
     if ($html -match 'data-owner-required=') { $problems += "$url ainda mostra item pendente do titular" }
     if ($html -notmatch [regex]::Escape($Cnpj)) { $problems += "$url ainda nao mostra o controlador (CNPJ)" }
   }
-  return ,$problems
+  return $problems
 }
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
