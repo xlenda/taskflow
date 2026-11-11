@@ -33,8 +33,8 @@
     },
     "ownerAndReviewFields": {
       "ready": false,
-      "evidence": null,
-      "note": "Add legal owner, copyright, support contact, review contact, territories and release choices."
+      "evidence": "public/privacidade/index.html; public/privacy/index.html; store-listing/console-fields.json",
+      "note": "Legal owner and copyright published on 2026-11-11 (VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA, CNPJ 56.970.099/0001-09). Still pending in App Store Connect: review contact, territories and release choices."
     },
     "assetRightsRecorded": {
       "ready": false,

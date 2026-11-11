@@ -68,9 +68,18 @@ for (const [label, html] of [
   assert(/30 (?:dias|days)/i.test(html), `${label}: retenção do cache de áudio ausente`);
   assert(/(?:Denunciar este conteúdo de IA|Report this AI content)/.test(html), `${label}: fluxo de denúncia de IA ausente`);
   assert(/(?:relato bruto do sonho|raw dream report)/i.test(html), `${label}: minimização da denúncia de IA ausente`);
-  assert(/data-owner-required="legal-contact"/.test(html), `${label}: nome legal pendente não sinalizado`);
+  // 11/11/2026: a Celeste e publicada pela conta de organizacao da VenuzPay nas duas lojas;
+  // nenhum item pode continuar marcado como pendente do titular na politica.
+  assert(!/data-owner-required=/.test(html), `${label}: ainda há item marcado como pendente do titular`);
+  assert(
+    html.includes('VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA') && html.includes('56.970.099/0001-09'),
+    `${label}: controlador (razão social e CNPJ) ausente`
+  );
   assert(html.includes('mailto:suporte@celestegroup.biz'), `${label}: e-mail público confirmado ausente`);
-  assert(/data-owner-required="provider-retention"/.test(html), `${label}: retenção contratual pendente não sinalizada`);
+  assert(
+    /(?:seguem os termos e contratos de cada provedor|follow each provider's terms and contracts)/.test(html),
+    `${label}: prazos de retenção dos provedores ausentes`
+  );
 }
 
 assert(
@@ -201,4 +210,4 @@ assert(profile.includes('testID="profile-privacy-link"'), 'Link de privacidade d
 assert(profile.includes("setDocument('privacy')"), 'Link interno não abre o documento de privacidade');
 
 console.log('Páginas públicas PT/EN, URLs da loja e link interno de privacidade validados.');
-console.warn('PENDENTE DO TITULAR: nome legal e retenção contratual dos provedores.');
+console.log('Controlador publicado: VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (CNPJ 56.970.099/0001-09).');

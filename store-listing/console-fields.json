@@ -16,10 +16,15 @@
     "marketingUrl": "https://celeste-jet-two.vercel.app",
     "privacyUrl": "https://celeste-jet-two.vercel.app/privacidade",
     "supportUrl": "https://celeste-jet-two.vercel.app/suporte",
-    "copyrightOwner": null,
+    "copyrightOwner": "VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA",
     "reviewContact": null,
     "releaseMode": null,
-    "territories": null
+    "territories": null,
+    "ascAppId": "6833663415",
+    "appleTeamId": "68VRL5BCA7",
+    "sku": "celeste-ios-001",
+    "appStoreConnectName": "Celeste: Manifestação",
+    "appStoreConnectNameNote": "Nome aceito pela Apple em 11/11/2026; a ficha pesquisada em pt-BR/apple/name.txt continua sendo a recomendada se a Apple aceitar a troca."
   },
   "googlePlay": {
     "packageName": "com.celesteapp.affirmations",

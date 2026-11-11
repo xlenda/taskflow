@@ -24,6 +24,11 @@
     "production": {
       "android": {
         "track": "internal"
+      },
+      "ios": {
+        "ascAppId": "6833663415",
+        "appleTeamId": "68VRL5BCA7",
+        "appleId": "payvenuz@gmail.com"
       }
     }
   }
