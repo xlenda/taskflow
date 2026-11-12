@@ -410,6 +410,15 @@ for (const idea of [
     fail(`iOS speech recognition disclosure is incomplete: ${idea}`);
   }
 }
+// Apple ITMS-90683 (build 3, 12/11/2026): expo-image, expo-file-system e expo-video citam a API
+// de Fotos, entao o Info.plist precisa das frases mesmo sem a Celeste pedir acesso. A de salvar
+// tambem evita o crash do "Salvar imagem/video" na folha de compartilhar.
+for (const key of ['NSPhotoLibraryUsageDescription', 'NSPhotoLibraryAddUsageDescription']) {
+  const disclosure = normalizedText(appConfig.expo.ios?.infoPlist?.[key]);
+  if (!disclosure.includes('celeste') || !disclosure.includes('galeria') || !disclosure.includes('compartilhar')) {
+    fail(`iOS ${key} is required (Apple ITMS-90683) and must say it only saves what the person shares`);
+  }
+}
 for (const broadUse of [
   'sempre ativo',
   'em segundo plano',

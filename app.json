@@ -17,6 +17,8 @@
       "infoPlist": {
         "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com o conteúdo pessoal que escolheu, como afirmação, visão, Cena-Âncora, frase de sonho ou frase própria.",
         "NSMicrophoneUsageDescription": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",
+        "NSPhotoLibraryAddUsageDescription": "A Celeste só salva na sua galeria o cartão ou o vídeo que você escolher salvar ao compartilhar.",
+        "NSPhotoLibraryUsageDescription": "A Celeste não lê nem envia fotos da sua galeria. Ela só salva no aparelho o cartão ou o vídeo que você escolher ao compartilhar.",
         "NSSpeechRecognitionUsageDescription": "A Celeste usa reconhecimento de fala no aparelho para conferir duas repetições da afirmação exibida. A transcrição não é armazenada."
       }
     },
