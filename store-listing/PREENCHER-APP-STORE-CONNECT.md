@@ -199,10 +199,34 @@ positivas,visualização,prosperidade,amor,autoestima,metas,bem-estar,gratidão,
 
 ### Compilação
 
-Aparece só depois que o build do EAS termina e o TestFlight processa
-(10 a 30 min após o envio). Clique em "Adicionar compilação" e escolha a
-`1.0.0 (1)`. A pergunta de criptografia não aparece: o app já declara
-`usesNonExemptEncryption: false`.
+Gere e envie numa sessão só, num PowerShell aberto pelo titular, com o iPhone
+na mão (código de 2 fatores):
+
+```powershell
+$env:CELESTE_NODE_HOME = 'C:\tmp\celeste-node24\node-v24.20.0-win-x64'
+cd C:\projetos\TaskFlow
+.\scripts\publicar-app-store.ps1 -StartBuild -Submit
+```
+
+Na 1ª vez o EAS pergunta: login Apple (payvenuz@gmail.com, senha, código),
+o time (VENUZPAY, 68VRL5BCA7) se houver mais de um, certificado (Y), perfil
+(Y), chave de push (Y) e, depois que o build entra na fila, a chave da API do
+App Store Connect usada no envio (`[Add a new key]`). Não feche o terminal no
+link do build: essa última pergunta vem depois, e o fim é "Build iOS
+enfileirado com envio automatico ao TestFlight". As perguntas exigem um
+terminal de verdade (o Claude Code não responde prompts do EAS). Da 2ª versão
+em diante as credenciais e a chave ficam na Expo e
+`-StartBuild -Submit -NonInteractive` roda sem perguntas.
+
+A compilação aparece aqui depois que o build termina (15 a 30 min) e a Apple
+processa o envio (mais 10 a 30 min). Clique em "Adicionar compilação" e
+escolha a `1.0.0 (1)`. A pergunta de criptografia não aparece: o app já
+declara `usesNonExemptEncryption: false`.
+
+Aviso vermelho que não some em outra página (por exemplo "URL da Política de
+privacidade - Este campo é obrigatório" em Privacidade do app, com a URL já
+preenchida): é a lista da última tentativa de "Adicionar para revisão". Ela só
+se refaz quando o botão é clicado de novo (confirmado em 11/11/2026).
 
 ### Informações para a equipe de revisão
 

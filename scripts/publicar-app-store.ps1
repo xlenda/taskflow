@@ -68,7 +68,7 @@ Celeste - release iOS segura
 
   .\scripts\publicar-app-store.ps1 -CheckOnly
   .\scripts\publicar-app-store.ps1 -StartBuild
-  .\scripts\publicar-app-store.ps1 -StartBuild -Submit
+  .\scripts\publicar-app-store.ps1 -StartBuild -Submit   (recomendado: build e envio numa sessao so)
   .\scripts\publicar-app-store.ps1 -Submit
   .\scripts\publicar-app-store.ps1 -StartBuild -NonInteractive   (so apos a 1a release)
 
@@ -187,9 +187,12 @@ try {
       @'
 O EAS vai perguntar, nesta ordem (responda com o iPhone na mao):
   1. "Do you want to log in to your Apple account?"  -> Y, Apple ID payvenuz@gmail.com, senha, codigo de 2 fatores
+     Se pedir o time (Team): VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (68VRL5BCA7)
   2. "Generate a new Apple Distribution Certificate?" -> Y
   3. "Generate a new Apple Provisioning Profile?"     -> Y
   4. "Set up Push Notifications key?"                 -> Y (lembretes locais nao precisam, mas nao atrapalha)
+  5. So com -Submit, depois do link do build: chave "App Store Connect API Key" -> [Add a new key]
+     (e a chave que o EAS usa para enviar ao TestFlight; nao feche o terminal no link do build)
 A senha vai direto para a Apple pelo EAS CLI; este script nao a ve nem guarda.
 '@ | Write-Host
       Remove-Item Env:CI -ErrorAction SilentlyContinue
