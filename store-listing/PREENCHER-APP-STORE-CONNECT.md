@@ -46,6 +46,17 @@ Nome `Celeste: Manifestation`, subtítulo `Daily affirmations & dreams`.
 Se aparecer pergunta sobre "tópicos de saúde ou bem-estar", marcar a opção
 mais leve: o app é reflexão e bem-estar, sem diagnóstico nem tratamento.
 
+### Blocos de baixo da mesma página (vistos em 11/11/2026)
+
+| Bloco | O que fazer |
+|---|---|
+| Documentação sobre a criptografia do app | **Nada.** `app.json` já declara `usesNonExemptEncryption: false` (vira a chave do Info.plist). O app só usa HTTPS do sistema, que é isento. Não clicar em "Carregar". |
+| Regulamento dos Serviços Digitais (DSA) | Decisão do titular. "Não comerciante" (padrão) = o app **não aparece nos 27 países da União Europeia**, Portugal incluído; o resto do mundo segue normal. "Começar" = declarar a VenuzPay como comerciante: a Apple verifica telefone e e-mail por código e **mostra endereço, telefone e e-mail na página do app na UE**. Pode ser feito depois, sem nova revisão. |
+| Dispositivos médicos regulamentados | Aparece porque a categoria é Saúde e fitness. Clicar em "Declarar dispositivo médico regulamentado" e responder que o app **não** é dispositivo médico regulamentado (sem diagnóstico nem tratamento). Obrigatório para continuar em alguns países. |
+| Notificações do servidor da App Store | Nada. Só para compras dentro do app. |
+| Segredo compartilhado específico do app | Nada. Só para assinaturas autorrenováveis. |
+| Informações adicionais | Nada. |
+
 ---
 
 ## 2. Monetização → Preços e disponibilidade
