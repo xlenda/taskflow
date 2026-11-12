@@ -91,7 +91,15 @@ Acessibilidade do app (rótulos novos): opcional, pode pular nesta versão.
 
 ### Prévias e capturas de tela
 
-- Tamanho exigido: iPhone 6,9" / 6,7" → **1290 × 2796 px** (retrato).
+- Tamanho exigido (App Store Connect de 11/11/2026): a aba padrão é
+  **"iPhone com Dynamic Island (tela média)"** e só aceita **1179 × 2556 px**
+  ou 1206 × 2622 px (retrato). Os 1290 × 2796 px de `assets/final/apple` são
+  recusados nessa aba ("As dimensões do arquivo são inválidas"); eles só entram
+  pelo "Gerenciador de mídia", no slot de 6,9". Para gerar o tamanho da aba a
+  partir dos finais (proporção idêntica, sem corte):
+  `ffmpeg -i 01-anchor-scene.jpg -vf scale=1179:2556:flags=lanczos -q:v 2 saida.jpg`
+  (uma vez por arquivo). Abas iPhone Duo, iPad e Apple Watch ficam vazias
+  (`supportsTablet: false`).
 - Arquivos: `store-listing/assets/final/apple/pt-BR/` (8 imagens, nesta ordem):
   1. `anchor-scene` — Uma cena feita das suas palavras
   2. `chosen-voice` — Ouça na voz que combina com você
