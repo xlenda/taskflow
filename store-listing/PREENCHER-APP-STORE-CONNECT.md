@@ -218,6 +218,15 @@ terminal de verdade (o Claude Code não responde prompts do EAS). Da 2ª versão
 em diante as credenciais e a chave ficam na Expo e
 `-StartBuild -Submit -NonInteractive` roda sem perguntas.
 
+Se o envio automático não acontecer: na 1ª release (12/11/2026) o build
+terminou, a chave "[Expo] EAS Submit ..." foi criada na Apple, mas nenhum envio
+foi agendado. Logo depois a Expo ainda não achava o app com a chave nova;
+minutos depois achou. Conferir com `eas submit:list -p ios --json` (lista vazia
+= não enviou) e `eas submit:status -p ios --json` (mostra os builds do
+TestFlight). Com a chave já na Expo, o envio sai sem login:
+`.\scripts\publicar-app-store.ps1 -Submit -NonInteractive` (manda o build
+concluído do próprio commit).
+
 A compilação aparece aqui depois que o build termina (15 a 30 min) e a Apple
 processa o envio (mais 10 a 30 min). Clique em "Adicionar compilação" e
 escolha a `1.0.0 (1)`. A pergunta de criptografia não aparece: o app já
