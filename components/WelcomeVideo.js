@@ -122,7 +122,12 @@ export default function WelcomeVideo({
       cancelled = true;
       retries.forEach(clearTimeout);
       clearTimeout(missingPlayerFallback);
-      player.pause();
+      // On unmount useVideoPlayer has already released the player (its cleanup runs first).
+      // Pausing a released player throws and, on a phone, crashes the app at the end of the
+      // opening (Apple 2.1.0 rejection, 13/11/2026). scripts/verificar-players-nativos.js guards it.
+      try {
+        player.pause();
+      } catch (_error) {}
     };
   }, [player, reportPlaybackIssue, requestPlayback, shouldPlay]);
 
