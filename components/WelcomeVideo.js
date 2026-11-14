@@ -75,7 +75,12 @@ export default function WelcomeVideo({
     player.loop = loop;
     if (!onFinished) return undefined;
     const subscription = player.addListener('playToEnd', onFinished);
-    return () => subscription.remove();
+    return () => {
+      // Same release order as the pause below: never let unmount touch a released player.
+      try {
+        subscription.remove();
+      } catch (_error) {}
+    };
   }, [loop, onFinished, player]);
 
   useEffect(() => {
