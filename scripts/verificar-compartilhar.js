@@ -273,7 +273,8 @@ async function main() {
   const RN = {
     Platform: { OS: 'android', select: (choices) => choices.default },
     PixelRatio: { get: () => 2 },
-    StyleSheet: { create: (styles) => styles, absoluteFillObject: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
+    // Same as React Native 0.86 on the phone: absoluteFill only (absoluteFillObject was removed; only the web has it).
+    StyleSheet: { create: (styles) => styles, absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
     View: 'View',
     Text: 'Text',
     ScrollView: 'ScrollView',

@@ -773,13 +773,13 @@ function PersonalVisionPlayer({
             live={isFocused && !narrating && !showsSecondaryVisual && !share.isOpen}
             sceneCategory={vision.category}
             radius={0}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
           {secondaryLayerKey ? (
             <Animated.View
               testID="vision-player-secondary-visual"
               pointerEvents="none"
-              style={[StyleSheet.absoluteFillObject, { opacity: secondaryOpacity }]}
+              style={[StyleSheet.absoluteFill, { opacity: secondaryOpacity }]}
             >
               <GradientCover
                 accent={vision.accent}
@@ -787,7 +787,7 @@ function PersonalVisionPlayer({
                 radius={0}
                 onVisualReady={() => setSecondaryReady(true)}
                 onVisualError={() => setSecondaryReady(false)}
-                style={StyleSheet.absoluteFillObject}
+                style={StyleSheet.absoluteFill}
               />
             </Animated.View>
           ) : null}

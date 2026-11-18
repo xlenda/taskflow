@@ -742,7 +742,8 @@ async function main() {
   const RN = {
     View: 'View',
     Text: 'Text',
-    StyleSheet: { create: (styles) => styles },
+    // Same as React Native 0.86 on the phone: absoluteFill only (absoluteFillObject was removed; only the web has it).
+    StyleSheet: { create: (styles) => styles, absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
     Platform: { OS: 'android', select: (choices) => choices.default },
     AccessibilityInfo: {
       isReduceMotionEnabled: () => Promise.resolve(device.reduce),
@@ -1550,6 +1551,15 @@ async function main() {
   staticCover.flush();
   assert.strictEqual(layerOf(staticCover), null, 'sem live: sem camada viva');
   assert.strictEqual(typed('Image')(staticCover).props.source.uri, 'file:///document/still.jpg', 'sem live: a imagem parada');
+  // no celular uma camada sem estilo de preenchimento fica 0×0 e some sem erro (absoluteFillObject saiu do RN 0.86:
+  // o cartão da Cena-Âncora ficava branco, emulador Android 18/11/2026)
+  const fills = (style) => {
+    const s = flat(style);
+    return s.position === 'absolute' && s.top === 0 && s.right === 0 && s.bottom === 0 && s.left === 0;
+  };
+  assert.ok(fills(typed('Image')(staticCover).props.style), 'a imagem parada cobre o card inteiro');
+  const staticVeil = layers(staticCover).find(isVeil);
+  assert.ok(staticVeil && fills(staticVeil.props.style), 'o véu cobre o card inteiro');
   assert.ok(assetRequests.length === requestsBefore && sceneReads.length === 0, 'sem live: a imagem da cena nem é preparada');
   assert.strictEqual(appReads, 0, 'capa parada não assina o estado do app');
   staticCover.unmount();
@@ -1606,8 +1616,14 @@ async function main() {
   assert.ok(readyLive.props.phrase == null && readyLive.props.caption == null, 'a frase não vai para a cena: o texto do card é o único');
   const liveStyle = flat(readyLive.props.style);
   assert.ok(
-    liveStyle.position === 'absolute' && liveStyle.width === '100%' && liveStyle.height === '100%',
-    'a cena cobre o card inteiro (largura e altura explícitas: o 4:5 do CenaViva não vale aqui)'
+    liveStyle.position === 'absolute' &&
+      liveStyle.top === 0 && liveStyle.right === 0 && liveStyle.bottom === 0 && liveStyle.left === 0 &&
+      liveStyle.width === undefined && liveStyle.height === undefined && liveStyle.aspectRatio === 'auto',
+    // width/height '100%' numa camada absoluta: no celular o Yoga mede pela área de dentro do padding do card e a
+    // cena ficava curta à direita e embaixo (emulador Android, 18/11/2026). Os quatro lados presos cobrem tudo, e o
+    // aspectRatio 'auto' (vem por último na mescla do CenaViva) anula o 4:5 dele: na web o CSS daria a ele o lugar
+    // do bottom:0 e a cena sairia mais alta que o card
+    'a cena cobre o card inteiro pelos quatro lados e anula o 4:5 do CenaViva'
   );
   assert.strictEqual(liveStyle.backgroundColor, 'transparent', 'até pintar, o card mostra o fundo de sempre');
   assert.ok(veilAt(readySceneLayer) < 0 && !labelOf(readySceneLayer), 'antes de pintar: nem véu dobrado nem rótulo');

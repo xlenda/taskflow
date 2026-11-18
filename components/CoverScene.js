@@ -53,7 +53,7 @@ export default function CoverScene({ visualKey, sceneCategory, narration, veil, 
         active={narration.active}
         label={showsReady ? label : null}
         onError={fail}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
     );
   }
@@ -81,9 +81,11 @@ export function ReadySceneLabel() {
 }
 
 const styles = StyleSheet.create({
-  // cobre o card inteiro: largura e altura explícitas vencem o 4:5 próprio do CenaViva; transparente até pintar
-  // (por baixo continua a imagem parada ou o gradiente)
-  scene: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'transparent' },
+  // cobre o card inteiro: os quatro lados presos + aspectRatio 'auto' (anula o 4:5 próprio do CenaViva; na web o
+  // aspect-ratio do CSS venceria o bottom:0); transparente até pintar (por baixo continua a imagem parada ou o
+  // gradiente). Nada de width/height '100%': no celular o Yoga mede a porcentagem de uma camada absoluta pela área
+  // de DENTRO do padding do card, e a cena ficava curta à direita e embaixo (emulador Android, 18/11/2026).
+  scene: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, aspectRatio: 'auto', backgroundColor: 'transparent' },
   // o menor respiro do pé das capas vivas é 15 px (cartão da Cena-Âncora na Home): o rótulo inteiro cabe nele (1 + 12
   // + 2 × 1) e não cresce com a fonte do aparelho (allowFontScaling), então nunca encosta na última linha do card; a
   // pílula escura garante a leitura sobre qualquer cena, e o right 14 o tira da curva do canto arredondado

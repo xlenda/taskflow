@@ -174,7 +174,7 @@ export default function WelcomeVideo({
       <Image
         source={{ uri: mediaUrl(POSTER_PATH) }}
         resizeMode={fullBleed ? mediaFit : 'cover'}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <VideoView
         ref={videoViewRef}

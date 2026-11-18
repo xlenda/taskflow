@@ -1106,7 +1106,11 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   storageMutationLayer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     zIndex: 80,
     elevation: 20,
     alignItems: 'center',

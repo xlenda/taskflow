@@ -214,7 +214,8 @@ async function main() {
     },
     Platform: { OS: os, select: (o) => (o[os] !== undefined ? o[os] : o.default) },
     Pressable: 'Pressable',
-    StyleSheet: { create: (s) => s, absoluteFillObject: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 } },
+    // Same as React Native 0.86 on the phone: absoluteFill only (absoluteFillObject was removed; only the web has it).
+    StyleSheet: { create: (s) => s, absoluteFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 } },
     Text: 'Text',
     View: 'View',
     useWindowDimensions: () => ({ width: device.width, height: 800 }),

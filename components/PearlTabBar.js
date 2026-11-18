@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   hidden: { height: 0 },
   dock: { paddingTop: 6 },
   capsule: { height: 62, borderRadius: 24, borderWidth: 1, overflow: 'visible' },
-  capsuleFace: { ...StyleSheet.absoluteFillObject, borderRadius: 23 },
+  capsuleFace: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 23 },
   row: { flex: 1, flexDirection: 'row' },
   pill: { position: 'absolute', top: 0, bottom: 0, left: 0, paddingHorizontal: 1 },
   pillFace: { flex: 1, borderRadius: 20, borderWidth: 1 },

@@ -574,7 +574,7 @@ export default function HomeScreen() {
               accent={typeof anchorScene.accent === 'number' ? anchorScene.accent : 0}
               radius={th.radius.card}
               decorative
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
             />
             <View
               style={[

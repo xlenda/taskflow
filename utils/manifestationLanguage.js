@@ -227,7 +227,7 @@ export function shouldTranslateManifestationVariant(item, targetLang) {
 
 function generatedVariant(item, profile, lang, sourceLang) {
   const category = item.category || 'Wealth';
-  const title = cleanText(item.title, TEXT_LIMITS.title) || (lang === 'pt' ? 'Minha manifestacao' : 'My manifestation');
+  const title = cleanText(item.title, TEXT_LIMITS.title) || (lang === 'pt' ? 'Minha manifestação' : 'My manifestation');
   const isAlternatePersonalLanguage = lang !== sourceLang;
   // Free-form answers cannot be translated reliably on-device. The alternate
   // local fallback therefore uses language-native neutral copy instead of
@@ -235,7 +235,7 @@ function generatedVariant(item, profile, lang, sourceLang) {
   // cloud consent, AppContext replaces this fallback with a Gemini variant.
   const generationTitle = isAlternatePersonalLanguage
     ? lang === 'pt'
-      ? 'minha intencao pessoal'
+      ? 'minha intenção pessoal'
       : 'my personal intention'
     : title;
   const generationProfile = isAlternatePersonalLanguage ? {} : profile || {};

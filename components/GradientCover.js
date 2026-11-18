@@ -78,10 +78,10 @@ export default function GradientCover({
   // 10/08). Agora o gradiente fecha na própria cor de destaque, mantendo o ar
   // sonhador com texto legível. O mesmo véu vai por cima da cena viva.
   const veil = (imaged) => (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             backgroundColor: imaged
               ? 'rgba(5,12,22,0.34)'
@@ -99,7 +99,7 @@ export default function GradientCover({
           locations={[0, 0.52, 1]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
       ) : null}
     </View>
@@ -124,7 +124,7 @@ export default function GradientCover({
           onLoad={onVisualReady}
           onError={onVisualError}
           accessible={false}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
       ) : null}
       {veil(imaged)}

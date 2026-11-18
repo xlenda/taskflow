@@ -117,17 +117,17 @@ const ShareCard = forwardRef(function ShareCard(
             onLoad={onVisualReady}
             onError={onVisualError}
             accessible={false}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
         ) : null}
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.veil]} />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.veil]} />
         <LinearGradient
           pointerEvents="none"
           colors={SHARE_CARD_VEIL.gradient.colors}
           locations={SHARE_CARD_VEIL.gradient.locations}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
 
         <View pointerEvents="none" style={styles.safeArea}>
