@@ -89,7 +89,9 @@ function permissionGranted(client, permission) {
 
 function permissionLabel(client, permission) {
   if (permissionGranted(client, permission)) return 'granted';
-  if (permission?.status === 'denied' || permission?.canAskAgain === false) return 'denied';
+  // Android 13+ answers "denied" with canAskAgain true before the first prompt.
+  if (permission?.canAskAgain === false) return 'denied';
+  if (permission?.status === 'denied' && permission?.canAskAgain !== true) return 'denied';
   return 'undetermined';
 }
 

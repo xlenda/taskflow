@@ -182,14 +182,24 @@ assert.ok(
 );
 assert.ok(screen.includes('Linking.openSettings()'), 'permissão negada precisa oferecer Ajustes');
 assert.ok(
-  /\(feedback === 'denied' \|\| capability\?\.authorization === 'denied'\)[\s\S]{0,100}Platform\.OS !== 'web'/.test(
-    screen
-  ) &&
-    !/\(feedback === 'denied' \|\| capability\?\.authorization === 'denied'\)[\s\S]{0,100}Platform\.OS === 'ios'/.test(
-      screen
-    ),
+  /\{permissionOff && Platform\.OS !== 'web' \? \(/.test(screen) &&
+    !/permissionOff[\s\S]{0,60}Platform\.OS === 'ios'/.test(screen),
   'Abrir Ajustes precisa ficar disponível para permissão negada no Android e no iOS'
 );
+// Android 13+: notificações desligadas nos Ajustes DEPOIS de concedidas voltam como "pode pedir de novo"
+// (status denied + canAskAgain true). Lembrete ligado sem permissão = desligado, nunca "Lembrete ativo".
+const permissionOffDecl = (screen.match(/const permissionOff =[\s\S]*?;\r?\n/) || [''])[0];
+assert.ok(
+  /feedback === 'denied'/.test(permissionOffDecl) &&
+    /capability\?\.authorization === 'denied'/.test(permissionOffDecl) &&
+    /reminderMode && ritual\.reminderEnabled && capability\?\.supported === true && capability\.canSchedule === false/.test(permissionOffDecl),
+  'lembrete ligado sem permissão de notificação precisa contar como desligado'
+);
+assert.ok(
+  /const alarmSettled = ritual\.reminderEnabled && !dirty && !soundUpdate && !permissionOff;/.test(screen),
+  'o check verde de "ativo" não pode aparecer com a permissão desligada'
+);
+assert.ok(/: permissionOff\s*\? t\(reminderMode \? COPY\.reminderDenied : COPY\.denied\)/.test(screen), 'status de notificações desligadas');
 assert.ok(screen.includes('O aparelho não confirmou o agendamento. Nada foi salvo'), 'erro honesto ausente');
 assert.ok(
   activation.includes("let activationStage = 'permission'") &&

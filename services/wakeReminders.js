@@ -27,9 +27,12 @@ function api() {
 const isWakeData = (data) => data?.kind === WAKE_NOTIFICATION_KIND && data?.url === WAKE_URL;
 const responseIsWake = (response) => isWakeData(response?.notification?.request?.content?.data);
 
+// Android 13+ answers status "denied" with canAskAgain true before the first
+// prompt; only a refusal the system will not ask again counts as denied.
 function permissionLabel(permission) {
   if (permission?.granted === true || permission?.status === 'granted') return 'granted';
-  return permission?.status === 'denied' || permission?.canAskAgain === false ? 'denied' : 'undetermined';
+  if (permission?.canAskAgain === false) return 'denied';
+  return permission?.status === 'denied' && permission?.canAskAgain !== true ? 'denied' : 'undetermined';
 }
 
 // Turning on, the sync and turning off run one at a time: two at once would each

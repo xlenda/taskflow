@@ -306,7 +306,13 @@ export default function AffirmationAlarmScreen() {
     time !== (isValidTime(ritual.reminderTime) ? ritual.reminderTime : '07:00') ||
     !sameDays(weekdays, persistedDays) ||
     (!reminderMode && ritual.reminderEnabled && ritual.wakeNarratorId !== narration.narratorId);
-  const alarmSettled = ritual.reminderEnabled && !dirty && !soundUpdate;
+  // Notifications refused for good, or (Android 13+) turned off in Settings after being granted: that case comes
+  // back as "can ask again", so an enabled reminder without permission counts as off whatever the label says.
+  const permissionOff =
+    feedback === 'denied' ||
+    capability?.authorization === 'denied' ||
+    (reminderMode && ritual.reminderEnabled && capability?.supported === true && capability.canSchedule === false);
+  const alarmSettled = ritual.reminderEnabled && !dirty && !soundUpdate && !permissionOff;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -624,7 +630,7 @@ export default function AffirmationAlarmScreen() {
     ? t(COPY.scheduling)
     : feedback === 'saved_draft'
     ? t(COPY.savedDraft)
-    : feedback === 'denied' || capability?.authorization === 'denied'
+    : permissionOff
     ? t(reminderMode ? COPY.reminderDenied : COPY.denied)
     : feedback === 'permission_required'
     ? t(COPY.permissionRequired)
@@ -1001,7 +1007,7 @@ export default function AffirmationAlarmScreen() {
                 styles.status,
                 {
                   backgroundColor: alpha(
-                    feedback === 'failed' || feedback === 'denied'
+                    feedback === 'failed' || permissionOff
                       ? theme.danger
                       : feedback === 'saved_draft' || alarmSettled
                       ? theme.success
@@ -1022,8 +1028,7 @@ export default function AffirmationAlarmScreen() {
               />
               <Text style={[styles.statusText, { color: theme.textMuted }]}>{status}</Text>
             </View>
-            {(feedback === 'denied' || capability?.authorization === 'denied') &&
-            Platform.OS !== 'web' ? (
+            {permissionOff && Platform.OS !== 'web' ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => Linking.openSettings().catch(() => {})}

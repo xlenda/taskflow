@@ -1031,9 +1031,12 @@ async function verifyWakeReminders() {
     [{ status: 'granted', granted: true }, { supported: true, canSchedule: true, canRequestAuthorization: false, authorization: 'authorized' }],
     [{ status: 'undetermined', granted: false, canAskAgain: true }, { supported: true, canSchedule: false, canRequestAuthorization: true, authorization: 'not_determined' }],
     [{ status: 'denied', granted: false, canAskAgain: false }, { supported: true, canSchedule: false, canRequestAuthorization: false, authorization: 'denied' }],
+    // Android 13+ answers "denied" with canAskAgain before the first prompt: the
+    // button must still ask (seen on the emulator, 14/11/2026: it stayed off).
+    [{ status: 'denied', granted: false, canAskAgain: true }, { supported: true, canSchedule: false, canRequestAuthorization: true, authorization: 'not_determined' }],
   ]) {
     useMock(notificationsMock({ getPermissionsAsync: async () => permission }));
-    assert.deepStrictEqual(await service.getWakeReminderCapability(), expected, permission.status);
+    assert.deepStrictEqual(await service.getWakeReminderCapability(), expected, `${permission.status}/${permission.canAskAgain}`);
   }
 
   // 13b. Sincronia (App ao abrir e ao voltar para a frente, lembrete ligado): idempotente, nunca pede permissão.

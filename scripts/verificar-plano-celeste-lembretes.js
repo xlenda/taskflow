@@ -368,6 +368,19 @@ async function verifyReconciliation() {
     count: 2,
     identifiers: ['native-a', 'native-b'],
   });
+
+  // Android 13+ answers "denied" with canAskAgain true before the first prompt:
+  // that is still "can ask", only canAskAgain false is a final refusal.
+  const android = loadService('android');
+  for (const [permission, expected] of [
+    [{ status: 'denied', granted: false, canAskAgain: true }, 'undetermined'],
+    [{ status: 'denied', granted: false, canAskAgain: false }, 'denied'],
+    [{ status: 'undetermined', granted: false, canAskAgain: true }, 'undetermined'],
+  ]) {
+    android._practicePlanRemindersTest.setApiForTests(baseMock({ async getPermissionsAsync() { return permission; } }));
+    const result = await android.reconcilePracticePlanReminders({});
+    assert.strictEqual(result.permission, expected, `${permission.status}/${permission.canAskAgain}`);
+  }
 }
 
 async function verifySnooze() {
