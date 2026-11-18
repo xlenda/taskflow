@@ -1,1 +1,1 @@
-Celeste's first release brings personal Anchor Scenes, your chosen voice, the One-Minute Ritual, Bridge for Today, dreams, and a 21-day journey.
+Visual fixes: your Anchor Scene shows on the home screen again, the opening video appears in full, and vision images and share cards render completely. We also fixed accents in some Portuguese texts.

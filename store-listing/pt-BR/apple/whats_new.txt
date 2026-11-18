@@ -1,1 +1,1 @@
-Primeira versão da Celeste com Cena-Âncora pessoal, voz escolhida, Ritual de Um Minuto, Ponte de Hoje, sonhos e jornada de 21 dias.
+Correções visuais: a sua Cena-Âncora volta a aparecer na tela inicial, o vídeo de abertura aparece por inteiro e as imagens das visões e do cartão de compartilhar ficam completas. Também corrigimos acentos em textos do app.
