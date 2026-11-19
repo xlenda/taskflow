@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const net = require('net');
+const appAttest = require('./_app-attest');
 const playIntegrity = require('./_play-integrity');
 
 const USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,9 +124,9 @@ function deriveActorHash(req, secret) {
     .digest('hex');
 }
 
-// A Play-Integrity-verified request spends the actor budget of its
-// authenticated anonymous user (distinct prefix: never collides with origin
-// actors). The per-person and weighted global quotas still apply in the RPC.
+// A verified native request (Play Integrity or App Attest) spends the actor
+// budget of its authenticated anonymous user (distinct prefix: never collides
+// with origin actors). The per-person and weighted global quotas still apply in the RPC.
 function deriveNativeUserActorHash(userId, secret) {
   return crypto
     .createHmac('sha256', secret)
@@ -173,21 +174,31 @@ function localNativeBypassEnabled() {
 
 function isNativeRequest(req) {
   // X-Celeste-Client is attacker-controlled. This synchronous pre-filter only
-  // lets a native claim past the route's Origin/BotID gate when it carries a
-  // Play Integrity token (Android) or the local development bypass is on;
-  // authorizePaidRequest verifies that token with Google before any identity,
-  // quota or provider call. iOS stays closed (no App Attest yet).
+  // lets a native claim past the route's Origin/BotID gate when it carries its
+  // platform's attestation (Android: a Play Integrity token; iOS: the three
+  // App Attest headers) or the local development bypass is on.
+  // authorizePaidRequest verifies it before any quota or provider call: Google's
+  // verdict before identity, the iOS assertion right after identity, against the
+  // key that same user registered through api/app-attest.js.
   return (
     hasNativeClientClaim(req) &&
     (localNativeBypassEnabled() ||
-      (clientKind(req) === 'android' && Boolean(playIntegrity.integrityToken(req))))
+      (clientKind(req) === 'android' && Boolean(playIntegrity.integrityToken(req))) ||
+      (clientKind(req) === 'ios' && Boolean(appAttest.assertionHeaders(req))))
   );
 }
 
 // Every native refusal is the same 403 for the caller and one log line saying why
-// (api/_play-integrity.js keeps that line free of tokens, hashes and secrets).
+// (api/_play-integrity.js and api/_app-attest.js keep that line free of tokens,
+// keys, hashes and secrets). iOS without the three App Attest headers keeps the
+// pre-filter's 'client_not_supported' line; every other iOS refusal is App Attest's.
 function nativeRefusal(reason, googleStatus) {
   playIntegrity.logNativeRejection(reason, googleStatus);
+  return { error: 'native_attestation_required', status: 403 };
+}
+
+function appAttestRefusal(reason) {
+  appAttest.logRejection(reason);
   return { error: 'native_attestation_required', status: 403 };
 }
 
@@ -246,6 +257,17 @@ function serviceRoleHeaders(config) {
     headers.Authorization = `Bearer ${config.serviceKey}`;
   }
   return headers;
+}
+
+// A service-role RPC for the App Attest key store; throws when the call fails.
+async function serviceRpc(config, name, body) {
+  const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: serviceRoleHeaders(config),
+    body: JSON.stringify(body),
+  });
+  if (!response || !response.ok) throw new Error(`${name}_failed`);
+  return response.json();
 }
 
 async function reservationRpc(config, input) {
@@ -333,10 +355,12 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   if (hasNativeClientClaim(req) && !isNativeRequest(req)) {
     return nativeRefusal(clientKind(req) === 'android' ? 'no_token' : 'client_not_supported');
   }
-  // Play Integrity opens only the Android voice and texts (scene, translation); images and dreams stay closed.
+  // Play Integrity (Android) and App Attest (iOS) open only the voice and texts
+  // (scene, translation); images and dreams stay closed.
   const attestNative = hasNativeClientClaim(req) && !localNativeBypassEnabled();
+  const attestIos = attestNative && clientKind(req) === 'ios';
   if (attestNative && !playIntegrity.NATIVE_OPERATIONS.includes(operation)) {
-    return nativeRefusal('operation_not_allowed');
+    return attestIos ? appAttestRefusal('operation_not_allowed') : nativeRefusal('operation_not_allowed');
   }
 
   const config = serverConfig();
@@ -358,7 +382,7 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   const id = requestId(req);
   if (!token || !id) return { error: 'identity_required', status: 401 };
 
-  if (attestNative) {
+  if (attestNative && !attestIos) {
     // The token is bound to this Bearer session too: replayed with another session, it fails.
     const integrity = await playIntegrity.verifyPlayIntegrity(req, {
       operation,
@@ -370,6 +394,18 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
 
   const identity = await authenticatedUser(config, token);
   if (identity.error) return identity;
+  if (attestIos) {
+    // The assertion signs this operation, request id, Bearer session, body and
+    // time with the key this user registered, and its counter must go up.
+    const assertion = await appAttest.verifyAssertionRequest(req, {
+      operation,
+      requestId: id,
+      accessToken: token,
+      userId: identity.userId,
+      rpc: (name, body) => serviceRpc(config, name, body),
+    });
+    if (!assertion.ok) return appAttestRefusal(assertion.reason);
+  }
   const reservation = await reserveCredit(config, {
     userId: identity.userId,
     requestId: id,
@@ -495,6 +531,7 @@ module.exports = {
   resetAuthorizerForTests,
   serverConfig,
   serviceRoleHeaders,
+  serviceRpc,
   setAuthorizerForTests,
   setFinalizerForTests,
   validActorHashSecret,

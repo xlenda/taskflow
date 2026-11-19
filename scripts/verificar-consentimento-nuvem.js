@@ -135,10 +135,11 @@ assert.strictEqual(CLOUD_CONSENT_VERSION, 'celeste-cloud-processors-v2');
 assert.match(chat, /const\s+DRAFT_V\s*=\s*7\s*;/);
 
 // Each platform keeps the version of the consent it showed: the website stays on v2 (nobody there accepts again);
-// the Android app (Metro picks cloudConsent.android.js) asks for voice + AI texts with its own version, so the older
-// voice-only consent given on Android is asked again. The voice and text routes accept both; images and dreams only v2.
+// the store apps (Metro picks cloudConsent.native.js on Android and iOS, never on the web) ask for voice + AI texts
+// with their own version, so the older voice-only consent given on Android is asked again. The voice and text routes
+// accept both; images and dreams only v2.
 const web = require('../constants/cloudConsent');
-const android = require('../constants/cloudConsent.android.js');
+const android = require('../constants/cloudConsent.native.js');
 assert.strictEqual(android.CLOUD_CONSENT_VERSION, web.ANDROID_CLOUD_CONSENT_VERSION);
 assert.notStrictEqual(android.CLOUD_CONSENT_VERSION, web.CLOUD_CONSENT_VERSION, 'o Android tem a propria versao');
 assert.deepStrictEqual(

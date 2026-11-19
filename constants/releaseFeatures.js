@@ -30,19 +30,21 @@ export function releaseFeaturesForPlatform(
     // offered only on Android and Apple builds.
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'android' || platformOS === 'ios',
-    // The Celeste voice (the narrator she picks) on the website and on Android
-    // alike. Android requests pass the server only with a verified Play
-    // Integrity token; otherwise the device voice reads with an honest notice.
-    cloudNarration: platformOS === 'web' || platformOS === 'android',
+    // The Celeste voice (the narrator she picks) on the website and in both store
+    // apps. App requests pass the server only with a verified proof of the official
+    // binary (Play Integrity on Android, App Attest on iOS); otherwise the device
+    // voice reads with an honest notice.
+    cloudNarration: ['web', 'android', 'ios'].includes(platformOS),
     // The AI texts: the Anchor Scene, the 6+6 visions and affirmations and the
-    // scene translation, on the website and on Android (verified by Play
-    // Integrity; without it the texts built on the device stay, with no error).
-    // Android asks for them in its own consent (ANDROID_CLOUD_CONSENT_VERSION).
-    cloudText: platformOS === 'web' || platformOS === 'android',
+    // scene translation, on the website and in both store apps (verified the same
+    // way; without it the texts built on the device stay, with no error). The apps
+    // ask for them in their own consent (ANDROID_CLOUD_CONSENT_VERSION, the same on
+    // Android and iOS).
+    cloudText: ['web', 'android', 'ios'].includes(platformOS),
     // Images, cloud dreams and the Living Mirror stay website-only. If a future
-    // Android build turns this on, bump ANDROID_CLOUD_CONSENT_VERSION
+    // app build turns this on, bump ANDROID_CLOUD_CONSENT_VERSION
     // (constants/cloudConsent.js, used by utils/useCloudMediaConsent.js): the
-    // consent Android users gave (ANDROID_CLOUD_CONSENT_COPY) names only the voice and texts.
+    // consent app users gave (ANDROID_CLOUD_CONSENT_COPY) names only the voice and texts.
     paidCloudProcessing: platformOS === 'web',
   });
 }

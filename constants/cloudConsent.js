@@ -1,8 +1,9 @@
 // The website's consent: one control for every optional cloud processor.
 const CLOUD_CONSENT_VERSION = 'celeste-cloud-processors-v2';
-// The Android app asks only for what it sends: the voice (ElevenLabs) and the AI texts (Anchor Scene, visions,
-// affirmations and the scene translation). Its own version, so a voice-only consent given earlier on Android is
-// asked again while website consents stay valid. constants/cloudConsent.android.js makes it the app's version.
+// The store apps (Android and iOS) ask only for what they send: the voice (ElevenLabs) and the AI texts (Anchor
+// Scene, visions, affirmations and the scene translation). Their own version, so a voice-only consent given earlier
+// on Android is asked again while website consents stay valid. constants/cloudConsent.native.js makes it the apps'
+// version. The name and the value stay: a new value would ask every Android user again.
 const ANDROID_CLOUD_CONSENT_VERSION = 'celeste-cloud-android-voice-texts-v1';
 // The routes of the voice and the texts accept both; images and dreams only the website's.
 const VOICE_AND_TEXT_CONSENT_VERSIONS = Object.freeze([CLOUD_CONSENT_VERSION, ANDROID_CLOUD_CONSENT_VERSION]);

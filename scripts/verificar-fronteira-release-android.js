@@ -17,8 +17,8 @@ const releaseFeaturesForPlatform = new Function(
 )({ env: {} });
 
 // Android (21/10): the Celeste voice (cloudNarration) and the AI texts — Anchor Scene, 6+6 suite, scene translation
-// (cloudText) — join the boundary on purpose, verified by Play Integrity on the server; images, cloud dreams and the
-// Living Mirror (paidCloudProcessing) stay website-only.
+// (cloudText) — join the boundary on purpose, verified by Play Integrity on the server; the iPhone (19/11) gets the
+// same two, verified by App Attest. Images, cloud dreams and the Living Mirror (paidCloudProcessing) stay website-only.
 assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   androidStoreBoundary: true,
   publicCommunity: false,
@@ -60,8 +60,8 @@ for (const platformOS of ['ios', 'web']) {
     wakeSequence: true,
     practicePlan: true,
     onDevicePracticeSpeech: platformOS === 'ios',
-    cloudNarration: platformOS === 'web',
-    cloudText: platformOS === 'web',
+    cloudNarration: true,
+    cloudText: true,
     paidCloudProcessing: platformOS === 'web',
   });
 }
@@ -128,11 +128,11 @@ assert.ok(
     alarmScreen.includes('reminderMode ? await cancelWakeReminders() : await cancelAffirmationAlarm()'),
   'Without AlarmKit the wake-up must schedule and cancel only ordinary reminders'
 );
-// Only the voice and the AI texts cross the Android boundary: Home asks when she creates a desire, as the website
-// does, but with the Android text (voice and texts), the Profile control and the consent speak of voice and texts
-// with Android's own version, and images, dreams and the Living Mirror still need paidCloudProcessing.
+// Only the voice and the AI texts cross the store apps' boundary (Android and iPhone): Home asks when she creates a
+// desire, as the website does, but with the apps' text (voice and texts), the Profile control and the consent speak
+// of voice and texts with the apps' own version, and images, dreams and the Living Mirror still need paidCloudProcessing.
 const cloudMediaConsent = read('utils/useCloudMediaConsent.js');
-const cloudConsentAndroid = read('constants/cloudConsent.android.js');
+const cloudConsentNative = read('constants/cloudConsent.native.js');
 assert.ok(
   home.includes('if (!RELEASE_FEATURES.cloudText)') &&
     /!RELEASE_FEATURES\.cloudNarration &&\s*\(currentProfile\.cloudConsentVersion/.test(home) &&
@@ -142,8 +142,10 @@ assert.ok(
     profile.includes('const voiceAndTextsCloud = !RELEASE_FEATURES.paidCloudProcessing;') &&
     profile.includes('(!RELEASE_FEATURES.cloudNarration ||') &&
     cloudMediaConsent.includes('(RELEASE_FEATURES.paidCloudProcessing ? COPY : ANDROID_CLOUD_CONSENT_COPY)[lang]') &&
-    cloudConsentAndroid.includes("require('./cloudConsent.js')") &&
-    cloudConsentAndroid.includes('shared.cloudConsentRules(shared.ANDROID_CLOUD_CONSENT_VERSION)') &&
+    cloudConsentNative.includes("require('./cloudConsent.js')") &&
+    cloudConsentNative.includes('shared.cloudConsentRules(shared.ANDROID_CLOUD_CONSENT_VERSION)') &&
+    !fs.existsSync(path.join(root, 'constants/cloudConsent.android.js')) &&
+    !fs.existsSync(path.join(root, 'constants/cloudConsent.ios.js')) &&
     !onboardingFlow.includes("id: 'cloudPersonalization'") &&
     onboarding.includes('cloudConsentVersion: null') &&
     onboarding.includes('cloudPersonalization: false'),

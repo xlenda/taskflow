@@ -14,6 +14,9 @@
       "config": {
         "usesNonExemptEncryption": false
       },
+      "entitlements": {
+        "com.apple.developer.devicecheck.appattest-environment": "production"
+      },
       "infoPlist": {
         "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com o conteúdo pessoal que escolheu, como afirmação, visão, Cena-Âncora, frase de sonho ou frase própria.",
         "NSMicrophoneUsageDescription": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",

@@ -49,7 +49,8 @@ const STATIC_GATES = [
   ['scripts/verificar-provedores-texto.js', 'Providers Claude/OpenAI da Celeste falharam'],
   ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],
   ['scripts/verificar-acesso-pago.js', 'Autorizacao e cota distribuida do Gemini falharam'],
-  ['scripts/verificar-fronteira-api-nativa.js', 'Fronteira nativa (so a voz do Android com Play Integrity) falhou'],
+  ['scripts/verificar-fronteira-api-nativa.js', 'Fronteira nativa (voz e textos: Android com Play Integrity, iPhone com App Attest) falhou'],
+  ['scripts/verificar-app-attest.js', 'App Attest do iPhone (atestacao, assercao e contador) falhou'],
   ['scripts/verificar-waf-vercel.js', 'WAF ativo da Vercel diverge da protecao versionada'],
   ['scripts/verificar-audio-gemini.js', 'Infraestrutura de voz Gemini falhou'],
   ['scripts/verificar-controles-reproducao-audio.js', 'Controles de progresso e velocidade do audio falharam'],
@@ -338,6 +339,7 @@ function copyDeployInputs() {
   assert(fs.existsSync(path.join(apiTarget, 'transformar-sonho.js')), 'Funcao de sonho ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'gerar-audio.js')), 'Funcao de voz Gemini ausente do pacote');
   assert(fs.existsSync(path.join(apiTarget, 'gerar-visual.js')), 'Funcao de visual Gemini ausente do pacote');
+  assert(fs.existsSync(path.join(apiTarget, 'app-attest.js')), 'Funcao do App Attest do iPhone ausente do pacote');
   assert(
     fs.existsSync(path.join(apiTarget, 'denunciar-conteudo-ia.js')),
     'Gateway de denuncia de IA ausente do pacote'

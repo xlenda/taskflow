@@ -23,9 +23,9 @@ const COPY = {
   },
 };
 
-// Android: the voice and the AI texts go to the cloud (images stay on the website), so the request names exactly
-// those, with Android's own consent version (constants/cloudConsent.android.js). The Home asks with this same text
-// when she creates a desire, as the website does.
+// The store apps (Android and iOS): the voice and the AI texts go to the cloud (images stay on the website), so the
+// request names exactly those, with the apps' own consent version (constants/cloudConsent.native.js). The Home asks
+// with this same text when she creates a desire, as the website does.
 export const ANDROID_CLOUD_CONSENT_COPY = {
   pt: {
     title: 'Ativar a voz e os textos da Celeste?',

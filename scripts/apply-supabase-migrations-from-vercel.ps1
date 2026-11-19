@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('list', 'push', 'prepare-reporting', 'report-expansion', 'report-cutover')]
+  [ValidateSet('list', 'push', 'prepare-reporting', 'report-expansion', 'report-cutover', 'app-attest-keys')]
   [string]$Action = 'list'
 )
 
@@ -116,6 +116,56 @@ function Invoke-ReportEndpointSmoke(
   if ($smokeExit -ne 0) { throw "O endpoint de denuncia falhou no modo $Mode." }
 }
 
+# Supabase CLI 3 (major pinned): a query on the hosted database must be declared
+# --read-only, a write needs --yes, and --remote=<url> replaces --db-url.
+function Invoke-ReadOnlySql([string]$Sql, [string]$Failure) {
+  $sqlText = ($Sql -replace '\s+', ' ').Trim()
+  $queryOutput = & $npxExecutable --yes supabase@3 db query `
+    "--remote=$env:CELESTE_MIGRATION_DB_URL" `
+    --read-only `
+    --output-format json `
+    $sqlText
+  if ($LASTEXITCODE -ne 0) { throw $Failure }
+  try {
+    $queryResult = ($queryOutput -join "`n") | ConvertFrom-Json
+  } catch {
+    throw "$Failure (JSON invalido)"
+  }
+  if (-not $queryResult.rows -or $queryResult.rows.Count -ne 1) { throw $Failure }
+  return $queryResult.rows[0]
+}
+
+function Get-RemoteMigrationHistory {
+  $historySql = @'
+select coalesce(string_agg(version, ',' order by version), '') as versions
+from supabase_migrations.schema_migrations;
+'@
+  $historyRow = Invoke-ReadOnlySql $historySql 'Nao foi possivel auditar o historico remoto.'
+  return [string]$historyRow.versions
+}
+
+function Invoke-AppAttestContractCheck {
+  $contractSql = @'
+select (
+  to_regclass('public.celeste_app_attest_keys') is not null
+  and (select c.relrowsecurity from pg_class c where c.oid = to_regclass('public.celeste_app_attest_keys'))
+  and not has_table_privilege('anon', 'public.celeste_app_attest_keys', 'select,insert,update,delete')
+  and not has_table_privilege('authenticated', 'public.celeste_app_attest_keys', 'select,insert,update,delete')
+  and has_function_privilege('service_role', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
+  and has_function_privilege('service_role', 'public.celeste_app_attest_key(text,uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
+  and not has_function_privilege('anon', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
+  and not has_function_privilege('anon', 'public.celeste_app_attest_key(text,uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
+  and not has_function_privilege('authenticated', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
+  and not has_function_privilege('authenticated', 'public.celeste_app_attest_key(text,uuid)', 'execute')
+  and not has_function_privilege('authenticated', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
+) as valid;
+'@
+  $contractRow = Invoke-ReadOnlySql $contractSql 'O contrato do App Attest (015) nao foi confirmado diretamente no banco.'
+  if ($contractRow.valid -ne $true) { throw 'O contrato do App Attest (015) diverge do esperado.' }
+}
+
 try {
   & $npxExecutable --yes vercel@latest env pull $tempFile --environment=production --yes
   if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel obter o ambiente da Vercel.' }
@@ -205,6 +255,38 @@ try {
 
     & $npxExecutable --yes supabase@latest migration list --db-url $env:CELESTE_MIGRATION_DB_URL
     if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel confirmar o historico remoto.' }
+  } elseif ($Action -eq 'app-attest-keys') {
+    # Migration 015 (App Attest keys): applies only 015 on top of 001-014, then
+    # checks table, RLS and grants straight in the database. Rerun is a check only.
+    $baselineHistory = @(1..14 | ForEach-Object { $_.ToString('000') }) -join ','
+    $appliedHistory = @(1..15 | ForEach-Object { $_.ToString('000') }) -join ','
+    $currentHistory = Get-RemoteMigrationHistory
+    if ($currentHistory -ne $baselineHistory -and $currentHistory -ne $appliedHistory) {
+      throw 'O historico remoto precisa estar em 001-014 ou 001-015 para o App Attest.'
+    }
+    if ($currentHistory -eq $baselineHistory) {
+      $sourceMigrations = Join-Path $PSScriptRoot '..\supabase\migrations'
+      $temporaryMigrations = Join-Path $tempProject 'supabase\migrations'
+      New-Item -ItemType Directory -Path $temporaryMigrations -Force | Out-Null
+      foreach ($number in 1..15) {
+        $version = $number.ToString('000')
+        $localMigration = @(Get-ChildItem -LiteralPath $sourceMigrations -File |
+          Where-Object { $_.Name.StartsWith("$version`_", [System.StringComparison]::Ordinal) })
+        if ($localMigration.Count -ne 1) { throw "Migration local $version ausente ou duplicada." }
+        Copy-Item -LiteralPath $localMigration[0].FullName -Destination $temporaryMigrations
+      }
+      & $npxExecutable --yes supabase@3 db push `
+        --workdir $tempProject `
+        "--remote=$env:CELESTE_MIGRATION_DB_URL" `
+        --include-all `
+        --yes
+      if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel aplicar a migration 015 do App Attest.' }
+      if ((Get-RemoteMigrationHistory) -ne $appliedHistory) {
+        throw 'O historico remoto nao chegou a 001-015 depois da migration do App Attest.'
+      }
+    }
+    Invoke-AppAttestContractCheck
+    Write-Output 'Migration 015 validada: chaves do App Attest com RLS, sem acesso anon/authenticated e RPCs so do service_role.'
   } elseif ($Action -eq 'push') {
     & $npxExecutable --yes supabase@latest db push --db-url $env:CELESTE_MIGRATION_DB_URL
   } else {

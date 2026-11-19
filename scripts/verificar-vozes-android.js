@@ -1,7 +1,7 @@
 // Portão da voz e dos textos com IA da Celeste no Android: comportamento com a plataforma 'android' (o Metro escolhe
-// `<nome>.android.js`, como constants/cloudConsent.android.js) e um servidor de mentira.
-//  1) bandeiras: a voz e os textos com IA na nuvem existem no site e no Android; o resto da nuvem paga (imagens,
-//     sonho, Espelho Vivo) só no site; o iPhone segue sem nuvem; o aceite do Android tem a própria versão.
+// `<nome>.android.js` e depois `<nome>.native.js`, como constants/cloudConsent.native.js) e um servidor de mentira.
+//  1) bandeiras: a voz e os textos com IA na nuvem existem no site, no Android e no iPhone; o resto da nuvem paga
+//     (imagens, sonho, Espelho Vivo) só no site; o aceite dos apps (Android e iPhone) tem a própria versão.
 //  2) NarrationContext + generateNarrationAudio de verdade no Android: servidor ok → a voz escolhida toca do WAV
 //     gravado no cache pelo expo-audio; recusa (403 native_attestation_required), rede ou teto de gasto → a voz do
 //     aparelho lê com aviso honesto no player global; ela termina, pausa, continua e para como a da Celeste. No site e
@@ -27,8 +27,9 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const platform = { OS: 'android', select: (choices) => choices[platform.OS] ?? choices.default };
 
 // carrega um módulo do app com Babel trocando dependências por dublês (pelo texto do import); imports relativos que
-// não têm dublê também passam pelo Babel, escolhendo `<nome>.<plataforma>.js` primeiro como o Metro faz (no Android,
-// constants/cloudConsent.android.js no lugar de constants/cloudConsent.js)
+// não têm dublê também passam pelo Babel, escolhendo `<nome>.<plataforma>.js` e, fora da web, `<nome>.native.js`
+// primeiro, como o Metro do Expo faz (no Android e no iPhone, constants/cloudConsent.native.js no lugar de
+// constants/cloudConsent.js)
 function loadWith(relative, mocks) {
   const cache = new Map();
   const compile = (file) => {
@@ -50,8 +51,9 @@ function loadWith(relative, mocks) {
     if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
     if (request.startsWith('.') && !/[\\/]node_modules[\\/]/.test(parent.filename)) {
       const target = path.resolve(path.dirname(parent.filename), request);
-      const platformFile = `${target}.${platform.OS}.js`;
-      return compile(fs.existsSync(platformFile) ? platformFile : require.resolve(target));
+      const platformFile = [`${target}.${platform.OS}.js`, ...(platform.OS === 'web' ? [] : [`${target}.native.js`])]
+        .find((file) => fs.existsSync(file));
+      return compile(platformFile || require.resolve(target));
     }
     return original(request, parent, isMain);
   };
@@ -230,9 +232,10 @@ const narratorsMock = {
 async function main() {
   const app = fakeReact();
   const base = { react: app.React, 'react/jsx-runtime': app.jsxRuntime };
-  // o aceite do site (v2) e o do Android (voz + textos com IA): cada plataforma guarda e envia a sua versão
+  // o aceite do site (v2) e o dos apps (voz + textos com IA, o mesmo no Android e no iPhone): cada um guarda e envia
+  // a sua versão
   const { CLOUD_CONSENT_VERSION: WEB_CONSENT_VERSION } = require('../constants/cloudConsent');
-  const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent.android.js');
+  const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent.native.js');
   let reportSurfaces = 0;
   // cada seção roda mesmo se outra falhar: o relatório mostra tudo o que quebrou
   const failures = [];
@@ -284,9 +287,10 @@ async function main() {
     assert.strictEqual(webFlags.cloudNarration, true, 'site: a voz da Celeste continua');
     assert.strictEqual(webFlags.cloudText, true, 'site: os textos com IA continuam');
     assert.strictEqual(webFlags.paidCloudProcessing, true, 'site: o resto da nuvem continua');
-    assert.strictEqual(iosFlags.cloudNarration, false, 'iPhone: sem voz na nuvem nesta versão');
-    assert.strictEqual(iosFlags.cloudText, false, 'iPhone: sem textos na nuvem nesta versão');
-    assert.strictEqual(iosFlags.paidCloudProcessing, false, 'iPhone: sem nuvem paga');
+    // iPhone (19/11): a mesma voz e os mesmos textos do Android, verificados pelo App Attest no servidor
+    assert.strictEqual(iosFlags.cloudNarration, true, 'iPhone: a voz da Celeste na nuvem existe');
+    assert.strictEqual(iosFlags.cloudText, true, 'iPhone: a cena e as visões/afirmações escritas pela IA existem');
+    assert.strictEqual(iosFlags.paidCloudProcessing, false, 'iPhone: imagens e o resto da nuvem paga seguem fora');
   });
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -796,12 +800,20 @@ async function main() {
     await hookFor(webFlags, 'web').playPersonal({ text: 'Cena do site.', lang: 'pt', playbackId: 'reveal:w1' });
     assert.match(confirmations[0].message, /Google Gemini para criar imagens/, 'site: o aceite continua falando das imagens');
     assert.strictEqual(savedProfiles[0].cloudConsentVersion, WEB_CONSENT_VERSION, 'site: guarda a versão do site');
-    // iPhone: sem voz na nuvem, sem pedido de aceite
+    // iPhone: o mesmo aceite dos apps (voz e textos, sem imagens), guardado com a versão dos apps
     confirmations.length = 0;
+    savedProfiles.length = 0;
+    voiceRequests.length = 0;
     const iosVoice = hookFor(iosFlags, 'ios');
-    assert.strictEqual(iosVoice.personalNarrationAvailable, false, 'iPhone: sem narração pessoal');
-    const iosResult = await iosVoice.playPersonal({ text: 'x y', lang: 'pt', playbackId: 'reveal:i1' });
-    assert.deepStrictEqual([iosResult.ok, confirmations.length], [false, 0], 'iPhone: nada de aceite nem nuvem');
+    assert.strictEqual(iosVoice.personalNarrationAvailable, true, 'iPhone: a narração pessoal existe');
+    const iosResult = await iosVoice.playPersonal({ text: 'Minha cena no iPhone.', lang: 'pt', playbackId: 'reveal:i1' });
+    assert.strictEqual(iosResult.ok, true, 'iPhone: ouvir funciona depois do aceite');
+    assert.strictEqual(confirmations.length, 1, 'iPhone: o aceite é pedido uma vez, no toque');
+    assert.match(confirmations[0].title, /voz e os textos/, 'iPhone: o título fala da voz e dos textos');
+    assert.match(confirmations[0].message, /ElevenLabs[\s\S]*Nenhuma imagem é criada no app/, 'iPhone: o mesmo texto do Android');
+    assert.doesNotMatch(confirmations[0].message, /Android|Google Play/, 'o aceite dos apps não fala de uma loja só');
+    assert.strictEqual(savedProfiles[0].cloudConsentVersion, CLOUD_CONSENT_VERSION, 'iPhone: guarda a versão dos apps');
+    assert.strictEqual(voiceRequests[0].cloudConsentVersion, CLOUD_CONSENT_VERSION, 'iPhone: envia a versão dos apps');
   });
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -1015,15 +1027,18 @@ async function main() {
       'Android: o aceite antigo (só da voz) sai e o novo é pedido'
     );
     oldConsentProfile.unmount();
-    // iPhone: nada de voz na nuvem no Perfil, e um aceite antigo é apagado como antes
+    // iPhone: o mesmo Perfil do Android (escolha da voz e controle de voz e textos); um aceite com a versão do site
+    // não cobre o aceite dos apps: sai, e ela aceita de novo
     profileState = { ...profileState, profile: webConsentedProfile };
     profileSaves.length = 0;
     platform.OS = 'ios';
     const { default: IosProfile } = loadWith('screens/ProfileScreen.js', profileMocks(iosFlags));
     const iosProfile = app.mount(IosProfile, { navigation: { addListener: () => () => {}, canGoBack: () => true } });
-    assert.ok(!iosProfile.where((node) => node.type === 'NarratorSelector'), 'iPhone: sem escolha de voz');
-    assert.ok(!iosProfile.byTestID('profile-gemini-switch'), 'iPhone: sem controle de nuvem');
-    assert.ok(profileSaves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: aceite antigo sai');
+    assert.ok(iosProfile.where((node) => node.type === 'NarratorSelector'), 'iPhone: o Perfil oferece a escolha da voz');
+    const iosSwitch = iosProfile.byTestID('profile-gemini-switch');
+    assert.ok(iosSwitch, 'iPhone: o Perfil tem o controle da voz e dos textos na nuvem');
+    assert.match(iosSwitch.props.accessibilityLabel, /Voz e textos da Celeste na nuvem/, 'iPhone: o controle cobre a voz e os textos');
+    assert.ok(profileSaves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: aceite com a versão do site sai');
     iosProfile.unmount();
     platform.OS = 'android';
 
@@ -1342,9 +1357,18 @@ async function main() {
     });
     assert.deepStrictEqual(androidDecided.prompts, [], 'Android com a recusa guardada: a Home não pergunta de novo');
     assert.strictEqual(androidDecided.created[0].profile.cloudPersonalization, false, 'Android com a recusa: a cena nasce no aparelho');
+    // iPhone: com o aceite da versão do site, a Home pede o aceite dos apps (voz e textos) e, aceito, a IA escreve a cena
     const iosHome = await createManifestationOn(iosFlags, 'ios', webConsentedProfile);
-    assert.ok(iosHome.saves.some((patch) => patch.cloudNarrationConsent === false), 'iPhone: o aceite antigo sai');
-    assert.strictEqual(iosHome.created[0].profile.cloudPersonalization, false, 'iPhone: a cena nasce no aparelho');
+    assert.strictEqual(iosHome.prompts.length, 1, 'iPhone: a Home pede o aceite dos apps ao criar o desejo');
+    assert.match(iosHome.prompts[0].title, /voz e os textos/, 'iPhone: o pedido da Home fala da voz e dos textos');
+    assert.match(iosHome.prompts[0].message, /Nenhuma imagem é criada no app/, 'iPhone: o pedido da Home não fala de imagens');
+    assert.deepStrictEqual(
+      [iosHome.created[0].profile.cloudPersonalization, iosHome.created[0].profile.cloudConsentVersion],
+      [true, CLOUD_CONSENT_VERSION],
+      'iPhone: aceitou na Home, a cena nova é escrita pela IA com o aceite dos apps'
+    );
+    const iosDeclined = await createManifestationOn(iosFlags, 'ios', { age: '25-34' }, false);
+    assert.strictEqual(iosDeclined.created[0].profile.cloudPersonalization, false, 'iPhone: recusou, a cena nasce no aparelho');
 
     // 4f) a denúncia não leva os nomes guardados (como a narração): a prévia e o envio saem sem os nomes dos filhos e
     //     das pessoas importantes, mesmo num texto montado no aparelho ou editado por ela

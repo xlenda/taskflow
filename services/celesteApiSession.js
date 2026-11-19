@@ -5,18 +5,20 @@ import { getCelesteSupabaseClient } from './celesteSupabase';
 let sessionPromise;
 
 const NATIVE_STORE_PLATFORMS = new Set(['ios', 'android']);
-// The paid operations Android may run, each verified by Play Integrity on the server
-// (same names as api/_play-integrity.js NATIVE_OPERATIONS): the voice and the AI texts,
-// the Anchor Scene with the 6+6 suite and its translation. Images and dreams stay closed.
-const ANDROID_VERIFIED_OPERATIONS = new Set(['audio', 'scene', 'translation']);
+// The paid operations the store apps may run, each verified on the server — Play Integrity
+// on Android, App Attest on iOS (same names as api/_play-integrity.js NATIVE_OPERATIONS):
+// the voice and the AI texts, the Anchor Scene with the 6+6 suite and its translation.
+// Images and dreams stay closed.
+const NATIVE_VERIFIED_OPERATIONS = new Set(['audio', 'scene', 'translation']);
 
-function androidVerified(client, operation) {
-  return client === 'android' && ANDROID_VERIFIED_OPERATIONS.has(operation) && appIntegrityConfigured();
+// A platform's proof only vouches for the platform the app is running on.
+function nativeVerified(client, operation) {
+  return client === Platform.OS && NATIVE_VERIFIED_OPERATIONS.has(operation) && appIntegrityConfigured();
 }
 
 export function celesteCloudAccessCapability(platform = Platform.OS, operation = null) {
   const client = ['ios', 'android', 'web'].includes(platform) ? platform : 'native';
-  if (NATIVE_STORE_PLATFORMS.has(client) && !androidVerified(client, operation)) {
+  if (NATIVE_STORE_PLATFORMS.has(client) && !nativeVerified(client, operation)) {
     return {
       available: false,
       client,
@@ -70,29 +72,32 @@ function apiSession() {
 export async function getCelesteApiSession() {
   // A client header or embedded secret cannot prove that a request came from
   // the official binary: iOS/Android never get a generic cloud session.
-  // Android voice and texts get one only through celestePaidApiHeaders, after a
-  // Play Integrity token was issued for that exact request.
+  // Their voice and texts get one only through celestePaidApiHeaders, with a Play
+  // Integrity token (Android) or an App Attest assertion (iOS) for that exact request.
   assertCloudAccessAvailable();
   return apiSession();
 }
 
-// `body` is the exact JSON string the caller will send: on Android the Play
-// Integrity token is bound to it, to the operation and to the session that sends
-// it (a token captured for one session fails for another), so the session is
-// created or reused first and every Android request must pass its body here.
+// `body` is the exact JSON string the caller will send: in the store apps the proof
+// (Play Integrity token, App Attest assertion) is bound to it, to the operation and
+// to the session that sends it (a proof captured for one session fails for another),
+// so the session is created or reused first and every app request must pass its body here.
 export async function celestePaidApiHeaders({ operation = null, body } = {}) {
   const capability = assertCloudAccessAvailable(operation);
-  const android = capability.client === 'android';
-  if (android && typeof body !== 'string') throw attestationRequired();
+  const native = NATIVE_STORE_PLATFORMS.has(capability.client);
+  if (native && typeof body !== 'string') throw attestationRequired();
   const id = requestId();
   const session = await apiSession();
   let integrity = null;
-  if (android) {
+  if (native) {
     integrity = await integrityHeaderFor({
       operation,
       requestId: id,
       sessionHash: integrityHash(session.access_token),
       bodyHash: integrityHash(body),
+      // iOS registers its App Attest key once per user of this session (POST /api/app-attest).
+      accessToken: session.access_token,
+      userId: session.user?.id,
     });
     if (!integrity) throw attestationRequired();
   }
