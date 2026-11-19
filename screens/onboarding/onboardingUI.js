@@ -3,13 +3,20 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAdConsentInset } from '../../components/AdConsentBanner';
 import { ONB, SERIF } from '../../constants/brand';
 
 // Shared building blocks for the onboarding flow so every screen matches.
 // All colors come from ONB tokens — no hardcoded hex here.
 
+// Altura útil do questionário: no site, o aviso de cookies ocupa o rodapé enquanto não há escolha, e as telas
+// (e o modo compacto delas) contam só o espaço acima dele, para o aviso nunca cobrir o botão.
+export function useOnbHeight() {
+  return useWindowDimensions().height - useAdConsentInset();
+}
+
 export function OnbScreen({ children, style, outerStyle, colors = ONB.gradient }) {
-  const { height } = useWindowDimensions();
+  const height = useOnbHeight();
   const viewportStyle =
     Platform.OS === 'web'
       ? { width: '100%', height, maxHeight: height, minHeight: 0, overflow: 'hidden' }

@@ -34,9 +34,11 @@ import {
 } from './constants/cloudConsent';
 import { RELEASE_FEATURES } from './constants/releaseFeatures';
 import { initCelesteBotProtection } from './utils/botProtection';
+import { initAdTracking } from './utils/adTracking';
 import { sweepShareCache } from './utils/shareContent';
 import { redactThirdPartyNames, thirdPartyNames } from './services/generatePersonalizedScene';
 import NarrationPlaybackControls from './components/NarrationPlaybackControls';
+import AdConsentBanner from './components/AdConsentBanner';
 import PearlTabBar from './components/PearlTabBar';
 import {
   cancelOrphanedDailyRitualReminders,
@@ -98,6 +100,8 @@ import {
 // a aparecer). O app já é bilíngue nativo — tradução automática só destrói.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   initCelesteBotProtection();
+  // Pixel e tag de anúncio só carregam se a pessoa já aceitou o aviso de cookies (AdConsentBanner).
+  initAdTracking();
   document.documentElement.setAttribute('translate', 'no');
   document.documentElement.classList.add('notranslate');
   const meta = document.createElement('meta');
@@ -965,6 +969,7 @@ export default function App() {
                   </NavigationContainer>
                 </View>
                 <NarrationPlaybackControls />
+                <AdConsentBanner />
                 <StorageMutationGuard />
                 <PersistenceNotice />
               </View>

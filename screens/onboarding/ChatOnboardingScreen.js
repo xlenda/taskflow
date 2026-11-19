@@ -10,13 +10,12 @@ import {
   ScrollView,
   ActivityIndicator,
   AccessibilityInfo,
-  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Typewriter from '../../components/Typewriter';
-import { OnbScreen, ContinueButton, OptionPill, serifStyle } from './onboardingUI';
+import { OnbScreen, ContinueButton, OptionPill, serifStyle, useOnbHeight } from './onboardingUI';
 import { APP_NAME, ONB } from '../../constants/brand';
 import { UI, txt, tr } from '../../constants/i18n';
 import { FLOW, fill, stepLines, inferCategory } from './flow';
@@ -74,7 +73,7 @@ function withCloudProcessingDisabled(profile) {
 
 export default function ChatOnboardingScreen({ navigation }) {
   const { saveProfile, addManifestation, state } = useApp();
-  const { height: viewportHeight } = useWindowDimensions();
+  const viewportHeight = useOnbHeight();
   const lang = (state && state.lang) || 'en';
   const T = UI[lang];
 
