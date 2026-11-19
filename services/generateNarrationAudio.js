@@ -1,4 +1,4 @@
-import { celestePaidApiHeaders } from './celesteApiSession';
+import { celestePaidApiHeaders, celestePaidApiRefused } from './celesteApiSession';
 import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
@@ -287,7 +287,11 @@ async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
         signal: requestSignal,
         body: payload,
       });
-      if (!response || !response.ok) throw await responseError(response || {});
+      if (!response || !response.ok) {
+        const failure = await responseError(response || {});
+        if (!fetchImpl) await celestePaidApiRefused(authorization, failure.status, failure.code);
+        throw failure;
+      }
       const contentType = response.headers && response.headers.get
         ? response.headers.get('content-type') || ''
         : '';

@@ -109,13 +109,53 @@ assert(
 // that, and no public, store or guide text still says translation stays on the website or lists only part of it.
 const oneLine = (text) => text.replace(/\s+/g, ' ');
 const legal = read(path.join('constants', 'legal.js'));
+// the in-app policy carries the date printed on the public pages (both change together)
+const publicDatePt = (/Atualizada em (\d{1,2} de [a-zç]+ de \d{4})\./.exec(privacyPt) || [])[1];
+const publicDateEn = (/Updated ([A-Z][a-z]+ \d{1,2}, \d{4})\./.exec(privacyEn) || [])[1];
 assert(
-  legal.includes('VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA') &&
+  publicDatePt &&
+    publicDateEn &&
+    legal.includes('VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA') &&
     legal.includes('56.970.099/0001-09') &&
-    legal.includes('Atualizado em 11 de novembro de 2026') &&
-    legal.includes('Updated November 11, 2026'),
+    legal.includes(`pt: 'Atualizado em ${publicDatePt}'`) &&
+    legal.includes(`en: 'Updated ${publicDateEn}'`),
   'constants/legal.js: a política dentro do app não traz o controlador e a data da política pública'
 );
+
+// iPhone (19/11): the voice and the AI texts pass there too, checked by Apple's App Attest; the policies (site and app)
+// say so, with what the server keeps for that check, and none still says they are an Android-only feature. Personal
+// images are still never generated in the apps.
+const legalText = oneLine(legal.replace(/\\'/g, "'"));
+for (const [label, text, required] of [
+  ['privacidade PT', oneLine(privacyPt), [
+    'Nos aplicativos de iPhone e Android, esse controle libera a narração neural',
+    'Apple App Attest',
+    'um identificador da chave do aparelho, a chave pública e o recibo da Apple, ligados à sessão técnica anônima',
+    'Nenhuma imagem é gerada nos aplicativos',
+  ]],
+  ['privacy EN', oneLine(privacyEn), [
+    'In the iPhone and Android apps, that control enables neural narration',
+    'Apple App Attest',
+    "an identifier of the device's key, its public key and Apple's receipt, linked to the anonymous technical session",
+    'No images are generated in the apps',
+  ]],
+  ['constants/legal.js', legalText, [
+    'Nos apps de iPhone e Android, esse controle libera a narração da ElevenLabs',
+    'In the iPhone and Android apps, that control enables ElevenLabs narration',
+    'No iPhone, é o App Attest da Apple',
+    "On iPhone it is Apple's App Attest",
+    'um identificador da chave do aparelho, a chave pública e o recibo da Apple, ligados à sessão técnica pseudônima',
+    "an identifier of the device's key, its public key and Apple's receipt, linked to the pseudonymous technical session",
+    'Nenhuma imagem é gerada nos apps',
+    'No images are generated in the apps',
+  ]],
+]) {
+  for (const sentence of required) assert(text.includes(sentence), `${label}: iPhone com App Attest não declarado: ${sentence}`);
+  assert(
+    !/(?:No app|No aplicativo) Android, (?:esse controle|o mesmo consentimento|imagens pessoais)|In the Android app, (?:that control|the same adult consent|personal images)|(?:Narração|Textos com IA) no aplicativo Android|(?:Narration|AI-written texts) in the Android app/.test(text),
+    `${label}: ainda diz que voz e textos da nuvem são só do Android`
+  );
+}
 assert(
   oneLine(privacyPt).includes('quando você troca o idioma do app, a cena que vai ser traduzida (a escrita pela IA ou, se a IA não chegou a reescrevê-la, a montada no aparelho com as suas respostas) é enviada') &&
     oneLine(privacyPt).includes('a frase de identidade e o passo da ponte para hoje e os rótulos das respostas usadas nela') &&

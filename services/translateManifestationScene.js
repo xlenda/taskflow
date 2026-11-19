@@ -3,7 +3,7 @@ import {
   redactThirdPartyNames,
   thirdPartyNames,
 } from './generatePersonalizedScene';
-import { celestePaidApiHeaders } from './celesteApiSession';
+import { celestePaidApiHeaders, celestePaidApiRefused } from './celesteApiSession';
 import {
   CLOUD_CONSENT_VERSION,
   hasCurrentCloudConsentVersion,
@@ -124,7 +124,15 @@ export async function translateManifestationScene({
       signal: controller ? controller.signal : undefined,
       body: requestBody,
     });
-    if (!response.ok) throw new Error(`translation_api_${response.status}`);
+    if (!response.ok) {
+      if (!fetchImpl) {
+        const code = await Promise.resolve()
+          .then(() => response.json())
+          .then((body) => (body && typeof body.error === 'string' ? body.error : ''), () => '');
+        await celestePaidApiRefused(authorization, response.status, code);
+      }
+      throw new Error(`translation_api_${response.status}`);
+    }
     const payload = await response.json();
     return {
       scene: cleanScene(payload && payload.scene),

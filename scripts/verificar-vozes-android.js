@@ -381,6 +381,8 @@ async function main() {
           }
           return { Authorization: 'Bearer sessao', 'X-Celeste-Client': 'android', 'X-Celeste-Integrity': 'token' };
         },
+        // a recusa do servidor volta para a sessão (só o iPhone esquece algo ali: a chave do App Attest)
+        celestePaidApiRefused: async () => {},
       },
       '../constants/narrators': { ...narratorsMock, narratorPreviewUrl: (id, lang) => (id === 'luma' ? 'broken' : `preview-${id}-${lang}`) },
       './narrationAudioStorage': {
@@ -1626,14 +1628,15 @@ async function main() {
       affirmations: localSuite.affirmations.map((item) => ({ ...item, text: `${item.text} Escrito para mim.` })),
     };
     const sha256Hex = (value) => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
-    // `act` (optional): what she does herself after the launch (a new desire, a language switch)
-    async function androidTextsWith({ projectNumber, server, storage, anchor: launchAnchor, act }) {
+    // `act` (optional): what she does herself after the launch (a new desire, a language switch); `OS: 'ios'`: the same
+    // launch on the iPhone (there `projectNumber` only says the device check is available: App Attest)
+    async function androidTextsWith({ projectNumber, server, storage, anchor: launchAnchor, act, OS = 'android' }) {
       const requests = [];
       const tokens = [];
       const supabase = { calls: 0 };
       // o Play Integrity do aparelho: configurado só com o número do projeto; o token sai para a operação pedida
       const appIntegrity = {
-        appIntegrityConfigured: () => platform.OS === 'android' && Boolean(projectNumber),
+        appIntegrityConfigured: () => platform.OS === OS && Boolean(projectNumber),
         integrityHash: sha256Hex,
         integrityHeaderFor: async (input) => {
           tokens.push(input);
@@ -1668,7 +1671,8 @@ async function main() {
       };
       try {
         const { provider, context } = await mountApp({
-          flags: androidFlags,
+          flags: OS === 'ios' ? iosFlags : androidFlags,
+          OS,
           profile: consentedProfile,
           storage,
           anchor: launchAnchor,
@@ -1865,6 +1869,41 @@ async function main() {
       storage: otherFailure,
     });
     assert.strictEqual(otherFailure.has(PAUSE_KEY), false, 'uma falha que não é da verificação não pausa');
+
+    // 5b3) iPhone (19/11): a mesma pausa de um dia depois da recusa da verificação (App Attest), e o que ela pede
+    //      sozinha também a encerra quando dá certo
+    const iosLaunches = new Map();
+    const iosRefused = await androidTextsWith({
+      OS: 'ios',
+      projectNumber: '123456789012',
+      server: async () => response(403, { json: { error: 'native_attestation_required' } }),
+      storage: iosLaunches,
+    });
+    assert.deepStrictEqual(
+      iosRefused.requests.map((request) => request.headers['X-Celeste-Client']),
+      ['ios'],
+      'iPhone, 403 da verificação: um pedido, do iPhone'
+    );
+    assert.ok(
+      Number(iosLaunches.get(PAUSE_KEY)) > Date.now() + 23 * 3600e3,
+      'iPhone: a recusa da verificação pausa os textos automáticos por um dia'
+    );
+    const iosNext = await androidTextsWith({ OS: 'ios', projectNumber: '123456789012', server: remoteOk, storage: iosLaunches });
+    assert.deepStrictEqual(iosNext.requests, [], 'iPhone: dentro do dia, nada é pedido sozinho');
+    const [, iosRoute, iosAct] = manualRequests[0];
+    const iosManual = await androidTextsWith({
+      OS: 'ios',
+      projectNumber: '123456789012',
+      server: async () => remoteResponse(),
+      storage: iosLaunches,
+      act: iosAct,
+    });
+    assert.deepStrictEqual(
+      iosManual.requests.map((request) => request.url.slice(request.url.indexOf('/api/'))),
+      [iosRoute],
+      'iPhone: com a pausa, o desejo novo dela sai na hora'
+    );
+    assert.strictEqual(iosLaunches.has(PAUSE_KEY), false, 'iPhone: o pedido dela deu certo, a pausa acaba');
 
     // 5c) quem já tem a jornada não leva susto (fix round 1, 21/10): a suíte local salva pelo app publicado (sem
     //     localVersion) volta da atualização com os mesmos textos e os mesmos visualBrief, que prendem as imagens

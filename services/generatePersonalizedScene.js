@@ -415,6 +415,11 @@ async function paidApiHeaders(fetchImpl, body) {
   return celestePaidApiHeaders({ operation: 'scene', body });
 }
 
+function paidApiRefused(fetchImpl, headers, status, code) {
+  if (fetchImpl) return undefined;
+  return require('./celesteApiSession').celestePaidApiRefused(headers, status, code);
+}
+
 function requiredText(value, max, field) {
   const text = cleanText(value, max);
   if (!text) throw new Error(`invalid_scene_${field}`);
@@ -644,6 +649,7 @@ export async function generatePersonalizedScene({
       failure.code = await Promise.resolve()
         .then(() => response.json())
         .then((body) => (body && typeof body.error === 'string' ? body.error : ''), () => '');
+      await paidApiRefused(fetchImpl, authorization, response.status, failure.code);
       throw failure;
     }
     return validateScene(await response.json(), includeJourneySuite === true, locale);

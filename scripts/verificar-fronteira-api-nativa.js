@@ -109,32 +109,56 @@ function fakeAsyncStorage(entries = []) {
 }
 
 // POST /api/app-attest of the contract: {action:'challenge'} → {challenge}; {action:'register', ...} → {ok:true}.
-// The challenges carry '-' and '_' (base64url): the app must hand them back untouched.
-function fakeAttestServer({
-  events = [],
-  offline = false,
-  challengeStatus = 200,
-  challengeBody = null,
-  registerStatus = 200,
-  registerBody = { ok: true },
-} = {}) {
+// The challenges carry '-' and '_' (base64url): the app must hand them back untouched. `state` can change between
+// requests (the server comes back); `hang` (true, 'challenge' or 'register'): those requests wait until their signal
+// aborts, forever without one. Like fetch, a signal already aborted fails at once.
+function fakeAttestServer({ events = [], ...options } = {}) {
+  const state = {
+    offline: false,
+    hang: false,
+    challengeStatus: 200,
+    challengeBody: null,
+    registerStatus: 200,
+    registerBody: { ok: true },
+    ...options,
+  };
   const requests = [];
   const challenges = [];
   const reply = (status, body) => ({ ok: status === 200, status, json: async () => body });
+  const abortError = () => Object.assign(new Error('Aborted'), { name: 'AbortError' });
   return {
+    state,
     requests,
     challenges,
     fetch: async (url, init) => {
       const body = JSON.parse(init.body);
       events.push(body.action);
-      requests.push({ url: String(url), method: init.method, headers: init.headers, body });
-      if (offline) throw new TypeError('Network request failed');
-      if (body.action !== 'challenge') return reply(registerStatus, registerBody);
+      requests.push({ url: String(url), method: init.method, headers: init.headers, body, signal: init.signal });
+      if (init.signal?.aborted) throw abortError();
+      if (state.offline) throw new TypeError('Network request failed');
+      if (state.hang === true || state.hang === body.action) {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(abortError()));
+        });
+      }
+      if (body.action !== 'challenge') return reply(state.registerStatus, state.registerBody);
       const challenge = `desafio_${challenges.length + 1}-Zm9v`;
       challenges.push(challenge);
-      return reply(challengeStatus, challengeBody || { challenge });
+      return reply(state.challengeStatus, state.challengeBody || { challenge });
     },
   };
+}
+
+// The iPhone's clock as services/appIntegrity.js sees it (given to that module only): real time plus what the test
+// advanced (the retry wait, the 5 minutes of a challenge).
+function testClock() {
+  const clock = { offset: 0, advance: (ms) => { clock.offset += ms; } };
+  clock.Date = class TestDate extends Date {
+    static now() {
+      return Date.now() + clock.offset;
+    }
+  };
+  return clock;
 }
 
 function loadClient(
@@ -150,6 +174,8 @@ function loadClient(
     fetch = async () => {
       throw new Error('rede inesperada no teste');
     },
+    // other free names for services/appIntegrity.js only (its clock, its timers)
+    integrityGlobals = {},
   } = {}
 ) {
   if (projectNumber) process.env[PROJECT_NUMBER_ENV] = projectNumber;
@@ -173,7 +199,7 @@ function loadClient(
       './narrationAudioStorage': storage,
       'react-native': reactNative,
     },
-    { fetch }
+    { fetch, ...integrityGlobals }
   );
   const supabaseCalls = { count: 0 };
   const api = loadEsm('services/celesteApiSession.js', {
@@ -202,14 +228,23 @@ function loadClient(
   return { api, appIntegrity, integrity, supabaseCalls, events, asyncStorage };
 }
 
-// An iPhone with App Attest, its key storage and the app-attest server of the contract, all recording in `events`.
+// An iPhone with App Attest, its key storage and the app-attest server of the contract, all recording in `events`;
+// `timers` (optional): the setTimeout/clearTimeout that services/appIntegrity.js sees.
 const IOS_SESSION = { access_token: 'sessao-ios-a', user: { id: 'usuario-a' } };
-function loadIos({ supported, prefix, generateErrors, attestErrors, assertionErrors, asyncStorage, session = IOS_SESSION, server } = {}) {
+function loadIos({ supported, prefix, generateErrors, attestErrors, assertionErrors, asyncStorage, session = IOS_SESSION, server, timers = {} } = {}) {
   const events = [];
   const attest = fakeAppAttest({ supported, prefix, generateErrors, attestErrors, assertionErrors, events });
   const attestServer = fakeAttestServer({ ...server, events });
-  const client = loadClient('ios', { integrity: attest, session, asyncStorage, events, fetch: attestServer.fetch });
-  return { ...client, attest, attestServer };
+  const clock = testClock();
+  const client = loadClient('ios', {
+    integrity: attest,
+    session,
+    asyncStorage,
+    events,
+    fetch: attestServer.fetch,
+    integrityGlobals: { Date: clock.Date, ...timers },
+  });
+  return { ...client, attest, attestServer, clock };
 }
 
 const sha256Hex = (value) => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -226,6 +261,10 @@ const oracleAttestChallenge = (operation, requestId, accessToken, body, attestTi
     ['celeste-app-attest-v1', operation, requestId, sha256Hex(accessToken), sha256Hex(body), attestTime].join('\n')
   );
 const attestStorageKey = (userId) => `@celeste_app_attest_key_v1:${userId}`;
+const retryStorageKey = (userId) => `@celeste_app_attest_retry_v1:${userId}`;
+const savedRetry = (client, userId = 'usuario-a') => JSON.parse(client.asyncStorage.map.get(retryStorageKey(userId)) || 'null');
+const savedKey = (client, userId = 'usuario-a') => JSON.parse(client.asyncStorage.map.get(attestStorageKey(userId)) || 'null');
+const MINUTE = 60 * 1000;
 const integrityError = (code) => Object.assign(new Error(code), { code });
 const attestationRequired = (error) =>
   error &&
@@ -454,7 +493,7 @@ async function verifyIosAppAttest() {
 // Apple's rule for a failed attestation, a key that disappeared, and every other failure: null for the caller (the
 // request never leaves the iPhone), never an exception.
 async function verifyIosAppAttestFailures() {
-  // Apple's server unavailable: the key stays (not registered) and the next request attests that same key
+  // Apple's server unavailable: the key stays (not registered) and, after the retry wait, that same key is attested
   const unavailable = loadIos({ attestErrors: [integrityError('ERR_APP_INTEGRITY_SERVER_UNAVAILABLE')] });
   await assertRefusedAfterSession(unavailable, 'Apple indisponivel', () =>
     unavailable.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody })
@@ -465,16 +504,18 @@ async function verifyIosAppAttestFailures() {
     'Apple indisponivel: a chave fica para tentar depois'
   );
   assert.ok(!unavailable.events.includes('register'), 'sem atestacao, nada e registrado');
+  unavailable.clock.advance(MINUTE);
   const retried = await unavailable.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody });
   assert.strictEqual(retried['X-Celeste-Attest-Key'], 'chave-1');
   assert.deepStrictEqual(unavailable.attest.calls.generate, ['chave-1'], 'tentou de novo com a mesma chave');
   assert.deepStrictEqual(unavailable.attest.calls.attest.map(([keyId]) => keyId), ['chave-1', 'chave-1']);
 
-  // any other attestation error: the key is discarded and the next request creates another
+  // any other attestation error: the key is discarded and the next request (after the wait) creates another
   for (const code of ['ERR_APP_INTEGRITY_INVALID_KEY', 'ERR_APP_INTEGRITY_UNKNOWN']) {
     const broken = loadIos({ attestErrors: [integrityError(code)] });
     await assertRefusedAfterSession(broken, code, () => broken.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody }));
-    assert.strictEqual(broken.asyncStorage.map.size, 0, `${code}: a chave e descartada`);
+    assert.strictEqual(savedKey(broken), null, `${code}: a chave e descartada`);
+    broken.clock.advance(MINUTE);
     const fresh = await broken.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody });
     assert.strictEqual(fresh['X-Celeste-Attest-Key'], 'chave-2', `${code}: o pedido seguinte usa uma chave nova`);
     assert.deepStrictEqual(broken.attest.calls.attest.map(([keyId]) => keyId), ['chave-1', 'chave-2']);
@@ -494,8 +535,10 @@ async function verifyIosAppAttestFailures() {
   assert.strictEqual(recovered['X-Celeste-Attest-Key'], 'chave-1', 'chave perdida: o pedido seguinte registra outra');
   assert.deepStrictEqual(restored.attest.calls.assert.map(([keyId]) => keyId), ['chave-do-backup', 'chave-1']);
 
-  // integrityHeaderFor never throws; when our server fails, the key is kept (not registered) for the next request
-  const unregistered = JSON.stringify({ keyId: 'chave-1', registered: false });
+  // integrityHeaderFor never throws; when our server fails, the key is kept (not registered) for the next request,
+  // with Apple's attestation when it already came (sent again while its challenge holds: verifyIosRegistrationResend)
+  const unregistered = { keyId: 'chave-1', registered: false };
+  const attested = { ...unregistered, attestation: 'atestacao-chave-1', challenge: 'desafio_1-Zm9v', challengeAt: 'number' };
   const brokenDisk = {
     map: new Map(),
     module: { __esModule: true, default: { getItem: async () => { throw new Error('disco'); }, setItem: async () => {}, removeItem: async () => {} } },
@@ -504,17 +547,23 @@ async function verifyIosAppAttestFailures() {
     ['sem rede', { server: { offline: true } }, unregistered, ['generate', 'challenge']],
     ['desafio 500', { server: { challengeStatus: 500 } }, unregistered, ['generate', 'challenge']],
     ['desafio vazio', { server: { challengeBody: { challenge: '' } } }, unregistered, ['generate', 'challenge']],
-    ['registro recusado', { server: { registerStatus: 403, registerBody: { error: 'native_attestation_required' } } }, unregistered, ['generate', 'challenge', 'attest', 'register']],
-    ['registro sem ok', { server: { registerBody: { ok: false } } }, unregistered, ['generate', 'challenge', 'attest', 'register']],
-    ['Apple recusou a atestacao', { attestErrors: [integrityError('ERR_APP_INTEGRITY_INVALID_INPUT')] }, undefined, ['generate', 'challenge', 'attest']],
-    ['assercao falhou', { assertionErrors: [integrityError('ERR_APP_INTEGRITY_SYSTEM_FAILURE')] }, undefined, ['generate', 'challenge', 'attest', 'register', 'assert']],
-    ['chave nao gerada', { generateErrors: [integrityError('ERR_APP_INTEGRITY_FEATURE_UNSUPPORTED')] }, undefined, ['generate']],
-    ['armazenamento falhou', { asyncStorage: brokenDisk }, undefined, []],
+    ['registro recusado', { server: { registerStatus: 403, registerBody: { error: 'native_attestation_required' } } }, attested, ['generate', 'challenge', 'attest', 'register']],
+    ['registro sem ok', { server: { registerBody: { ok: false } } }, attested, ['generate', 'challenge', 'attest', 'register']],
+    ['Apple recusou a atestacao', { attestErrors: [integrityError('ERR_APP_INTEGRITY_INVALID_INPUT')] }, null, ['generate', 'challenge', 'attest']],
+    // only a key the Secure Enclave no longer has is forgotten after an assertion error (A4)
+    ['assercao falhou', { assertionErrors: [integrityError('ERR_APP_INTEGRITY_SYSTEM_FAILURE')] }, { keyId: 'chave-1', registered: true }, ['generate', 'challenge', 'attest', 'register', 'assert']],
+    ['chave nao gerada', { generateErrors: [integrityError('ERR_APP_INTEGRITY_FEATURE_UNSUPPORTED')] }, null, ['generate']],
+    ['armazenamento falhou', { asyncStorage: brokenDisk }, null, []],
   ]) {
     const client = loadIos(options);
     const result = await client.appIntegrity.integrityHeaderFor(iosDirectInput()).catch((error) => `lancou ${error}`);
     assert.strictEqual(result, null, `${label}: integrityHeaderFor nunca lanca, devolve null`);
-    assert.strictEqual(client.asyncStorage.map.get(attestStorageKey('usuario-a')), kept, `${label}: estado da chave`);
+    const key = savedKey(client);
+    assert.deepStrictEqual(
+      key && key.challengeAt !== undefined ? { ...key, challengeAt: typeof key.challengeAt } : key,
+      kept,
+      `${label}: estado da chave`
+    );
     assert.deepStrictEqual(client.events, events, `${label}: passos feitos`);
   }
   const noUser = loadIos();
@@ -524,6 +573,356 @@ async function verifyIosAppAttestFailures() {
     'sem usuario na sessao: sem cabecalho'
   );
   assert.deepStrictEqual(noUser.events, [], 'sem usuario na sessao: nenhuma chave');
+}
+
+const audioRequest = (client, extra = {}) => client.api.celestePaidApiHeaders({ operation: 'audio', body: voiceBody, ...extra });
+
+// A1: a failed registration (our server, the network, Apple, the key) waits 1 min, 2, 4… up to 6 h before the next
+// one, per user and across launches. The wait is checked before Apple or the server is asked; a registration clears it.
+async function verifyIosRetryWait() {
+  const ios = loadIos({ server: { challengeStatus: 503 } });
+  const start = ios.clock.Date.now();
+  await assertRefusedAfterSession(ios, 'desafio 503', () => audioRequest(ios));
+  let retry = savedRetry(ios);
+  assert.ok(
+    retry.failures === 1 && retry.until >= start + MINUTE && retry.until <= ios.clock.Date.now() + MINUTE,
+    `primeira falha: espera de 1 min (${JSON.stringify(retry)})`
+  );
+  let before = ios.events.length;
+  await assert.rejects(() => audioRequest(ios), attestationRequired, 'dentro da espera: recusa');
+  assert.deepStrictEqual(ios.events.slice(before), ['session'], 'dentro da espera: nem chave, nem Apple, nem servidor');
+  ios.clock.advance(MINUTE - 5 * 1000);
+  before = ios.events.length;
+  await assert.rejects(() => audioRequest(ios), attestationRequired);
+  assert.deepStrictEqual(ios.events.slice(before), ['session'], 'ainda dentro do minuto: nada');
+
+  // persisted: the app reopened within the wait asks nothing either; another user of this device is not held
+  const reopened = loadIos({ asyncStorage: ios.asyncStorage, server: { challengeStatus: 503 } });
+  await assert.rejects(() => audioRequest(reopened), attestationRequired);
+  assert.deepStrictEqual(reopened.events, ['session'], 'app reaberto dentro da espera: nada');
+  const otherUser = loadIos({ asyncStorage: ios.asyncStorage, session: { access_token: 'sessao-ios-b', user: { id: 'usuario-b' } } });
+  assert.strictEqual((await audioRequest(otherUser))['X-Celeste-Attest-Key'], 'chave-1', 'outro usuario: sem a espera do primeiro');
+
+  // the wait doubles at each new failure: 2, 4, 8 min
+  for (const [failures, minutes] of [[2, 2], [3, 4], [4, 8]]) {
+    ios.clock.advance(retry.until - ios.clock.Date.now());
+    const at = ios.clock.Date.now();
+    before = ios.events.length;
+    await assert.rejects(() => audioRequest(ios), attestationRequired);
+    assert.deepStrictEqual(ios.events.slice(before), ['session', 'challenge'], `falha ${failures}: passada a espera, tenta de novo`);
+    retry = savedRetry(ios);
+    assert.ok(
+      retry.failures === failures &&
+        retry.until >= at + minutes * MINUTE &&
+        retry.until <= ios.clock.Date.now() + minutes * MINUTE,
+      `falha ${failures}: espera de ${minutes} min (${retry.until - at} ms)`
+    );
+  }
+  // never more than 6 h
+  ios.asyncStorage.map.set(retryStorageKey('usuario-a'), JSON.stringify({ failures: 40, until: 0 }));
+  const capAt = ios.clock.Date.now();
+  await assert.rejects(() => audioRequest(ios), attestationRequired);
+  retry = savedRetry(ios);
+  assert.ok(
+    retry.failures === 41 && retry.until >= capAt + 360 * MINUTE && retry.until <= ios.clock.Date.now() + 360 * MINUTE,
+    `teto de 6 h (${retry.until - capAt} ms)`
+  );
+
+  // the server is back: after the wait the same key registers and the wait is gone
+  ios.attestServer.state.challengeStatus = 200;
+  ios.clock.advance(360 * MINUTE);
+  assert.strictEqual((await audioRequest(ios))['X-Celeste-Attest-Key'], 'chave-1');
+  assert.deepStrictEqual(ios.attest.calls.generate, ['chave-1'], 'todas as tentativas com a mesma chave (nao atestada)');
+  assert.strictEqual(savedRetry(ios), null, 'registrou: a espera zera');
+
+  // every failed step counts: Apple's refusal, a key that is not generated, the registration refused
+  for (const [label, options] of [
+    ['Apple recusou', { attestErrors: [integrityError('ERR_APP_INTEGRITY_INVALID_INPUT')] }],
+    ['chave nao gerada', { generateErrors: [integrityError('ERR_APP_INTEGRITY_FEATURE_UNSUPPORTED')] }],
+    ['registro recusado', { server: { registerStatus: 403, registerBody: { error: 'native_attestation_required' } } }],
+  ]) {
+    const client = loadIos(options);
+    await assertRefusedAfterSession(client, label, () => audioRequest(client));
+    assert.strictEqual(savedRetry(client)?.failures, 1, `${label}: conta como falha`);
+    const count = client.events.length;
+    await assert.rejects(() => audioRequest(client), attestationRequired);
+    assert.deepStrictEqual(client.events.slice(count), ['session'], `${label}: o pedido seguinte espera`);
+  }
+
+  // a wait longer than the cap comes from a clock set back: it does not hold the device for days
+  const setBack = loadIos({
+    asyncStorage: fakeAsyncStorage([[retryStorageKey('usuario-a'), JSON.stringify({ failures: 3, until: Date.now() + 400 * MINUTE })]]),
+  });
+  assert.strictEqual((await audioRequest(setBack))['X-Celeste-Attest-Key'], 'chave-1', 'relogio atrasado: nao prende o aparelho');
+}
+
+// A6: Apple attested the key but the registration failed. While that challenge holds (5 min) only the registration
+// is sent again, with the same attestation; after that a new key (an attested key is not attested again).
+async function verifyIosRegistrationResend() {
+  const ios = loadIos({ server: { registerStatus: 503 } });
+  await assertRefusedAfterSession(ios, 'registro 503', () => audioRequest(ios));
+  const challenge = ios.attestServer.challenges[0];
+  const pending = savedKey(ios);
+  assert.deepStrictEqual(
+    { ...pending, challengeAt: typeof pending.challengeAt },
+    { keyId: 'chave-1', registered: false, attestation: 'atestacao-chave-1', challenge, challengeAt: 'number' },
+    'a atestacao e o desafio ficam guardados'
+  );
+  ios.attestServer.state.registerStatus = 200;
+  ios.clock.advance(MINUTE);
+  const before = ios.events.length;
+  const headers = await audioRequest(ios);
+  assert.deepStrictEqual(ios.events.slice(before), ['session', 'register', 'assert'], 'so o registro de novo: sem chave nova, desafio ou Apple');
+  assert.deepStrictEqual(
+    ios.attestServer.requests.at(-1).body,
+    { action: 'register', keyId: 'chave-1', attestation: 'atestacao-chave-1', challenge },
+    'o mesmo registro, com a mesma atestacao e o mesmo desafio'
+  );
+  assert.strictEqual(headers['X-Celeste-Attest-Key'], 'chave-1');
+  assert.deepStrictEqual(savedKey(ios), { keyId: 'chave-1', registered: true });
+
+  // the app reopened within the 5 minutes resends it too
+  const reopened = loadIos({ server: { registerStatus: 503 } });
+  await assertRefusedAfterSession(reopened, 'registro 503 (reaberto)', () => audioRequest(reopened));
+  const relaunched = loadIos({ asyncStorage: reopened.asyncStorage, prefix: 'outra' });
+  relaunched.clock.advance(2 * MINUTE);
+  assert.strictEqual((await audioRequest(relaunched))['X-Celeste-Attest-Key'], 'chave-1');
+  assert.deepStrictEqual(relaunched.events, ['session', 'register', 'assert'], 'app reaberto: so o registro');
+
+  // the challenge expired: a new key, a new challenge, a new attestation
+  const late = loadIos({ server: { registerStatus: 503 } });
+  await assertRefusedAfterSession(late, 'registro 503 (tarde)', () => audioRequest(late));
+  late.attestServer.state.registerStatus = 200;
+  late.clock.advance(5 * MINUTE);
+  const lateBefore = late.events.length;
+  assert.strictEqual((await audioRequest(late))['X-Celeste-Attest-Key'], 'chave-2', 'desafio vencido: chave nova');
+  assert.deepStrictEqual(late.events.slice(lateBefore), ['session', 'generate', 'challenge', 'attest', 'register', 'assert']);
+  assert.deepStrictEqual(late.attest.calls.attest.map(([keyId]) => keyId), ['chave-1', 'chave-2'], 'a chave ja atestada nao e atestada de novo');
+
+  // a challenge "from the future" (the clock was set back) is not trusted as fresh: a new key
+  const future = loadIos({
+    asyncStorage: fakeAsyncStorage([[attestStorageKey('usuario-a'), JSON.stringify({
+      keyId: 'chave-antiga', registered: false, attestation: 'atestacao-antiga', challenge: 'desafio-antigo', challengeAt: Date.now() + 10 * MINUTE,
+    })]]),
+  });
+  assert.strictEqual((await audioRequest(future))['X-Celeste-Attest-Key'], 'chave-1', 'relogio atrasado: desafio guardado nao vale');
+  assert.deepStrictEqual(future.events, ['session', 'generate', 'challenge', 'attest', 'register', 'assert']);
+}
+
+// A4: an assertion error forgets the registered key only when the Secure Enclave no longer has it (invalid key, in
+// verifyIosAppAttestFailures); any other error keeps it and the next request just asserts again.
+async function verifyIosAssertionErrorsKeepTheKey() {
+  const registered = JSON.stringify({ keyId: 'chave-do-aparelho', registered: true });
+  for (const code of [
+    'ERR_APP_INTEGRITY_SYSTEM_FAILURE',
+    'ERR_APP_INTEGRITY_SERVER_UNAVAILABLE',
+    'ERR_APP_INTEGRITY_INVALID_INPUT',
+    'ERR_APP_INTEGRITY_FEATURE_UNSUPPORTED',
+    'ERR_APP_INTEGRITY_UNKNOWN',
+  ]) {
+    const ios = loadIos({
+      asyncStorage: fakeAsyncStorage([[attestStorageKey('usuario-a'), registered]]),
+      assertionErrors: [integrityError(code)],
+    });
+    await assertRefusedAfterSession(ios, `assercao ${code}`, () => audioRequest(ios));
+    assert.strictEqual(ios.asyncStorage.map.get(attestStorageKey('usuario-a')), registered, `${code}: a chave registrada fica`);
+    assert.strictEqual((await audioRequest(ios))['X-Celeste-Attest-Key'], 'chave-do-aparelho');
+    assert.deepStrictEqual(ios.events, ['session', 'assert', 'session', 'assert'], `${code}: sem chave nova nem registro`);
+  }
+}
+
+// A3: any paid route answering 403 app_attest_reattest_required (the server does not know this key for this user)
+// makes the app forget that key, in one place (celestePaidApiRefused); the next paid request registers a new one.
+async function verifyIosReattest() {
+  const ios = loadIos();
+  const headers = await audioRequest(ios);
+  const registered = ios.asyncStorage.map.get(attestStorageKey('usuario-a'));
+  for (const [status, code] of [
+    [403, 'native_attestation_required'],
+    [401, 'app_attest_reattest_required'],
+    [500, 'app_attest_reattest_required'],
+    [403, 'APP_ATTEST_REATTEST_REQUIRED'],
+    [403, 'app_attest_reattest_required_v2'],
+    [403, ''],
+    [403, undefined],
+  ]) {
+    await ios.api.celestePaidApiRefused(headers, status, code);
+    assert.strictEqual(ios.asyncStorage.map.get(attestStorageKey('usuario-a')), registered, `${status} ${code}: a chave fica`);
+  }
+  await ios.api.celestePaidApiRefused(headers, 403, 'app_attest_reattest_required');
+  assert.strictEqual(savedKey(ios), null, '403 app_attest_reattest_required: a chave daquele usuario e esquecida');
+  const before = ios.events.length;
+  const renewed = await audioRequest(ios);
+  assert.strictEqual(renewed['X-Celeste-Attest-Key'], 'chave-2');
+  assert.deepStrictEqual(ios.events.slice(before), ['session', 'generate', 'challenge', 'attest', 'register', 'assert'], 'o pedido seguinte registra outra');
+
+  // a late refusal for an old key does not erase the newer one that took its place (the old key vanished from the
+  // Secure Enclave and a new one registered before the refusal arrived)
+  const swapped = loadIos({ assertionErrors: [null, integrityError('ERR_APP_INTEGRITY_INVALID_KEY')] });
+  const oldHeaders = await audioRequest(swapped);
+  await assert.rejects(() => audioRequest(swapped), attestationRequired);
+  assert.strictEqual((await audioRequest(swapped))['X-Celeste-Attest-Key'], 'chave-2');
+  await swapped.api.celestePaidApiRefused(oldHeaders, 403, 'app_attest_reattest_required');
+  assert.deepStrictEqual(savedKey(swapped), { keyId: 'chave-2', registered: true }, 'a recusa atrasada da chave antiga nao apaga a nova');
+
+  // headers without an App Attest key (Android, website, none): nothing to forget, and it never throws
+  for (const other of [{ 'X-Celeste-Integrity': 'token' }, {}, undefined]) {
+    await ios.api.celestePaidApiRefused(other, 403, 'app_attest_reattest_required');
+  }
+  assert.strictEqual(savedKey(ios).keyId, 'chave-2');
+}
+
+// A5: the challenge and the registration give up after 15 s, and the caller's signal (the narration's timeout or
+// cancel) stops them at once; a caller giving up is not a failed registration.
+async function verifyIosTimeouts() {
+  const realDelay = (ms) => new Promise((resolve) => setTimeout(() => resolve('travou'), ms));
+  const delays = [];
+  const fastTimers = {
+    setTimeout: (fn, ms) => {
+      delays.push(ms);
+      return setImmediate(fn);
+    },
+    clearTimeout: (handle) => clearImmediate(handle),
+  };
+  for (const stage of ['challenge', 'register']) {
+    delays.length = 0;
+    const stuck = loadIos({ timers: fastTimers, server: { hang: stage } });
+    const result = await Promise.race([
+      stuck.appIntegrity.integrityHeaderFor(iosDirectInput()),
+      realDelay(2000),
+    ]);
+    assert.strictEqual(result, null, `${stage} travado: desiste no prazo e devolve null`);
+    assert.ok(delays.includes(15000), `${stage}: prazo de 15 s (${delays})`);
+    assert.strictEqual(stuck.attestServer.requests.at(-1).signal?.aborted, true, `${stage}: o pedido travado e abortado`);
+    assert.strictEqual(savedRetry(stuck)?.failures, 1, `${stage}: o prazo vencido conta como falha`);
+  }
+
+  // the caller's signal: the challenge stops as soon as it aborts (with timers that never fire, only the signal can)
+  const neverTimers = { setTimeout: () => 0, clearTimeout: () => {} };
+  const cancelled = loadIos({ server: { hang: true }, timers: neverTimers });
+  const controller = new AbortController();
+  const pending = audioRequest(cancelled, { signal: controller.signal });
+  for (let i = 0; i < 20 && !cancelled.attestServer.requests.length; i += 1) await new Promise(setImmediate);
+  assert.deepStrictEqual(cancelled.events, ['session', 'generate', 'challenge'], 'o desafio saiu e esta travado');
+  controller.abort();
+  const outcome = await Promise.race([pending.then(() => 'enviou', (error) => error), realDelay(2000)]);
+  assert.ok(attestationRequired(outcome), `cancelado: recusa na hora, sem esperar o prazo (${outcome})`);
+  assert.strictEqual(cancelled.attestServer.requests[0].signal.aborted, true, 'o sinal de quem pediu chega ao fetch');
+  assert.strictEqual(savedRetry(cancelled), null, 'quem desistiu nao conta como falha: nenhuma espera');
+  cancelled.attestServer.state.hang = false;
+  assert.strictEqual((await audioRequest(cancelled))['X-Celeste-Attest-Key'], 'chave-1', 'o pedido seguinte registra na hora');
+
+  // a signal already aborted never reaches the server
+  const aborted = loadIos({ timers: neverTimers });
+  const done = new AbortController();
+  done.abort();
+  await assert.rejects(() => audioRequest(aborted, { signal: done.signal }), attestationRequired);
+  assert.ok(aborted.attestServer.requests.every((request) => request.signal.aborted), 'sinal ja abortado: o fetch sai abortado');
+}
+
+// A3, the services: the voice, the scene and the translation hand every refusal of a paid request (its status and the
+// server's error code) to celestePaidApiRefused, with the headers they sent.
+async function verifyPaidServicesReportRefusals() {
+  const consent = require('../constants/cloudConsent.native.js');
+  const sentHeaders = {
+    Authorization: 'Bearer s',
+    'X-Celeste-Client': 'ios',
+    'X-Celeste-Attest-Key': 'chave-1',
+    'X-Celeste-Attest-Time': '1',
+    'X-Celeste-Attest-Assertion': 'a',
+  };
+  const refusals = [];
+  const session = {
+    celestePaidApiHeaders: async () => sentHeaders,
+    celestePaidApiRefused: async (...args) => {
+      refusals.push(args);
+    },
+  };
+  const refusal = { error: 'app_attest_reattest_required' };
+  const refuse = async () => ({
+    ok: false,
+    status: 403,
+    json: async () => refusal,
+    text: async () => JSON.stringify(refusal),
+  });
+  const profile = {
+    age: '25–34',
+    cloudConsentVersion: consent.CLOUD_CONSENT_VERSION,
+    cloudPersonalization: true,
+    cloudAdultConfirmed: true,
+    cloudNarrationConsent: true,
+    cloudDreamConsent: true,
+  };
+  const originalFetch = global.fetch;
+  global.fetch = refuse;
+  try {
+    const sceneService = loadEsm('services/generatePersonalizedScene.js', {
+      '../constants/cloudConsent': consent,
+      './celesteApiSession': session,
+    });
+    const translation = loadEsm('services/translateManifestationScene.js', {
+      '../constants/cloudConsent': consent,
+      './celesteApiSession': session,
+      './generatePersonalizedScene': sceneService,
+    });
+    await assert.rejects(
+      sceneService.generatePersonalizedScene({ desire: 'viver perto do mar', category: 'Peace', lang: 'pt', profile }),
+      (error) => error.message === 'scene_api_403' && error.code === 'app_attest_reattest_required'
+    );
+    await assert.rejects(
+      translation.translateManifestationScene({
+        sourceLang: 'pt',
+        targetLang: 'en',
+        scene: { title: 'T', intention: 'I', affirmation: 'Eu escolho.', story: 'S', anchorIdentity: 'A', anchorStep: 'P' },
+        profile,
+      }),
+      /translation_api_403/
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+  const narration = loadEsm(
+    'services/generateNarrationAudio.js',
+    {
+      './celesteApiSession': session,
+      'expo-asset': { Asset: {} },
+      'expo-file-system': { File: class TestFile {} },
+      'react-native': { Platform: { OS: 'ios' } },
+      '../constants/narrators': { narratorPreviewUrl: () => null },
+      '../constants/cloudConsent': consent,
+      './narrationAudioStorage': {
+        acquireNarrationAudio: async () => null,
+        clearNarrationAudioStorage: async () => true,
+        createNarrationAudioCacheKey: ({ text, narratorId, lang }) => `k:${narratorId}:${lang}:${text}`,
+        NARRATION_AUDIO_MAX_IDLE_MS: 1e12,
+        narrationAudioStorageEpoch: () => 0,
+        narrationAudioStorageToken: async () => '0',
+        saveNarrationAudio: async () => true,
+      },
+    },
+    { fetch: refuse }
+  );
+  await assert.rejects(
+    narration.requestNarrationAudio({
+      mode: 'personal',
+      narratorId: 'serena',
+      lang: 'pt',
+      text: 'Eu respiro com calma.',
+      cloudConsent: true,
+      cloudConsentVersion: consent.CLOUD_CONSENT_VERSION,
+      adultConfirmed: true,
+    }),
+    (error) => error.code === 'app_attest_reattest_required' && error.status === 403
+  );
+  assert.deepStrictEqual(
+    refusals,
+    [
+      [sentHeaders, 403, 'app_attest_reattest_required'],
+      [sentHeaders, 403, 'app_attest_reattest_required'],
+      [sentHeaders, 403, 'app_attest_reattest_required'],
+    ],
+    'cena, traducao e voz entregam a recusa (status e codigo do servidor) com os cabecalhos enviados'
+  );
 }
 
 // The paid operations the server knows (api/_paid-access.js OPERATIONS): Android may open exactly the server's
@@ -838,6 +1237,12 @@ async function main() {
     await verifyIosWithoutAppAttestStaysLocal();
     await verifyIosAppAttest();
     await verifyIosAppAttestFailures();
+    await verifyIosRetryWait();
+    await verifyIosRegistrationResend();
+    await verifyIosAssertionErrorsKeepTheKey();
+    await verifyIosReattest();
+    await verifyIosTimeouts();
+    await verifyPaidServicesReportRefusals();
     await verifyAndroidOpensOnlyVerifiedVoiceAndTexts();
     await verifyAndroidIntegrityFailuresStayLocal();
     await verifyTextServicesSignTheExactBody();

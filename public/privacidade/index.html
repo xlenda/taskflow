@@ -23,7 +23,7 @@
 
       <main id="conteudo">
         <header class="hero">
-          <p class="eyebrow">Documento público · versão 1.9.0</p>
+          <p class="eyebrow">Documento público · versão 1.10.0</p>
           <h1>Política de privacidade</h1>
           <p class="lead">
             Esta política descreve como a Celeste trata dados no site e no aplicativo
@@ -89,10 +89,10 @@
               A Celeste usa seu próprio backend como intermediário e reduz cada pedido ao
               conteúdo necessário para a função escolhida. Depois do questionário, um único
               controle adulto no Perfil autoriza ou impede novas solicitações opcionais de cena,
-              sonho, imagem, tradução e narração neural. No aplicativo Android, esse controle libera
-              a narração neural, os textos escritos com IA da Cena-Âncora, das visões e das
-              afirmações e a tradução da cena quando você troca o idioma; imagem, sonho e Espelho
-              Vivo em nuvem ficam apenas no site.
+              sonho, imagem, tradução e narração neural. Nos aplicativos de iPhone e Android, esse
+              controle libera a narração neural, os textos escritos com IA da Cena-Âncora, das visões
+              e das afirmações e a tradução da cena quando você troca o idioma; imagem, sonho e
+              Espelho Vivo em nuvem ficam apenas no site.
             </p>
             <div class="processor-list" aria-label="Serviços e finalidades">
               <div class="processor">
@@ -135,6 +135,13 @@
                 texto com IA veio do app oficial instalado pela Google Play, num aparelho certificado,
                 para prevenir abuso.
               </div>
+              <div class="processor">
+                <strong>Apple App Attest</strong>
+                Somente no aplicativo de iPhone, confirma ao backend que um pedido de narração ou de
+                texto com IA veio do app oficial da Celeste num aparelho Apple genuíno, para prevenir
+                abuso. Para isso, o backend guarda um identificador da chave do aparelho, a chave
+                pública e o recibo da Apple, ligados à sessão técnica anônima.
+              </div>
             </div>
             <p>
               Faixa etária, gênero, sexualidade e nomes inseridos nos campos próprios para
@@ -149,11 +156,11 @@
               completo de sonhos não fazem parte desse pedido. Um sonho contribui somente com
               tema e sentimento escolhidos quando essa opção é ativada para aquele sonho.
             </p>
-            <h3>Narração no aplicativo Android</h3>
+            <h3>Narração nos aplicativos de iPhone e Android</h3>
             <p>
-              No aplicativo Android, imagens pessoais não são geradas, e sonho e Espelho Vivo em nuvem
-              ficam somente no site (a tradução da cena está descrita em Textos com IA no aplicativo
-              Android). Depois do consentimento adulto, cada toque para
+              Nos aplicativos de iPhone e Android, imagens pessoais não são geradas, e sonho e Espelho
+              Vivo em nuvem ficam somente no site (a tradução da cena está descrita em Textos com IA
+              nos aplicativos). Depois do consentimento adulto, cada toque para
               ouvir envia ao backend da Celeste,
               hospedado na Vercel, o texto que a pessoa pediu para ouvir (afirmação, visão,
               história ou Cena-Âncora), o idioma, o identificador da voz escolhida e a sessão técnica
@@ -163,21 +170,26 @@
               pessoa escreveu.
             </p>
             <p>
-              Para prevenir abuso, o pedido também leva uma verificação do Google Play Integrity,
-              presa àquele pedido por um resumo criptográfico, sem enviar o texto ao Google. O
-              backend confere essa verificação com o Google e só gera a voz quando ela confirma o app
-              oficial instalado pela Google Play num aparelho certificado; o resultado não informa à
-              Celeste quem é a pessoa. Depois do consentimento, sem essa confirmação ou sem conexão,
+              Para prevenir abuso, o pedido também leva uma verificação do aparelho, presa àquele
+              pedido por um resumo criptográfico, sem enviar o texto ao Google nem à Apple. No
+              Android, é o Google Play Integrity: o backend confere essa verificação com o Google e só
+              gera a voz quando ela confirma o app oficial instalado pela Google Play num aparelho
+              certificado. No iPhone, é o App Attest da Apple: o app cria no aparelho uma chave que a
+              Apple certifica uma vez, e cada pedido leva a assinatura dessa chave; o backend só gera
+              a voz quando ela confirma o app oficial da Celeste num aparelho Apple genuíno e, para
+              essa verificação, guarda um identificador da chave do aparelho, a chave pública e o
+              recibo da Apple, ligados à sessão técnica anônima. O resultado não informa à Celeste
+              quem é a pessoa. Depois do consentimento, sem essa confirmação ou sem conexão,
               toca a voz do próprio aparelho, com aviso. Sem o consentimento, nada vai para a nuvem:
               a narração não toca e a tela oferece o texto para ler; o despertar e a prática do
               Plano Celeste leem com a voz do próprio aparelho. O áudio devolvido segue as regras da
               seção 4; a sessão técnica anônima pode permanecer para prevenção de abuso e não é uma
               conta pessoal; os prazos dos fornecedores seguem o aviso da seção 5.
             </p>
-            <h3>Textos com IA no aplicativo Android</h3>
+            <h3>Textos com IA nos aplicativos de iPhone e Android</h3>
             <p>
-              No aplicativo Android, o mesmo consentimento adulto que libera a voz também permite que
-              a IA escreva a Cena-Âncora e as visões e afirmações das seis áreas. Depois dele, o app
+              Nos aplicativos de iPhone e Android, o mesmo consentimento adulto que libera a voz também
+              permite que a IA escreva a Cena-Âncora e as visões e afirmações das seis áreas. Depois dele, o app
               envia ao backend da Celeste, hospedado na Vercel, o desejo, a área escolhida, o idioma
               e as respostas selecionadas do questionário (como nome, cidade,
               trabalho, relacionamento, por que isso importa e o que atrapalha), reduzidas como
@@ -185,20 +197,21 @@
               aplicar limites de uso. O backend repassa esse pedido reduzido aos mesmos provedores de
               texto de cena do site: a Anthropic, com a OpenAI como alternativa, e o Google Gemini
               somente se nenhum dos dois estiver configurado. Eles atuam como processadores para
-              escrever os textos. No Android, quando você troca o idioma do app, a cena que vai ser
+              escrever os textos. Nos aplicativos, quando você troca o idioma do app, a cena que vai ser
               traduzida (a escrita pela IA ou, se a IA não chegou a reescrevê-la, a montada no
               aparelho com as suas respostas) é enviada, pelo mesmo backend e com a mesma
               verificação, ao Google Gemini, que atua como processador para traduzi-la: o título, a
               intenção, a afirmação, a história, a frase de identidade e o passo da ponte para hoje e
               os rótulos das respostas usadas nela. Antes do envio, os nomes guardados de filhos, de
               pessoas importantes e da pessoa específica são trocados por “uma pessoa próxima”; esses
-              nomes ficam no aparelho. Nenhuma imagem é gerada no Android.
+              nomes ficam no aparelho. Nenhuma imagem é gerada nos aplicativos.
             </p>
             <p>
-              Como na narração, o pedido leva uma verificação do Google Play Integrity presa a ele por
-              um resumo criptográfico, sem enviar as respostas ao Google, e o backend só pede os
-              textos quando ela confirma o app oficial instalado pela Google Play num aparelho
-              certificado. Sem o consentimento, sem essa confirmação, sem conexão ou se o serviço
+              Como na narração, o pedido leva a verificação do aparelho presa a ele por um resumo
+              criptográfico, sem enviar as respostas ao Google nem à Apple, e o backend só pede os
+              textos quando ela confirma o app oficial: instalado pela Google Play num aparelho
+              certificado (Google Play Integrity, no Android) ou o app da Celeste num aparelho Apple
+              genuíno (App Attest, no iPhone). Sem o consentimento, sem essa confirmação, sem conexão ou se o serviço
               falhar, os textos são montados no próprio aparelho a partir das respostas, sem IA. Os
               textos devolvidos ficam guardados no aparelho, como os demais conteúdos da seção 2; a
               sessão técnica anônima pode permanecer para prevenção de abuso e não é uma conta
@@ -340,7 +353,7 @@
             </p>
             <aside class="notice">
               <strong>Prazos externos.</strong>
-              Os prazos de retenção nas contas de Anthropic, OpenAI, Google, Meta, ElevenLabs,
+              Os prazos de retenção nas contas de Anthropic, OpenAI, Google, Apple, Meta, ElevenLabs,
               Supabase, Vercel e BotID seguem os termos e contratos de cada provedor e não são
               controlados pela Celeste. A Celeste não presume que o processamento seja efêmero.
             </aside>
@@ -389,9 +402,9 @@
             <h2 id="seguranca">7. Segurança</h2>
             <p>
               O site e o backend público usam HTTPS. A Celeste aplica autorização de sessão,
-              consentimento unificado, limites de uso, redução dos pedidos, verificação Play Integrity
-              nos pedidos de voz e de texto com IA do Android, bloqueio de permissões desnecessárias
-              no Android e
+              consentimento unificado, limites de uso, redução dos pedidos, verificação do aparelho
+              nos pedidos de voz e de texto com IA dos aplicativos (Play Integrity no Android, App
+              Attest no iPhone), bloqueio de permissões desnecessárias no Android e
               armazenamento privado no aparelho. Nenhum sistema é
               totalmente livre de risco; evite inserir senhas, credenciais financeiras, números
               de documentos ou dados de outra pessoa.

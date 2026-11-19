@@ -110,22 +110,23 @@ function cloudMediaConsent(profile) {
   return RELEASE_FEATURES.paidCloudProcessing && hasCurrentAdultCloudConsent(profile);
 }
 
-// The AI texts (Anchor Scene, the 6+6 suite, new scenes and the scene translation): the website and the Android app,
-// where the server serves them only with a verified Play Integrity token. Any refusal keeps the local texts, silently.
+// The AI texts (Anchor Scene, the 6+6 suite, new scenes and the scene translation): the website and the store apps,
+// where the server serves them only with a verified Play Integrity token (Android) or App Attest assertion (iPhone).
+// Any refusal keeps the local texts, silently.
 function cloudTextConsent(profile) {
   return RELEASE_FEATURES.cloudText && hasCurrentAdultCloudConsent(profile);
 }
 
-// Android: once the server refuses the automatic AI texts because the Play Integrity check failed (403
-// native_attestation_required), the app waits a day before asking again on its own, so a phone that cannot pass the
-// check does not spend a Google check on every launch. A failed generation (502 invalid_generation) or any other error
-// does not pause. What she asks for herself (a new desire, a language switch) is not held back, and when one of those
-// requests succeeds the device has passed the check: the pause ends.
+// Android and iPhone: once the server refuses the automatic AI texts because the device check failed (403
+// native_attestation_required: Play Integrity or App Attest), the app waits a day before asking again on its own, so a
+// phone that cannot pass the check does not spend a Google or Apple check on every launch. A failed generation (502
+// invalid_generation) or any other error does not pause. What she asks for herself (a new desire, a language switch) is
+// not held back, and when one of those requests succeeds the device has passed the check: the pause ends. (Only the
+// store apps get that refusal: the website never sends a native claim.)
 const AUTOMATIC_TEXTS_PAUSE_KEY = '@celeste_automatic_texts_paused_until_v1';
 const AUTOMATIC_TEXTS_PAUSE_MS = 24 * 60 * 60 * 1000;
 
 async function automaticTextsPaused() {
-  if (Platform.OS !== 'android') return false;
   try {
     return Date.now() < Number(await AsyncStorage.getItem(AUTOMATIC_TEXTS_PAUSE_KEY));
   } catch (_error) {
@@ -134,16 +135,11 @@ async function automaticTextsPaused() {
 }
 
 function pauseAutomaticTextsAfterRefusal(error) {
-  if (
-    Platform.OS !== 'android' ||
-    error?.message !== 'scene_api_403' ||
-    error?.code !== 'native_attestation_required'
-  ) return;
+  if (error?.message !== 'scene_api_403' || error?.code !== 'native_attestation_required') return;
   AsyncStorage.setItem(AUTOMATIC_TEXTS_PAUSE_KEY, String(Date.now() + AUTOMATIC_TEXTS_PAUSE_MS)).catch(() => {});
 }
 
 function resumeAutomaticTexts() {
-  if (Platform.OS !== 'android') return;
   AsyncStorage.removeItem(AUTOMATIC_TEXTS_PAUSE_KEY).catch(() => {});
 }
 

@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { appIntegrityConfigured, integrityHash, integrityHeaderFor } from './appIntegrity';
+import { appIntegrityConfigured, forgetAppAttestKey, integrityHash, integrityHeaderFor } from './appIntegrity';
 import { getCelesteSupabaseClient } from './celesteSupabase';
 
 let sessionPromise;
@@ -82,7 +82,8 @@ export async function getCelesteApiSession() {
 // (Play Integrity token, App Attest assertion) is bound to it, to the operation and
 // to the session that sends it (a proof captured for one session fails for another),
 // so the session is created or reused first and every app request must pass its body here.
-export async function celestePaidApiHeaders({ operation = null, body } = {}) {
+// `signal` (the narration's timeout or cancel) stops the iPhone's key registration on the way.
+export async function celestePaidApiHeaders({ operation = null, body, signal } = {}) {
   const capability = assertCloudAccessAvailable(operation);
   const native = NATIVE_STORE_PLATFORMS.has(capability.client);
   if (native && typeof body !== 'string') throw attestationRequired();
@@ -98,6 +99,7 @@ export async function celestePaidApiHeaders({ operation = null, body } = {}) {
       // iOS registers its App Attest key once per user of this session (POST /api/app-attest).
       accessToken: session.access_token,
       userId: session.user?.id,
+      signal,
     });
     if (!integrity) throw attestationRequired();
   }
@@ -107,4 +109,12 @@ export async function celestePaidApiHeaders({ operation = null, body } = {}) {
     'X-Celeste-Request-Id': id,
     ...integrity,
   };
+}
+
+// Every paid service reports here a refusal of a request sent with these headers. The one rule: 403
+// app_attest_reattest_required (the server does not know this iPhone's App Attest key for this user) forgets that key,
+// so the next paid request registers a new one. Any other refusal changes nothing. Never throws.
+export async function celestePaidApiRefused(headers, status, code) {
+  if (status !== 403 || code !== 'app_attest_reattest_required') return;
+  await forgetAppAttestKey(headers?.['X-Celeste-Attest-Key']);
 }
