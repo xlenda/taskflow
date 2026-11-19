@@ -5,6 +5,7 @@ import { OnbScreen } from './onboardingUI';
 import { APP_NAME, ONB, SERIF } from '../../constants/brand';
 import { UI } from '../../constants/i18n';
 import { useT } from '../../utils/useT';
+import { trackSignup } from '../../utils/adTracking';
 import { useApp } from '../../context/AppContext';
 
 // Tela de acesso enquanto o billing não está ligado. Ela não promete trial nem
@@ -35,7 +36,10 @@ export default function PaywallScreen() {
     enteringRef.current = true;
     setEntering(true);
     const entered = await completeOnboarding();
-    if (!entered) {
+    if (entered) {
+      // Fim do cadastro: o Lead do anúncio (só no site e só com o aceite dos cookies).
+      trackSignup();
+    } else {
       enteringRef.current = false;
       setEntering(false);
     }

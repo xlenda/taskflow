@@ -38,6 +38,7 @@ import { selectDailyRitual } from '../utils/dailyRitual';
 import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
 import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 
+import AppStoreBadge from '../components/AppStoreBadge';
 import GradientCover from '../components/GradientCover';
 import CelesteMascot from '../components/CelesteMascot';
 import ManifestCard from '../components/ManifestCard';
@@ -900,6 +901,8 @@ export default function HomeScreen() {
             />
           </>
         ) : null}
+        {/* Discreto, no fim da Home: só quem usa o site num iPhone vê o selo. */}
+        <AppStoreBadge testID="app-store-badge-home" style={{ marginTop: 8 }} />
         <View style={{ height: 24 }} />
       </ScrollView>
     </Screen>

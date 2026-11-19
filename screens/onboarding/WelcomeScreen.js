@@ -3,8 +3,9 @@ import { Animated, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import AppStoreBadge from '../../components/AppStoreBadge';
 import WelcomeVideo from '../../components/WelcomeVideo';
-import { OnbScreen, ContinueButton } from './onboardingUI';
+import { OnbScreen, ContinueButton, useOnbHeight } from './onboardingUI';
 import { APP_NAME, ONB, SERIF } from '../../constants/brand';
 import { UI } from '../../constants/i18n';
 import { useApp } from '../../context/AppContext';
@@ -21,7 +22,7 @@ export default function WelcomeScreen({ navigation }) {
   const fade = useRef(new Animated.Value(0)).current;
   const finishedRef = useRef(false);
   const { width, height } = useWindowDimensions();
-  const compactHeight = height < 400;
+  const compactHeight = useOnbHeight() < 400; // espaço acima do aviso de cookies, quando ele está na tela
 
   const finishOpening = useCallback(() => {
     if (finishedRef.current) return;
@@ -134,6 +135,12 @@ export default function WelcomeScreen({ navigation }) {
           <Text style={{ fontFamily: SERIF, fontSize: compactHeight ? 40 : 58, color: ONB.ink }}>
             {APP_NAME}
           </Text>
+          {/* Primeiro contato de quem vem do anúncio num iPhone: o app já está na App Store. */}
+          <AppStoreBadge
+            testID="app-store-badge-welcome"
+            height={compactHeight ? 40 : 48}
+            style={{ marginTop: compactHeight ? 2 : 8 }}
+          />
         </View>
         <View style={{ paddingHorizontal: 20, paddingBottom: compactHeight ? 10 : 28 }}>
           <ContinueButton label={T.continue} onPress={() => navigation.navigate('Notifications')} />
