@@ -107,6 +107,9 @@ const DESEJO = { pt: 'um apartamento na praia', en: 'a beach apartment' };
     // estado inicial, produzindo um falso "aba não encontrada".
     await page.evaluateOnNewDocument((s) => {
       localStorage.setItem('@stella_state_v2', JSON.stringify(s));
+      // Quem já usa o app já respondeu o aviso de cookies (e "Meta", a empresa, não é a "meta" portuguesa).
+      // O texto do aviso em PT e EN tem portão próprio: scripts/verificar-anuncios-site.js.
+      localStorage.setItem('@celeste_ad_consent_v1', 'denied');
     }, SEED(lang));
     await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
     await sleep(3500);

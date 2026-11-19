@@ -105,7 +105,12 @@ let browser;
   browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-sandbox'] });
   const seed = await browser.newPage();
   await seed.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await seed.evaluate((value) => localStorage.setItem('@stella_state_v2', JSON.stringify(value)), state);
+  await seed.evaluate((value) => {
+    localStorage.setItem('@stella_state_v2', JSON.stringify(value));
+    // Quem já usa o app já respondeu o aviso de cookies do site (recusa: nenhum pixel nesta QA). O aviso
+    // tem portão próprio: scripts/verificar-anuncios-site.js e scripts/e2e-anuncios-site.js.
+    localStorage.setItem('@celeste_ad_consent_v1', 'denied');
+  }, state);
   await seed.close();
 
   for (const viewport of [
