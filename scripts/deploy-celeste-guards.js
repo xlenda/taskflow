@@ -71,6 +71,28 @@ const COMPLETE_JOURNEY_DAILY_UNITS =
   OPERATION_QUOTA_REQUIREMENTS.scene.userDailyUnits +
   OPERATION_QUOTA_REQUIREMENTS.visual.userDailyUnits +
   OPERATION_QUOTA_REQUIREMENTS.audio.userDailyUnits;
+// Migration 015 (App Attest of the iPhone) as one read-only boolean, checked by
+// the web deploy before publishing and by apply-supabase-migrations-from-vercel.ps1
+// after applying it: the key table with RLS and the anti-replay window column, no
+// anon/authenticated access, and its three RPCs executable by service_role only.
+// to_regclass/to_regprocedure turn a missing table or RPC into false, not an error.
+const APP_ATTEST_CONTRACT_SQL = [
+  'coalesce(',
+  "(select c.relrowsecurity from pg_class c where c.oid = to_regclass('public.celeste_app_attest_keys'))",
+  "and exists (select 1 from pg_attribute a where a.attrelid = to_regclass('public.celeste_app_attest_keys') and a.attname = 'sign_window' and not a.attisdropped)",
+  "and not has_table_privilege('anon', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete')",
+  "and not has_table_privilege('authenticated', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete')",
+  "and has_function_privilege('service_role', to_regprocedure('public.celeste_register_app_attest_key(text,uuid,text,text,text)'), 'execute')",
+  "and has_function_privilege('service_role', to_regprocedure('public.celeste_app_attest_key(text,uuid)'), 'execute')",
+  "and has_function_privilege('service_role', to_regprocedure('public.celeste_advance_app_attest_counter(text,uuid,bigint)'), 'execute')",
+  "and not has_function_privilege('anon', to_regprocedure('public.celeste_register_app_attest_key(text,uuid,text,text,text)'), 'execute')",
+  "and not has_function_privilege('anon', to_regprocedure('public.celeste_app_attest_key(text,uuid)'), 'execute')",
+  "and not has_function_privilege('anon', to_regprocedure('public.celeste_advance_app_attest_counter(text,uuid,bigint)'), 'execute')",
+  "and not has_function_privilege('authenticated', to_regprocedure('public.celeste_register_app_attest_key(text,uuid,text,text,text)'), 'execute')",
+  "and not has_function_privilege('authenticated', to_regprocedure('public.celeste_app_attest_key(text,uuid)'), 'execute')",
+  "and not has_function_privilege('authenticated', to_regprocedure('public.celeste_advance_app_attest_counter(text,uuid,bigint)'), 'execute')",
+  ', false)',
+].join(' ');
 
 function requireText(value, name) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -532,6 +554,7 @@ function validateLiveSceneSuite(result, validateJourneySuite) {
 }
 
 module.exports = {
+  APP_ATTEST_CONTRACT_SQL,
   AI_REPORT_GATEWAY_EXPANSION_SCHEMA_VERSION,
   AI_REPORT_GATEWAY_SCHEMA_VERSION,
   AI_REPORT_RETENTION_DAYS,

@@ -14,8 +14,11 @@ const { requestBodyHash } = require('./_play-integrity');
 // - The receipt is stored with the key, but there is no server-to-server call to
 //   Apple for the fraud metric yet.
 // - The challenge is stateless (HMAC + 5 minutes), so it can be reused inside its
-//   window. A key attests once and binds to one user, and every assertion must
-//   raise the stored counter (atomic RPC), so a replay never spends twice.
+//   window. A key attests once and binds to one user, and each assertion counter
+//   is accepted once (atomic RPC), so a replay never spends twice.
+// - Apple says each counter must exceed the previous one; the store relaxes that
+//   to an IPsec-style window (highest counter + the 63 below it), because the app
+//   sends up to 8 paid requests at once and they arrive out of order.
 const APP_ID = '68VRL5BCA7.com.celesteapp.affirmations';
 const RP_ID_HASH = sha256(Buffer.from(APP_ID, 'utf8'));
 const AAGUID_PRODUCTION = Buffer.concat([Buffer.from('appattest', 'ascii'), Buffer.alloc(7)]);
@@ -25,7 +28,10 @@ const NONCE_EXTENSION_OID = Buffer.from('2a864886f763640802', 'hex');
 const CHALLENGE_LABEL = Buffer.from('celeste-app-attest-challenge-v1\0', 'utf8');
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const CLOCK_SKEW_MS = 30 * 1000;
-const ASSERTION_WINDOW_MS = 5 * 60 * 1000;
+// X-Celeste-Attest-Time comes from the phone's clock: +-24 h, so a phone whose
+// clock is hours off still works. Replay is stopped by the counter, the signed
+// request id and the session, not by this window.
+const ASSERTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const ASSERTION_VERSION = 'celeste-app-attest-v1';
 const KEY_ID_PATTERN = /^[A-Za-z0-9+/]{43}=$/;
 const ATTEST_TIME_PATTERN = /^\d{13}$/;
@@ -55,6 +61,7 @@ const REJECTION_REASONS = new Set([
   'assertion_malformed',
   'signature_invalid',
   'counter_replay',
+  'counter_too_old',
   'store_unavailable',
 ]);
 
@@ -98,8 +105,9 @@ function refusal(reason) {
   return { ok: false, reason };
 }
 
+// Like the project's other bypass switches: never in the Vercel production deployment.
 function developmentAllowed() {
-  return process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT === '1';
+  return process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT === '1' && process.env.VERCEL_ENV !== 'production';
 }
 
 function trustedRoot() {
@@ -443,7 +451,7 @@ function assertionChallenge({ operation, requestId, sessionHash, bodyHash, attes
 }
 
 // Assertion steps 1-4: nonce, ECDSA-SHA256 signature over it with the stored key
-// (SPKI DER base64), RP ID. The counter (step 5) is the store's:
+// (SPKI DER base64), RP ID. The counter (step 5) is the store's sliding window:
 // celeste_advance_app_attest_counter.
 function checkAssertion({ assertion, clientDataHash, publicKey, rpIdHash }) {
   let decoded;
@@ -473,7 +481,8 @@ function checkAssertion({ assertion, clientDataHash, publicKey, rpIdHash }) {
 // Callers (api/_paid-access.js) already limit this to iOS requests for
 // NATIVE_OPERATIONS with the three headers, a request id and the Bearer session
 // whose user (`userId`) was authenticated. `rpc(name, body)` calls a service-role
-// RPC and throws when the call fails. Returns { ok } or { ok: false, reason }.
+// RPC and throws when the call fails. Returns { ok } or { ok: false, reason };
+// unknown_key and development_key ask the app for a new key (api/_paid-access.js).
 async function verifyAssertionRequest(req, { operation, requestId, accessToken, userId, rpc, now = Date.now() }) {
   const headers = assertionHeaders(req);
   if (!headers) return refusal('assertion_malformed');
@@ -512,7 +521,10 @@ async function verifyAssertionRequest(req, { operation, requestId, accessToken, 
   } catch (_error) {
     return refusal('store_unavailable');
   }
-  return advanced && advanced.advanced === true ? { ok: true } : refusal('counter_replay');
+  if (advanced && advanced.advanced === true) return { ok: true };
+  // The key went away between the two calls (its user was deleted): as if never registered.
+  if (advanced && advanced.reason === 'unknown_key') return refusal('unknown_key');
+  return refusal(advanced && advanced.reason === 'too_old' ? 'counter_too_old' : 'counter_replay');
 }
 
 // Tests only: a synthetic root replaces Apple's. Production code never calls it.

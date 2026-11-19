@@ -144,25 +144,15 @@ from supabase_migrations.schema_migrations;
   return [string]$historyRow.versions
 }
 
+# The same boolean the web deploy checks before publishing: APP_ATTEST_CONTRACT_SQL
+# in deploy-celeste-guards.js (one copy for both gates).
 function Invoke-AppAttestContractCheck {
-  $contractSql = @'
-select (
-  to_regclass('public.celeste_app_attest_keys') is not null
-  and (select c.relrowsecurity from pg_class c where c.oid = to_regclass('public.celeste_app_attest_keys'))
-  and not has_table_privilege('anon', 'public.celeste_app_attest_keys', 'select,insert,update,delete')
-  and not has_table_privilege('authenticated', 'public.celeste_app_attest_keys', 'select,insert,update,delete')
-  and has_function_privilege('service_role', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
-  and has_function_privilege('service_role', 'public.celeste_app_attest_key(text,uuid)', 'execute')
-  and has_function_privilege('service_role', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
-  and not has_function_privilege('anon', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
-  and not has_function_privilege('anon', 'public.celeste_app_attest_key(text,uuid)', 'execute')
-  and not has_function_privilege('anon', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
-  and not has_function_privilege('authenticated', 'public.celeste_register_app_attest_key(text,uuid,text,text,text)', 'execute')
-  and not has_function_privilege('authenticated', 'public.celeste_app_attest_key(text,uuid)', 'execute')
-  and not has_function_privilege('authenticated', 'public.celeste_advance_app_attest_counter(text,uuid,bigint)', 'execute')
-) as valid;
-'@
-  $contractRow = Invoke-ReadOnlySql $contractSql 'O contrato do App Attest (015) nao foi confirmado diretamente no banco.'
+  $guards = Join-Path $PSScriptRoot 'deploy-celeste-guards.js'
+  $contractExpression = & $nodeExecutable -p 'require(process.argv[1]).APP_ATTEST_CONTRACT_SQL' $guards
+  if ($LASTEXITCODE -ne 0 -or -not $contractExpression) {
+    throw 'Nao foi possivel montar a consulta do contrato do App Attest (015).'
+  }
+  $contractRow = Invoke-ReadOnlySql "select $contractExpression as valid;" 'O contrato do App Attest (015) nao foi confirmado diretamente no banco.'
   if ($contractRow.valid -ne $true) { throw 'O contrato do App Attest (015) diverge do esperado.' }
 }
 
@@ -286,7 +276,7 @@ try {
       }
     }
     Invoke-AppAttestContractCheck
-    Write-Output 'Migration 015 validada: chaves do App Attest com RLS, sem acesso anon/authenticated e RPCs so do service_role.'
+    Write-Output 'Migration 015 validada: chaves do App Attest com RLS e janela do contador, sem acesso anon/authenticated e RPCs so do service_role.'
   } elseif ($Action -eq 'push') {
     & $npxExecutable --yes supabase@latest db push --db-url $env:CELESTE_MIGRATION_DB_URL
   } else {

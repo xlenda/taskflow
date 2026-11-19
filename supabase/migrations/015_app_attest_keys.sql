@@ -11,6 +11,9 @@ create table if not exists public.celeste_app_attest_keys (
   public_key text not null
     check (char_length(public_key) between 100 and 256 and public_key ~ '^[A-Za-z0-9+/]+={0,2}$'),
   sign_count bigint not null default 0 check (sign_count between 0 and 4294967295),
+  -- Bit i: counter sign_count - 1 - i already used (i = 0..62; the sign bit stays
+  -- clear). See celeste_advance_app_attest_counter.
+  sign_window bigint not null default 0 check (sign_window >= 0),
   environment text not null check (environment in ('production', 'development')),
   receipt text not null
     check (char_length(receipt) between 4 and 32768 and receipt ~ '^[A-Za-z0-9+/]+={0,2}$'),
@@ -85,8 +88,14 @@ as $$
   );
 $$;
 
--- Apple's assertion step 5: the counter only moves up. One conditional UPDATE,
--- so of two requests carrying the same counter only one advances.
+-- Apple's assertion step 5 as an IPsec-style anti-replay window (RFC 4303,
+-- 3.4.3): the app sends up to 8 paid requests at once, each with its own
+-- assertion (counters n+1..n+8), and they reach the server in any order.
+-- sign_count is the highest counter accepted; bit i of sign_window marks counter
+-- sign_count - 1 - i as used. A counter above sign_count slides the window; an
+-- unused one inside it sets its bit. Zero, a used counter, one older than the
+-- window and one beyond UInt32 are refused. The row is locked (FOR UPDATE), so
+-- the assertions of one key are decided one at a time.
 create or replace function public.celeste_advance_app_attest_counter(
   p_key_id text,
   p_user_id uuid,
@@ -96,16 +105,57 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_count bigint;
+  v_window bigint;
+  v_offset bigint;
 begin
-  update public.celeste_app_attest_keys as keys
-     set sign_count = p_counter,
-         last_used_at = clock_timestamp()
+  if p_counter is null or p_counter < 1 or p_counter > 4294967295 then
+    return jsonb_build_object('advanced', false, 'reason', 'invalid');
+  end if;
+  select keys.sign_count, keys.sign_window
+    into v_count, v_window
+    from public.celeste_app_attest_keys as keys
    where keys.key_id = p_key_id
      and keys.user_id = p_user_id
-     and keys.sign_count < p_counter;
+     for update;
   if not found then
+    return jsonb_build_object('advanced', false, 'reason', 'unknown_key');
+  end if;
+
+  if p_counter > v_count then
+    -- The old maximum goes to bit offset - 1 and the old bits move up by offset.
+    -- From 64 on nothing stays: Postgres shifts like C, where a shift of 64 or
+    -- more is undefined (x86 and WASM wrap it), hence the guard. The mask keeps
+    -- the sign bit clear.
+    v_offset := p_counter - v_count;
+    v_window := case
+      when v_offset >= 64 then 0
+      else ((v_window << v_offset::integer) | (1::bigint << (v_offset - 1)::integer))
+           & 9223372036854775807
+    end;
+    update public.celeste_app_attest_keys as keys
+       set sign_count = p_counter,
+           sign_window = v_window,
+           last_used_at = clock_timestamp()
+     where keys.key_id = p_key_id;
+    return jsonb_build_object('advanced', true);
+  end if;
+
+  v_offset := v_count - 1 - p_counter;
+  if v_offset < 0 then
     return jsonb_build_object('advanced', false, 'reason', 'replay');
   end if;
+  if v_offset >= 63 then
+    return jsonb_build_object('advanced', false, 'reason', 'too_old');
+  end if;
+  if ((v_window >> v_offset::integer) & 1) = 1 then
+    return jsonb_build_object('advanced', false, 'reason', 'replay');
+  end if;
+  update public.celeste_app_attest_keys as keys
+     set sign_window = v_window | (1::bigint << v_offset::integer),
+         last_used_at = clock_timestamp()
+   where keys.key_id = p_key_id;
   return jsonb_build_object('advanced', true);
 end;
 $$;

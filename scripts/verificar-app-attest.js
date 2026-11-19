@@ -14,7 +14,9 @@ const { VOICE_AND_TEXT_CONSENT_VERSIONS } = require('../constants/cloudConsent')
 // test root reaches the module only through setRootForTests().
 
 const ROOT = path.resolve(__dirname, '..');
-const APP_ID = '68VRL5BCA7.com.celesteapp.affirmations';
+const readJson = (relative) => JSON.parse(fs.readFileSync(path.join(ROOT, relative), 'utf8'));
+// App ID = Team ID + bundle id, from the files EAS builds and submits the iPhone app with.
+const APP_ID = `${readJson('eas.json').submit.production.ios.appleTeamId}.${readJson('app.json').expo.ios.bundleIdentifier}`;
 // Published SHA-256 of Apple's App Attestation Root CA (checked against the PEM embedded in api/_app-attest.js).
 const APPLE_ROOT_SHA256 =
   '1C:B9:82:3B:A2:8B:A6:AD:2D:33:A0:06:94:1D:E2:AE:4F:51:3E:F1:D4:E8:31:B9:F7:E0:FA:7B:62:42:C9:32';
@@ -33,14 +35,29 @@ const RECEIPT = Buffer.from('synthetic-app-attest-receipt-for-tests');
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
 const NATIVE_DENIED = Object.freeze({ error: 'native_attestation_required', status: 403 });
+const REATTEST = Object.freeze({ error: 'app_attest_reattest_required', status: 403 });
+const consent = { cloudConsent: true, cloudConsentVersion: VOICE_AND_TEXT_CONSENT_VERSIONS[0], adultConfirmed: true };
 const voiceBody = Object.freeze({
   mode: 'personal',
   narratorId: 'serena',
   lang: 'pt',
   text: 'Eu escolho ouvir a minha voz com calma e coragem.',
-  cloudConsent: true,
-  cloudConsentVersion: VOICE_AND_TEXT_CONSENT_VERSIONS[0],
-  adultConfirmed: true,
+  ...consent,
+});
+const sceneBody = Object.freeze({ desire: 'viver perto do mar com calma', category: 'Peace', lang: 'pt', profile: {}, ...consent });
+const translationBody = Object.freeze({
+  sourceLang: 'pt',
+  targetLang: 'en',
+  scene: {
+    title: 'Viver perto do mar',
+    intention: 'Viver perto do mar com calma.',
+    affirmation: 'Eu escolho viver perto do mar com calma.',
+    story: 'E fim de tarde perto do mar e eu volto para casa com calma.',
+    anchorIdentity: 'Eu pratico a calma.',
+    anchorStep: 'Se eu sentir pressa, entao vou respirar por um minuto.',
+    personalizedWith: ['o que voce quer viver'],
+  },
+  ...consent,
 });
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest();
@@ -343,14 +360,23 @@ function fakeBackend(state) {
       );
     }
     if (route === '/rest/v1/rpc/celeste_advance_app_attest_counter') {
-      // Let concurrent requests reach this point, then compare-and-set in one step (migration 015's UPDATE).
-      await new Promise((resolve) => setImmediate(resolve));
+      // Concurrent requests reach this point first (with storeDelay, in another order), then each counter is decided
+      // in one step, like migration 015's locked row. Its window (highest counter + the 63 below it, each accepted
+      // once) is modelled here as a set of used counters, with the RPC's reasons. The bitmap SQL itself does not run
+      // in this verifier (no Postgres here): it was checked on PGlite (Postgres 18 in WASM) against this same model.
+      await new Promise((resolve) =>
+        state.storeDelay ? setTimeout(resolve, state.storeDelay(body.p_counter)) : setImmediate(resolve)
+      );
+      if (state.dropKeyBeforeAdvance) state.keys.delete(body.p_key_id); // its user deleted between the two calls
       const key = state.keys.get(body.p_key_id);
-      if (key && key.userId === body.p_user_id && key.signCount < body.p_counter) {
-        key.signCount = body.p_counter;
-        return reply({ advanced: true });
-      }
-      return reply({ advanced: false, reason: 'replay' });
+      const counter = body.p_counter;
+      if (!(counter >= 1 && counter <= 0xffffffff)) return reply({ advanced: false, reason: 'invalid' });
+      if (!key || key.userId !== body.p_user_id) return reply({ advanced: false, reason: 'unknown_key' });
+      if (counter <= key.signCount - 64) return reply({ advanced: false, reason: 'too_old' });
+      if (counter === key.signCount || key.used.has(counter)) return reply({ advanced: false, reason: 'replay' });
+      key.used.add(counter);
+      key.signCount = Math.max(key.signCount, counter);
+      return reply({ advanced: true });
     }
     if (route === '/rest/v1/rpc/celeste_register_app_attest_key') {
       state.registrations.push(body);
@@ -360,6 +386,7 @@ function fakeBackend(state) {
           publicKey: body.p_public_key,
           environment: body.p_environment,
           signCount: 0,
+          used: new Set(),
         });
       }
       return reply(
@@ -387,7 +414,9 @@ function fakeBackend(state) {
 }
 
 const registeredKey = (overrides = {}) =>
-  new Map([[KEY_ID, { userId: USER_A, publicKey: SPKI_B64, environment: 'production', signCount: 0, ...overrides }]]);
+  new Map([
+    [KEY_ID, { userId: USER_A, publicKey: SPKI_B64, environment: 'production', signCount: 0, used: new Set(), ...overrides }],
+  ]);
 
 async function withLogs(run) {
   const lines = [];
@@ -451,6 +480,8 @@ const ENV_KEYS = [
   'CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT',
   'CELESTE_PLAY_INTEGRITY_SERVICE_ACCOUNT_B64',
   'ELEVENLABS_API_KEY',
+  'GEMINI_API_KEY',
+  'GEMINI_PAID_DATA_TERMS_ACCEPTED',
   'VERCEL_ENV',
   'VERCEL',
   'NODE_ENV',
@@ -504,9 +535,14 @@ test('a raiz embutida e a Apple App Attestation Root CA publicada', () => {
   );
   assert.deepStrictEqual(
     [...source.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1]),
-    ['CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT'],
-    'nenhuma variavel de ambiente troca a raiz; so a de desenvolvimento existe'
+    ['CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT', 'VERCEL_ENV'],
+    'nenhuma variavel de ambiente troca a raiz; so a de desenvolvimento (fora da producao da Vercel) existe'
   );
+});
+
+test('App ID do servidor = appleTeamId do eas.json + bundleIdentifier do app.json', () => {
+  assert.match(APP_ID, /^[A-Z0-9]{10}\.[A-Za-z0-9.-]+$/, `App ID montado da configuracao: ${APP_ID}`);
+  assert.strictEqual(appAttest.APP_ID, APP_ID, 'o rpIdHash conferido pelo servidor e o do app que o EAS assina');
 });
 
 // Real Apple data, checked with the REAL embedded root (no synthetic root here):
@@ -755,17 +791,42 @@ test('cada passo da atestacao recusa sozinho', (t) => {
   );
 });
 
-test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1', (t) => {
+test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1 e fora da producao da Vercel', { concurrency: false }, async (t) => {
   configure();
   t.after(restore);
   const challenge = freshChallenge();
   const attestation = buildAttestation({ challenge, aaguid: AAGUID_DEVELOPMENT });
-  process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT = 'true';
-  assert.deepStrictEqual(attest({ keyId: KEY_ID, challenge, attestation }), { ok: false, reason: 'aaguid_invalid' });
-  process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT = '1';
-  const verified = attest({ keyId: KEY_ID, challenge, attestation });
-  assert.strictEqual(verified.ok, true, JSON.stringify(verified));
-  assert.strictEqual(verified.environment, 'development');
+  const setEnvironment = (flag, vercelEnv) => {
+    process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT = flag;
+    if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = vercelEnv;
+  };
+  for (const [label, flag, vercelEnv] of [
+    ['variavel "true" no preview', 'true', 'preview'],
+    ['variavel 1 na producao da Vercel', '1', 'production'],
+  ]) {
+    setEnvironment(flag, vercelEnv);
+    assert.deepStrictEqual(attest({ keyId: KEY_ID, challenge, attestation }), { ok: false, reason: 'aaguid_invalid' }, `registro: ${label}`);
+  }
+  for (const [label, vercelEnv] of [['preview', 'preview'], ['local, sem VERCEL_ENV', undefined]]) {
+    setEnvironment('1', vercelEnv);
+    const verified = attest({ keyId: KEY_ID, challenge, attestation });
+    assert.strictEqual(verified.ok, true, `registro com a variavel (${label}): ${JSON.stringify(verified)}`);
+    assert.strictEqual(verified.environment, 'development');
+  }
+
+  // a key registered as development, used later
+  const assertWith = async (vercelEnv) => {
+    setEnvironment('1', vercelEnv);
+    const state = { keys: registeredKey({ environment: 'development' }) };
+    global.fetch = fakeBackend(state);
+    return withLogs(() => paidAccess.authorizePaidRequest(iosRequest(), { operation: 'audio', units: 4 }));
+  };
+  const production = await assertWith('production');
+  assert.deepStrictEqual(production.result, REATTEST, 'producao da Vercel: a chave de desenvolvimento nunca vale');
+  assert.deepStrictEqual(production.lines, rejected('development_key'));
+  const preview = await assertWith('preview');
+  assert.strictEqual(preview.result.ok, true, `preview com a variavel: ${JSON.stringify(preview.result)}`);
 });
 
 test('rota /api/app-attest: desafio e registro so do iPhone, ligado ao usuario da sessao', { concurrency: false }, async (t) => {
@@ -902,9 +963,9 @@ test('replay, falsificacao e tempo fora recusam antes da cota', { concurrency: f
     global.fetch = fakeBackend(state);
     return withLogs(() => paidAccess.authorizePaidRequest(req, { operation, units: operation === 'audio' ? 4 : 3 }));
   };
-  const expectRefused = async (label, state, req, reason, operation) => {
+  const expectRefused = async (label, state, req, reason, operation, expected = NATIVE_DENIED) => {
     const { result, lines } = await run(state, req, operation);
-    assert.deepStrictEqual(result, NATIVE_DENIED, label);
+    assert.deepStrictEqual(result, expected, label);
     assert.deepStrictEqual(lines, rejected(reason), `${label}: uma linha de log com o motivo`);
     assert.deepStrictEqual(state.reservations, [], `${label}: nao chega a cota`);
     return state;
@@ -915,8 +976,9 @@ test('replay, falsificacao e tempo fora recusam antes da cota', { concurrency: f
   const replayed = iosRequest({ counter: 1 });
   assert.strictEqual((await run(shared, replayed)).result.ok, true);
   await expectRefused('assercao repetida (mesmo contador)', shared, replayed, 'counter_replay');
-  await expectRefused('contador menor', { keys: registeredKey({ signCount: 5 }) }, iosRequest({ counter: 3 }), 'counter_replay');
+  await expectRefused('contador menor ja usado', { keys: registeredKey({ signCount: 5, used: new Set([3, 5]) }) }, iosRequest({ counter: 3 }), 'counter_replay');
   await expectRefused('contador igual ao guardado', { keys: registeredKey({ signCount: 5 }) }, iosRequest({ counter: 5 }), 'counter_replay');
+  await expectRefused('contador mais antigo que a janela (63)', { keys: registeredKey({ signCount: 100 }) }, iosRequest({ counter: 36 }), 'counter_too_old');
 
   // two requests with the same counter at the same time: the atomic RPC lets only one through
   const race = { keys: registeredKey({ signCount: 2 }) };
@@ -938,9 +1000,11 @@ test('replay, falsificacao e tempo fora recusam antes da cota', { concurrency: f
   await expectRefused('assercao de outro pedido', { keys: registeredKey() }, iosRequest({ signed: { requestId: 'celeste-ios-request-9999' } }), 'signature_invalid');
   await expectRefused('assercao de outra sessao do mesmo usuario', { keys: registeredKey() }, iosRequest({ session: 'ios-session-a-refreshed', signed: { session: 'ios-session-a' } }), 'signature_invalid');
   await expectRefused('rpIdHash de outro app', { keys: registeredKey() }, iosRequest({ rpId: 'ABCDE12345.com.celesteapp.affirmations' }), 'rp_id_mismatch');
-  await expectRefused('chave de outro usuario', { keys: registeredKey() }, iosRequest({ session: 'ios-session-b' }), 'unknown_key');
-  await expectRefused('chave nunca registrada', { keys: new Map() }, iosRequest(), 'unknown_key');
-  await expectRefused('chave de desenvolvimento sem a variavel', { keys: registeredKey({ environment: 'development' }) }, iosRequest(), 'development_key');
+  // the three refusals the app fixes by attesting a new key
+  await expectRefused('chave de outro usuario', { keys: registeredKey() }, iosRequest({ session: 'ios-session-b' }), 'unknown_key', 'audio', REATTEST);
+  await expectRefused('chave nunca registrada', { keys: new Map() }, iosRequest(), 'unknown_key', 'audio', REATTEST);
+  await expectRefused('chave de desenvolvimento sem a variavel', { keys: registeredKey({ environment: 'development' }) }, iosRequest(), 'development_key', 'audio', REATTEST);
+  await expectRefused('chave apagada entre a consulta e o contador', { keys: registeredKey(), dropKeyBeforeAdvance: true }, iosRequest(), 'unknown_key', 'audio', REATTEST);
   await expectRefused('banco das chaves fora do ar', { keys: registeredKey(), storeDown: true }, iosRequest(), 'store_unavailable');
   await expectRefused(
     'assercao que nao e CBOR',
@@ -948,14 +1012,82 @@ test('replay, falsificacao e tempo fora recusam antes da cota', { concurrency: f
     iosRequest({ headers: { 'x-celeste-attest-assertion': Buffer.from('nao e cbor').toString('base64') } }),
     'assertion_malformed'
   );
-  for (const [label, offset] of [['5 min e 5 s atras', -(5 * 60 * 1000 + 5000)], ['5 min e 5 s no futuro', 5 * 60 * 1000 + 5000]]) {
+  // X-Celeste-Attest-Time is the phone's clock: +-24 h, so a phone with the wrong time is not locked out
+  for (const [label, offset] of [['24 h e 5 s atras', -(DAY + 5000)], ['24 h e 5 s no futuro', DAY + 5000]]) {
     const state = await expectRefused(`tempo fora da janela (${label})`, { keys: registeredKey() }, iosRequest({ time: Date.now() + offset }), 'stale');
     assert.ok(!state.calls.includes('/rest/v1/rpc/celeste_app_attest_key'), `${label}: nem consulta a chave`);
   }
+  for (const [label, offset] of [
+    ['6 min atras', -6 * 60 * 1000],
+    ['6 min no futuro', 6 * 60 * 1000],
+    ['23 h 59 min atras', -(DAY - 60 * 1000)],
+    ['23 h 59 min no futuro', DAY - 60 * 1000],
+  ]) {
+    const outcome = await run({ keys: registeredKey() }, iosRequest({ time: Date.now() + offset }));
+    assert.strictEqual(outcome.result.ok, true, `relogio do aparelho ${label}: ${JSON.stringify(outcome.result)}`);
+  }
+});
 
-  process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT = '1';
-  const development = await run({ keys: registeredKey({ environment: 'development' }) }, iosRequest());
-  assert.strictEqual(development.result.ok, true, 'chave de desenvolvimento com a variavel ligada');
+test('ate 8 pedidos simultaneos do iPhone, com os contadores fora de ordem, passam uma vez cada', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  // counters 101..108, one per translation, reaching the store from 108 down to 101 (the worst case for "only up")
+  const state = { keys: registeredKey({ signCount: 100, used: new Set([100]) }), storeDelay: (counter) => (109 - counter) * 3 };
+  global.fetch = fakeBackend(state);
+  const requests = [101, 102, 103, 104, 105, 106, 107, 108].map((counter) =>
+    iosRequest({ operation: 'translation', body: translationBody, counter })
+  );
+  const send = () =>
+    withLogs(() => Promise.all(requests.map((req) => paidAccess.authorizePaidRequest(req, { operation: 'translation', units: 3 }))));
+  const first = await send();
+  assert.deepStrictEqual(first.result.map((item) => item.ok), Array(8).fill(true), JSON.stringify(first.result));
+  assert.deepStrictEqual(first.lines, [], 'nenhuma recusa');
+  assert.strictEqual(state.reservations.length, 8, 'as 8 chegam a cota');
+  assert.strictEqual(state.keys.get(KEY_ID).signCount, 108);
+
+  state.storeDelay = null;
+  const again = await send();
+  assert.deepStrictEqual(again.result, Array(8).fill(NATIVE_DENIED), 'as mesmas 8 assercoes de novo: todas recusadas');
+  assert.deepStrictEqual(again.lines, Array(8).fill(rejected('counter_replay')[0]));
+  assert.strictEqual(state.reservations.length, 8, 'replay nao chega a cota');
+
+  // the window edge: 63 counters below the highest one
+  const edge = await paidAccess.authorizePaidRequest(iosRequest({ counter: 108 - 63 }), { operation: 'audio', units: 4 });
+  assert.strictEqual(edge.ok, true, `maior - 63, nunca usado: ${JSON.stringify(edge)}`);
+  const old = await withLogs(() => paidAccess.authorizePaidRequest(iosRequest({ counter: 108 - 64 }), { operation: 'audio', units: 4 }));
+  assert.deepStrictEqual(old.result, NATIVE_DENIED, 'maior - 64: fora da janela');
+  assert.deepStrictEqual(old.lines, rejected('counter_too_old'), 'o log separa o antigo demais do replay');
+});
+
+test('rotas pagas: chave desconhecida ou de desenvolvimento pedem um novo registro, o resto segue generico', { concurrency: false }, async (t) => {
+  configure();
+  t.after(restore);
+  process.env.ELEVENLABS_API_KEY = 'elevenlabs-route-test-secret';
+  process.env.GEMINI_API_KEY = 'gemini-route-test-secret';
+  process.env.GEMINI_PAID_DATA_TERMS_ACCEPTED = '1';
+  for (const [name, route, operation, body] of [
+    ['gerar-audio', require('../api/gerar-audio'), 'audio', voiceBody],
+    ['gerar-cena', require('../api/gerar-cena'), 'scene', sceneBody],
+    ['traduzir-cena', require('../api/traduzir-cena'), 'translation', translationBody],
+  ]) {
+    for (const [label, keys, request, reason, error] of [
+      ['chave nunca registrada', new Map(), {}, 'unknown_key', 'app_attest_reattest_required'],
+      ['chave de outro usuario', registeredKey(), { session: 'ios-session-b' }, 'unknown_key', 'app_attest_reattest_required'],
+      ['chave de desenvolvimento recusada', registeredKey({ environment: 'development' }), {}, 'development_key', 'app_attest_reattest_required'],
+      ['assinatura de outra chave', registeredKey(), { signer: otherDevice.privateKey }, 'signature_invalid', 'native_attestation_required'],
+      ['assercao repetida', registeredKey({ signCount: 1, used: new Set([1]) }), { counter: 1 }, 'counter_replay', 'native_attestation_required'],
+    ]) {
+      const state = { keys };
+      global.fetch = fakeBackend(state);
+      const res = routeResponse();
+      const { lines } = await withLogs(() => route(iosRequest({ operation, body, ...request }), res));
+      assert.strictEqual(res.statusCode, 403, `${name}, ${label}: ${JSON.stringify(res.body)}`);
+      assert.deepStrictEqual(res.body, { error }, `${name}, ${label}`);
+      assert.deepStrictEqual(lines, rejected(reason), `${name}, ${label}: o log guarda o motivo`);
+      assert.deepStrictEqual(state.reservations, [], `${name}, ${label}: nao chega a cota`);
+      assert.strictEqual(state.elevenLabs, 0, `${name}, ${label}: nenhum provedor`);
+    }
+  }
 });
 
 test('pre-filtro: sem os 3 cabecalhos validos o iPhone nao passa de nada', { concurrency: false }, async (t) => {
@@ -1071,29 +1203,102 @@ test('migracao 015, script de aplicacao e portao', () => {
   assert.match(register, /if v_owner is distinct from p_user_id then\s+return jsonb_build_object\('registered', false, 'reason', 'other_user'\)/);
   const load = sql.slice(sql.indexOf('function public.celeste_app_attest_key('), sql.indexOf('function public.celeste_advance_app_attest_counter('));
   assert.match(load, /where keys\.key_id = p_key_id\s+and keys\.user_id = p_user_id/, 'a chave so volta para o proprio usuario');
+  // Anti-replay window. No Postgres runs here, so this pins the parts that make the SQL correct; its behaviour was
+  // checked on PGlite (Postgres 18 in WASM: scenarios, a differential fuzz, mutants). Change it? Check it there again.
+  assert.match(sql, /sign_window bigint not null default 0 check \(sign_window >= 0\),/, 'bitmap dos 63 contadores abaixo do maior');
   const advance = sql.slice(sql.indexOf('function public.celeste_advance_app_attest_counter('));
   assert.match(
     advance,
-    /where keys\.key_id = p_key_id\s+and keys\.user_id = p_user_id\s+and keys\.sign_count < p_counter;/,
-    'o contador so sobe, numa UPDATE condicional'
+    /if p_counter is null or p_counter < 1 or p_counter > 4294967295 then\s+return jsonb_build_object\('advanced', false, 'reason', 'invalid'\);/,
+    'zero e acima de UInt32: recusados'
+  );
+  assert.match(
+    advance,
+    /select keys\.sign_count, keys\.sign_window\s+into v_count, v_window\s+from public\.celeste_app_attest_keys as keys\s+where keys\.key_id = p_key_id\s+and keys\.user_id = p_user_id\s+for update;/,
+    'linha travada (FOR UPDATE) e so a chave do proprio usuario: uma assercao por vez'
+  );
+  assert.match(
+    advance,
+    /when v_offset >= 64 then 0\s+else \(\(v_window << v_offset::integer\) \| \(1::bigint << \(v_offset - 1\)::integer\)\)\s+& 9223372036854775807/,
+    'desliza: 64 ou mais esvazia a janela (deslocamento indefinido em C), o maximo antigo vira usado, o bit de sinal fica limpo'
+  );
+  assert.match(advance, /if v_offset < 0 then\s+return jsonb_build_object\('advanced', false, 'reason', 'replay'\);/, 'o maior contador ja foi usado');
+  assert.match(advance, /if v_offset >= 63 then\s+return jsonb_build_object\('advanced', false, 'reason', 'too_old'\);/, 'mais antigo que a janela');
+  assert.match(
+    advance,
+    /if \(\(v_window >> v_offset::integer\) & 1\) = 1 then\s+return jsonb_build_object\('advanced', false, 'reason', 'replay'\);/,
+    'dentro da janela, ja usado'
+  );
+  assert.match(advance, /set sign_window = v_window \| \(1::bigint << v_offset::integer\),/, 'dentro da janela, sem uso: marca o bit');
+  assert.ok(
+    advance.indexOf('if v_offset >= 63 then') < advance.indexOf('if ((v_window >> v_offset::integer) & 1) = 1 then'),
+    'a idade e conferida antes do bit (deslocar 63 leria o bit de sinal)'
   );
   assert.match(sql, /notify pgrst, 'reload schema';\s+commit;\s*$/);
 
+  // core.autocrlf=true (worktrees and clones) checks the .ps1 out with CRLF: same checks on the file and on a CRLF copy.
   const scriptBytes = fs.readFileSync(path.join(ROOT, 'scripts', 'apply-supabase-migrations-from-vercel.ps1'));
-  assert.ok(scriptBytes.every((byte) => byte < 0x80), 'o .ps1 precisa ser so ASCII');
-  const script = scriptBytes.toString('ascii');
-  assert.match(script, /ValidateSet\([^)]*'app-attest-keys'[^)]*\)/);
-  const branch = script.slice(script.indexOf("elseif ($Action -eq 'app-attest-keys')"), script.indexOf("elseif ($Action -eq 'push')"));
-  assert.match(branch, /1\.\.14/);
-  assert.match(branch, /1\.\.15/);
-  assert.match(branch, /supabase@3 db push/);
-  assert.match(branch, /--yes/);
-  assert.match(branch, /Invoke-AppAttestContractCheck/);
-  assert.doesNotMatch(branch, /supabase@latest|--db-url/, 'a acao nova trava a versao maior do CLI');
-  const helpers = script.slice(script.indexOf('function Invoke-ReadOnlySql'), script.indexOf('try {\n  & $npxExecutable --yes vercel@latest'));
-  assert.match(helpers, /supabase@3 db query/);
-  assert.match(helpers, /--read-only/);
-  assert.doesNotMatch(helpers, /supabase@latest|--db-url/);
+  const crlfCopy = Buffer.from(scriptBytes.toString('latin1').replace(/\r?\n/g, '\r\n'), 'latin1');
+  for (const [label, bytes] of [['arquivo', scriptBytes], ['copia com CRLF', crlfCopy]]) {
+    assert.ok(bytes.every((byte) => byte < 0x80), `${label}: o .ps1 precisa ser so ASCII`);
+    const script = bytes.toString('ascii').replace(/\r\n/g, '\n');
+    assert.match(script, /ValidateSet\([^)]*'app-attest-keys'[^)]*\)/, label);
+    const branch = script.slice(script.indexOf("elseif ($Action -eq 'app-attest-keys')"), script.indexOf("elseif ($Action -eq 'push')"));
+    assert.match(branch, /1\.\.14/, label);
+    assert.match(branch, /1\.\.15/, label);
+    assert.match(branch, /supabase@3 db push/, label);
+    assert.match(branch, /--yes/, label);
+    assert.match(branch, /Invoke-AppAttestContractCheck/, label);
+    assert.doesNotMatch(branch, /supabase@latest|--db-url/, `${label}: a acao nova trava a versao maior do CLI`);
+    const helpers = script.slice(script.indexOf('function Invoke-ReadOnlySql'), script.indexOf('try {\n  & $npxExecutable --yes vercel@latest'));
+    assert.match(helpers, /supabase@3 db query/, label);
+    assert.match(helpers, /--read-only/, label);
+    assert.doesNotMatch(helpers, /supabase@latest|--db-url/, label);
+    // after applying 015 the script checks the very boolean the deploy checks (no second copy of the SQL)
+    assert.match(
+      helpers,
+      /function Invoke-AppAttestContractCheck \{\s+\$guards = Join-Path \$PSScriptRoot 'deploy-celeste-guards\.js'\s+\$contractExpression = & \$nodeExecutable -p 'require\(process\.argv\[1\]\)\.APP_ATTEST_CONTRACT_SQL' \$guards\s+if \(\$LASTEXITCODE -ne 0 -or -not \$contractExpression\) \{\s+throw '[^']+'\s+\}\s+\$contractRow = Invoke-ReadOnlySql "select \$contractExpression as valid;" '[^']+'\s+if \(\$contractRow\.valid -ne \$true\) \{ throw '[^']+' \}/,
+      `${label}: o .ps1 usa APP_ATTEST_CONTRACT_SQL`
+    );
+    assert.doesNotMatch(script, /has_(?:table|function)_privilege/, `${label}: nenhuma copia do SQL do contrato no .ps1`);
+  }
+
+  // The read-only contract of 015, checked by the deploy before publishing (and by the .ps1 above).
+  const { APP_ATTEST_CONTRACT_SQL } = require('./deploy-celeste-guards');
+  const contract = APP_ATTEST_CONTRACT_SQL.replace(/\s+/g, ' ');
+  assert.match(contract, /^coalesce\( .* , false\)$/, 'banco sem a 015: false, nao erro');
+  assert.doesNotMatch(contract, /"/, 'sem aspas duplas: passa inteiro pelo PowerShell 5.1 e pelo npx');
+  const table = "to_regclass('public.celeste_app_attest_keys')";
+  assert.ok(contract.includes(`(select c.relrowsecurity from pg_class c where c.oid = ${table})`), 'RLS ligado');
+  assert.ok(
+    contract.includes(
+      `and exists (select 1 from pg_attribute a where a.attrelid = ${table} and a.attname = 'sign_window' and not a.attisdropped)`
+    ),
+    'a coluna da janela: uma 015 antiga (sem ela) nao passa'
+  );
+  for (const role of ['anon', 'authenticated']) {
+    assert.ok(contract.includes(`and not has_table_privilege('${role}', ${table}, 'select,insert,update,delete')`), `${role}: sem a tabela`);
+  }
+  for (const signature of signatures) {
+    const rpc = `to_regprocedure('public.${signature.replace(/\s+/g, '')}')`;
+    assert.ok(contract.includes(`and has_function_privilege('service_role', ${rpc}, 'execute')`), `service_role executa ${signature}`);
+    for (const role of ['anon', 'authenticated']) {
+      assert.ok(contract.includes(`and not has_function_privilege('${role}', ${rpc}, 'execute')`), `${role} nao executa ${signature}`);
+    }
+  }
+  assert.strictEqual((contract.match(/has_(?:table|function)_privilege\(/g) || []).length, 11, 'so as 11 conferencias acima');
+  const deploySource = read('scripts/deploy-celeste.js').replace(/\r\n/g, '\n');
+  assert.match(deploySource, /const \{\s+APP_ATTEST_CONTRACT_SQL,[^}]*\} = require\('\.\/deploy-celeste-guards'\);/);
+  const contractQuery = deploySource.slice(
+    deploySource.indexOf('async function validateBackendContractsThroughDatabase()'),
+    deploySource.indexOf('async function validateDeploymentEnvironment(')
+  );
+  assert.ok(contractQuery.includes('`  ${APP_ATTEST_CONTRACT_SQL} as "appAttest";`'), 'a coluna da 015 entra na consulta do deploy');
+  assert.match(
+    contractQuery,
+    /if \(row\.appAttest !== true\) \{\s+throw new Error\('Migration 015 [^']*deploy bloqueado'\);\s+\}/,
+    'sem a 015 o deploy para antes de publicar'
+  );
 
   const packageJson = JSON.parse(read('package.json'));
   assert.match(packageJson.scripts['verify:store'], /node scripts\/verificar-app-attest\.js/);

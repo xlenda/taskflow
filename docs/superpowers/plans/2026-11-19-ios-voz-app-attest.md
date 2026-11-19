@@ -31,7 +31,8 @@ atestação e asserção, texto em scratchpad `docs/apple-attest.txt`); docs.exp
    e a atestação pelos passos da Apple: cadeia `x5c` até a "Apple App Attestation Root CA" (PEM embutido no código);
    `nonce = SHA256(authData || SHA256(utf8(challenge)))` igual ao octet string da extensão `1.2.840.113635.100.8.2` do credCert;
    `SHA256(chave pública do credCert, ponto não comprimido X9.62)` == keyId; `rpIdHash == SHA256("68VRL5BCA7.com.celesteapp.affirmations")`;
-   `counter == 0`; `aaguid == "appattest" + 7×0x00` (produção) — `appattestdevelop` só se `CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1`;
+   `counter == 0`; `aaguid == "appattest" + 7×0x00` (produção) — `appattestdevelop` só se `CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1`
+   e `VERCEL_ENV` diferente de `production` (como as outras chaves de bypass do projeto);
    `credentialId == keyId`. Grava (key_id, user_id da sessão, chave pública SPKI DER base64, sign_count 0, ambiente, receipt)
    em `public.celeste_app_attest_keys`; chave já ligada a OUTRO usuário = recusa. Resposta 200 `{"ok":true}`; erro = 403
    `{"error":"native_attestation_required"}` com um log sem segredo (mesmo padrão do `_play-integrity.js`).
@@ -39,11 +40,17 @@ atestação e asserção, texto em scratchpad `docs/apple-attest.txt`); docs.exp
    `X-Celeste-Client: ios`, `X-Celeste-Attest-Key: <keyId>`, `X-Celeste-Attest-Time: <ms>`, `X-Celeste-Attest-Assertion: <base64>`.
    O app calcula `challenge = sha256Hex(["celeste-app-attest-v1", operation, requestId, sessionHash, bodyHash, attestTimeMs].join("\n"))`
    (mesmos `sessionHash`/`bodyHash` do Play Integrity: sha256 hex do access token e do JSON exato enviado) e chama
-   `generateAssertionAsync(keyId, challenge)`. O servidor recalcula o `challenge` do pedido recebido, confere `|agora - attestTime| ≤ 5 min`,
+   `generateAssertionAsync(keyId, challenge)`. O servidor recalcula o `challenge` do pedido recebido, confere `|agora - attestTime| ≤ 24 h`
+   (`ASSERTION_WINDOW_MS`: o horário vem do relógio do aparelho, e um relógio errado por horas não pode trancar a pessoa; replay é
+   barrado pelo contador, pelo requestId assinado e pela sessão, não por essa janela),
    carrega a chave por (key_id, user_id da sessão), decodifica a asserção CBOR `{signature, authenticatorData}`,
    `nonce = SHA256(authenticatorData || SHA256(utf8(challenge)))`, verifica a assinatura ECDSA (`crypto.verify('sha256', nonce, chave, assinatura)`),
-   `rpIdHash`, e sobe o contador de forma atômica (RPC: só grava se o novo contador for MAIOR que o guardado). Qualquer falha = 403
-   `native_attestation_required`. Só as operações de `NATIVE_OPERATIONS`.
+   `rpIdHash`, e aceita o contador uma vez só numa janela deslizante estilo IPsec (RPC atômica, linha travada com `FOR UPDATE`: guarda o
+   maior contador e um bitmap dos 63 abaixo dele; aceita contador acima do maior, deslizando a janela, ou dentro da janela ainda não
+   usado; recusa usado, zero, mais antigo que a janela e acima de UInt32). Motivo: o app manda até 8 pedidos pagos ao mesmo tempo, e as
+   asserções n+1..n+8 chegam fora de ordem. Falha por chave desconhecida para aquele usuário (`unknown_key`) ou chave de desenvolvimento
+   recusada (`development_key`) = 403 `{"error":"app_attest_reattest_required"}` (o app gera e registra uma chave nova); qualquer outra
+   falha = 403 `native_attestation_required`. Só as operações de `NATIVE_OPERATIONS`.
 4. **Extensões novas do authData** (`apple_validation_category_01`, `apple_bundle_version_01`): ler se vierem, registrar no log,
    NÃO exigir (iOS mais antigo não manda; a Apple não publica os valores esperados). Limite documentado.
 

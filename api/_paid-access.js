@@ -192,6 +192,11 @@ function isNativeRequest(req) {
 // (api/_play-integrity.js and api/_app-attest.js keep that line free of tokens,
 // keys, hashes and secrets). iOS without the three App Attest headers keeps the
 // pre-filter's 'client_not_supported' line; every other iOS refusal is App Attest's.
+// The one exception: an assertion with a key this user does not have
+// (unknown_key) or a development key that is not accepted (development_key)
+// answers app_attest_reattest_required, so the app attests a new key.
+const APP_ATTEST_REATTEST_REASONS = new Set(['unknown_key', 'development_key']);
+
 function nativeRefusal(reason, googleStatus) {
   playIntegrity.logNativeRejection(reason, googleStatus);
   return { error: 'native_attestation_required', status: 403 };
@@ -199,7 +204,10 @@ function nativeRefusal(reason, googleStatus) {
 
 function appAttestRefusal(reason) {
   appAttest.logRejection(reason);
-  return { error: 'native_attestation_required', status: 403 };
+  return {
+    error: APP_ATTEST_REATTEST_REASONS.has(reason) ? 'app_attest_reattest_required' : 'native_attestation_required',
+    status: 403,
+  };
 }
 
 async function fetchWithTimeout(url, options) {
@@ -396,7 +404,8 @@ async function authorizePaidRequest(req, { operation, units = 1 } = {}) {
   if (identity.error) return identity;
   if (attestIos) {
     // The assertion signs this operation, request id, Bearer session, body and
-    // time with the key this user registered, and its counter must go up.
+    // time with the key this user registered, and its counter must be new to the
+    // store (accepted once, inside the sliding window).
     const assertion = await appAttest.verifyAssertionRequest(req, {
       operation,
       requestId: id,

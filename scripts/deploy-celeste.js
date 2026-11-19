@@ -9,6 +9,7 @@ const puppeteer = require('puppeteer-core');
 const { loadProjectEnv } = require('@expo/env');
 const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
 const {
+  APP_ATTEST_CONTRACT_SQL,
   LIVE_SUITE_TIMEOUT_MS,
   anonymousSignupHeaders,
   aiReportRolloutMode,
@@ -213,7 +214,8 @@ async function validateBackendContractsThroughDatabase() {
   const sql = [
     'select',
     '  public.celeste_generation_actor_quota_version() as "actorQuota",',
-    '  public.celeste_ai_content_report_gateway_version() as "aiReport";',
+    '  public.celeste_ai_content_report_gateway_version() as "aiReport",',
+    `  ${APP_ATTEST_CONTRACT_SQL} as "appAttest";`,
   ].join(' ');
   const { stdout } = await runCapture(
     NODE,
@@ -254,6 +256,9 @@ async function validateBackendContractsThroughDatabase() {
   const rolloutMode = aiReportRolloutMode(process.env);
   if (!validateAiReportGatewayPayload(row.aiReport, rolloutMode)) {
     throw new Error('Migrations 013/014 devolveram contrato de gateway invalido; deploy bloqueado');
+  }
+  if (row.appAttest !== true) {
+    throw new Error('Migration 015 (App Attest do iPhone) ausente ou com permissao errada; deploy bloqueado');
   }
   return {
     actorQuota: row.actorQuota,
