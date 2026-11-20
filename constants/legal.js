@@ -140,6 +140,19 @@ export const PRIVACY_SECTIONS = [
     ],
   },
   {
+    title: { en: 'Ad cookies on the website', pt: 'Cookies de anúncio no site' },
+    paragraphs: [
+      {
+        en: 'Only the website, in a browser, uses ad cookies, and only after you accept them in the cookie notice: the Meta Pixel and, when configured, the Google Ads tag measure visits, the App Store badge tap and the end of onboarding. The events carry only the event name, never your answers or texts. The iPhone and Android apps do not use these cookies.',
+        pt: 'Só o site, no navegador, usa cookies de anúncio, e só depois que você aceita no aviso de cookies: o Pixel da Meta e, quando configurada, a tag do Google Ads medem as visitas, o toque no selo da App Store e o fim do questionário. Os eventos levam só o nome do evento, nunca suas respostas ou textos. Os apps de iPhone e Android não usam esses cookies.',
+      },
+      {
+        en: 'To review or withdraw your choice, open Profile > Ad cookies on this website, or the review link in the public policy. Declining removes the ad cookies from this browser.',
+        pt: 'Para rever ou retirar a sua escolha, abra Perfil > Cookies de anúncio neste site, ou o link de revisão da política pública. Recusar apaga os cookies de anúncio deste navegador.',
+      },
+    ],
+  },
+  {
     title: { en: 'Future services', pt: 'Serviços futuros' },
     paragraphs: [
       {

@@ -61,14 +61,18 @@ const GOOGLE = {
     'https://ad.doubleclick.net',
   ],
 };
+// Google só entra na CSP quando a tag existe (GOOGLE_ADS_ID em constants/ads.js): www.google.com e afins têm
+// endpoints JSONP que desmontam a CSP, então não ficam liberados sem uso (revisão de código, 19/11/2026).
+const GOOGLE_ON = /export const GOOGLE_ADS_ID = 'AW-\d+';/.test(read('constants/ads.js'));
+const GOOGLE_CSP = GOOGLE_ON ? GOOGLE : { script: [], img: [], connect: [] };
 const CSP_EXPECTED = {
   'default-src': ["'self'"],
-  'script-src': ["'self'", ...META.script, ...GOOGLE.script],
+  'script-src': ["'self'", ...META.script, ...GOOGLE_CSP.script],
   'style-src': ["'self'", "'unsafe-inline'"],
-  'img-src': ["'self'", 'data:', 'blob:', ...META.img, ...GOOGLE.img],
+  'img-src': ["'self'", 'data:', 'blob:', ...META.img, ...GOOGLE_CSP.img],
   'font-src': ["'self'", 'data:'],
   'media-src': ["'self'", 'data:', 'blob:'],
-  'connect-src': ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', ...META.connect, ...GOOGLE.connect],
+  'connect-src': ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', ...META.connect, ...GOOGLE_CSP.connect],
   'worker-src': ["'self'", 'blob:'],
   'object-src': ["'none'"],
   'base-uri': ["'self'"],
@@ -757,9 +761,24 @@ const checks = {
     assert.ok(!script.some((source) => /unsafe-inline|unsafe-eval|unsafe-hashes|^\*$|^https?:$|^data:$/.test(source)), 'script-src frouxo');
     // os scripts que a medição injeta precisam caber na CSP
     const tracking = loadTracking(browser());
-    for (const url of [tracking.META_SCRIPT_URL, tracking.GOOGLE_SCRIPT_URL]) {
+    for (const url of [tracking.META_SCRIPT_URL, ...(GOOGLE_ON ? [tracking.GOOGLE_SCRIPT_URL] : [])]) {
       assert.ok(script.includes(new URL(url).origin), `script-src não libera ${url}`);
     }
+    if (!GOOGLE_ON) {
+      assert.ok(!script.some((source) => /google|doubleclick/.test(source)), 'script-src libera o Google sem a tag do Google existir');
+    }
+  },
+
+  'política dentro do app e Perfil (só na web) deixam rever ou retirar o aceite'() {
+    const legal = read('constants/legal.js');
+    assert.match(legal, /title: \{ en: 'Ad cookies on the website', pt: 'Cookies de anúncio no site' \}/, 'política do app sem a seção de cookies do site');
+    assert.match(legal, /Os apps de iPhone e Android não usam esses cookies/, 'política do app precisa dizer que os apps não usam');
+    const profile = read('screens/ProfileScreen.js');
+    assert.match(
+      profile,
+      /\{Platform\.OS === 'web' \? \(\s*<LegalLink\s+testID="profile-ad-cookies-link"[\s\S]{0,600}?window\.location\.assign\('\/\?cookies=rever'\)/,
+      'Perfil (só na web) precisa reabrir o aviso de cookies por /?cookies=rever'
+    );
   },
 
   'política pública: seção de cookies em PT e EN e links do aviso'() {
@@ -882,7 +901,10 @@ const cspMutations = [
   cspMutation('pixel da Meta bloqueado', (csp) => csp.replace(' https://connect.facebook.net', '')),
   cspMutation('evento da Meta bloqueado (img-src)', (csp) => csp.replace("blob: https://www.facebook.com", 'blob:')),
   cspMutation('beacon da Meta bloqueado (connect-src)', (csp) => csp.replace('wss://*.supabase.co https://www.facebook.com', 'wss://*.supabase.co')),
-  cspMutation('tag do Google bloqueada', (csp) => csp.replace("script-src 'self' https://connect.facebook.net https://www.googletagmanager.com", "script-src 'self' https://connect.facebook.net")),
+  // com a tag do Google: ela precisa caber; sem a tag: o Google não pode estar liberado
+  GOOGLE_ON
+    ? cspMutation('tag do Google bloqueada', (csp) => csp.replace("script-src 'self' https://connect.facebook.net https://www.googletagmanager.com", "script-src 'self' https://connect.facebook.net"))
+    : cspMutation('Google liberado sem a tag', (csp) => csp.replace("script-src 'self' https://connect.facebook.net", "script-src 'self' https://connect.facebook.net https://www.google.com")),
   cspMutation('domínio a mais em script-src', (csp) => csp.replace("script-src 'self'", "script-src 'self' https://cdn.exemplo.com")),
   cspMutation('script-src aberto para qualquer https', (csp) => csp.replace("script-src 'self'", "script-src 'self' https:")),
   cspMutation('frame-ancestors aberto', (csp) => csp.replace("frame-ancestors 'none'", 'frame-ancestors *')),

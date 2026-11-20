@@ -204,6 +204,9 @@ function nativeRefusal(reason, googleStatus) {
 
 function appAttestRefusal(reason) {
   appAttest.logRejection(reason);
+  // A database blip is not the device's fault: 503 keeps the app from treating it as a
+  // refusal (a 403 here would pause the automatic texts for 24 h, AppContext).
+  if (reason === 'store_unavailable') return { error: 'spend_guard_unavailable', status: 503 };
   return {
     error: APP_ATTEST_REATTEST_REASONS.has(reason) ? 'app_attest_reattest_required' : 'native_attestation_required',
     status: 403,

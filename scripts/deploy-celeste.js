@@ -46,6 +46,7 @@ const VERCEL_CURL_STATUS_MARKER = '__CELESTE_VERCEL_CURL_STATUS__:';
 
 const STATIC_GATES = [
   ['scripts/verificar-paginas-publicas.js', 'Paginas publicas de privacidade e suporte falharam'],
+  ['scripts/verificar-anuncios-site.js', 'Anuncios do site (aviso de cookies, pixel so com aceite, CSP, selo da App Store) falharam'],
   ['scripts/verificar-gemini-api.js', 'Teste local da API Gemini falhou'],
   ['scripts/verificar-provedores-texto.js', 'Providers Claude/OpenAI da Celeste falharam'],
   ['scripts/verificar-protecao-gemini.js', 'Protecao de custo Gemini falhou'],

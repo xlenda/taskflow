@@ -105,9 +105,10 @@ function refusal(reason) {
   return { ok: false, reason };
 }
 
-// Like the project's other bypass switches: never in the Vercel production deployment.
+// Like the project's other bypass switches (allowlist, not blocklist): only in a Vercel
+// development environment, never in production or preview deployments, nor with VERCEL_ENV unset.
 function developmentAllowed() {
-  return process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT === '1' && process.env.VERCEL_ENV !== 'production';
+  return process.env.CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT === '1' && process.env.VERCEL_ENV === 'development';
 }
 
 function trustedRoot() {

@@ -80,8 +80,9 @@ const APP_ATTEST_CONTRACT_SQL = [
   'coalesce(',
   "(select c.relrowsecurity from pg_class c where c.oid = to_regclass('public.celeste_app_attest_keys'))",
   "and exists (select 1 from pg_attribute a where a.attrelid = to_regclass('public.celeste_app_attest_keys') and a.attname = 'sign_window' and not a.attisdropped)",
-  "and not has_table_privilege('anon', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete')",
-  "and not has_table_privilege('authenticated', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete')",
+  // every table privilege, including the TRUNCATE/REFERENCES/TRIGGER that Supabase default privileges hand out and RLS does not cover
+  "and not has_table_privilege('anon', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete,truncate,references,trigger')",
+  "and not has_table_privilege('authenticated', to_regclass('public.celeste_app_attest_keys'), 'select,insert,update,delete,truncate,references,trigger')",
   "and has_function_privilege('service_role', to_regprocedure('public.celeste_register_app_attest_key(text,uuid,text,text,text)'), 'execute')",
   "and has_function_privilege('service_role', to_regprocedure('public.celeste_app_attest_key(text,uuid)'), 'execute')",
   "and has_function_privilege('service_role', to_regprocedure('public.celeste_advance_app_attest_counter(text,uuid,bigint)'), 'execute')",

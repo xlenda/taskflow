@@ -791,7 +791,7 @@ test('cada passo da atestacao recusa sozinho', (t) => {
   );
 });
 
-test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1 e fora da producao da Vercel', { concurrency: false }, async (t) => {
+test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1 e VERCEL_ENV=development', { concurrency: false }, async (t) => {
   configure();
   t.after(restore);
   const challenge = freshChallenge();
@@ -801,19 +801,21 @@ test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1 e f
     if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = vercelEnv;
   };
+  // allowlist like the other bypass switches: preview shares the production database, and an unset
+  // VERCEL_ENV (outside Vercel) must not open it either
   for (const [label, flag, vercelEnv] of [
-    ['variavel "true" no preview', 'true', 'preview'],
+    ['variavel "true" no development', 'true', 'development'],
     ['variavel 1 na producao da Vercel', '1', 'production'],
+    ['variavel 1 no preview', '1', 'preview'],
+    ['variavel 1 sem VERCEL_ENV', '1', undefined],
   ]) {
     setEnvironment(flag, vercelEnv);
     assert.deepStrictEqual(attest({ keyId: KEY_ID, challenge, attestation }), { ok: false, reason: 'aaguid_invalid' }, `registro: ${label}`);
   }
-  for (const [label, vercelEnv] of [['preview', 'preview'], ['local, sem VERCEL_ENV', undefined]]) {
-    setEnvironment('1', vercelEnv);
-    const verified = attest({ keyId: KEY_ID, challenge, attestation });
-    assert.strictEqual(verified.ok, true, `registro com a variavel (${label}): ${JSON.stringify(verified)}`);
-    assert.strictEqual(verified.environment, 'development');
-  }
+  setEnvironment('1', 'development');
+  const verified = attest({ keyId: KEY_ID, challenge, attestation });
+  assert.strictEqual(verified.ok, true, `registro com a variavel (development): ${JSON.stringify(verified)}`);
+  assert.strictEqual(verified.environment, 'development');
 
   // a key registered as development, used later
   const assertWith = async (vercelEnv) => {
@@ -826,7 +828,9 @@ test('chave de desenvolvimento so com CELESTE_APP_ATTEST_ALLOW_DEVELOPMENT=1 e f
   assert.deepStrictEqual(production.result, REATTEST, 'producao da Vercel: a chave de desenvolvimento nunca vale');
   assert.deepStrictEqual(production.lines, rejected('development_key'));
   const preview = await assertWith('preview');
-  assert.strictEqual(preview.result.ok, true, `preview com a variavel: ${JSON.stringify(preview.result)}`);
+  assert.deepStrictEqual(preview.result, REATTEST, 'preview da Vercel: a chave de desenvolvimento nao vale');
+  const development = await assertWith('development');
+  assert.strictEqual(development.result.ok, true, `development com a variavel: ${JSON.stringify(development.result)}`);
 });
 
 test('rota /api/app-attest: desafio e registro so do iPhone, ligado ao usuario da sessao', { concurrency: false }, async (t) => {
@@ -1005,7 +1009,11 @@ test('replay, falsificacao e tempo fora recusam antes da cota', { concurrency: f
   await expectRefused('chave nunca registrada', { keys: new Map() }, iosRequest(), 'unknown_key', 'audio', REATTEST);
   await expectRefused('chave de desenvolvimento sem a variavel', { keys: registeredKey({ environment: 'development' }) }, iosRequest(), 'development_key', 'audio', REATTEST);
   await expectRefused('chave apagada entre a consulta e o contador', { keys: registeredKey(), dropKeyBeforeAdvance: true }, iosRequest(), 'unknown_key', 'audio', REATTEST);
-  await expectRefused('banco das chaves fora do ar', { keys: registeredKey(), storeDown: true }, iosRequest(), 'store_unavailable');
+  // a database blip is not the device's fault: 503, never the 403 that pauses the app's automatic texts for 24 h
+  await expectRefused('banco das chaves fora do ar', { keys: registeredKey(), storeDown: true }, iosRequest(), 'store_unavailable', undefined, {
+    error: 'spend_guard_unavailable',
+    status: 503,
+  });
   await expectRefused(
     'assercao que nao e CBOR',
     { keys: registeredKey() },
@@ -1277,7 +1285,11 @@ test('migracao 015, script de aplicacao e portao', () => {
     'a coluna da janela: uma 015 antiga (sem ela) nao passa'
   );
   for (const role of ['anon', 'authenticated']) {
-    assert.ok(contract.includes(`and not has_table_privilege('${role}', ${table}, 'select,insert,update,delete')`), `${role}: sem a tabela`);
+    // every table privilege, TRUNCATE/REFERENCES/TRIGGER included (Supabase default privileges grant them; RLS does not cover them)
+    assert.ok(
+      contract.includes(`and not has_table_privilege('${role}', ${table}, 'select,insert,update,delete,truncate,references,trigger')`),
+      `${role}: sem a tabela (todos os privilegios)`
+    );
   }
   for (const signature of signatures) {
     const rpc = `to_regprocedure('public.${signature.replace(/\s+/g, '')}')`;

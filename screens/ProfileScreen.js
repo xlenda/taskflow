@@ -143,6 +143,8 @@ const S = {
   publicPrivacyUrl: { en: `${APP_URL}/privacy`, pt: `${APP_URL}/privacidade` },
   terms: { en: 'Terms of use', pt: 'Termos de uso' },
   termsHint: { en: 'Rules and limits of the current experience', pt: 'Regras e limites da experiência atual' },
+  adCookies: { en: 'Ad cookies on this website', pt: 'Cookies de anúncio neste site' },
+  adCookiesHint: { en: 'Review or withdraw your choice', pt: 'Rever ou retirar a sua escolha' },
   privacyIntro: {
     en: 'A plain-language explanation of how the current version handles your information.',
     pt: 'Uma explicação direta sobre como a versão atual trata suas informações.',
@@ -902,6 +904,25 @@ export default function ProfileScreen({ navigation }) {
                 }}
                 theme={theme}
               />
+              {/* Só o site usa cookies de anúncio: retirar o aceite tem que ser tão fácil quanto dar (LGPD).
+                  /?cookies=rever reabre o aviso (utils/adTracking.web.js) sem carregar nada até a nova escolha. */}
+              {Platform.OS === 'web' ? (
+                <LegalLink
+                  testID="profile-ad-cookies-link"
+                  divider
+                  icon="options-outline"
+                  iconColor={accentAt(theme, 4)}
+                  title={t(S.adCookies)}
+                  note={t(S.adCookiesHint)}
+                  onPress={() => {
+                    tap();
+                    try {
+                      window.location.assign('/?cookies=rever');
+                    } catch (_error) {}
+                  }}
+                  theme={theme}
+                />
+              ) : null}
               <LegalLink
                 testID="profile-support-link"
                 divider
