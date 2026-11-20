@@ -1,1 +1,1 @@
-Visual fixes: your Anchor Scene shows on the home screen again, the opening video appears in full, and vision images and share cards render completely. We also fixed accents in some Portuguese texts.
+Celeste's voice is now on iPhone too: with your consent, listen to your visions, affirmations and Anchor Scene in the voice you chose, and get texts written for you.

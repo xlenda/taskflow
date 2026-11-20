@@ -1,1 +1,1 @@
-Correções visuais: a sua Cena-Âncora volta a aparecer na tela inicial, o vídeo de abertura aparece por inteiro e as imagens das visões e do cartão de compartilhar ficam completas. Também corrigimos acentos em textos do app.
+Agora a voz da Celeste também no iPhone: com o seu consentimento, ouça suas visões, afirmações e a Cena-Âncora na voz que você escolheu, e receba textos escritos para você.

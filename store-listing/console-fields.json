@@ -1,7 +1,7 @@
 {
   "app": {
     "brand": "Celeste",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "defaultLocale": "pt-BR",
     "secondaryLocale": "en-US",
     "businessModel": "free_without_active_purchases",
