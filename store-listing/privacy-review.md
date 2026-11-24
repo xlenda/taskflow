@@ -19,9 +19,19 @@ os contratos dos provedores e com a versao exata enviada para as lojas.
 | Comunidade | rascunho escolhido | local hoje; Supabase planejado | envio moderado futuro | nao anunciar como publico nesta versao |
 | Denuncia de IA | somente saída gerada ou referência visual, motivo, nota opcional e metadados mínimos | gateway Celeste e Supabase | análise de segurança/moderação | identificador pseudônimo antiabuso; retenção máxima de 180 dias; exclusão no Perfil enquanto a sessão local existir |
 | Backup pessoal | prática e rascunhos locais da Comunidade | destino escolhido pela pessoa | cópia pessoal | JSON legível sem criptografia; share sheet no app e download na web; exclui denúncias, consentimentos, notificações e arquivos de imagem |
+| Compras (só iPhone, 1.0.2) | identificador anônimo do RevenueCat criado na instalação e histórico de compra da assinatura (plano, datas e situação), com dados técnicos do pedido (versão do app e do sistema, IP) | Apple (cobrança) e RevenueCat (confirma a permissão `premium`) | liberar o app para quem assina ou está no teste; histórico e gráficos do painel do RevenueCat | sem nome, e-mail ou conteúdo da pessoa; o Celeste nunca recebe cartão nem pagamento; site e Android não carregam o SDK; a permissão não entra no estado salvo nem no backup |
 
 ## Pontos a declarar ou confirmar
 
+- Compras (iPhone, 1.0.2): na Privacidade do app da Apple, declarar **Compras →
+  Histórico de compras**, não vinculado à identidade, sem rastreamento, com as
+  finalidades **Funcionalidade do app** e **Análise**. A documentação do
+  RevenueCat (Apple App Privacy, lida em 24/11/2026) manda marcar as duas para
+  todo app com o SDK: funcionalidade (validar a compra e liberar a permissão) e
+  análise (histórico e gráficos do painel do RevenueCat). O identificador
+  anônimo do RevenueCat não é ligado a conta, nome ou e-mail (não há `logIn`),
+  por isso "não vinculado". Conferir no binário final que nenhum outro dado de
+  compra sai do aparelho.
 - Conteudo do usuario enviado para gerar cenas, sonhos e voz.
 - Nome e dados de perfil que permanecem locais versus campos realmente enviados.
   No Android (desde 21/10), nome, cidade, estado civil, trabalho e as respostas

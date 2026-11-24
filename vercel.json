@@ -17,6 +17,8 @@
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/suporte", "destination": "/suporte/index.html" },
     { "source": "/support", "destination": "/support/index.html" },
+    { "source": "/termos", "destination": "/termos/index.html" },
+    { "source": "/terms", "destination": "/terms/index.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [

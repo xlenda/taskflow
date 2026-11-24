@@ -22,6 +22,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { ThemeProvider, useSetTheme } from './ui/theme';
 import { AppProvider, useApp } from './context/AppContext';
+import { EntitlementProvider, useEntitlement } from './context/EntitlementContext';
 import { NarrationProvider, useNarration } from './context/NarrationContext';
 import { useT } from './utils/useT';
 import { confirmAsync } from './utils/confirm';
@@ -33,6 +34,7 @@ import {
   hasCurrentAdultCloudConsent,
 } from './constants/cloudConsent';
 import { RELEASE_FEATURES } from './constants/releaseFeatures';
+import { accessFor } from './utils/entitlement';
 import { initCelesteBotProtection } from './utils/botProtection';
 import { initAdTracking } from './utils/adTracking';
 import { sweepShareCache } from './utils/shareContent';
@@ -776,7 +778,10 @@ function AppBootState({ failed = false, corrupt = false, onRetry, onRepair }) {
 
 // Portão de onboarding: enquanto a pessoa não termina o fluxo, o stack raiz
 // mostra o onboarding; concluir o paywall vira state.onboardingDone.
+// Portão da assinatura (só iPhone): o único ponto que decide entre app e paywall é
+// accessFor. Site e Android têm a permissão fixa em `active` e seguem como sempre.
 function RootNav() {
+  const { status } = useEntitlement();
   const {
     state,
     loading,
@@ -832,9 +837,13 @@ function RootNav() {
     );
   }
   const onboarded = state.onboardingDone === true;
+  const access = accessFor({ subscription: RELEASE_FEATURES.subscription, onboarded, status });
+  if (access === 'checking') return <AppBootState />;
   return (
     <Root.Navigator screenOptions={{ headerShown: false }}>
-      {onboarded ? (
+      {access === 'paywall' ? (
+        <Root.Screen name="Paywall" component={PaywallScreen} initialParams={{ locked: true }} />
+      ) : access === 'app' ? (
         <>
           <Root.Screen name="Main" component={Tabs} />
           <Root.Screen name="MorningRitual" component={MorningRitualScreen} />
@@ -979,9 +988,11 @@ export default function App() {
               <StatusBar style="dark" />
               <View testID="celeste-application-layout" style={styles.applicationLayout}>
                 <View testID="celeste-navigation-frame" style={styles.navigationFrame}>
-                  <NavigationContainer linking={linking}>
-                    <RootNav />
-                  </NavigationContainer>
+                  <EntitlementProvider>
+                    <NavigationContainer linking={linking}>
+                      <RootNav />
+                    </NavigationContainer>
+                  </EntitlementProvider>
                 </View>
                 <NarrationPlaybackControls />
                 <AdConsentBanner />

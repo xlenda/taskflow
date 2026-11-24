@@ -2,6 +2,14 @@ Suas afirmações deveriam soar como você, não como uma frase pronta.
 
 Celeste transforma seus desejos, sonhos e palavras em uma prática pessoal de manifestação. Você recebe uma Cena-Âncora para ler ou ouvir, uma afirmação criada a partir das suas respostas e uma Ponte de Hoje: um passo pequeno, concreto e sob seu controle.
 
+UMA SESSÃO DE 7 MINUTOS, UM TOQUE
+
+Coloque o fone e toque uma vez. A Celeste conduz um minuto de respiração, o seu desejo, a sua Cena-Âncora, três das suas afirmações (diferentes a cada dia) e o passo de hoje da jornada da semana. Pausas em silêncio dão tempo para ficar na cena. No fim, um toque registra o seu dia.
+
+UMA JORNADA NOVA TODA SEMANA
+
+Toda semana chega um tema novo de 7 dias, como calma, foco, gratidão ou autoconfiança. Cada dia traz uma frase para ouvir, uma afirmação e uma pequena ação possível.
+
 UMA CENA FEITA COM AS SUAS RESPOSTAS
 
 Conte o que deseja, o que importa e como imagina esse futuro. A Celeste combina apenas detalhes relevantes para criar uma narrativa sensorial e pessoal. Você vê quais elementos foram usados e pode editar o título, a afirmação e a Ponte de Hoje.
@@ -28,6 +36,8 @@ Monte a sequência que você quer ouvir ao acordar: sua Cena-Âncora, visões e 
 
 COM A CELESTE, VOCÊ PODE:
 
+- fazer uma sessão guiada de 7 minutos com fone;
+- começar uma jornada nova de 7 dias toda semana;
 - criar Cena-Âncora, história e afirmação personalizadas;
 - ouvir seu conteúdo na voz escolhida;
 - praticar em um ritual diário de um minuto;
@@ -42,4 +52,11 @@ VOCÊ MANTÉM O CONTROLE
 
 A Celeste mostra os detalhes usados na personalização. Você pode editar ou excluir seus registros e decidir o que deseja guardar. Conteúdo pessoal não é publicado automaticamente.
 
+CELESTE PREMIUM
+
+Sua primeira Cena-Âncora é grátis. Para continuar usando a Celeste no iPhone, comece o Celeste Premium: quem assina pela primeira vez tem 7 dias grátis. Escolha anual ou mensal; o app mostra o preço na sua moeda antes de você confirmar. A cobrança é feita na sua conta Apple quando o teste grátis termina, ou na confirmação se não houver teste. A assinatura renova automaticamente, a menos que você cancele até 24 horas antes do fim do período atual. Gerencie ou cancele quando quiser em Ajustes > seu nome > Assinaturas. Seu conteúdo continua guardado no seu iPhone.
+
 Celeste é uma ferramenta de reflexão e bem-estar. Não prevê acontecimentos, não substitui terapia e não garante dinheiro, relacionamentos, saúde ou qualquer resultado.
+
+Termos de Uso: https://celeste-jet-two.vercel.app/termos
+Política de Privacidade: https://celeste-jet-two.vercel.app/privacidade

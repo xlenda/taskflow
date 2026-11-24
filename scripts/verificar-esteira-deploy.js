@@ -685,6 +685,27 @@ test('authoritative deploy pipeline gates, authenticates, validates and promotes
     candidateSource,
     /fetch(?:WithTimeout)?\s*\(|puppeteer|productionChecks\s*\(|liveAssetChecks\s*\(|liveGeminiChecks\s*\(/
   );
+
+  // Paginas publicas no candidato e no ar. Os Termos (24/11) sao o link do paywall do iPhone e da ficha da App
+  // Store: um /terms que caia na SPA reprova a revisao da Apple.
+  const liveAssetSource = deploySource.slice(
+    deploySource.indexOf('async function liveAssetChecks('),
+    deploySource.indexOf('async function createAnonymousSmokeAccessToken(')
+  );
+  for (const [pathname, marker] of Object.entries({
+    '/privacidade': 'privacy-pt',
+    '/privacy': 'privacy-en',
+    '/suporte': 'support-pt',
+    '/support': 'support-en',
+    '/termos': 'terms-pt',
+    '/terms': 'terms-en',
+  })) {
+    for (const [label, source] of [['candidato', candidateSource], ['ao vivo', liveAssetSource]]) {
+      assert.ok(source.includes(`'${pathname}': '${marker}'`), `${label}: o deploy nao confere ${pathname}`);
+    }
+    const page = fs.readFileSync(path.join(root, 'public', pathname.slice(1), 'index.html'), 'utf8');
+    assert.ok(page.includes(`data-celeste-public-page="${marker}"`), `public${pathname}/index.html sem a marca ${marker}`);
+  }
   assert.match(deploySource, /'--prod',\s*'--skip-domain'/);
   assert.match(deploySource, /Rollback automatico para o deployment anterior falhou/);
 });

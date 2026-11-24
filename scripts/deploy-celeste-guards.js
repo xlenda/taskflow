@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const LOCAL_PUBLIC_KEY_ALIASES = Object.freeze([
   'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
   'EXPO_PUBLIC_SUPABASE_ANON_KEY',
@@ -135,6 +138,29 @@ function anonymousSignupHeaders(publicKey) {
     headers.Authorization = `Bearer ${key}`;
   }
   return headers;
+}
+
+const PAYWALL_PREVIEW_VARIABLE = 'EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW';
+
+// A previa do paywall (planos de mentira, compra que libera sem cobrar) nunca vai ao ar: o deploy para
+// se a variavel estiver ligada no ambiente ou em qualquer arquivo .env* da raiz (o Expo le esses arquivos
+// no export). So vazio ou "0" passam.
+function refusePaywallPreview(env = {}, rootDir) {
+  const off = (value) => ['', '0'].includes(String(value == null ? '' : value).trim());
+  if (!off(env[PAYWALL_PREVIEW_VARIABLE])) {
+    throw new Error(`${PAYWALL_PREVIEW_VARIABLE} esta ligada no ambiente; a previa do paywall nunca e publicada`);
+  }
+  const line = new RegExp(`^\\s*(?:export\\s+)?${PAYWALL_PREVIEW_VARIABLE}\\s*=(.*)$`);
+  for (const name of fs.readdirSync(rootDir)) {
+    if (!name.startsWith('.env') || !fs.statSync(path.join(rootDir, name)).isFile()) continue;
+    for (const text of fs.readFileSync(path.join(rootDir, name), 'utf8').split(/\r?\n/)) {
+      const found = line.exec(text);
+      if (found && !off(found[1].replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2'))) {
+        throw new Error(`${PAYWALL_PREVIEW_VARIABLE} esta ligada em ${name}; a previa do paywall nunca e publicada`);
+      }
+    }
+  }
+  return true;
 }
 
 function validateLocalBuildEnvironment(env = {}) {
@@ -578,6 +604,7 @@ module.exports = {
   runLiveSuite,
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
+  refusePaywallPreview,
   validateLocalBuildEnvironment,
   validateActorQuotaBackend,
   validateLiveSceneSuite,

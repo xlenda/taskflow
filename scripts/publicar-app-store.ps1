@@ -10,7 +10,7 @@ iPhone); por isso o primeiro build e interativo. O script nunca pede senha, nunc
 grava credencial e nunca envia o app para revisao: "Adicionar para revisao"
 continua manual no App Store Connect.
 
-O envio ao TestFlight exige que as paginas de privacidade NO AR ja mostrem o
+O envio ao TestFlight exige que as paginas de privacidade e de Termos NO AR ja mostrem o
 controlador (a Apple abre a URL da ficha na revisao). O build em si nao exige.
 
 .PARAMETER CheckOnly
@@ -75,6 +75,8 @@ Celeste - release iOS segura
 O script nunca executa eas login, nunca pede senha e nunca grava credenciais.
 -StartBuild e obrigatorio para criar um build. -Submit envia ao TestFlight;
 o envio para revisao da App Store continua manual.
+Todos os modos exigem a chave publica do RevenueCat no EAS production
+(EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, formato appl_...).
 '@ | Write-Output
 }
 
@@ -91,13 +93,14 @@ if (-not $CheckOnly -and -not $StartBuild -and -not $Submit) {
 . (Join-Path $PSScriptRoot 'celeste-release-lib.ps1')
 
 function Test-CelesteLegalPagesLive {
-  # A ficha da App Store aponta para /privacidade (e /privacy); a Apple abre essas
-  # URLs na revisao. Devolve a lista de problemas; vazia = controlador ja no ar.
+  # A ficha da App Store aponta para /privacidade (e /privacy) e, com a assinatura,
+  # para os Termos em /terms; a Apple abre essas URLs na revisao. Devolve a lista
+  # de problemas; vazia = paginas com o controlador ja no ar.
   param([string]$StoreDir, [string]$Cnpj)
   $urls = Get-Content -LiteralPath (Join-Path $StoreDir 'urls.json') -Raw | ConvertFrom-Json
   $privacy = [string]$urls.privacy
   $problems = @()
-  foreach ($url in @($privacy, ($privacy -replace '/privacidade$', '/privacy'))) {
+  foreach ($url in @($privacy, ($privacy -replace '/privacidade$', '/privacy'), ($privacy -replace '/privacidade$', '/terms'))) {
     $html = ''
     try {
       $html = [string](Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30).Content
@@ -158,23 +161,26 @@ try {
   Write-Host "Node compativel: $($node.Version)"
   $script:EasCli = Resolve-EasCli -ProjectRoot $root -NodeHome $node.Home
   Assert-CelesteEasReady -ProjectId $projectId
-  $null = Assert-CelesteEasProductionEnv
-  Write-Host 'Login, projectId e variaveis EAS: OK (valores ocultos)'
+  $envScopes = Assert-CelesteEasProductionEnv
+  # So o iPhone tem assinatura: sem a chave appl_ do RevenueCat nao ha build.
+  Assert-CelesteRevenueCatIosKey -Scopes $envScopes
+  Write-Host 'Login, projectId, variaveis EAS e chave do RevenueCat: OK (valores ocultos)'
 
-  # Fonte das paginas e textos da loja coerentes com o app.
+  # Fonte das paginas e textos da loja coerentes com o app; regras da assinatura.
   Invoke-NpmGate -Npm $npm -Name 'verify:public-pages'
   Invoke-NpmGate -Npm $npm -Name 'verify:store'
+  Invoke-NpmGate -Npm $npm -Name 'verify:subscription'
 
   # Paginas no ar: bloqueia o envio ao TestFlight, so avisa para build/checagem.
   $liveProblems = @(Test-CelesteLegalPagesLive -StoreDir (Join-Path $root 'store-listing') -Cnpj $ControllerCnpj)
   if ($liveProblems.Count) {
     $detail = $liveProblems -join '; '
     if ($Submit) {
-      throw "As paginas de privacidade no ar ainda nao trazem o controlador; rode scripts/deploy-web-from-vercel.ps1 antes de enviar ao TestFlight. Detalhe: $detail"
+      throw "As paginas de privacidade e de Termos no ar ainda nao trazem o controlador; rode scripts/deploy-web-from-vercel.ps1 antes de enviar ao TestFlight. Detalhe: $detail"
     }
-    Write-Warning "Paginas de privacidade no ar desatualizadas (o build pode seguir, o envio nao): $detail"
+    Write-Warning "Paginas de privacidade e de Termos no ar desatualizadas (o build pode seguir, o envio nao): $detail"
   } else {
-    Write-Host 'Paginas de privacidade no ar: controlador publicado.'
+    Write-Host 'Paginas de privacidade e de Termos no ar: controlador publicado.'
   }
 
   if ($CheckOnly) {

@@ -1,11 +1,13 @@
 // Textos locais da versao atual. Eles descrevem apenas o que o produto faz
-// hoje; conta, assinatura e comunidade devem ganhar termos proprios antes de
-// serem ativados.
+// hoje; conta e comunidade devem ganhar termos proprios antes de serem
+// ativadas. TERMS_SECTIONS tambem vira as paginas publicas /termos e /terms:
+// depois de mudar os termos, rode
+//   node scripts/verificar-paginas-publicas.js --escrever-termos
 export const SUPPORT_EMAIL = 'suporte@celestegroup.biz';
 
 export const LEGAL_UPDATED = {
-  en: 'Updated November 19, 2026',
-  pt: 'Atualizado em 19 de novembro de 2026',
+  en: 'Updated November 24, 2026',
+  pt: 'Atualizado em 24 de novembro de 2026',
 };
 
 export const PRIVACY_SECTIONS = [
@@ -13,8 +15,8 @@ export const PRIVACY_SECTIONS = [
     title: { en: 'In short', pt: 'Em resumo' },
     paragraphs: [
       {
-        en: 'Celeste stores your practice on this device. There is no personal sign-in or active subscription in this version. Optional cloud requests and AI-content reports use a pseudonymous technical session to authorize requests, enforce limits and prevent abuse; this is not a personal account.',
-        pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nem assinatura ativa nesta versão. Solicitações opcionais em nuvem e denúncias de conteúdo de IA usam uma sessão técnica pseudônima para autorizar pedidos, aplicar limites e prevenir abuso; ela não é uma conta pessoal.',
+        en: 'Celeste stores your practice on this device. There is no personal sign-in in this version. On iPhone, access depends on a subscription bought through Apple, described in Subscription on iPhone below. Optional cloud requests and AI-content reports use a pseudonymous technical session to authorize requests, enforce limits and prevent abuse; this is not a personal account.',
+        pt: 'O Celeste guarda sua prática neste aparelho. Não há login pessoal nesta versão. No iPhone, o acesso depende de uma assinatura comprada pela Apple, descrita em Assinatura no iPhone, abaixo. Solicitações opcionais em nuvem e denúncias de conteúdo de IA usam uma sessão técnica pseudônima para autorizar pedidos, aplicar limites e prevenir abuso; ela não é uma conta pessoal.',
       },
       {
         en: 'Your onboarding answers personalize the experience. Onboarding creates the first practice on the device and leaves cloud processing off. After onboarding, a single adult cloud control covers optional requests through Celeste\'s backend. Anthropic normally generates personalized scene text and OpenAI is its failover; if neither text provider is configured and approved Gemini processing is available, Google Gemini may generate the scene. Gemini also handles translations, images and dream interpretations, while ElevenLabs handles text-to-speech. In the iPhone and Android apps, that control enables ElevenLabs narration, the AI-written Anchor Scene, visions and affirmations, and the Google Gemini translation of the scene when you change the language; images, dreams and the Living Mirror remain website-only. Profiles marked Under 18 always use the on-device options.',
@@ -152,12 +154,25 @@ export const PRIVACY_SECTIONS = [
       },
     ],
   },
+    {
+    title: { en: 'Subscription on iPhone', pt: 'Assinatura no iPhone' },
+    paragraphs: [
+      {
+        en: 'Only the iPhone app sells a subscription. The purchase is processed by Apple, on your Apple account: Celeste never receives your card or payment details. Billing, renewal, cancellation and refunds follow Apple\'s rules and are described in the Terms.',
+        pt: 'Só o app do iPhone vende assinatura. A compra é processada pela Apple, na sua conta da Apple: o Celeste nunca recebe os dados do seu cartão ou do pagamento. Cobrança, renovação, cancelamento e reembolso seguem as regras da Apple e estão descritos nos Termos.',
+      },
+      {
+        en: 'To confirm that your subscription is active, the app uses RevenueCat. RevenueCat receives an anonymous app identifier, created for this installation, and the purchase history of the subscription (plan, dates and status), along with basic technical data from the request, such as the app and system version and the IP address. It receives none of your content (answers, desires, scenes, dreams or audio), nor your name or e-mail. The website and the Android app do not use RevenueCat and charge nothing in this version.',
+        pt: 'Para confirmar que a sua assinatura está ativa, o app usa o RevenueCat. O RevenueCat recebe um identificador anônimo do app, criado para esta instalação, e o histórico de compra da assinatura (plano, datas e situação), além de dados técnicos básicos do pedido, como a versão do app e do sistema e o endereço IP. Ele não recebe nenhum conteúdo seu (respostas, desejos, cenas, sonhos ou áudios), nem seu nome ou e-mail. O site e o app de Android não usam o RevenueCat e não cobram nada nesta versão.',
+      },
+    ],
+  },
   {
     title: { en: 'Future services', pt: 'Serviços futuros' },
     paragraphs: [
       {
-        en: 'Accounts and payments are not active in this release. Community publication requires its own explicit consent and moderation. Before any materially different data use is enabled, Celeste must explain what is collected, why it is needed, who receives it and how it can be deleted.',
-        pt: 'Contas e pagamentos não estão ativos nesta versão. A publicação na comunidade exige consentimento próprio e moderação. Antes de qualquer uso de dados materialmente diferente ser habilitado, o Celeste deverá explicar o que é coletado, por que é necessário, quem recebe e como apagar.',
+        en: 'Accounts are not active in this release. Community publication requires its own explicit consent and moderation. Before any materially different data use is enabled, Celeste must explain what is collected, why it is needed, who receives it and how it can be deleted.',
+        pt: 'Contas não estão ativas nesta versão. A publicação na comunidade exige consentimento próprio e moderação. Antes de qualquer uso de dados materialmente diferente ser habilitado, o Celeste deverá explicar o que é coletado, por que é necessário, quem recebe e como apagar.',
       },
       {
         en: 'A community story created without an authenticated account and configured community service remains a private draft on this device; it is not a public testimonial.',
@@ -218,11 +233,23 @@ export const TERMS_SECTIONS = [
     ],
   },
   {
-    title: { en: 'Current access and payments', pt: 'Acesso atual e pagamentos' },
+        title: { en: 'Subscription on iPhone', pt: 'Assinatura no iPhone' },
     paragraphs: [
       {
-        en: 'This version does not create a paid subscription. Before any purchase is offered, Celeste must show the exact price, billing period, renewal conditions and cancellation path.',
-        pt: 'Esta versão não cria uma assinatura paga. Antes de qualquer compra ser oferecida, o Celeste deverá mostrar o preço exato, o período de cobrança, as condições de renovação e o caminho de cancelamento.',
+        en: 'On iPhone, Celeste requires a subscription after onboarding. There are two plans, annual and monthly, and both start with a 7-day free trial when Apple offers the trial to your account. The price, the billing period and the trial are shown on the purchase screen before you confirm.',
+        pt: 'No iPhone, o Celeste exige uma assinatura depois do questionário inicial. Há dois planos, anual e mensal, e os dois começam com um teste grátis de 7 dias quando a Apple oferece o teste para a sua conta. O preço, o período de cobrança e o teste aparecem na tela de compra antes de você confirmar.',
+      },
+      {
+        en: 'Payment is charged to your Apple account when you confirm the purchase or, if there is a free trial, when the trial ends. The subscription renews automatically at the end of each period unless you cancel at least 24 hours before the renewal. To cancel, open Settings > your name > Subscriptions on your iPhone. Canceling stops the next renewal, and you keep access until the end of the period already paid. Deleting the app does not cancel the subscription.',
+        pt: 'A cobrança é feita na sua conta da Apple quando você confirma a compra ou, se houver teste grátis, quando o teste termina. A assinatura renova automaticamente ao fim de cada período, a menos que você cancele até 24 horas antes da renovação. Para cancelar, abra Ajustes > seu nome > Assinaturas no iPhone. Cancelar interrompe a próxima renovação, e você mantém o acesso até o fim do período já pago. Apagar o app não cancela a assinatura.',
+      },
+      {
+        en: 'Billing and refunds are handled by Apple. Celeste does not see or store your card details and cannot issue a refund itself: refund requests go to Apple, at reportaproblem.apple.com.',
+        pt: 'A cobrança e o reembolso são feitos pela Apple. O Celeste não vê nem guarda os dados do seu cartão e não consegue reembolsar por conta própria: o pedido de reembolso é feito à Apple, em reportaproblem.apple.com.',
+      },
+      {
+        en: 'The website and the Android app are free in this version: nothing is charged there. The subscription unlocks the app on iPhone and does not guarantee any result, as stated in No guaranteed outcome.',
+        pt: 'O site e o app de Android são gratuitos nesta versão: nada é cobrado neles. A assinatura libera o uso do app no iPhone e não garante nenhum resultado, como diz a seção Sem promessa de resultado.',
       },
     ],
   },

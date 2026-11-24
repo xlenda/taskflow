@@ -2,14 +2,17 @@ import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { OnbScreen } from './onboardingUI';
+import SubscriptionPaywall from './SubscriptionPaywall';
 import { APP_NAME, ONB, SERIF } from '../../constants/brand';
 import { UI } from '../../constants/i18n';
 import { useT } from '../../utils/useT';
 import { trackSignup } from '../../utils/adTracking';
 import { useApp } from '../../context/AppContext';
+import { RELEASE_FEATURES } from '../../constants/releaseFeatures';
 
-// Tela de acesso enquanto o billing não está ligado. Ela não promete trial nem
-// mostra preço fictício: o CTA apenas conclui o onboarding, sem cobrança.
+// Site e Android: tela de acesso sem cobrança. Ela não promete trial nem mostra
+// preço fictício: o CTA apenas conclui o onboarding. O iPhone (assinatura) usa
+// SubscriptionPaywall; a escolha está no fim do arquivo.
 
 const S = {
   // Chamada aponta pra manifestação REAL criada no onboarding — nada de
@@ -22,7 +25,7 @@ const S = {
   accessNote: { en: 'No trial starts and no charge is made.', pt: 'Nenhum teste começa e nenhuma cobrança é feita.' },
 };
 
-export default function PaywallScreen() {
+function OpenPaywall() {
   const { state, completeOnboarding } = useApp();
   const { t } = useT();
   const T = UI[(state && state.lang) || 'en'];
@@ -116,6 +119,12 @@ export default function PaywallScreen() {
     </OnbScreen>
   );
 }
+
+function SubscriptionRoute({ route }) {
+  return <SubscriptionPaywall locked={route?.params?.locked === true} />;
+}
+
+export default RELEASE_FEATURES.subscription ? SubscriptionRoute : OpenPaywall;
 
 const styles = StyleSheet.create({
   screenFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },

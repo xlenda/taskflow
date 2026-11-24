@@ -10,7 +10,8 @@ import { Platform } from 'react-native';
  */
 export function releaseFeaturesForPlatform(
   platformOS,
-  androidStoreRelease = process.env.EXPO_PUBLIC_CELESTE_ANDROID_STORE_RELEASE
+  androidStoreRelease = process.env.EXPO_PUBLIC_CELESTE_ANDROID_STORE_RELEASE,
+  paywallPreview = process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW
 ) {
   const androidStoreBoundary =
     platformOS === 'android' && androidStoreRelease !== '0';
@@ -46,6 +47,10 @@ export function releaseFeaturesForPlatform(
     // (constants/cloudConsent.js, used by utils/useCloudMediaConsent.js): the
     // consent app users gave (ANDROID_CLOUD_CONSENT_COPY) names only the voice and texts.
     paidCloudProcessing: platformOS === 'web',
+    // Subscription (RevenueCat) on the iPhone only. The website turns it on just in a local
+    // preview export (EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW=1, fake plans) that
+    // scripts/deploy-celeste.js refuses to publish. Android never has it.
+    subscription: platformOS === 'ios' || (platformOS === 'web' && paywallPreview === '1'),
   });
 }
 

@@ -22,7 +22,7 @@ devem ser copiadas para o Data Safety Android sem aplicar essa fronteira.
 | Categoria Apple secundária | Estilo de vida / Lifestyle | pronto |
 | Login obrigatório | Não, na versão atual | pronto |
 | Anúncios | Nenhum SDK de anúncios identificado | confirmar no binário |
-| Compra ou assinatura | Não ativa nesta versão | confirmar antes do envio |
+| Compra ou assinatura | Só no iPhone (1.0.2): Celeste Premium anual e mensal pela Apple, teste de 7 dias; Android e site grátis | confirmar antes do envio |
 | Público inicial | Recomendação: somente 18 anos ou mais | decisão do titular |
 | Países, preço e liberação | Não definidos | conta da loja |
 | Direitos e copyright | Titular ainda não informado | bloqueado |

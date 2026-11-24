@@ -4,7 +4,7 @@
     "version": "1.0.2",
     "defaultLocale": "pt-BR",
     "secondaryLocale": "en-US",
-    "businessModel": "free_without_active_purchases",
+    "businessModel": "free_download_with_ios_subscription_since_1.0.2_web_and_android_free",
     "ownerConfirmationRequired": true
   },
   "apple": {
@@ -183,7 +183,7 @@
   "releaseBoundaries": {
     "publicCommunity": false,
     "accounts": false,
-    "paidSubscription": false,
+    "paidSubscription": "ios_only_since_1.0.2",
     "androidSystemAlarm": false,
     "iosAlarm": "advertise_only_after_native_device_validation"
   }
