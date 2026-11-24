@@ -29,7 +29,7 @@
             This policy explains how Celeste handles data on its website and in the
             application identified by package <code>com.celesteapp.affirmations</code>.
           </p>
-          <p class="updated">Updated November 19, 2026.</p>
+          <p class="updated">Updated November 24, 2026.</p>
         </header>
 
         <div class="content">
@@ -46,8 +46,9 @@
             <h2 id="summary">1. Summary</h2>
             <p>
               Personal practice data is primarily stored on the device. This release does not
-              require a personal sign-in, offer an active subscription or purchase, contain ads,
-              or use your practice data for behavioral advertising. Only the website, and only if
+              require a personal sign-in, contain ads, or use your practice data for behavioral
+              advertising. In the iPhone app, access depends on a subscription bought through Apple
+              (see <a href="#subscription">Subscription on iPhone</a>). Only the website, and only if
               you accept its cookie notice, uses Meta and Google ad cookies to measure Celeste's ads
               (see <a href="#cookies">Ad cookies on the website</a>).
             </p>
@@ -317,6 +318,7 @@
               <li>deliver the practice and remember device preferences;</li>
               <li>produce cloud content explicitly requested by the person;</li>
               <li>play media, schedule ordinary reminders and, on a compatible iPhone, the personal-content alarm;</li>
+              <li>confirm the iPhone app subscription;</li>
               <li>authorize requests, limit abuse, diagnose failures and protect the service.</li>
             </ul>
             <p>
@@ -325,6 +327,23 @@
               in this release's code. Data sent to providers is limited to the purposes above. Those
               providers may retain technical records or content under the contracts and terms that
               apply to the accounts used by Celeste.
+            </p>
+            <h3 id="subscription">Subscription on iPhone</h3>
+            <p>
+              Only the iPhone app sells a subscription. The purchase is processed by Apple, on the
+              person's Apple account: Celeste never receives card or payment details. Billing,
+              renewal, cancellation and refunds follow Apple's rules and are described in the
+              <a href="/terms">Terms of use</a>.
+            </p>
+            <p>
+              To confirm that the subscription is active, the app uses
+              <strong>RevenueCat</strong>, which acts as a processor. It receives an anonymous app
+              identifier, created for that installation, and the purchase history of the
+              subscription (plan, dates and status), along with basic technical data from the
+              request, such as the app and system version and the IP address. It receives none of
+              the practice content (answers, desires, scenes, dreams or audio), nor your name or
+              e-mail. The website and the Android app do not use RevenueCat and charge nothing in
+              this version.
             </p>
             <h3 id="cookies">Ad cookies on the website</h3>
             <p>
@@ -347,7 +366,7 @@
             <aside class="notice">
               <strong>External retention periods.</strong>
               Retention periods in the Anthropic, OpenAI, Google, Apple, Meta, ElevenLabs, Supabase,
-              Vercel and BotID accounts follow each provider's terms and contracts and are not
+              RevenueCat, Vercel and BotID accounts follow each provider's terms and contracts and are not
               controlled by Celeste. Celeste does not assume processing is ephemeral.
             </aside>
           </section>
@@ -361,6 +380,11 @@
                 be revoked in device settings.
               </li>
               <li>Edit or delete manifestations, dreams and traces in their respective areas.</li>
+              <li>
+                To cancel the iPhone subscription, open <strong>Settings → your name →
+                Subscriptions</strong>. It belongs to your Apple account: Celeste cannot cancel it
+                for you, and deleting the app does not cancel it.
+              </li>
               <li>
                 Use <strong>Delete submitted AI-content reports</strong> in Profile to remove remote
                 rows linked to the current pseudonymous identifier before the 180-day limit. Do this
@@ -418,7 +442,7 @@
           <section class="section" aria-labelledby="changes">
             <h2 id="changes">9. Changes to this policy</h2>
             <p>
-              The date at the top will change when this policy changes. Before accounts, payments,
+              The date at the top will change when this policy changes. Before accounts,
               public Community features or a materially different use of data is enabled, Celeste
               must explain the change and present the required controls.
             </p>
@@ -437,6 +461,7 @@
         <footer class="site-footer">
           <span>Celeste · <code>com.celesteapp.affirmations</code></span>
           <nav class="footer-links" aria-label="Footer links">
+            <a href="/terms">Terms</a>
             <a href="/support">Support</a>
             <a href="/privacidade" lang="pt-BR">Português</a>
             <a href="/">Open Celeste</a>

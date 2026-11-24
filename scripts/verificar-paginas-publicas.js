@@ -58,11 +58,143 @@ const supportEn = publicPage({
   language: 'en-US',
 });
 
+// Assinatura do iPhone (24/11): os termos viram pagina publica (o paywall aponta para /termos e /terms) e sao
+// GERADOS do mesmo texto de constants/legal.js que o app mostra no Perfil. Depois de mudar os termos em legal.js:
+//   node scripts/verificar-paginas-publicas.js --escrever-termos
+const legalSource = read(path.join('constants', 'legal.js'));
+const legalData = {};
+Object.assign(legalData, new Function(`${legalSource.replace(/export const/g, 'const')}\nreturn { SUPPORT_EMAIL, LEGAL_UPDATED, TERMS_SECTIONS };`)());
+const escapeHtml = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const TERMS_PAGES = {
+  pt: {
+    route: '/termos', directory: 'termos', marker: 'terms-pt', language: 'pt-BR', anchor: 'conteudo',
+    other: { route: '/terms', language: 'en-US', label: 'English' },
+    description: 'Termos de uso da Celeste: uso do app, assinatura no iPhone, renovação, cancelamento e reembolso pela Apple.',
+    title: 'Termos de uso', skip: 'Ir para o conteúdo', home: 'Celeste — início', eyebrow: 'Documento público',
+    lead: 'Estes termos valem para o site e para o aplicativo identificado pelo pacote',
+    noticeLabel: 'Quem oferece a Celeste', noticeTitle: 'Responsável',
+    notice: 'VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA, CNPJ 56.970.099/0001-09, Ibipitanga, BA, Brasil, titular da conta da Celeste na App Store e no Google Play. Contato:',
+    footerLabel: 'Links do rodapé',
+    links: [['/privacidade', 'Privacidade'], ['/suporte', 'Suporte']], open: 'Abrir Celeste',
+  },
+  en: {
+    route: '/terms', directory: 'terms', marker: 'terms-en', language: 'en-US', anchor: 'content',
+    other: { route: '/termos', language: 'pt-BR', label: 'Português' },
+    description: 'Celeste terms of use: using the app, the iPhone subscription, renewal, cancellation and refunds through Apple.',
+    title: 'Terms of use', skip: 'Skip to content', home: 'Celeste — home', eyebrow: 'Public document',
+    lead: 'These terms apply to the website and to the application identified by package',
+    noticeLabel: 'Who offers Celeste', noticeTitle: 'Publisher',
+    notice: 'VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA, Brazilian company registry (CNPJ) 56.970.099/0001-09, Ibipitanga, BA, Brazil, holder of the Celeste account on the App Store and Google Play. Contact:',
+    footerLabel: 'Footer links',
+    links: [['/privacy', 'Privacy'], ['/support', 'Support']], open: 'Open Celeste',
+  },
+};
+function renderTerms(lang) {
+  const page = TERMS_PAGES[lang];
+  const mail = legalData.SUPPORT_EMAIL;
+  const sections = legalData.TERMS_SECTIONS.map((section, index) => [
+    `          <section class="section" aria-labelledby="s${index + 1}">`,
+    `            <h2 id="s${index + 1}">${index + 1}. ${escapeHtml(section.title[lang])}</h2>`,
+    ...(section.paragraphs || []).map((item) => `            <p>${escapeHtml(item[lang])}</p>`),
+    '          </section>',
+  ].join('\n')).join('\n\n');
+  return `<!doctype html>
+<html lang="${page.language}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="${page.description}" />
+    <title>${page.title} — Celeste</title>
+    <link rel="canonical" href="${PROD}${page.route}" />
+    <link rel="alternate" hreflang="pt-BR" href="${PROD}/termos" />
+    <link rel="alternate" hreflang="en-US" href="${PROD}/terms" />
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body data-celeste-public-page="${page.marker}">
+    <a class="skip-link" href="#${page.anchor}">${page.skip}</a>
+    <div class="shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="${page.home}">Celeste</a>
+        <a class="language-link" href="${page.other.route}" lang="${page.other.language}" hreflang="${page.other.language}">${page.other.label}</a>
+      </header>
+
+      <main id="${page.anchor}">
+        <header class="hero">
+          <p class="eyebrow">${page.eyebrow}</p>
+          <h1>${page.title}</h1>
+          <p class="lead">${page.lead} <code>com.celesteapp.affirmations</code>.</p>
+          <p class="updated">${escapeHtml(legalData.LEGAL_UPDATED[lang])}.</p>
+        </header>
+
+        <div class="content">
+          <aside class="notice" aria-label="${page.noticeLabel}">
+            <strong>${page.noticeTitle}</strong>
+            ${page.notice} <a href="mailto:${mail}">${mail}</a>.
+          </aside>
+
+${sections}
+        </div>
+
+        <footer class="site-footer">
+          <span>Celeste · <code>com.celesteapp.affirmations</code></span>
+          <nav class="footer-links" aria-label="${page.footerLabel}">
+${page.links.map(([href, label]) => `            <a href="${href}">${label}</a>`).join('\n')}
+            <a href="${page.other.route}" lang="${page.other.language}">${page.other.label}</a>
+            <a href="/">${page.open}</a>
+          </nav>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
+`;
+}
+if (process.argv.includes('--escrever-termos')) {
+  for (const lang of Object.keys(TERMS_PAGES)) {
+    const directory = path.join(ROOT, 'public', TERMS_PAGES[lang].directory);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'index.html'), renderTerms(lang));
+  }
+}
+const termsHtml = {};
+for (const lang of Object.keys(TERMS_PAGES)) {
+  const page = TERMS_PAGES[lang];
+  termsHtml[lang] = publicPage(page);
+  assert(
+    termsHtml[lang].replace(/\r\n/g, '\n') === renderTerms(lang),
+    `${page.route}: a página diverge de constants/legal.js (rode: node scripts/verificar-paginas-publicas.js --escrever-termos)`
+  );
+}
+for (const [label, text, required] of [
+  ['termos PT', termsHtml.pt, ['Assinatura no iPhone', 'teste grátis de 7 dias', 'renova automaticamente', 'Ajustes &gt; seu nome &gt; Assinaturas', '24 horas', 'reembolso', 'O site e o app de Android são gratuitos nesta versão', 'Sem promessa de resultado']],
+  ['terms EN', termsHtml.en, ['Subscription on iPhone', '7-day free trial', 'renews automatically', 'Settings &gt; your name &gt; Subscriptions', '24 hours', 'refund', 'The website and the Android app are free in this version', 'No guaranteed outcome']],
+]) {
+  for (const sentence of required) assert(text.includes(sentence), `${label}: assinatura do iPhone não declarada: ${sentence}`);
+}
+// nenhum texto legal (app ou site) pode continuar dizendo que nao ha assinatura nem pagamento
+for (const [label, text] of [
+  ['constants/legal.js', legalSource],
+  ['privacidade PT', privacyPt],
+  ['privacy EN', privacyEn],
+  ['termos PT', termsHtml.pt],
+  ['terms EN', termsHtml.en],
+]) {
+  const stale = /não cria uma assinatura paga|does not create a paid subscription|pagamentos não estão ativos|payments are not active|nem assinatura ativa nesta versão|or active subscription in this version|não oferece assinatura ou compra ativa|offer an active subscription or purchase/i.exec(text.replace(/\s+/g, ' '));
+  assert(!stale, `${label}: ainda nega a assinatura ou o pagamento: "${stale && stale[0]}"`);
+}
+for (const [label, text, required] of [
+  ['privacidade PT', privacyPt.replace(/\s+/g, ' '), ['A compra é processada pela Apple', 'identificador anônimo do app', 'histórico de compra', 'nem seu nome ou e-mail', 'href="/termos"']],
+  ['privacy EN', privacyEn.replace(/\s+/g, ' '), ['The purchase is processed by Apple', 'anonymous app identifier', 'purchase history', 'nor your name or e-mail', 'href="/terms"']],
+  ['constants/legal.js', legalSource, ['A compra é processada pela Apple', 'identificador anônimo do app', 'histórico de compra', 'nem seu nome ou e-mail', 'The purchase is processed by Apple', 'anonymous app identifier', 'purchase history', 'nor your name or e-mail', 'RevenueCat']],
+]) {
+  for (const sentence of required) assert(text.includes(sentence), `${label}: compra pela Apple e RevenueCat não declarados: ${sentence}`);
+}
+
 for (const [label, html] of [
   ['privacidade PT', privacyPt],
   ['privacy EN', privacyEn],
 ]) {
-  for (const provider of ['Supabase', 'Anthropic', 'OpenAI', 'Google Gemini', 'ElevenLabs', 'Vercel', 'BotID']) {
+  for (const provider of ['Supabase', 'Anthropic', 'OpenAI', 'Google Gemini', 'ElevenLabs', 'Vercel', 'BotID', 'RevenueCat']) {
     assert(html.includes(provider), `${label}: processador real ausente: ${provider}`);
   }
   assert(/30 (?:dias|days)/i.test(html), `${label}: retenção do cache de áudio ausente`);
@@ -248,7 +380,7 @@ assert(consoleFields.googlePlay.supportEmail === 'suporte@celestegroup.biz', 'Go
 
 const vercel = JSON.parse(read('vercel.json'));
 const rewriteMap = new Map((vercel.rewrites || []).map((item) => [item.source, item.destination]));
-for (const route of ['/privacidade', '/privacy', '/suporte', '/support']) {
+for (const route of ['/privacidade', '/privacy', '/suporte', '/support', '/termos', '/terms']) {
   assert(rewriteMap.get(route) === `${route}/index.html`, `Rewrite público ausente: ${route}`);
 }
 
@@ -256,5 +388,5 @@ const profile = read(path.join('screens', 'ProfileScreen.js'));
 assert(profile.includes('testID="profile-privacy-link"'), 'Link de privacidade dentro do app ausente');
 assert(profile.includes("setDocument('privacy')"), 'Link interno não abre o documento de privacidade');
 
-console.log('Páginas públicas PT/EN, URLs da loja e link interno de privacidade validados.');
+console.log('Páginas públicas PT/EN (privacidade, suporte e termos), URLs da loja e link interno de privacidade validados.');
 console.log('Controlador publicado: VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (CNPJ 56.970.099/0001-09).');
