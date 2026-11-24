@@ -608,13 +608,15 @@ function WakeReminderSync() {
   }, [loaded, opensSession]);
   React.useEffect(() => {
     if (!enabled || !hasSequence) return undefined;
+    // opensSession is a dependency only to run again when she flips the choice: the address itself reaches the
+    // service in the effect above, which runs first.
     const sync = () => void syncWakeReminders({ time, weekdays: days.split(',').map(Number), lang });
     sync();
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'active') sync();
     });
     return () => subscription?.remove?.();
-  }, [enabled, hasSequence, time, days, lang]);
+  }, [enabled, hasSequence, time, days, lang, opensSession]);
   return null;
 }
 
@@ -839,7 +841,13 @@ function RootNav() {
           {RELEASE_FEATURES.wakeSequence ? (
             <>
               <Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />
-              <Root.Screen name="WakeSequence" component={WakeSequenceScreen} />
+              {/* One instance per mode: opening the session never reuses a wake-up screen left in the stack
+                  (it would land on the final card with nothing played), nor the other way round. */}
+              <Root.Screen
+                name="WakeSequence"
+                component={WakeSequenceScreen}
+                getId={({ params }) => (params?.mode === 'session' ? 'session' : 'wake')}
+              />
             </>
           ) : null}
           <Root.Screen name="DailyRitual" component={DailyRitualScreen} />

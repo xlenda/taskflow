@@ -32,8 +32,6 @@ import {
   cancelWakeReminders,
   getWakeReminderCapability,
   scheduleWakeReminders,
-  setWakeOpensSession,
-  syncWakeReminders,
 } from '../services/wakeReminders';
 import { useTheme } from '../ui/theme';
 import { alarmWeekdaysOrDefault } from '../utils/alarmSchedule';
@@ -369,23 +367,14 @@ export default function AffirmationAlarmScreen() {
     haptic();
   }, [haptic, saveMorningRitualPreferences]);
 
-  // What the reminder opens travels in each scheduled reminder (services/wakeReminders): the service learns her
-  // saved choice here, before any scheduling from this screen.
+  // Only saves the choice: App's WakeReminderSync tells the service and re-creates an active reminder with the
+  // new address, behind its own guards (reminder on, sequence not empty).
   const opensSession = ritual.wakeOpensSession === true;
-  useEffect(() => {
-    setWakeOpensSession(opensSession);
-  }, [opensSession]);
-
   const toggleOpensSession = useCallback((value) => {
     if (operationRef.current) return;
     saveMorningRitualPreferences({ wakeOpensSession: value });
-    setWakeOpensSession(value);
-    // An active reminder is re-created with the new address, at the saved time and days; this never asks permission.
-    if (ritual.reminderEnabled) {
-      void syncWakeReminders({ time: ritual.reminderTime, weekdays: alarmWeekdaysOrDefault(ritual.weekdays), lang }).catch(() => {});
-    }
     haptic();
-  }, [haptic, lang, ritual.reminderEnabled, ritual.reminderTime, ritual.weekdays, saveMorningRitualPreferences]);
+  }, [haptic, saveMorningRitualPreferences]);
 
   const addItem = useCallback((item) => {
     if (operationRef.current) return;

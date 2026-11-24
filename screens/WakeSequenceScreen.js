@@ -437,8 +437,10 @@ export default function WakeSequenceScreen({ route }) {
 
   function leave() {
     silence();
+    // Opened cold (reminder, link, reload) there is nothing under this screen: Home takes its place. A navigate
+    // would leave this finished screen in the stack.
     if (navigation.canGoBack?.()) navigation.goBack();
-    else navigation.navigate('Main');
+    else navigation.replace('Main');
   }
 
   // One tap marks the day; a second tap does nothing (a note would become a second evidence).

@@ -39,6 +39,7 @@ import { selectDailyRitual } from '../utils/dailyRitual';
 import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
 import { wakeSequenceItemsForState } from '../utils/wakeSequence';
 import { sessionItemsForState } from '../utils/guidedSession';
+import { anchorManifestationForState } from '../utils/personalJourney';
 import { journeyForDay } from '../utils/weeklyJourney';
 
 import AppStoreBadge from '../components/AppStoreBadge';
@@ -392,8 +393,9 @@ export default function HomeScreen() {
     state.manifestations[state.manifestations.length - 1] ||
     null;
   const dailyRitual = selectDailyRitual(state, todayISO());
-  // Sessão de 7 minutos: só existe com Cena-Âncora (a mesma regra do roteiro).
-  const hasSession = !!anchorScene && sessionItemsForState(state, lang, todayISO()).length > 0;
+  // Sessão de 7 minutos: só existe com Cena-Âncora (a mesma regra do roteiro), e a foto do cartão é a da
+  // manifestação que a sessão toca.
+  const sessionScene = sessionItemsForState(state, lang, todayISO()).length > 0 ? anchorManifestationForState(state) : null;
   const sessionJourney = journeyForDay(todayISO());
   const sessionDayLabel = sessionJourney
     ? t(S.sessionDay, { theme: t(sessionJourney.theme.title), n: sessionJourney.dayIndex + 1 })
@@ -579,11 +581,16 @@ export default function HomeScreen() {
           />
         </View>
 
-        {hasSession ? (
+        {sessionScene ? (
           <Card
             testID="open-session"
             onPress={() => navigation.navigate('WakeSequence', { mode: 'session' })}
             accessibilityRole="button"
+            // Leitor de tela: o ⓘ fica dentro do cartão (botão dentro de botão), então a explicação é uma ação dele.
+            accessibilityActions={[{ name: 'info', label: t(S.sessionInfo) }]}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'info') setSessionInfoOpen(true);
+            }}
             accessibilityLabel={[t(S.sessionFull), sessionDayLabel, sessionDoneToday ? t(S.sessionDone) : '']
               .filter(Boolean)
               .join('. ')}
@@ -598,9 +605,9 @@ export default function HomeScreen() {
           >
             {/* A foto da cena dela, parada: quem anima é o cartão da Cena-Âncora, logo abaixo. */}
             <GradientCover
-              visualKey={anchorScene.visual?.cacheKey}
-              sceneCategory={anchorScene.category}
-              accent={typeof anchorScene.accent === 'number' ? anchorScene.accent : 0}
+              visualKey={sessionScene.visual?.cacheKey}
+              sceneCategory={sessionScene.category}
+              accent={typeof sessionScene.accent === 'number' ? sessionScene.accent : 0}
               radius={th.radius.card}
               decorative
               style={StyleSheet.absoluteFill}
@@ -620,7 +627,8 @@ export default function HomeScreen() {
                 </Text>
                 {sessionDayLabel ? (
                   <Text
-                    numberOfLines={1}
+                    testID="session-day"
+                    numberOfLines={2}
                     style={[th.typography.bodySm, styles.anchorSceneName, styles.onSceneSoft]}
                   >
                     {sessionDayLabel}
@@ -638,6 +646,7 @@ export default function HomeScreen() {
                 <Ionicons name="information-circle-outline" size={24} color="#FFFFFF" />
               </Pressable>
             </View>
+            {/* Tela estreita: o estado ("Feita hoje") desce para a linha de baixo em vez de espremer as pílulas. */}
             <View style={[styles.sessionRow, styles.sessionFacts]}>
               <View style={[styles.sessionPill, { backgroundColor: alpha('#000000', 0.28) }]}>
                 <Ionicons name="time-outline" size={16} color="#FFFFFF" />
@@ -647,7 +656,6 @@ export default function HomeScreen() {
                 <Ionicons name="flame" size={16} color="#FFFFFF" />
                 <Text style={styles.sessionPillText}>{derived.streak}</Text>
               </View>
-              <View style={styles.sessionSpacer} />
               {sessionDoneToday ? (
                 <View style={[styles.sessionPill, styles.sessionDonePill]}>
                   <Ionicons name="checkmark-circle" size={17} color="#1F8A5B" />
@@ -1102,7 +1110,7 @@ const styles = StyleSheet.create({
   },
   sessionCard: { borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, marginTop: 6, marginBottom: 0 },
   sessionRow: { flexDirection: 'row', alignItems: 'center' },
-  sessionFacts: { marginTop: 12 },
+  sessionFacts: { marginTop: 4, flexWrap: 'wrap' },
   sessionInfoButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
   sessionPill: {
     minHeight: 32,
@@ -1111,11 +1119,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     borderRadius: 16,
     marginRight: 8,
+    marginTop: 8,
   },
   sessionPillText: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '800', marginLeft: 6 },
-  sessionDonePill: { backgroundColor: 'rgba(255,255,255,0.94)', marginRight: 0 },
+  sessionDonePill: { backgroundColor: 'rgba(255,255,255,0.94)', marginRight: 0, marginLeft: 'auto' },
   sessionDoneText: { color: '#1B1B2A' },
-  sessionSpacer: { flex: 1 },
   sessionPlay: {
     width: 36,
     height: 36,
@@ -1123,6 +1131,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.94)',
+    marginLeft: 'auto',
+    marginTop: 8,
   },
   // Centered: a bottom sheet would sit under the tab bar and the cookie notice.
   sessionInfoBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.55)' },

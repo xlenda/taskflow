@@ -204,6 +204,8 @@ export function Card(props) {
         accessibilityRole: props.accessibilityRole || 'button',
         accessibilityLabel: props.accessibilityLabel,
         accessibilityHint: props.accessibilityHint,
+        accessibilityActions: props.accessibilityActions,
+        onAccessibilityAction: props.onAccessibilityAction,
         accessibilityState: {
           ...props.accessibilityState,
           disabled,

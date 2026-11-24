@@ -510,7 +510,7 @@ assert.ok(features.includes('wakeSequence: true'), 'Meu despertar precisa existi
 assert.ok(
   app.includes('RELEASE_FEATURES.wakeSequence ? (') &&
     app.includes('<Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />') &&
-    app.includes('<Root.Screen name="WakeSequence" component={WakeSequenceScreen} />') &&
+    /<Root\.Screen\s+name="WakeSequence"\s+component=\{WakeSequenceScreen\}/.test(app) &&
     app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir/:mode?' }") &&
     app.includes('await initialWakeNotificationUrl()') &&
     app.includes('subscribeWakeNotificationUrls(listener)') &&
@@ -544,13 +544,19 @@ assert.ok(
     /if \(!enabled \|\| !hasSequence\) return undefined;/.test(wakeSync) &&
     /syncWakeReminders\(\{ time, weekdays: days\.split\(','\)\.map\(Number\), lang \}\)/.test(wakeSync) &&
     /AppState\.addEventListener\('change', \(next\) => \{\s*if \(next === 'active'\) sync\(\);/.test(wakeSync) &&
-    /\}, \[enabled, hasSequence, time, days, lang\]\);/.test(wakeSync) &&
+    // A escolha "abrir com a sessão" entra nas dependências: virar o interruptor refaz o lembrete AQUI, atrás das
+    // mesmas travas (ligado + sequência com itens), e não na tela (que recriaria lembretes que o App acabou de apagar).
+    /\}, \[enabled, hasSequence, time, days, lang, opensSession\]\);/.test(wakeSync) &&
+    wakeSync.indexOf('if (loaded) setWakeOpensSession(opensSession);') > 0 &&
+    wakeSync.indexOf('if (loaded) setWakeOpensSession(opensSession);') < wakeSync.indexOf('const sync = () =>') &&
     /useMemo\(\s*\(\) => !!state && wakeSequenceItemsForState\(state, lang\)\.length > 0/.test(wakeSync) &&
     !/requestPermissionsAsync|scheduleWakeReminders/.test(wakeSync),
   'Android: o lembrete ligado precisa ser refeito ao abrir e ao voltar (horário, dias e idioma), sem pedir permissão'
 );
-// "Abrir com a sessão de 7 minutos": interruptor só onde o toque no lembrete abre o app; grava a escolha, avisa o
-// serviço e refaz o lembrete ativo sem pedir permissão. O fim do despertar comum abre a sessão numa tela nova.
+// "Abrir com a sessão de 7 minutos": interruptor só onde o toque no lembrete abre o app; ele só grava a escolha
+// (quem avisa o serviço e refaz o lembrete é o WakeReminderSync do App, dono único da sincronia). O fim do despertar
+// comum abre a sessão numa tela nova; as duas telas nunca dividem instância e sair de uma tela aberta a frio a troca
+// pela Home.
 const opensSessionToggle = alarmScreen.slice(
   alarmScreen.indexOf('const toggleOpensSession = useCallback'),
   alarmScreen.indexOf('const addItem = useCallback')
@@ -558,11 +564,16 @@ const opensSessionToggle = alarmScreen.slice(
 assert.ok(
   /\{reminderMode \? \(\s*<View style=\{\[styles\.sessionRow[\s\S]{0,400}testID="wake-opens-session"[\s\S]{0,200}onValueChange=\{toggleOpensSession\}/.test(alarmScreen) &&
     opensSessionToggle.includes('saveMorningRitualPreferences({ wakeOpensSession: value })') &&
-    opensSessionToggle.includes('setWakeOpensSession(value)') &&
-    /if \(ritual\.reminderEnabled\) \{\s*void syncWakeReminders\(/.test(opensSessionToggle) &&
-    !/scheduleWakeReminders|requestPermissionsAsync/.test(opensSessionToggle) &&
-    /useEffect\(\(\) => \{\s*setWakeOpensSession\(opensSession\);/.test(alarmScreen),
-  'interruptor "Abrir com a sessão de 7 minutos" ausente, sem gravar a escolha ou sem refazer o lembrete'
+    !/WakeReminders|setWakeOpensSession|requestPermissionsAsync/.test(opensSessionToggle) &&
+    !/syncWakeReminders|setWakeOpensSession/.test(alarmScreen),
+  'interruptor "Abrir com a sessão de 7 minutos" ausente, sem gravar a escolha ou mexendo nos lembretes pela tela'
+);
+assert.ok(
+  app.includes("getId={({ params }) => (params?.mode === 'session' ? 'session' : 'wake')}") &&
+    /if \(navigation\.canGoBack\?\.\(\)\) navigation\.goBack\(\);\s*else navigation\.replace\('Main'\);/.test(
+      read('screens/WakeSequenceScreen.js')
+    ),
+  'sessão e despertar precisam de telas separadas (getId) e sair de uma tela aberta a frio precisa trocá-la pela Home'
 );
 assert.ok(
   /testID="wake-open-session"[\s\S]{0,260}navigation\.replace\('WakeSequence', \{ mode: 'session' \}\)/.test(

@@ -67,18 +67,54 @@ async function startServer() {
   return { url: `http://127.0.0.1:${port}`, stop: () => child.kill() };
 }
 
+// O mesmo testID pode existir numa tela escondida da pilha (o despertar atrás da sessão): vale o que está à vista.
+const shown = (page, id) =>
+  page.evaluate((sel) => [...document.querySelectorAll(sel)].some((node) => node.getClientRects().length > 0), tid(id));
+
 async function click(page, id, timeout = 20000) {
-  await page.waitForSelector(tid(id), { visible: true, timeout });
-  await page.$eval(tid(id), (el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  const handle = await page.waitForFunction(
+    (sel) => [...document.querySelectorAll(sel)].find((node) => node.getClientRects().length > 0) || false,
+    { timeout, polling: 100 },
+    tid(id)
+  ).catch(() => fail(`"${id}" não apareceu na tela`));
+  await handle.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
   await sleep(150);
-  await page.click(tid(id));
+  await handle.click();
+}
+
+// Três estrelas e "Próximo" até o cartão final (`end`).
+async function playToEnd(page, end) {
+  for (const star of [1, 2, 3]) await click(page, `trace-star-${star}`);
+  for (let step = 0; step < 40 && !(await shown(page, end)); step += 1) {
+    if (await shown(page, 'wake-next')) await click(page, 'wake-next');
+    await sleep(200);
+  }
+  if (!(await shown(page, end))) fail(`"${end}" não apareceu depois de tocar tudo`);
+}
+
+// Começou do começo: estrelas na tela e nenhum cartão final à vista.
+async function assertFreshStart(page, where) {
+  await page.waitForFunction(
+    (sel) => [...document.querySelectorAll(sel)].some((node) => node.getClientRects().length > 0),
+    { timeout: 10000 },
+    tid('trace-star-1')
+  ).catch(() => fail(`${where}: não começou pelas estrelas`));
+  for (const card of ['session-complete', 'wake-complete']) {
+    if (await shown(page, card)) fail(`${where}: abriu direto no cartão final (${card}), sem nada tocado`);
+  }
 }
 
 // Medida, não calculada: a largura que o documento realmente ocupa.
-async function assertWidth(page, where) {
+async function assertWidth(page, where, expected = VIEWPORT.width) {
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
-  if (width !== VIEWPORT.width) fail(`${where}: largura do documento ${width}, esperado ${VIEWPORT.width}`);
+  if (width !== expected) fail(`${where}: largura do documento ${width}, esperado ${expected}`);
 }
+
+const screenText = (page) =>
+  page.evaluate(() => {
+    const screen = [...document.querySelectorAll('[data-testid="wake-sequence-screen"]')].find((node) => node.getClientRects().length > 0);
+    return screen ? screen.innerText : '';
+  });
 
 const pathOf = (page) => new URL(page.url()).pathname;
 const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), STORAGE_KEY);
@@ -98,6 +134,8 @@ const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getI
     await page.setViewport(VIEWPORT);
     await page.goto(server.url, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.evaluate((key, value) => localStorage.setItem(key, JSON.stringify(value)), STORAGE_KEY, seedState());
+    // Quem já usa o app já respondeu o aviso de cookies do site (ele tem portão próprio e cobriria as capturas).
+    await page.evaluate(() => localStorage.setItem('@celeste_ad_consent_v1', 'denied'));
     await page.goto(`${server.url}/`, { waitUntil: 'networkidle2', timeout: 60000 });
 
     // 1. Home: o cartão da sessão está na primeira tela, sem rolar, e vem antes do da Cena-Âncora.
@@ -222,6 +260,74 @@ const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getI
     const position = await page.$eval(tid('wake-position'), (el) => el.innerText);
     if (!/^1 de 12/i.test(position)) fail(`a sessão aberta pelo fim do despertar começou em "${position}"`);
     if (await page.$(tid('session-complete'))) fail('cartão de registrar apareceu com a sessão no primeiro item');
+
+    // 9. Despertar aberto a frio (lembrete, link, F5): a pilha só tem ele. Fechar no fim volta à Home e o cartão
+    // abre a sessão do começo, nunca a tela velha do despertar virada em "sessão completa".
+    await page.goto(`${server.url}/despertar/ouvir`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await playToEnd(page, 'wake-complete');
+    await click(page, 'wake-close');
+    await page.waitForFunction(() => location.pathname === '/', { timeout: 10000 })
+      .catch(() => fail('fechar o despertar aberto a frio não voltou à Home'));
+    await click(page, 'open-session');
+    await page.waitForFunction(() => location.pathname === '/despertar/ouvir/session', { timeout: 10000 });
+    await assertFreshStart(page, 'sessão depois de um despertar aberto a frio');
+    if (!(await screenText(page)).includes('Sua sessão de 7 minutos')) fail('o cartão abriu a tela do despertar, não a da sessão');
+
+    // 10. O caminho inverso: sessão aberta a frio, sair no fim, Meu despertar -> ouvir abre o despertar do começo.
+    await page.goto(`${server.url}/despertar/ouvir/session`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await playToEnd(page, 'session-complete');
+    await click(page, 'wake-back');
+    await page.waitForFunction(() => location.pathname === '/', { timeout: 10000 })
+      .catch(() => fail('sair da sessão aberta a frio não voltou à Home'));
+    await click(page, 'open-affirmation-alarm');
+    await click(page, 'wake-listen-now');
+    await page.waitForFunction(() => location.pathname === '/despertar/ouvir', { timeout: 10000 });
+    await assertFreshStart(page, 'despertar depois de uma sessão aberta a frio');
+    if (!(await screenText(page)).includes('Ouvir meu despertar')) fail('"Ouvir agora" abriu a tela da sessão, não a do despertar');
+
+    // 11. Tela estreita (320x480), no estado mais largo ("Feita hoje"): o dia da jornada aparece inteiro e nada
+    // sai do cartão. Medido nos elementos, não lido do texto.
+    await page.setViewport({ width: 320, height: 480, deviceScaleFactor: 1 });
+    await page.goto(`${server.url}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector(tid('open-session'), { visible: true, timeout: 30000 });
+    const narrow = await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="open-session"]');
+      const day = card.querySelector('[data-testid="session-day"]');
+      const box = card.getBoundingClientRect();
+      const outside = [...card.querySelectorAll('*')].filter((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 && (rect.left < box.left - 0.5 || rect.right > box.right + 0.5 || rect.bottom > box.bottom + 0.5);
+      }).length;
+      return {
+        left: box.left,
+        right: box.right,
+        outside,
+        dayCut: day.scrollWidth > day.clientWidth + 1 || day.scrollHeight > day.clientHeight + 1,
+        done: card.innerText.includes('Feita hoje'),
+      };
+    });
+    if (!narrow.done) fail('320x480: o cartão deveria estar em "Feita hoje"');
+    if (narrow.left < 0 || narrow.right > 320 || narrow.outside || narrow.dayCut) {
+      fail(`320x480: cartão cortado ou vazando: ${JSON.stringify(narrow)}`);
+    }
+    await assertWidth(page, 'Home 320x480', 320);
+    await page.screenshot({ path: path.join(SHOT_DIR, '07-home-320x480.png') });
+    await page.setViewport(VIEWPORT);
+
+    // 12. Sem Cena-Âncora não há sessão: o cartão não aparece e o link direto mostra o estado vazio.
+    await page.evaluate(
+      (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+      STORAGE_KEY,
+      { ...seedState(), anchorSceneId: null, manifestations: [], morningRitual: {} }
+    );
+    await page.goto(`${server.url}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector(tid('open-profile'), { visible: true, timeout: 30000 });
+    await sleep(800);
+    if (await page.$(tid('open-session'))) fail('sem Cena-Âncora o cartão da sessão apareceu');
+    await page.screenshot({ path: path.join(SHOT_DIR, '08-home-sem-ancora.png') });
+    await page.goto(`${server.url}/despertar/ouvir/session`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector(tid('wake-empty'), { visible: true, timeout: 20000 })
+      .catch(() => fail('sem Cena-Âncora o link direto não mostrou o estado vazio'));
 
     if (errors.length) fail(`erro de página: ${errors[0]}`);
     console.log('e2e sessao: ok');
