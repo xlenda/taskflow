@@ -68,7 +68,8 @@
     "verify:recovery": "node scripts/verificar-recuperacao-travamentos.js",
     "verify:recovery-browser": "node scripts/verificar-recuperacao-browser.js",
     "qa:new-screens": "node scripts/qa-novos-recursos.js",
-    "verify:performance": "node scripts/medir-performance.js"
+    "verify:performance": "node scripts/medir-performance.js",
+    "verify:session": "node scripts/verificar-sessao-7min.js"
   },
   "dependencies": {
     "@expo/app-integrity": "~57.0.2",
