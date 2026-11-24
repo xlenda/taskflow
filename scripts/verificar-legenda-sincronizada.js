@@ -399,6 +399,7 @@ async function main() {
       'expo-asset': { Asset: { fromModule: () => ({ downloadAsync: async () => ({}) }) } },
       './celesteApiSession': { celestePaidApiHeaders: async () => ({ Authorization: 'Bearer sessao' }) },
       '../constants/narrators': { narratorPreviewUrl: () => null },
+      '../constants/sessionAudio': { sessionClipModule: () => null },
       './narrationAudioStorage': {
         acquireNarrationAudio: async () => null,
         clearNarrationAudioStorage: async () => true,
