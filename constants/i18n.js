@@ -26,6 +26,19 @@ export function detectLang() {
   }
 }
 
+// Idioma salvo só vale se a pessoa escolheu, já entrou no app ou já tem conteúdo
+// (trocar aqui misturaria línguas). Antes disso segue o celular: quem abriu a
+// 1.0.1 em inglês num iPhone em português.
+export function resolveSavedLang(st) {
+  const saved = st && (st.lang === 'pt' || st.lang === 'en') ? st.lang : null;
+  const settled =
+    !!st &&
+    (st.langChosen === true ||
+      st.onboardingDone === true ||
+      (Array.isArray(st.manifestations) && st.manifestations.length > 0));
+  return saved && settled ? saved : detectLang();
+}
+
 export function txt(field, lang) {
   if (field == null) return '';
   if (typeof field === 'string') return field;

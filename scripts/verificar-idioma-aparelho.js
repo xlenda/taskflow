@@ -30,7 +30,7 @@ Module._extensions['.js'] = (loaded, filename) => {
   }).code;
   loaded._compile(code, filename);
 };
-const { detectLang } = require(i18nFile);
+const { detectLang, resolveSavedLang } = require(i18nFile);
 Module._extensions['.js'] = originalLoader;
 
 const realDateTimeFormat = Intl.DateTimeFormat;
@@ -84,12 +84,43 @@ const rnSettings = path.join(root, 'node_modules', 'react-native', 'Libraries', 
 assert.match(fs.readFileSync(path.join(rnSettings, 'Settings.ios.js'), 'utf8'), /\bget\(key: string\)/);
 assert.match(fs.readFileSync(path.join(rnSettings, 'RCTSettingsManager.mm'), 'utf8'), /dictionaryRepresentation/);
 
-// Quem já escolheu o idioma no app continua com ele: o aparelho só decide quando não há escolha.
-assert.ok(
-  fs
-    .readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8')
-    .includes("if (st.lang !== 'pt' && st.lang !== 'en') st.lang = detectLang();"),
-  'idioma salvo no app deixou de valer sobre o do aparelho'
+// Idioma salvo: vale se a pessoa escolheu, já entrou no app ou tem conteúdo; senão o celular
+// decide de novo (a 1.0.1 gravou 'en' em iPhone em português antes de a pessoa terminar a entrada).
+function saved(st) {
+  reactNative = { Platform: { OS: 'ios' }, Settings: apple(['pt-BR']) };
+  return resolveSavedLang(st);
+}
+const savedCases = [
+  ['1.0.1 gravou en sem escolha nem entrada → celular pt', { lang: 'en', manifestations: [] }, 'pt'],
+  ['escolheu en no app → en', { lang: 'en', langChosen: true }, 'en'],
+  ['já entrou no app em en → en', { lang: 'en', onboardingDone: true }, 'en'],
+  ['já tem conteúdo em en → en (não mistura línguas)', { lang: 'en', manifestations: [{ id: 'a' }] }, 'en'],
+  ['langChosen texto não vale', { lang: 'en', langChosen: 'true' }, 'pt'],
+  ['idioma salvo inválido → celular', { lang: 'es', langChosen: true }, 'pt'],
+  ['sem estado → celular', null, 'pt'],
+];
+for (const [name, st, expected] of savedCases) {
+  assert.strictEqual(saved(st), expected, name);
+}
+
+// O app usa essa regra no load (depois de normalizar onboardingDone), e escolher marca a escolha.
+const ctx = fs.readFileSync(path.join(root, 'context', 'AppContext.js'), 'utf8');
+const resolveAt = ctx.indexOf('st.lang = resolveSavedLang(st);');
+const chosenAt = ctx.indexOf('st.langChosen = st.langChosen === true || st.onboardingDone === true;');
+const doneAt = ctx.indexOf("st.onboardingDone = st.onboardingDone === true || st.onboardingDone === 'true';");
+assert.ok(resolveAt > 0, 'load não usa resolveSavedLang');
+assert.ok(chosenAt > 0 && chosenAt < resolveAt, 'terminar a entrada não fixa o idioma antes de resolver');
+assert.ok(doneAt > 0 && doneAt < chosenAt, 'onboardingDone precisa ser normalizado antes do idioma');
+assert.match(ctx, /lang: nextLang,\s*langChosen: true,/, 'setLang não marca a escolha');
+assert.match(
+  ctx,
+  /if \(requestedLang === nextLang\) \{\s*\/\/[^\n]*\n\s*setState\(\(s\) => \(s\.langChosen \? s : \{ \.\.\.s, langChosen: true \}\)\);/,
+  'confirmar o idioma que já aparece não marca a escolha'
+);
+assert.match(
+  ctx,
+  /lang: current\.lang,\s*langChosen: current\.langChosen === true \|\| current\.onboardingDone === true,/,
+  'reset perde o idioma escolhido'
 );
 
-process.stdout.write(`Idioma do aparelho aprovado (${cases.length} casos)\n`);
+process.stdout.write(`Idioma do aparelho aprovado (${cases.length + savedCases.length} casos)\n`);

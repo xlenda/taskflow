@@ -7,7 +7,7 @@ import {
   normalizeCloudConsentProfile,
   stripCloudConsentProfile,
 } from '../constants/cloudConsent';
-import { detectLang } from '../constants/i18n';
+import { resolveSavedLang } from '../constants/i18n';
 import { isNarratorId } from '../constants/narrators';
 import { todayISO, streakFrom } from '../utils/date';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
@@ -570,7 +570,9 @@ function mergeDefensivo(parsed) {
     typeof st.storeReviewRequestedAt === 'string' && !Number.isNaN(Date.parse(st.storeReviewRequestedAt))
       ? st.storeReviewRequestedAt
       : null;
-  if (st.lang !== 'pt' && st.lang !== 'en') st.lang = detectLang();
+  // Terminar a entrada fixa o idioma: refazer a entrada não devolve ao do celular.
+  st.langChosen = st.langChosen === true || st.onboardingDone === true;
+  st.lang = resolveSavedLang(st);
   st.name = shortText(st.name, 80);
   st.mood = VISUAL_MOODS.includes(st.mood) ? st.mood : null;
   const savedNarration =
@@ -2840,6 +2842,7 @@ export function AppProvider({ children }) {
     const next = {
       ...initialState(),
       lang: current.lang,
+      langChosen: current.langChosen === true || current.onboardingDone === true,
       mood: current.mood,
       storeReviewRequestedAt: current.storeReviewRequestedAt || null,
     };
@@ -3596,7 +3599,11 @@ export function AppProvider({ children }) {
     const nextLang = lang === 'pt' ? 'pt' : 'en';
     const snapshot = stateRef.current;
     const requestedLang = desiredLanguageRef.current || (snapshot && snapshot.lang);
-    if (requestedLang === nextLang) return;
+    if (requestedLang === nextLang) {
+      // Confirmar o idioma que já aparece também é escolha.
+      setState((s) => (s.langChosen ? s : { ...s, langChosen: true }));
+      return;
+    }
     desiredLanguageRef.current = nextLang;
     const languageEpoch = translationLanguageEpochRef.current + 1;
     translationLanguageEpochRef.current = languageEpoch;
@@ -3604,6 +3611,7 @@ export function AppProvider({ children }) {
     setState((s) => ({
       ...s,
       lang: nextLang,
+      langChosen: true,
       manifestations: s.manifestations.map((item) =>
         localizeManifestation(item, s.profile, nextLang)
       ),
