@@ -137,6 +137,7 @@ const S = {
   },
   support: { en: 'Support and privacy contact', pt: 'Contato de suporte e privacidade' },
   supportHint: { en: SUPPORT_EMAIL, pt: SUPPORT_EMAIL },
+  manageSubscription: { en: 'Manage subscription', pt: 'Gerenciar assinatura' },
   privacy: { en: 'Privacy policy', pt: 'Política de privacidade' },
   privacyHint: { en: 'What is stored and when data leaves the device', pt: 'O que é guardado e quando dados saem do aparelho' },
   publicPrivacy: { en: 'Public version of this policy', pt: 'Versão pública desta política' },
@@ -919,6 +920,20 @@ export default function ProfileScreen({ navigation }) {
                     try {
                       window.location.assign('/?cookies=rever');
                     } catch (_error) {}
+                  }}
+                  theme={theme}
+                />
+              ) : null}
+              {RELEASE_FEATURES.subscription ? (
+                <LegalLink
+                  testID="manage-subscription"
+                  divider
+                  icon="card-outline"
+                  iconColor={accentAt(theme, 1)}
+                  title={t(S.manageSubscription)}
+                  onPress={() => {
+                    Linking.openURL('https://apps.apple.com/account/subscriptions').catch(() => {});
+                    tap();
                   }}
                   theme={theme}
                 />

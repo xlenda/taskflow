@@ -9,7 +9,8 @@ import { configurePurchases, onEntitlementChange, readEntitlement } from '../ser
 import { ENTITLEMENT_TIMEOUT_MS } from '../utils/entitlement';
 
 const OPEN = Object.freeze({ status: 'active', refresh: async () => {}, setActive: () => {} });
-const EntitlementContext = React.createContext(OPEN);
+// Com assinatura, quem ler fora do provedor fica fechado: o padrão nunca abre o app de graça.
+const EntitlementContext = React.createContext(RELEASE_FEATURES.subscription ? { ...OPEN, status: 'checking' } : OPEN);
 
 export function useEntitlement() {
   return React.useContext(EntitlementContext);

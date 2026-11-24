@@ -59,6 +59,7 @@ async function main() {
     isRevenueCatIosKey,
     paywallDisclosure,
     planFromPackage,
+    storeOutcome,
   } = load('utils/entitlement.js');
 
   assert.strictEqual(ENTITLEMENT_ID, 'premium');
@@ -249,8 +250,8 @@ async function main() {
   assert.deepStrictEqual(mentions, [], `só services/purchases.ios.js pode citar ${SDK}`);
   assert.ok(read('services/purchases.ios.js').includes(`from '${SDK}'`));
   assert.ok(!read('services/purchases.js').includes(SDK), 'site e Android não importam o SDK');
-  assert.ok(!/\b(import|require)\b/.test(read('services/purchases.js').replace(/^import \{[^}]*\} from '\.\.\/utils\/entitlement';\n/m, '')),
-    'services/purchases.js não importa nada além da lógica pura');
+  assert.ok(!/\b(import|require)\b/.test(read('services/purchases.js').replace("import { Platform } from 'react-native';\n", '')),
+    'services/purchases.js só importa a plataforma (a prévia vale só no site)');
 
   // o módulo nativo fica fora do Android
   delete require.cache[path.join(root, 'react-native.config.js')];
@@ -294,11 +295,14 @@ async function main() {
   // ── services/purchases.js (site e Android): mesmas exportações, nada acontece ───────────────────
   const EXPORTS = ['buyPlan', 'configurePurchases', 'loadPlans', 'onEntitlementChange', 'purchasesSupported',
     'readEntitlement', 'restorePurchases'];
-  const webService = (preview) => {
+  const webService = (preview, os = 'web') => {
     if (preview === undefined) delete process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW;
     else process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW = preview;
     try {
-      return load('services/purchases.js', { stubs: { 'expo/virtual/env': { env: process.env } }, fresh: true });
+      return load('services/purchases.js', {
+        stubs: { 'expo/virtual/env': { env: process.env }, 'react-native': { Platform: { OS: os } } },
+        fresh: true,
+      });
     } finally {
       delete process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW;
     }
@@ -315,6 +319,14 @@ async function main() {
   assert.doesNotThrow(() => closed.onEntitlementChange(() => {})());
   // qualquer valor que não seja exatamente '1' deixa tudo fechado
   for (const value of ['0', '', 'true', '11', ' 1']) assert.strictEqual(webService(value).purchasesSupported, false, `prévia "${value}"`);
+  // este arquivo também serve o Android: lá a prévia nunca liga, nem com a variável no build
+  {
+    const android = webService('1', 'android');
+    assert.strictEqual(android.purchasesSupported, false, 'a prévia só existe no site');
+    assert.deepStrictEqual(await android.loadPlans(), { ok: false, reason: 'unavailable' });
+    assert.deepStrictEqual(await android.buyPlan(annualPlan), { ok: false, reason: 'failed' });
+    assert.deepStrictEqual(await android.readEntitlement(), { ok: false, reason: 'unsupported' });
+  }
 
   // ── Prévia do paywall (D.7): planos de mentira, compra e restauração só na memória ──────────────
   {
@@ -687,6 +699,16 @@ async function main() {
     assert.deepStrictEqual(calls, [], 'sem assinatura, nenhuma chamada ao serviço de compras');
     assert.deepStrictEqual(appState, [], 'sem assinatura, ninguém escuta o primeiro plano');
   }
+  {
+    // com assinatura, quem ler a permissão fora do provedor fica fechado (nunca "active" de graça)
+    const { context, calls } = entitlementContext({ subscription: true });
+    const outside = context.useEntitlement();
+    assert.strictEqual(outside.status, 'checking', 'com assinatura o padrão do contexto não abre o app');
+    await outside.refresh();
+    outside.setActive();
+    assert.strictEqual(context.useEntitlement().status, 'checking');
+    assert.deepStrictEqual(calls, []);
+  }
 
   global.setTimeout = (fn, ms) => { const timer = { fn, ms }; clock.timers.push(timer); return timer; };
   global.clearTimeout = (timer) => { clock.cleared.push(timer); };
@@ -881,8 +903,118 @@ async function main() {
     assert.ok(guardAt < firstReturnAt, 'a recusa da prévia vale para todos os modos do deploy');
   }
 
+  // ── Tarefa 10: o que a tela faz com a resposta da loja ──────────────────────────────────────────
+  assert.strictEqual(storeOutcome({ ok: true, active: true }), 'unlock');
+  // a Apple cobrou e a permissão ainda não está ativa: não libera e não é "falha"
+  for (const paid of [{ ok: true, active: false }, { ok: true }, { ok: true, active: 'true' }, { ok: true, active: 1 }]) {
+    assert.strictEqual(storeOutcome(paid), 'inactive', JSON.stringify(paid));
+  }
+  assert.strictEqual(storeOutcome({ ok: false, reason: 'cancelled' }), 'cancelled');
+  assert.strictEqual(storeOutcome({ ok: false, reason: 'pending' }), 'pending');
+  for (const failed of [{ ok: false, reason: 'failed' }, { ok: false, reason: 'unlock' }, { ok: false }, { active: true },
+    { ok: 'true', active: true }, { ok: false, active: true }, null, undefined, 'unlock']) {
+    assert.strictEqual(storeOutcome(failed), 'failed', JSON.stringify(failed));
+  }
+
+  // ── Tarefa 10: paywall honesto do iPhone (Diretriz 3.1.2), lido na fonte da tela ────────────────
+  {
+    const { parseSync, traverse } = require('@babel/core');
+    const SCREEN = 'screens/onboarding/SubscriptionPaywall.js';
+    assert.ok(exists(SCREEN), SCREEN + ' existe');
+    const source = read(SCREEN);
+    const ast = parseSync(source, { filename: path.join(root, SCREEN), presets: ['babel-preset-expo'], sourceType: 'module' });
+    const text = (node) => source.slice(node.start, node.end);
+
+    // cada testID da tela ("paywall-plan-" + id do plano vira "paywall-plan-*")
+    const ids = new Map();
+    traverse(ast, {
+      JSXAttribute(found) {
+        if (found.node.name.name !== 'testID') return;
+        const value = found.node.value.type === 'JSXExpressionContainer' ? found.node.value.expression : found.node.value;
+        const id = value.type === 'StringLiteral' ? value.value
+          : value.type === 'TemplateLiteral' ? value.quasis.map((quasi) => quasi.value.cooked).join('*') : text(value);
+        assert.ok(!ids.has(id), 'testID repetido na tela: ' + id);
+        ids.set(id, found);
+      },
+    });
+    for (const id of ['paywall-plan-*', 'paywall-cta', 'paywall-disclosure', 'paywall-restore', 'paywall-terms', 'paywall-privacy',
+      'paywall-retry', 'paywall-info']) {
+      assert.ok(ids.has(id), 'a tela tem o testID ' + id);
+    }
+
+    // preço só da loja; nada de pressa, procura inventada ou promessa
+    assert.ok(!/(R\$|US\$|€|£|\$)\s?\d/.test(source), 'nenhum preço escrito na tela');
+    assert.ok(!/só hoje|últimas|restam|vagas|countdown|timer|garant|guarantee|only today|spots left/i.test(source),
+      'sem cronômetro, sem "só hoje", sem contagem de vagas, sem promessa');
+    assert.ok(source.includes('plan.priceString'), 'o preço do cartão é plan.priceString');
+    assert.ok(/testID="paywall-disclosure"[^>]*>\s*\{paywallDisclosure\(selected, lang\)\}/.test(source),
+      'a linha legal é paywallDisclosure do plano selecionado');
+    for (const piece of ['APP_URL', '/termos', '/terms', '/privacidade', '/privacy']) assert.ok(source.includes(piece), 'links legais: ' + piece);
+
+    // linha legal, Restaurar, Termos e Privacidade em todos os estados: direto no retorno único da tela,
+    // fora de qualquer condição
+    for (const id of ['paywall-disclosure', 'paywall-restore', 'paywall-terms', 'paywall-privacy']) {
+      const element = ids.get(id);
+      const owner = element.getFunctionParent();
+      assert.strictEqual(owner.node.id && owner.node.id.name, 'SubscriptionPaywall', id + ' fica no retorno da tela');
+      const branch = element.findParent((parent) => parent === owner || parent.isConditionalExpression() ||
+        parent.isLogicalExpression() || parent.isIfStatement() || parent.isSwitchStatement());
+      // assert.ok de propósito: strictEqual entre dois caminhos do Babel estoura a memória ao montar a diferença
+      assert.ok(branch === owner, id + ' aparece em todos os estados (achei dentro de: ' + text(branch.node).slice(0, 60) + ')');
+      let returns = 0;
+      owner.traverse({ ReturnStatement(found) { if (found.getFunctionParent() === owner) returns += 1; } });
+      assert.strictEqual(returns, 1, 'a tela tem um retorno só');
+    }
+
+    // selo de teste só com a resposta da loja
+    const badge = ids.get('paywall-trial-*');
+    assert.ok(badge, 'o selo do teste tem testID paywall-trial-<id>');
+    const badgeGate = badge.findParent((parent) => parent.isConditionalExpression() || parent.isLogicalExpression());
+    assert.ok(badgeGate && text(badgeGate.node.test || badgeGate.node.left) === 'plan.trialDays > 0', 'o selo só aparece com plan.trialDays > 0');
+    assert.ok(source.includes('selected.trialDays > 0'), 'botão e folha de informação olham o teste do plano selecionado');
+    assert.ok(!/\b7\s*(dias|days|-day)/i.test(source), 'a duração do teste vem do plano, não do código');
+
+    // só "unlock" libera, e a permissão entra antes de concluir a entrada
+    const calls = (name) => source.split(name + '(').length - 1;
+    assert.strictEqual(calls('setActive'), 1, 'setActive é chamado num lugar só');
+    assert.strictEqual(calls('completeOnboarding'), 1);
+    let unlockTest = null;
+    traverse(ast, {
+      CallExpression(found) {
+        if (found.node.callee.name !== 'setActive') return;
+        const guard = found.findParent((parent) => parent.isIfStatement() || parent.isConditionalExpression() || parent.isLogicalExpression());
+        unlockTest = guard && guard.isIfStatement() ? text(guard.node.test) : 'fora de um if';
+      },
+    });
+    assert.strictEqual(unlockTest, "outcome === 'unlock'", 'setActive só com compra ou restauração ativa');
+    assert.ok(source.indexOf('setActive();') < source.indexOf('completeOnboarding()'), 'a permissão entra antes de concluir a entrada');
+    assert.ok(source.includes('storeOutcome(') && !/\.active\b/.test(source), 'a tela decide pelo storeOutcome');
+    for (const line of ['Compra recebida. Toque em Restaurar compras para liberar.', 'Purchase received. Tap Restore purchases to unlock.',
+      'Compra aguardando aprovação.', 'Purchase awaiting approval.', 'Nenhuma assinatura ativa nesta conta da Apple.',
+      'No active subscription on this Apple account.', 'Não foi possível carregar os planos.', 'Plans could not be loaded.',
+      'Seu conteúdo continua guardado neste iPhone.', 'Your content stays saved on this iPhone.']) {
+      assert.ok(source.includes(line), 'texto da tela: ' + line);
+    }
+    // a narração global fica fora do portão: o paywall cala o que estiver tocando
+    assert.ok(/const \{ stop \} = useNarration\(\);/.test(source) && /React\.useEffect\(\(\) => \{\n\s*stop\(\);\n\s*\}, \[stop\]\);/.test(source),
+      'o paywall para a narração que estiver tocando');
+    // tentar de novo consulta a permissão e os planos
+    assert.ok(/refresh\(\);\n\s*load\(\);/.test(source), 'Tentar de novo chama refresh() e loadPlans()');
+
+    const screen = read('screens/onboarding/PaywallScreen.js');
+    assert.ok(/<SubscriptionPaywall locked=\{route\?\.params\?\.locked === true\} \/>/.test(screen), 'PaywallScreen passa locked');
+    assert.ok(/export default RELEASE_FEATURES\.subscription \? \w+ : \w+;/.test(screen), 'PaywallScreen escolhe a variante pela plataforma');
+
+    const profile = read('screens/ProfileScreen.js');
+    assert.ok(/\{RELEASE_FEATURES\.subscription \? \(\n\s*<LegalLink\n\s*testID="manage-subscription"/.test(profile),
+      'Perfil: "Gerenciar assinatura" só com assinatura');
+    assert.ok(profile.includes("'https://apps.apple.com/account/subscriptions'"));
+
+    assert.strictEqual(require('../package.json').scripts['verify:paywall-preview'], 'node scripts/e2e-paywall-previa.js');
+  }
+
   finished = true;
-  console.log('assinatura (logica, fronteira, portao na raiz e previa): ok');
+  console.log('assinatura (logica, fronteira, portao na raiz, previa e paywall): ok');
 }
 
 main().catch((error) => {

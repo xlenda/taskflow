@@ -708,6 +708,7 @@ const checks = {
           'react-native': fakeNative('web'),
           '@expo/vector-icons': { Ionicons: 'Ionicons' },
           'screens/onboarding/onboardingUI': { OnbScreen: 'OnbScreen' },
+          'screens/onboarding/SubscriptionPaywall': { default: 'SubscriptionPaywall' },
           'context/AppContext': {
             useApp: () => ({
               state: { lang: 'pt', manifestations: [] },

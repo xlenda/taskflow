@@ -20,6 +20,7 @@
     "verify:mascot": "node scripts/verificar-mascote.js",
     "verify:paywall": "node scripts/verificar-paywall.js",
     "verify:subscription": "node scripts/verificar-assinatura.js",
+    "verify:paywall-preview": "node scripts/e2e-paywall-previa.js",
     "verify:gemini": "node scripts/verificar-gemini-api.js",
     "verify:cloud-consent": "node scripts/verificar-consentimento-nuvem.js",
     "verify:text-providers": "node scripts/verificar-provedores-texto.js",

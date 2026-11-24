@@ -3,9 +3,11 @@
 //
 // Prévia (EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW=1, só em export local do site): planos de mentira para
 // conferir a tela do paywall sem iPhone. Comprar e restaurar ativam só na memória desta aba, sem loja e
-// sem cobrança. scripts/deploy-celeste.js recusa publicar com a variável ligada.
+// sem cobrança. scripts/deploy-celeste.js recusa publicar com a variável ligada. Este arquivo também é o do
+// Android: lá a prévia nunca liga.
+import { Platform } from 'react-native';
 
-const PREVIEW = process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW === '1';
+const PREVIEW = process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW === '1' && Platform.OS === 'web';
 const PREVIEW_PLANS = [
   { id: '$rc_annual', period: 'year', priceString: '0,00', trialDays: 7, preview: true },
   { id: '$rc_monthly', period: 'month', priceString: '0,00', trialDays: 7, preview: true },

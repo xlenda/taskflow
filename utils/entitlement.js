@@ -73,6 +73,13 @@ export function paywallDisclosure(plan, lang) {
   return `${plan.trialDays > 0 ? text.trial(plan.trialDays, price) : `${price}.`} ${text.rest}`;
 }
 
+// O que o paywall faz com a resposta da compra ou da restauração. Só "unlock" libera o app. "inactive" na
+// compra é a Apple ter cobrado sem a permissão estar ativa ainda: não é falha, a saída é Restaurar compras.
+export function storeOutcome(result) {
+  if (result?.ok === true) return result.active === true ? 'unlock' : 'inactive';
+  return result?.reason === 'cancelled' || result?.reason === 'pending' ? result.reason : 'failed';
+}
+
 // Chave pública do RevenueCat para a App Store. Recusa a de teste (test_) e a do Google (goog_).
 export function isRevenueCatIosKey(value) {
   return typeof value === 'string' && /^appl_[A-Za-z0-9]{16,}$/.test(value);
