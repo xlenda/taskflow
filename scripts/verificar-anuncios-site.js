@@ -21,7 +21,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const SITE = 'https://celeste-jet-two.vercel.app';
 const CONSENT_KEY = '@celeste_ad_consent_v1';
 const PIXEL_ID = '1822816372332275';
-const APP_STORE_URL = 'https://apps.apple.com/br/app/id6833663415?ct=site_celeste&mt=8';
+const APP_STORE_URL = 'https://apps.apple.com/app/id6833663415?ct=site_celeste&mt=8';
 // Selos oficiais (toolbox.marketingtools.apple.com, pt-br e en-us), conferidos byte a byte.
 const OFFICIAL_BADGES = {
   'assets/badges/app-store-pt-br.svg': '0e9291a9c654e479762b75b51dd94a150af6fab76390a79cb2218cdc8f6cc893',

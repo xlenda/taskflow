@@ -18,7 +18,7 @@ const puppeteer = require('puppeteer-core');
 const TARGET = (process.env.TARGET_URL || 'http://127.0.0.1:4181').replace(/\/$/, '');
 const CHROME = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const SHOTS = path.join(__dirname, 'e2e-shots');
-const APP_STORE_URL = 'https://apps.apple.com/br/app/id6833663415?ct=site_celeste&mt=8';
+const APP_STORE_URL = 'https://apps.apple.com/app/id6833663415?ct=site_celeste&mt=8';
 const CSP = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'))
   .headers.find((entry) => entry.source === '/(.*)')
   .headers.find((entry) => entry.key === 'Content-Security-Policy').value;

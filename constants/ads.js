@@ -9,4 +9,4 @@ export const GOOGLE_ADS_SIGNUP_LABEL = '';
 
 // Ficha da Celeste na App Store com o rótulo de campanha do site (ct). O parâmetro pt= (token do
 // provedor) entra aqui quando o App Store Connect liberar o link de campanha.
-export const APP_STORE_URL = 'https://apps.apple.com/br/app/id6833663415?ct=site_celeste&mt=8';
+export const APP_STORE_URL = 'https://apps.apple.com/app/id6833663415?ct=site_celeste&mt=8';
