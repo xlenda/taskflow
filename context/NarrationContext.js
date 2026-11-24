@@ -17,6 +17,7 @@ import {
 import * as Speech from 'expo-speech';
 
 import {
+  audioKindOf,
   clearNarrationAudioMemoryCache,
   normalizeNarrationText,
   requestNarrationAudio,
@@ -201,6 +202,8 @@ function silentWaveBytes() {
 const WEB_UNLOCK_WAVE = silentWaveBytes();
 
 function temporaryAudioSource(bytes) {
+  // the session clips ship as MP3; the Celeste voice and the samples are WAV
+  const mp3 = audioKindOf(bytes) === 'mp3';
   if (Platform.OS === 'web') {
     if (
       typeof Blob === 'undefined' ||
@@ -209,7 +212,7 @@ function temporaryAudioSource(bytes) {
     ) {
       throw narrationError('audio_blob_unavailable');
     }
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    const url = URL.createObjectURL(new Blob([bytes], { type: mp3 ? 'audio/mpeg' : 'audio/wav' }));
     return {
       uri: url,
       dispose: () => {
@@ -223,7 +226,7 @@ function temporaryAudioSource(bytes) {
   nativeFileSequence += 1;
   const file = new File(
     Paths.cache,
-    `celeste-narration-${Date.now()}-${nativeFileSequence}.wav`
+    `celeste-narration-${Date.now()}-${nativeFileSequence}.${mp3 ? 'mp3' : 'wav'}`
   );
   file.create({ overwrite: true, intermediates: true });
   file.write(bytes);
@@ -884,6 +887,13 @@ export function NarrationProvider({ children }) {
     [start]
   );
 
+  // a session clip shipped in the app (constants/sessionAudio.js): no network, no device voice
+  const playBundled = useCallback(
+    ({ clipId, narratorId, lang = 'pt', playbackId }) =>
+      start({ mode: 'bundled', clipId, narratorId, lang, playbackId }),
+    [start]
+  );
+
   const playPersonal = useCallback(
     ({ text, narratorId, lang = 'pt', cloudConsent, cloudConsentVersion, adultConfirmed, playbackId }) =>
       start({
@@ -1180,6 +1190,7 @@ export function NarrationProvider({ children }) {
         totalDuration: aggregate.totalDuration,
         progress: aggregate.progress,
         playbackRate,
+        playBundled,
         playPreview,
         playPersonal,
         preparePersonal,
@@ -1212,6 +1223,7 @@ export function NarrationProvider({ children }) {
       pause,
       phase,
       playbackRate,
+      playBundled,
       playPersonal,
       playPreview,
       preparePersonal,

@@ -3,6 +3,7 @@ import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { narratorPreviewUrl } from '../constants/narrators';
+import { sessionClipModule } from '../constants/sessionAudio';
 import { CLOUD_CONSENT_VERSION } from '../constants/cloudConsent';
 import {
   acquireNarrationAudio,
@@ -130,13 +131,23 @@ function isWave(bytes) {
   );
 }
 
-function cacheIdentity({ mode, narratorId, lang, text }) {
+// What the first bytes say the audio is: 'wav' (RIFF....WAVE), 'mp3' (ID3 tag or an MPEG audio frame sync) or null.
+export function audioKindOf(bytes) {
+  if (isWave(bytes)) return 'wav';
+  if (!(bytes instanceof Uint8Array) || bytes.length < 4) return null;
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return 'mp3';
+  // 11 sync bits, then a layer other than the reserved 00 (which is how AAC ADTS starts)
+  if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 && (bytes[1] & 0x06) !== 0) return 'mp3';
+  return null;
+}
+
+function cacheIdentity({ mode, narratorId, lang, text, clipId }) {
   if (mode === 'personal') {
     const persistentKey = createNarrationAudioCacheKey({ text, narratorId, lang });
     return { memoryKey: persistentKey, persistentKey };
   }
   return {
-    memoryKey: JSON.stringify([mode, narratorId, lang, 'bundled-preview']),
+    memoryKey: JSON.stringify([mode, narratorId, lang, mode === 'bundled' ? clipId : 'bundled-preview']),
     persistentKey: '',
   };
 }
@@ -336,10 +347,10 @@ async function fetchNarrationAudio({ body, fetchImpl, signal, timeoutMs }) {
   }
 }
 
-async function loadNarratorPreview({ narratorId, lang, signal }) {
+// An audio file shipped in the app (narrator sample or session clip): its module, through expo-asset, as bytes.
+async function loadBundledAudio(moduleId, unavailable, signal) {
   if (signal && signal.aborted) throw new NarrationRequestError('audio_cancelled');
-  const moduleId = narratorPreviewUrl(narratorId, lang);
-  if (!moduleId) throw new NarrationRequestError('preview_unavailable');
+  if (!moduleId) throw new NarrationRequestError(unavailable);
   try {
     const asset = Asset.fromModule(moduleId);
     await asset.downloadAsync();
@@ -348,12 +359,12 @@ async function loadNarratorPreview({ narratorId, lang, signal }) {
     let bytes;
     if (Platform.OS === 'web') {
       const response = await fetch(uri, { cache: 'force-cache', signal });
-      if (!response.ok) throw new NarrationRequestError('preview_unavailable');
+      if (!response.ok) throw new NarrationRequestError(unavailable);
       bytes = new Uint8Array(await response.arrayBuffer());
     } else {
       bytes = await new File(uri).bytes();
     }
-    if (bytes.length > MAX_AUDIO_BYTES || !isWave(bytes)) {
+    if (bytes.length > MAX_AUDIO_BYTES || !audioKindOf(bytes)) {
       throw new NarrationRequestError('invalid_audio_response');
     }
     return bytes;
@@ -362,8 +373,16 @@ async function loadNarratorPreview({ narratorId, lang, signal }) {
     if ((signal && signal.aborted) || (error && error.name === 'AbortError')) {
       throw new NarrationRequestError('audio_cancelled');
     }
-    throw new NarrationRequestError('preview_unavailable');
+    throw new NarrationRequestError(unavailable);
   }
+}
+
+function loadNarratorPreview({ narratorId, lang, signal }) {
+  return loadBundledAudio(narratorPreviewUrl(narratorId, lang), 'preview_unavailable', signal);
+}
+
+function loadSessionClip({ narratorId, lang, clipId, signal }) {
+  return loadBundledAudio(sessionClipModule(narratorId, lang, clipId), 'clip_unavailable', signal);
 }
 
 export async function requestNarrationAudio({
@@ -376,10 +395,12 @@ export async function requestNarrationAudio({
   adultConfirmed = false,
   fetchImpl,
   previewLoaderImpl,
+  clipId,
+  clipLoaderImpl,
   signal,
   timeoutMs,
 }) {
-  const requestMode = mode === 'preview' ? 'preview' : mode === 'personal' ? 'personal' : '';
+  const requestMode = ['preview', 'personal', 'bundled'].includes(mode) ? mode : '';
   if (!requestMode) throw new NarrationRequestError('mode_invalid');
   const narrator = cleanText(narratorId, 40);
   if (!narrator || narrator !== narratorId.trim()) {
@@ -405,6 +426,13 @@ export async function requestNarrationAudio({
     body.cloudConsent = true;
     body.cloudConsentVersion = CLOUD_CONSENT_VERSION;
     body.adultConfirmed = true;
+  }
+  if (requestMode === 'bundled') {
+    // clip names are a-z0-9_ (the Android release build turns the path into a resource name)
+    if (typeof clipId !== 'string' || !/^[a-z0-9_]{1,60}$/.test(clipId)) {
+      throw new NarrationRequestError('clip_unavailable');
+    }
+    body.clipId = clipId;
   }
 
   if (signal && signal.aborted) throw new NarrationRequestError('audio_cancelled');
@@ -467,6 +495,13 @@ export async function requestNarrationAudio({
         ? await (previewLoaderImpl || loadNarratorPreview)({
           narratorId: narrator,
           lang: locale,
+          signal: pendingSignal,
+        })
+        : requestMode === 'bundled'
+        ? await (clipLoaderImpl || loadSessionClip)({
+          narratorId: narrator,
+          lang: locale,
+          clipId,
           signal: pendingSignal,
         })
         : await fetchNarrationAudio({

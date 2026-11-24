@@ -1,5 +1,5 @@
-// Portao do audio embutido da sessao. Modos: (sem flag) completo; `--estrutura` so script e mapa.
-// Novos modos (ex.: --tocador) entram como mais uma funcao em MODES.
+// Portao do audio embutido da sessao. Modos: (sem flag) completo (tocador + arquivos); `--estrutura` so script e
+// mapa; `--tocador` so o tocador do app (clipe embutido WAV ou MP3). Novos modos entram como mais uma funcao em MODES.
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
@@ -89,12 +89,221 @@ function completo() {
   if (!problems.length) console.log(`audio da sessao: ok (${clips.length} clipes, ${(bytes / 1e6).toFixed(1)} MB)`);
 }
 
-const MODES = { '--estrutura': estrutura, '': completo };
-const mode = process.argv.slice(2).find((arg) => arg in MODES) || '';
-MODES[mode]();
-if (problems.length) {
-  console.error(problems.slice(0, 40).join('\n'));
-  console.error(`audio da sessao${mode ? ' (estrutura)' : ''}: ${problems.length} problema(s)`);
-  process.exit(1);
+// Carrega um arquivo ESM do app com Babel, trocando os modulos de `mocks` (e somando `inject` ao fim do fonte).
+function loadApp(relativePath, mocks, inject = '') {
+  const Module = require('module');
+  const { transformSync } = require('@babel/core');
+  const filename = path.join(__dirname, '..', relativePath);
+  const code = transformSync(fs.readFileSync(filename, 'utf8') + inject, {
+    filename,
+    presets: ['babel-preset-expo'],
+    sourceType: 'module',
+  }).code;
+  const loaded = new Module(filename, module);
+  loaded.filename = filename;
+  loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+  const original = Module._load;
+  Module._load = function mockedLoad(request, parent, isMain) {
+    if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
+    return original.call(this, request, parent, isMain);
+  };
+  try {
+    loaded._compile(code, filename);
+  } finally {
+    Module._load = original;
+  }
+  return loaded.exports;
 }
-if (mode === '--estrutura') console.log('audio da sessao (estrutura): ok');
+
+// O tocador do app: reconhece WAV/MP3 pelos primeiros bytes, toca o clipe embutido sem rede, um cache por clipe, e a
+// voz da Celeste (modo personal) continua so WAV.
+async function tocador() {
+  const { resolveObjectURL } = require('buffer');
+  const { CLOUD_CONSENT_VERSION } = require('../constants/cloudConsent');
+  const sized = (head) => {
+    const bytes = new Uint8Array(64);
+    bytes.set(head);
+    return bytes;
+  };
+  const ascii = (text) => [...text].map((c) => c.charCodeAt(0));
+  const WAV = sized(ascii('RIFF\0\0\0\0WAVE'));
+  const MP3_ID3 = sized(ascii('ID3\x04'));
+  const MP3_SYNC = sized([0xff, 0xfb, 0x90, 0x64]);
+  const AAC = sized([0xff, 0xf1, 0x50, 0x80]);
+  const JUNK = sized(ascii('<html>'));
+  const same = (a, b) => a instanceof Uint8Array && Buffer.from(a).equals(Buffer.from(b));
+  const codeOf = (promise) => promise.then(() => 'ok', (error) => (error && error.code) || String(error));
+
+  const fromModule = [];
+  const service = loadApp('services/generateNarrationAudio.js', {
+    './celesteApiSession': { celestePaidApiHeaders: async () => ({}), celestePaidApiRefused: async () => {} },
+    'expo-asset': {
+      Asset: {
+        fromModule: (id) => {
+          fromModule.push(id);
+          return { localUri: `file:///bundle/${id}`, downloadAsync: async () => {} };
+        },
+      },
+    },
+    'expo-file-system': {
+      File: class BundleFile {
+        constructor(uri) {
+          this.uri = uri;
+        }
+        async bytes() {
+          if (this.uri !== 'file:///bundle/clip-breath') throw new Error('arquivo inexistente');
+          return MP3_SYNC.slice();
+        }
+      },
+    },
+    'react-native': { Platform: { OS: 'ios' } },
+    '../constants/narrators': { narratorPreviewUrl: () => null },
+    '../constants/sessionAudio': {
+      sessionClipModule: (narratorId, lang, clipId) => (clipId === 'breath' ? `clip-${clipId}` : null),
+    },
+    './narrationAudioStorage': {
+      acquireNarrationAudio: async () => null,
+      clearNarrationAudioStorage: async () => true,
+      createNarrationAudioCacheKey: ({ text, narratorId, lang }) => JSON.stringify([narratorId, lang, text]),
+      NARRATION_AUDIO_MAX_IDLE_MS: 1e12,
+      narrationAudioStorageEpoch: () => 0,
+      narrationAudioStorageToken: async () => '0',
+      saveNarrationAudio: async () => true,
+    },
+  });
+  const { audioKindOf, requestNarrationAudio, clearNarrationAudioMemoryCache } = service;
+  if (typeof audioKindOf !== 'function') return fail('servico sem audioKindOf');
+
+  const kinds = [WAV, MP3_ID3, MP3_SYNC, AAC, JUNK].map((bytes) => audioKindOf(bytes));
+  if (kinds.join() !== 'wav,mp3,mp3,,') fail(`audioKindOf: ${JSON.stringify(kinds)} (esperava wav, mp3, mp3, null, null)`);
+
+  // embutido: os bytes do carregador, nunca a rede, um cache por clipe
+  let fetchCalls = 0;
+  const response = (contentType, bytes) => ({
+    ok: true,
+    status: 200,
+    headers: { get: (name) => (name.toLowerCase() === 'content-type' ? contentType : null) },
+    arrayBuffer: async () => bytes.slice().buffer,
+  });
+  const fetchImpl = async () => {
+    fetchCalls += 1;
+    return response('audio/wav', WAV);
+  };
+  const loaded = [];
+  const clipLoaderImpl = async ({ clipId }) => {
+    loaded.push(clipId);
+    return (clipId === 'breath' ? MP3_ID3 : MP3_SYNC).slice();
+  };
+  const bundled = (clipId, extra = {}) =>
+    requestNarrationAudio({ mode: 'bundled', narratorId: 'aurora', lang: 'pt', clipId, fetchImpl, ...extra });
+  const breath = await bundled('breath', { clipLoaderImpl }).catch((error) => error);
+  if (!same(breath, MP3_ID3)) fail(`embutido: nao devolveu os bytes do carregador (${breath && breath.code})`);
+  const pause = await bundled('pause', { clipLoaderImpl }).catch((error) => error);
+  if (!same(pause, MP3_SYNC)) fail('embutido: dois clipes dividiram o cache (a chave precisa do clipId)');
+  await bundled('breath', { clipLoaderImpl }).catch(() => {});
+  if (loaded.join() !== 'breath,pause') fail(`embutido: carregador chamado para ${loaded.join()} (repetir vem da memoria)`);
+
+  // sem carregador de teste: o modulo de sessionClipModule pelo mesmo caminho da amostra (Asset.fromModule + bytes)
+  await clearNarrationAudioMemoryCache({ persistent: false });
+  const real = await bundled('breath').catch((error) => error);
+  if (!same(real, MP3_SYNC) || fromModule.join() !== 'clip-breath') {
+    fail(`embutido: nao leu o modulo de sessionClipModule por Asset.fromModule (${real && real.code})`);
+  }
+  for (const clipId of ['nada', '../nada']) {
+    const code = await codeOf(bundled(clipId));
+    if (code !== 'clip_unavailable') fail(`clipe ${clipId}: ${code} (esperava clip_unavailable)`);
+  }
+  if (fetchCalls) fail(`embutido chamou a rede (${fetchCalls}x)`);
+
+  // personal: a voz da Celeste continua so WAV
+  let sentence = 0;
+  const personal = (contentType, bytes) => {
+    sentence += 1;
+    return requestNarrationAudio({
+      mode: 'personal',
+      narratorId: 'aurora',
+      lang: 'pt',
+      text: `Eu escolho a calma de hoje, frase ${sentence}.`,
+      cloudConsent: true,
+      cloudConsentVersion: CLOUD_CONSENT_VERSION,
+      adultConfirmed: true,
+      fetchImpl: async () => response(contentType, bytes),
+    });
+  };
+  const wave = await personal('audio/wav', WAV).catch((error) => error);
+  if (!same(wave, WAV)) fail(`personal: WAV valido nao voltou (${wave && wave.code})`);
+  for (const [contentType, bytes] of [['audio/mpeg', MP3_ID3], ['audio/wav', MP3_SYNC]]) {
+    const code = await codeOf(personal(contentType, bytes));
+    if (code !== 'invalid_audio_response') fail(`personal aceitou MP3 (${contentType}): ${code}`);
+  }
+
+  // contexto: playBundled e tipo/extensao do arquivo temporario por audioKindOf
+  const contextSource = fs.readFileSync(path.join(__dirname, '..', 'context', 'NarrationContext.js'), 'utf8');
+  if (
+    !/const playBundled = useCallback\([\s\S]{0,200}start\(\{ mode: 'bundled', clipId, narratorId, lang, playbackId \}\)/.test(contextSource) ||
+    !/^\s+playBundled,$/m.test(contextSource)
+  ) {
+    fail('contexto nao exporta playBundled (start com mode bundled)');
+  }
+  const platform = { OS: 'web' };
+  const files = [];
+  const context = loadApp(
+    'context/NarrationContext.js',
+    {
+      'react-native': { Platform: platform },
+      'expo-file-system': {
+        File: class CacheFile {
+          constructor(_dir, name) {
+            files.push(name);
+            this.uri = `file:///cache/${name}`;
+          }
+          create() {}
+          write() {}
+        },
+        Paths: { cache: 'cache' },
+      },
+      'expo-audio': { setAudioModeAsync: async () => {}, useAudioPlayer: () => ({}), useAudioPlayerStatus: () => ({}) },
+      'expo-speech': { speak: () => {}, stop: async () => {} },
+      '../utils/captionProgress': { CHARS_PER_SECOND: 14, letterTimesFromWav: () => null, lettersSpoken: () => 0 },
+      '../services/generateNarrationAudio': service,
+    },
+    '\nexport const __TOCADOR__ = { temporaryAudioSource };'
+  );
+  const temporary = context.__TOCADOR__.temporaryAudioSource;
+  const webType = (bytes) => {
+    const source = temporary(bytes);
+    const type = resolveObjectURL(source.uri).type;
+    source.dispose();
+    return type;
+  };
+  const types = [webType(MP3_ID3), webType(WAV)];
+  platform.OS = 'ios';
+  temporary(MP3_SYNC);
+  temporary(WAV);
+  const extensions = files.map((name) => path.extname(name));
+  if (types.join() !== 'audio/mpeg,audio/wav' || extensions.join() !== '.mp3,.wav') {
+    fail(`arquivo temporario: tipos ${types.join()} e extensoes ${extensions.join()} (esperava audio/mpeg+.mp3 e audio/wav+.wav)`);
+  }
+}
+
+const MODES = {
+  '--estrutura': estrutura,
+  '--tocador': tocador,
+  '': async () => {
+    await tocador();
+    completo();
+  },
+};
+const mode = process.argv.slice(2).find((arg) => arg in MODES) || '';
+const label = `audio da sessao${mode ? ` (${mode.slice(2)})` : ''}`;
+Promise.resolve()
+  .then(() => MODES[mode]())
+  .catch((error) => fail(`erro: ${(error && error.stack) || error}`))
+  .then(() => {
+    if (problems.length) {
+      console.error(problems.slice(0, 40).join('\n'));
+      console.error(`${label}: ${problems.length} problema(s)`);
+      process.exit(1);
+    }
+    if (mode) console.log(`${label}: ok`);
+  });
