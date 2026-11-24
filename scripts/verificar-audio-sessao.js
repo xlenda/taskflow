@@ -22,8 +22,14 @@ function walk(dir) {
 // So o script e o mapa. Devolve { clips, source } ou null se ja falhou.
 function estrutura() {
   const script = path.join(__dirname, 'gerar-audio-sessao.js');
-  if (!fs.existsSync(script)) return fail('falta scripts/gerar-audio-sessao.js');
-  if (!fs.existsSync(MAP_FILE)) return fail('falta constants/sessionAudio.js (modulo ausente)');
+  if (!fs.existsSync(script)) {
+    fail('falta scripts/gerar-audio-sessao.js');
+    return null;
+  }
+  if (!fs.existsSync(MAP_FILE)) {
+    fail('falta constants/sessionAudio.js (modulo ausente)');
+    return null;
+  }
   const source = fs.readFileSync(MAP_FILE, 'utf8');
   if (!/export function sessionClipModule\(/.test(source)) fail('mapa sem sessionClipModule');
   const clips = expectedClips();
@@ -38,6 +44,10 @@ function estrutura() {
   // sem chave, ou com chave e --confirm-chars errado, nao gera (e nao chama a rede)
   if (total > 0) {
     if (run('').status === 0) fail('sem chave o script nao parou');
+    const noConfirm = run('chave-de-teste');
+    if (noConfirm.status === 0 || !/--confirm-chars precisa ser igual/.test(noConfirm.stderr || '')) {
+      fail('com chave mas sem --confirm-chars o script nao parou');
+    }
     const wrong = run('chave-de-teste', '--confirm-chars', String(total + 1));
     if (wrong.status === 0 || !/--confirm-chars precisa ser igual/.test(wrong.stderr || '')) {
       fail('--confirm-chars errado nao parou o script');
@@ -51,7 +61,12 @@ function completo() {
   if (!base) return;
   const { clips, source } = base;
   if (!fs.existsSync(MANIFEST)) return fail('falta assets/audio/sessao/manifest.json');
-  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+  } catch (error) {
+    return fail(`manifest.json ilegivel: ${error.message}`);
+  }
   if (manifest.format !== FORMAT) fail(`manifest.format precisa ser ${FORMAT}`);
   const entries = manifest.entries || {};
   const expected = new Set(clips.map((clip) => clip.key));
@@ -61,7 +76,7 @@ function completo() {
       .map((file) => [path.relative(AUDIO_DIR, file).split(path.sep).join('/').replace(/\.mp3$/, ''), file])
   );
   const mapped = new Set(
-    [...source.matchAll(/'([^']+)': require\('\.\.\/assets\/audio\/sessao\/([^']+)\.mp3'\)/g)].map((m) =>
+    [...source.matchAll(/^\s*'([^']+)': require\('\.\.\/assets\/audio\/sessao\/([^']+)\.mp3'\)/gm)].map((m) =>
       m[1] === m[2] ? m[1] : `${m[1]}!=${m[2]}`
     )
   );
@@ -290,7 +305,7 @@ const MODES = {
   '--estrutura': estrutura,
   '--tocador': tocador,
   '': async () => {
-    await tocador();
+    await tocador().catch((error) => fail(`erro no tocador: ${(error && error.stack) || error}`));
     completo();
   },
 };

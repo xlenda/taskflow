@@ -218,6 +218,7 @@ async function main() {
       .digest('hex')}`;
   let paidHeadersImpl = async () => ({});
   const service = loadModule('services/generateNarrationAudio.js', {
+    '../constants/sessionAudio': { sessionClipModule: () => null },
     './celesteApiSession': { celestePaidApiHeaders: (...args) => paidHeadersImpl(...args) },
     './narrationAudioStorage': {
       acquireNarrationAudio: async (key) => {

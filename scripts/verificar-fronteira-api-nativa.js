@@ -884,6 +884,7 @@ async function verifyPaidServicesReportRefusals() {
   const narration = loadEsm(
     'services/generateNarrationAudio.js',
     {
+      '../constants/sessionAudio': { sessionClipModule: () => null },
       './celesteApiSession': session,
       'expo-asset': { Asset: {} },
       'expo-file-system': { File: class TestFile {} },

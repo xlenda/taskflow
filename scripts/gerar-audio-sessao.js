@@ -64,13 +64,35 @@ function expectedClips() {
   return out;
 }
 
+// null so quando nao existe; manifesto ilegivel PARA (senao a geracao refaria e cobraria tudo de novo)
 function readManifest() {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
-  } catch (_error) {
-    return null;
+    raw = fs.readFileSync(MANIFEST, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+  try {
+    const manifest = JSON.parse(raw);
+    if (!manifest || typeof manifest.entries !== 'object' || manifest.entries === null) throw new Error('sem entries');
+    return manifest;
+  } catch (error) {
+    throw new Error(`manifest.json ilegivel (${error.message}): conserte ou restaure antes de gerar`);
   }
 }
+
+// grava por arquivo temporario + rename: queda no meio nao deixa arquivo pela metade
+function writeAtomic(file, content) {
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, file);
+}
+
+const isMp3 = (buf) =>
+  Buffer.isBuffer(buf) &&
+  buf.length > 3 &&
+  (buf.toString('latin1', 0, 3) === 'ID3' || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0));
 
 const fileOf = (key) => path.join(AUDIO_DIR, ...key.split('/')) + '.mp3';
 
@@ -79,15 +101,21 @@ function pending(clips, manifest) {
   const entries = (manifest && manifest.entries) || {};
   return clips.filter((clip) => {
     const entry = entries[clip.key];
-    return !entry || entry.textSha256 !== sha256(clip.text) || !fs.existsSync(fileOf(clip.key));
+    if (!entry || entry.textSha256 !== sha256(clip.text)) return true;
+    try {
+      return fs.statSync(fileOf(clip.key)).size !== entry.bytes;
+    } catch (_error) {
+      return true;
+    }
   });
 }
 
 function writeMap(entries) {
   const lines = Object.keys(entries)
+    .filter((key) => fs.existsSync(fileOf(key)))
     .sort()
     .map((key) => `  '${key}': require('../assets/audio/sessao/${key}.mp3'),`);
-  fs.writeFileSync(
+  writeAtomic(
     MAP_FILE,
     '// GERADO por scripts/gerar-audio-sessao.js - nao editar. Um require() literal por MP3 existente.\n' +
       `const CLIPS = {\n${lines.join('\n')}${lines.length ? '\n' : ''}};\n\n` +
@@ -101,7 +129,7 @@ function writeManifest(model, entries) {
   const sorted = {};
   for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
-  fs.writeFileSync(MANIFEST, JSON.stringify({ model, format: FORMAT, entries: sorted }, null, 2) + '\n');
+  writeAtomic(MANIFEST, JSON.stringify({ model, format: FORMAT, entries: sorted }, null, 2) + '\n');
   writeMap(sorted);
 }
 
@@ -129,8 +157,11 @@ async function generate(todo, manifest) {
   const entries = { ...((manifest && manifest.entries) || {}) };
   const queue = [...todo];
   let done = 0;
+  let stopped = null;
 
-  async function one(clip) {
+  // tudo validado e o ffmpeg testado ANTES do primeiro pedido pago
+  const inputs = new Map();
+  for (const clip of todo) {
     const checked = api.validateInput({
       mode: 'personal',
       text: clip.text,
@@ -141,13 +172,23 @@ async function generate(todo, manifest) {
       adultConfirmed: true,
     });
     if (!checked.value) throw new Error(`entrada recusada (${checked.error}): ${clip.key}`);
+    inputs.set(clip.key, checked.value);
+  }
+  const probe = await toMp3(Buffer.alloc(4800)).catch((error) => {
+    throw new Error(`ffmpeg indisponivel ou falhou (${error.message}): nada gerado`);
+  });
+  if (!isMp3(probe)) throw new Error('ffmpeg nao devolveu MP3 no teste: nada gerado');
+
+  async function one(clip) {
+    const input = inputs.get(clip.key);
     for (let attempt = 0; ; attempt += 1) {
       try {
-        const wav = await api.requestElevenLabs(checked.value, model, apiKey, false);
+        const wav = await api.requestElevenLabs(input, model, apiKey, false);
         const mp3 = await toMp3(wav);
+        if (!isMp3(mp3)) throw new Error(`saida do ffmpeg nao e MP3: ${clip.key}`);
         const file = fileOf(clip.key);
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, mp3);
+        writeAtomic(file, mp3);
         entries[clip.key] = { textSha256: sha256(clip.text), chars: clip.text.length, bytes: mp3.length };
         writeManifest(model, entries); // retoma de onde parou se cair
         done += 1;
@@ -163,11 +204,19 @@ async function generate(todo, manifest) {
     }
   }
 
+  // erro que nao e 429: nao pega clipe novo, mas o pedido em andamento termina e e salvo
   async function worker() {
-    while (queue.length) await one(queue.shift());
+    while (queue.length && !stopped) {
+      try {
+        await one(queue.shift());
+      } catch (error) {
+        stopped = stopped || error;
+      }
+    }
   }
   await Promise.all([worker(), worker()]); // dois pedidos por vez
   writeManifest(model, entries);
+  if (stopped) throw stopped;
 }
 
 async function main() {
@@ -196,7 +245,12 @@ async function main() {
     console.error(`--confirm-chars precisa ser igual ao total (${total}): nada gerado, nenhuma chamada de rede.`);
     process.exit(1);
   }
-  if (!total) return;
+  if (!total) {
+    // nada a gerar: so reescreve o mapa (um require por MP3 existente)
+    const model = (manifest && manifest.model) || load('api/gerar-audio.js')._internals.configuredModel();
+    writeManifest(model, (manifest && manifest.entries) || {});
+    return;
+  }
   await generate(todo, manifest);
   console.log('pronto: manifesto e constants/sessionAudio.js reescritos');
 }

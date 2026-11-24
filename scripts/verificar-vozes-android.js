@@ -352,6 +352,7 @@ async function main() {
     };
     const narrationMocks = {
       ...base,
+      '../constants/sessionAudio': { sessionClipModule: () => null },
       'react-native': { Platform: platform },
       'expo-file-system': { File: DeviceFile, Paths: { cache: 'cache' } },
       'expo-audio': {
