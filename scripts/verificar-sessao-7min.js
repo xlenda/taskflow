@@ -1,4 +1,5 @@
-// Portão da sessão de 7 minutos. `--logica`: roteiro, tempos, afirmações do dia e registro (utils/guidedSession.js).
+// Portão da sessão de 7 minutos. `--logica`: só roteiro, tempos, afirmações do dia e registro (utils/guidedSession.js);
+// sem ele entram também o motor (screens/WakeSequenceScreen.js) e o registro no contexto.
 const assert = require('assert');
 const fs = require('fs');
 const Module = require('module');
@@ -268,4 +269,125 @@ for (const bad of [undefined, '', '2026-02-30']) {
 }
 
 process.stdout.write('sessao de 7 minutos (logica): ok\n');
-// A parte "motor" (Tarefa 6) entra abaixo, fora do --logica.
+if (process.argv.includes('--logica')) process.exit(0);
+
+// ---------- Motor: o modo sessão é o motor do despertar, não uma tela nova ----------
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replace(/\r\n/g, '\n');
+const screen = read('screens/WakeSequenceScreen.js');
+// Sem comentários: um comentário não pode passar por código.
+const code = transformSync(screen, {
+  babelrc: false,
+  configFile: false,
+  comments: false,
+  parserOpts: { plugins: ['jsx'] },
+}).code;
+const block = (marker) => {
+  const start = code.indexOf(marker);
+  assert.ok(start >= 0, `WakeSequenceScreen sem ${marker}`);
+  const rest = code.slice(start + marker.length);
+  const end = rest.search(/\n {2}(?:function |const |let |useEffect\(|return \()/);
+  return marker + (end >= 0 ? rest.slice(0, end) : rest);
+};
+
+assert.ok(!fs.existsSync(path.join(root, 'screens/SessionScreen.js')), 'a sessão não pode ter tela própria');
+const speakers = ['screens', 'components']
+  .flatMap((dir) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.js')).map((f) => `${dir}/${f}`))
+  .filter((file) => read(file).includes('Speech.speak(item.text'));
+assert.deepStrictEqual(speakers, ['screens/WakeSequenceScreen.js'], 'o motor que fala os itens é um só');
+assert.strictEqual(screen.split('Speech.speak(item.text').length, 2, 'uma fala de item só, dentro do motor');
+
+assert.ok(
+  /import \{[^}]*\bsessionItemsForState\b[^}]*\} from '\.\.\/utils\/guidedSession';/.test(code) &&
+    /export default function WakeSequenceScreen\(\{\s*route\s*\}\)/.test(code) &&
+    code.includes("const session = route?.params?.mode === 'session';") &&
+    code.includes('session ? sessionItemsForState(state, lang, todayISO()) : wakeSequenceItemsForState(state, lang)'),
+  'modo sessão: itens de sessionItemsForState; fora dele, os do despertar'
+);
+
+// Clipe embutido: só com a voz da Celeste liberada e sem quebra anterior; a queda é a mesma do playPersonal.
+const playItemBlock = block('function playItem(');
+const cloudAt = playItemBlock.indexOf('if (latest.current.cloudVoice && !cloudBrokenRef.current) {');
+const cloudBranch = playItemBlock.slice(cloudAt);
+assert.ok(
+  cloudAt >= 0 &&
+    /item\.clipId\s*\?\s*voice\.playBundled\(\{\s*clipId: item\.clipId,\s*narratorId: voice\.narratorId,\s*lang: item\.lang,\s*playbackId\s*\}\)\s*:\s*voice\.playPersonal\(\{/.test(cloudBranch) &&
+    !/playBundled/.test(playItemBlock.slice(0, cloudAt)),
+  'item com clipId toca o clipe embutido (playBundled) só no ramo da voz da Celeste; sem clipId, playPersonal'
+);
+assert.ok(
+  /\.then\([\s\S]*deviceFallback\(playbackId, epoch\)[\s\S]*\.catch\(\(\) => deviceFallback\(playbackId, epoch\)\)/.test(cloudBranch) &&
+    /speakWithDevice\(item, epoch\);\s*\}\s*$/.test(playItemBlock),
+  'clipe que falta ou falha cai na voz do aparelho; sem a voz da Celeste, o aparelho lê tudo'
+);
+// Uma voz só: a queda vale dali em diante e a tela avisa.
+const fallbackBlock = block('function deviceFallback(');
+assert.ok(
+  fallbackBlock.includes('cloudBrokenRef.current = true') &&
+    fallbackBlock.includes('setDeviceInsteadOfCeleste(true)') &&
+    playItemBlock.includes('setDeviceInsteadOfCeleste(Boolean(latest.current.cloudVoice && cloudBrokenRef.current))') &&
+    screen.includes('testID="wake-device-voice-notice"'),
+  'depois de uma queda a voz do aparelho segue até o fim, com o aviso na tela'
+);
+
+// Pausa do item no lugar do respiro fixo.
+const finishedBlock = block('function itemFinished(');
+assert.ok(
+  finishedBlock.includes('const pauseMs = latest.current.items[positionRef.current]?.pauseMs ?? GAP_MS;') &&
+    /setTimeout\(\(\) => \{[\s\S]*?playItem\(next\);?\s*\}, pauseMs\)/.test(finishedBlock) &&
+    !/\}, GAP_MS\)/.test(finishedBlock) &&
+    /setRest\(\{\s*until: Date\.now\(\) \+ pauseMs,\s*total: pauseMs\s*\}\)/.test(finishedBlock),
+  'o respiro depois do item é item.pauseMs ?? GAP_MS, com o estado da pausa para o anel'
+);
+assert.ok(block('function silence(').includes('setRest(null)'), 'Próximo, Pausar e Parar encerram a pausa');
+
+for (const testID of [
+  'session-complete', 'session-register', 'session-bridge', 'session-note', 'session-streak',
+  'session-remaining', 'session-rest-ring', 'session-still', 'session-stage', 'session-step', 'session-carry',
+  'session-bridge-carry',
+]) {
+  assert.ok(screen.includes(`testID="${testID}"`) || code.includes(`'${testID}'`), `modo sessão sem ${testID}`);
+}
+// Decisões do coordenador: botão do registro, afirmação do tema na ponte e no cartão final, um toque só.
+assert.ok(
+  screen.includes("register: { pt: 'Registrar meu dia', en: 'Mark my day' }") &&
+    screen.includes("carry: { pt: 'Leve com você', en: 'Take with you' }") &&
+    screen.includes("sessionTitle: { pt: 'Sua sessão de 7 minutos', en: 'Your 7-minute session' }") &&
+    screen.includes("sessionEmptyTitle: { pt: 'Crie sua Cena-Âncora', en: 'Create your Anchor Scene' }") &&
+    screen.includes("bridgeDone: { pt: 'Fiz a ponte', en: 'Bridge done' }"),
+  'textos do modo sessão'
+);
+assert.ok(
+  /const carry = testID =>[\s\S]{0,400}\{t\(S\.carry\)\}[\s\S]{0,200}\{t\(journey\.day\.affirmation\)\}/.test(code) &&
+    code.includes("{current.clipId === 'bridge' ? carry('session-bridge-carry') : null}") &&
+    /testID="session-complete"[\s\S]*\{carry\('session-carry'\)\}[\s\S]*testID="session-register"/.test(code) &&
+    /testID="session-step"[^>]*>\s*\{t\(journey\.day\.action\)\}/.test(code),
+  'a afirmação do tema aparece na ponte e no cartão final, ao lado do passo do dia'
+);
+const registerBlock = block('function registerDay(');
+assert.ok(
+  /if \(registered\.current\) return;\s*registered\.current = true;/.test(registerBlock) &&
+    registerBlock.includes('registerGuidedSession({') &&
+    /testID="session-register"[\s\S]{0,200}disabled=\{registeredNow\}/.test(code),
+  'registrar o dia vale uma vez: o segundo toque não registra e o botão fica desligado'
+);
+assert.ok(/testID="session-note"[\s\S]{0,300}maxLength=\{280\}/.test(code), 'nota de uma linha, até 280');
+
+// Contexto: uma ação nova, uma gravação só, e o dia salvo é um dia de verdade.
+const context = read('context/AppContext.js');
+assert.ok(
+  /const registerGuidedSession = useCallback\(\s*\(\{ note, bridge \} = \{\}\) =>\s*setState\(\(s\) =>\s*applyGuidedSessionDone\(s, \{ day: todayISO\(\), note, bridge, now: new Date\(\)\.toISOString\(\) \}\)\s*\),\s*\[\]\s*\);/.test(context),
+  'registerGuidedSession grava pelo applyGuidedSessionDone numa transformação só'
+);
+assert.ok(context.split('      registerGuidedSession,').length >= 3, 'registerGuidedSession exposto no valor do contexto');
+const validDaySource = /const validDay = [\s\S]*?;\n/.exec(context);
+const normalizeSource = /\n {2}st\.guidedSession = [^\n]*;\n/.exec(context);
+assert.ok(validDaySource && normalizeSource, 'AppContext precisa normalizar guidedSession ao carregar');
+// eslint-disable-next-line no-new-func
+const loadGuided = new Function('st', `${validDaySource[0]}${normalizeSource[0]}return st.guidedSession;`);
+assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: 'x' } }), { lastDoneOn: null }, 'lastDoneOn inválido carrega como null');
+assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: 20261124 } }), { lastDoneOn: null }, 'lastDoneOn que não é texto carrega como null');
+assert.deepStrictEqual(loadGuided({}), { lastDoneOn: null }, 'estado antigo, sem guidedSession, carrega com null');
+assert.deepStrictEqual(loadGuided({ guidedSession: 'x' }), { lastDoneOn: null }, 'guidedSession corrompido carrega com null');
+assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: DAY } }), { lastDoneOn: DAY }, 'dia válido é mantido');
+
+process.stdout.write('sessao de 7 minutos: ok\n');

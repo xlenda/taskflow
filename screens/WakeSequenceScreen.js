@@ -5,7 +5,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -30,12 +32,15 @@ import {
   wordLengthAt,
 } from '../utils/captionProgress';
 import { accentAt, alpha } from '../utils/colors';
+import { todayISO } from '../utils/date';
+import { sessionItemsForState, sessionSeconds } from '../utils/guidedSession';
 import { pickReadyScene } from '../utils/readyScene';
 import { hasUnifiedCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
 import { usePersonalVisual } from '../utils/usePersonalVisual';
 import { useT } from '../utils/useT';
 import { wakeSequenceItemsForState } from '../utils/wakeSequence';
+import { journeyForDay } from '../utils/weeklyJourney';
 
 const GAP_MS = 900; // a breath between items
 const START_WATCHDOG_MS = 4000;
@@ -90,10 +95,49 @@ const S = {
     en: 'Build what you want to hear when you wake up in My wake-up.',
   },
   build: { pt: 'Montar meu despertar', en: 'Build my wake-up' },
+  // Modo sessão (route.params.mode === 'session'): o mesmo motor, com o roteiro de 7 minutos.
+  sessionTitle: { pt: 'Sua sessão de 7 minutos', en: 'Your 7-minute session' },
+  sessionIntro: {
+    pt: 'Acenda as três estrelas, feche os olhos e só ouça.',
+    en: 'Light the three stars, close your eyes and just listen.',
+  },
+  sessionTraceReady: { pt: 'Sua sessão começou.', en: 'Your session has begun.' },
+  sessionEmptyTitle: { pt: 'Crie sua Cena-Âncora', en: 'Create your Anchor Scene' },
+  sessionBuild: { pt: 'Criar minha cena', en: 'Create my scene' },
+  sessionStoppedTitle: { pt: 'Sessão parada', en: 'Session stopped' },
+  sessionDoneTitle: { pt: 'Sessão completa', en: 'Session complete' },
+  guide: { pt: 'Guia', en: 'Guide' },
+  desire: { pt: 'Desejo', en: 'Desire' },
+  journey: { pt: 'Jornada', en: 'Journey' },
+  dayOf: { pt: 'Dia {n} de 7', en: 'Day {n} of 7' },
+  minutesLeft: { pt: '{n} min', en: '{n} min' },
+  carry: { pt: 'Leve com você', en: 'Take with you' },
+  bridgeDone: { pt: 'Fiz a ponte', en: 'Bridge done' },
+  note: { pt: 'Uma linha sobre hoje (opcional)', en: 'One line about today (optional)' },
+  register: { pt: 'Registrar meu dia', en: 'Mark my day' },
+  registered: { pt: 'Dia registrado', en: 'Day marked' },
+  streak: { pt: 'dias seguidos', en: 'day streak' },
+  streakOne: { pt: 'dia seguido', en: 'day streak' },
 };
 
-const KIND_LABEL = { anchor: S.anchor, vision: S.vision, affirmation: S.affirmation };
-const KIND_ACCENT = { anchor: 0, vision: 2, affirmation: 3 };
+const KIND_LABEL = {
+  anchor: S.anchor,
+  vision: S.vision,
+  affirmation: S.affirmation,
+  guide: S.guide,
+  desire: S.desire,
+  journey: S.journey,
+};
+const KIND_ACCENT = { anchor: 0, vision: 2, affirmation: 3, desire: 3, journey: 2 };
+const GUIDE_ICON = {
+  breath: 'leaf-outline',
+  desire: 'heart-outline',
+  scene: 'image-outline',
+  affirm: 'chatbubble-ellipses-outline',
+  bridge: 'footsteps-outline',
+  close: 'sunny-outline',
+};
+const REST_RING = 96;
 
 // expo-speech speaks asynchronously on the web, so a missing speech engine would
 // surface as an unhandled rejection that no try/catch here can see: check first.
@@ -101,16 +145,52 @@ const webSpeechAvailable = () =>
   Platform.OS !== 'web' ||
   (typeof globalThis.SpeechSynthesisUtterance === 'function' && !!globalThis.speechSynthesis);
 
-export default function WakeSequenceScreen() {
+// A pause of the session: the ring fills as the silence runs, with the seconds left inside. Two half discs sweep
+// under a clip each (no drawing library); the centre takes the colour of the card.
+function RestRing({ rest, size, color, track, fill, textColor }) {
+  const left = Math.max(0, rest.until - Date.now());
+  const turn = Math.min(1, 1 - left / rest.total) * 360;
+  const half = { position: 'absolute', top: 0, width: size / 2, height: size, backgroundColor: color };
+  const clip = { position: 'absolute', top: 0, width: size / 2, height: size, overflow: 'hidden' };
+  return (
+    <View
+      testID="session-rest-ring"
+      style={[styles.ring, { width: size, height: size, borderRadius: size / 2, backgroundColor: track }]}
+    >
+      <View style={[clip, { left: size / 2 }]}>
+        <View
+          style={[half, { left: -size / 2, transformOrigin: 'right center', transform: [{ rotate: `${Math.min(turn, 180)}deg` }] }]}
+        />
+      </View>
+      <View style={[clip, { left: 0 }]}>
+        <View
+          style={[half, { left: size / 2, transformOrigin: 'left center', transform: [{ rotate: `${Math.max(turn - 180, 0)}deg` }] }]}
+        />
+      </View>
+      <View style={[styles.ring, { width: size - 12, height: size - 12, borderRadius: size / 2, backgroundColor: fill }]}>
+        <Text style={[styles.ringSeconds, { color: textColor }]}>{Math.ceil(left / 1000)}</Text>
+      </View>
+    </View>
+  );
+}
+
+// The route comes as the screen's prop (React Navigation): no hook, so the screen still renders alone in the gates.
+export default function WakeSequenceScreen({ route }) {
   const theme = useTheme();
   const navigation = useNavigation();
+  const session = route?.params?.mode === 'session';
   const focused = useIsFocused();
   const { t, lang } = useT();
-  const { state } = useApp();
+  const { state, derived, registerGuidedSession } = useApp();
   const narration = usePersonalNarration();
   // The 4:5 scene stays under half the window height, keeping the controls on screen.
   const sceneSize = { maxWidth: Math.min(420, Math.round(useWindowDimensions().height * 0.38)) };
-  const items = useMemo(() => wakeSequenceItemsForState(state, lang), [state, lang]);
+  const items = useMemo(
+    () => (session ? sessionItemsForState(state, lang, todayISO()) : wakeSequenceItemsForState(state, lang)),
+    [session, state, lang]
+  );
+  // The week's theme, shown at the bridge and on the final card (her eyes are closed until the bridge).
+  const journey = session ? journeyForDay(todayISO()) : null;
   // Website and Android: the Celeste voice when she already allowed it (refused by the server, the narration reads
   // with the device voice and says so); otherwise, and always on iPhone, the device voice.
   const cloudVoice = narration.personalNarrationAvailable && hasUnifiedCloudMediaConsent(state?.profile);
@@ -128,6 +208,13 @@ export default function WakeSequenceScreen() {
   // names out): the words of the scene follow it.
   const [spoken, setSpoken] = useState(0);
   const [voiceText, setVoiceText] = useState(null);
+  // Session: the silence after an item ({ until, total } in ms) for the ring, and the final card.
+  const [rest, setRest] = useState(null);
+  const [, setTick] = useState(0);
+  const [bridgeDone, setBridgeDone] = useState(false);
+  const [note, setNote] = useState('');
+  const [tapped, setTapped] = useState(false);
+  const registered = useRef(false);
 
   const latest = useRef(null);
   latest.current = { items, narration, cloudVoice };
@@ -149,6 +236,7 @@ export default function WakeSequenceScreen() {
     epochRef.current += 1;
     clearTimeout(gapRef.current);
     clearTimeout(watchdogRef.current);
+    setRest(null);
     if (deviceActiveRef.current) {
       deviceActiveRef.current = false;
       Speech.stop().catch(() => {});
@@ -161,6 +249,7 @@ export default function WakeSequenceScreen() {
   function itemFinished(epoch) {
     if (epochRef.current !== epoch) return;
     setSpoken(ALL_WORDS); // every word stays on the scene during the breath
+    deviceStartRef.current = null; // the caption's clock ends with the voice (a session silence lasts minutes)
     const next = positionRef.current + 1;
     if (next >= latest.current.items.length) {
       silence();
@@ -169,9 +258,12 @@ export default function WakeSequenceScreen() {
     }
     // A pause during this breath continues with the next item, not this one again.
     resumeAtRef.current = next;
+    // Session items bring their own silence, shown by the ring; otherwise, the breath between items.
+    const pauseMs = latest.current.items[positionRef.current]?.pauseMs ?? GAP_MS;
+    if (pauseMs > GAP_MS) setRest({ until: Date.now() + pauseMs, total: pauseMs });
     gapRef.current = setTimeout(() => {
       if (epochRef.current === epoch) playItem(next);
-    }, GAP_MS);
+    }, pauseMs);
   }
 
   function voiceDidNotPlay(epoch) {
@@ -266,9 +358,15 @@ export default function WakeSequenceScreen() {
       if (webSpeechAvailable()) Speech.speak(' ', { volume: 0 });
       const playbackId = `wake:${sessionRef.current}:${epoch}`;
       cloudIdRef.current = playbackId;
-      setVoiceText(latest.current.narration.spokenText(item.text, item.lang));
-      latest.current.narration
-        .playPersonal({ text: item.text, lang: item.lang, playbackId })
+      const voice = latest.current.narration;
+      setVoiceText(voice.spokenText(item.text, item.lang));
+      // A guide or journey line is a clip that ships with the app, in the voice she chose (prime: the same unlock
+      // playPersonal does). Missing or broken, it falls to the device voice like any other item.
+      if (item.clipId) voice.prime();
+      (item.clipId
+        ? voice.playBundled({ clipId: item.clipId, narratorId: voice.narratorId, lang: item.lang, playbackId })
+        : voice.playPersonal({ text: item.text, lang: item.lang, playbackId })
+      )
         .then((result) => {
           // Playing: the end arrives as lastCompletedPlaybackId (effect below).
           if (result && result.ok && !result.ready) return;
@@ -335,6 +433,21 @@ export default function WakeSequenceScreen() {
     if (navigation.canGoBack?.()) navigation.goBack();
     else navigation.navigate('Main');
   }
+
+  // One tap marks the day; a second tap does nothing (a note would become a second evidence).
+  function registerDay() {
+    if (registered.current) return;
+    registered.current = true;
+    setTapped(true);
+    registerGuidedSession({ note, bridge: bridgeDone });
+  }
+
+  // The ring and the minutes left move while the silence runs.
+  useEffect(() => {
+    if (!rest) return undefined;
+    const timer = setInterval(() => setTick((n) => n + 1), 500);
+    return () => clearInterval(timer);
+  }, [rest]);
 
   // Each item starts at its top.
   useEffect(() => {
@@ -405,7 +518,7 @@ export default function WakeSequenceScreen() {
   // Cena viva for the Anchor Scene and visions: the personal image when it loads,
   // otherwise the ready scene picked from her answers (honest label below it).
   const current = index == null ? null : items[index] || null;
-  const sceneItem = current && current.kind !== 'affirmation' ? current : null;
+  const sceneItem = current && (current.kind === 'anchor' || current.kind === 'vision') ? current : null;
   const personalUri = usePersonalVisual(sceneItem ? sceneItem.visualKey : null);
   const [brokenUri, setBrokenUri] = useState(null);
   const [scene, setScene] = useState(null);
@@ -433,6 +546,30 @@ export default function WakeSequenceScreen() {
 
   const ended = phase === 'done' || phase === 'stopped';
   const currentScene = scene && current && scene.id === current.id ? scene : null;
+  const registeredNow = tapped || state?.guidedSession?.lastDoneOn === todayISO();
+  // What the session still takes: the items from here on, or the rest of this silence and what comes after it.
+  const secondsLeft =
+    session && current
+      ? sessionSeconds(items.slice(rest ? index + 1 : index)) + (rest ? Math.max(0, rest.until - Date.now()) / 1000 : 0)
+      : 0;
+  const restRing = (size) =>
+    rest ? (
+      <RestRing
+        rest={rest}
+        size={size}
+        color={theme.accent}
+        track={alpha(theme.accent, 0.18)}
+        fill={theme.bg}
+        textColor={theme.text}
+      />
+    ) : null;
+  const carry = (testID) =>
+    journey ? (
+      <View testID={testID} style={styles.carry}>
+        <Text style={[styles.position, styles.stageLine, { color: theme.textMuted }]}>{t(S.carry)}</Text>
+        <Text selectable style={[styles.carryText, { color: theme.text }]}>{t(journey.day.affirmation)}</Text>
+      </View>
+    ) : null;
   const controls = [
     phase === 'playing'
       ? { testID: 'wake-pause', icon: 'pause', label: S.pause, onPress: pause }
@@ -451,15 +588,79 @@ export default function WakeSequenceScreen() {
     body = (
       <View testID="wake-empty" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <Ionicons name="moon-outline" size={30} color={theme.textMuted} />
-        <Text style={[styles.cardTitle, { color: theme.text }]}>{t(S.emptyTitle)}</Text>
-        <Text style={[styles.body, styles.centered, { color: theme.textMuted }]}>{t(S.emptyBody)}</Text>
+        <Text style={[styles.cardTitle, { color: theme.text }]}>{t(session ? S.sessionEmptyTitle : S.emptyTitle)}</Text>
+        {session ? null : (
+          <Text style={[styles.body, styles.centered, { color: theme.textMuted }]}>{t(S.emptyBody)}</Text>
+        )}
         <PrimaryButton
           testID="wake-build"
-          label={S.build}
+          label={session ? S.sessionBuild : S.build}
           icon="add"
-          onPress={() => navigation.navigate('AffirmationAlarm')}
+          onPress={() => (session ? navigation.navigate('Main', { screen: 'Manifest' }) : navigation.navigate('AffirmationAlarm'))}
           style={styles.cardAction}
         />
+      </View>
+    );
+  } else if (session && phase === 'done') {
+    // One tap marks the day: the practice, the bridge (if she did it) and her line, in one save.
+    body = (
+      <View
+        testID="session-complete"
+        accessibilityLiveRegion="polite"
+        style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+      >
+        <Ionicons name={registeredNow ? 'checkmark-circle' : 'sunny-outline'} size={34} color={accentAt(theme, 3)} />
+        {registeredNow ? (
+          <>
+            <Text testID="session-streak" style={[styles.streak, { color: theme.text }]}>{derived.streak}</Text>
+            <Text style={[styles.position, { color: theme.textMuted }]}>{t(derived.streak === 1 ? S.streakOne : S.streak)}</Text>
+          </>
+        ) : (
+          <Text style={[styles.cardTitle, { color: theme.text }]}>{t(S.sessionDoneTitle)}</Text>
+        )}
+        {carry('session-carry')}
+        {registeredNow ? null : (
+          <>
+            {journey ? (
+              <View style={[styles.bridgeRow, { borderColor: theme.border }]}>
+                <View style={styles.bridgeText}>
+                  <Text style={[styles.bridgeLabel, { color: theme.text }]}>{t(S.bridgeDone)}</Text>
+                  <Text testID="session-step" style={[styles.noticeText, { color: theme.textMuted }]}>
+                    {t(journey.day.action)}
+                  </Text>
+                </View>
+                <Switch
+                  testID="session-bridge"
+                  accessibilityLabel={t(S.bridgeDone)}
+                  value={bridgeDone}
+                  onValueChange={setBridgeDone}
+                />
+              </View>
+            ) : null}
+            <TextInput
+              testID="session-note"
+              accessibilityLabel={t(S.note)}
+              value={note}
+              onChangeText={(value) => setNote(value.slice(0, 280))}
+              placeholder={t(S.note)}
+              placeholderTextColor={theme.textMuted}
+              maxLength={280}
+              returnKeyType="done"
+              style={[styles.noteInput, { color: theme.text, backgroundColor: theme.bg, borderColor: theme.border }]}
+            />
+          </>
+        )}
+        <PrimaryButton
+          testID="session-register"
+          label={registeredNow ? S.registered : S.register}
+          icon="checkmark"
+          onPress={registerDay}
+          disabled={registeredNow}
+          style={styles.cardAction}
+        />
+        {registeredNow ? (
+          <PrimaryButton testID="wake-close" label={S.close} icon="close" variant="ghost" onPress={leave} style={styles.cardAction} />
+        ) : null}
       </View>
     );
   } else if (ended) {
@@ -471,7 +672,7 @@ export default function WakeSequenceScreen() {
       >
         <Ionicons name={phase === 'done' ? 'sunny-outline' : 'stop-circle-outline'} size={32} color={accentAt(theme, 3)} />
         <Text style={[styles.cardTitle, { color: theme.text }]}>
-          {t(phase === 'done' ? S.doneTitle : S.stoppedTitle)}
+          {t(phase === 'done' ? S.doneTitle : session ? S.sessionStoppedTitle : S.stoppedTitle)}
         </Text>
         <Text style={[styles.body, styles.centered, { color: theme.textMuted }]}>
           {t(phase === 'done' ? S.doneBody : S.stoppedBody)}
@@ -483,11 +684,11 @@ export default function WakeSequenceScreen() {
   } else if (!traceDone) {
     body = (
       <>
-        <Text style={[styles.body, { color: theme.textMuted }]}>{t(S.intro)}</Text>
+        <Text style={[styles.body, { color: theme.textMuted }]}>{t(session ? S.sessionIntro : S.intro)}</Text>
         <CelestialTrace
           onFinalStar={() => playItem(0)}
           onComplete={() => setTraceDone(true)}
-          readyTitle={t(S.traceReady)}
+          readyTitle={t(session ? S.sessionTraceReady : S.traceReady)}
         />
       </>
     );
@@ -495,18 +696,58 @@ export default function WakeSequenceScreen() {
     body = <PrimaryButton testID="wake-start" label={S.start} icon="play" onPress={() => playItem(0)} />;
   } else {
     const accent = accentAt(theme, KIND_ACCENT[current.kind] || 0);
+    const spokenLine = current.kind === 'guide' || current.kind === 'journey';
+    // What stays on screen in the silence. The bridge shows her step while the guide still speaks: it is the
+    // moment she opens her eyes.
+    const still = current.still && (rest || (current.kind === 'guide' && current.still.kind === 'text')) ? current.still : null;
+    const phrase = still && still.kind === 'text' ? still.text : spokenLine ? null : current.text;
     // Controls sit right under the visual, so a long story never pushes them off screen.
     body = (
       <View testID="wake-player">
-        <Text testID="wake-position" accessibilityLiveRegion="polite" style={[styles.position, { color: accent }]}>
-          {`${t(S.position, { n: index + 1, total: items.length })} · ${t(KIND_LABEL[current.kind] || S.affirmation)}`}
-        </Text>
-        {current.kind === 'affirmation' ? (
+        <View style={styles.positionRow}>
+          <Text
+            testID="wake-position"
+            accessibilityLiveRegion="polite"
+            style={[styles.position, styles.flex, { color: accent }]}
+          >
+            {`${t(S.position, { n: index + 1, total: items.length })} · ${t(KIND_LABEL[current.kind] || S.affirmation)}`}
+          </Text>
+          {session ? (
+            <Text testID="session-remaining" style={[styles.position, { color: theme.textMuted }]}>
+              {t(S.minutesLeft, { n: Math.max(1, Math.round(secondsLeft / 60)) })}
+            </Text>
+          ) : null}
+        </View>
+        {!sceneItem ? (
           <View
-            testID="wake-phrase-card"
+            testID={current.kind === 'affirmation' ? 'wake-phrase-card' : 'session-stage'}
             style={[styles.phraseCard, { backgroundColor: alpha(accent, 0.1), borderColor: alpha(accent, 0.28) }]}
           >
-            <Text selectable style={[styles.phrase, { color: theme.text }]}>{current.text}</Text>
+            {rest ? (
+              <View style={styles.stageTop}>{restRing(REST_RING)}</View>
+            ) : current.kind === 'guide' ? (
+              <View style={styles.stageTop}>
+                <Ionicons name={GUIDE_ICON[current.clipId] || 'sparkles-outline'} size={34} color={accent} />
+              </View>
+            ) : null}
+            {current.kind === 'journey' && !rest ? (
+              <>
+                <Text style={[styles.itemTitle, styles.stageLine, { color: theme.text }]}>{current.title}</Text>
+                <Text style={[styles.position, styles.stageLine, { color: accent }]}>
+                  {t(S.dayOf, { n: (journey ? journey.dayIndex : 0) + 1 })}
+                </Text>
+              </>
+            ) : null}
+            {spokenLine && !rest ? (
+              <Text style={[styles.body, styles.centered, { color: theme.textMuted }]}>{current.text}</Text>
+            ) : null}
+            {still ? (
+              <Text testID="session-still" style={[styles.position, styles.stillLabel, { color: accent }]}>
+                {t(still.label)}
+              </Text>
+            ) : null}
+            {phrase ? <Text selectable style={[styles.phrase, { color: theme.text }]}>{phrase}</Text> : null}
+            {current.clipId === 'bridge' ? carry('session-bridge-carry') : null}
           </View>
         ) : (
           <>
@@ -527,11 +768,19 @@ export default function WakeSequenceScreen() {
             ) : (
               <View style={[styles.scene, sceneSize, { backgroundColor: theme.surfaceAlt }]} />
             )}
-            <Text style={[styles.sceneSource, { color: theme.textMuted }]}>
-              {currentScene && shown === currentScene.uri
-                ? t(currentScene.source ? S.personalScene : S.readyScene)
-                : null}
-            </Text>
+            {rest ? (
+              // the silence takes the place of the line about the image, so the controls stay where they were
+              <View style={styles.restRow}>
+                {restRing(48)}
+                <Text style={[styles.position, styles.restLabel, { color: accent }]}>{t(current.still?.label)}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.sceneSource, { color: theme.textMuted }]}>
+                {currentScene && shown === currentScene.uri
+                  ? t(currentScene.source ? S.personalScene : S.readyScene)
+                  : null}
+              </Text>
+            )}
           </>
         )}
         {voiceFailed ? (
@@ -570,22 +819,25 @@ export default function WakeSequenceScreen() {
         </View>
         {/* While the voice tells the story on the scene, the words are there; the text returns when it pauses, and
             when no voice played (the notice above promises the text stays here to read). */}
-        {current.kind === 'affirmation' || (currentScene && phase === 'playing' && !voiceFailed) ? null : (
+        {!sceneItem || (currentScene && phase === 'playing' && !voiceFailed) ? null : (
           <Text selectable style={[styles.story, { color: theme.text }]}>{current.text}</Text>
         )}
-        {/* what the voice is saying can be reported here, with the same references as its own screen */}
-        <AiContentReportAction
-          contentType={current.kind === 'anchor' ? 'scene' : current.kind}
-          contentRef={
-            current.kind === 'anchor'
-              ? `manifestation:${current.manifestationId}:${current.lang}`
-              : `${current.kind}:${current.id}:${current.lang}`
-          }
-          content={current.text}
-          visualRef={current.visualKey}
-          generation={{ source: 'wake-sequence' }}
-          lang={current.lang}
-        />
+        {/* what the voice is saying can be reported here, with the same references as its own screen; the guide and
+            the journey are fixed lines of the app, and the desire is her own title */}
+        {spokenLine || current.kind === 'desire' ? null : (
+          <AiContentReportAction
+            contentType={current.kind === 'anchor' ? 'scene' : current.kind}
+            contentRef={
+              current.kind === 'anchor'
+                ? `manifestation:${current.manifestationId}:${current.lang}`
+                : `${current.kind}:${current.id}:${current.lang}`
+            }
+            content={current.text}
+            visualRef={current.visualKey}
+            generation={{ source: 'wake-sequence' }}
+            lang={current.lang}
+          />
+        )}
       </View>
     );
   }
@@ -606,7 +858,7 @@ export default function WakeSequenceScreen() {
         >
           <Ionicons name="arrow-back" size={23} color={theme.text} />
         </Pressable>
-        <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{t(S.title)}</Text>
+        <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{t(session ? S.sessionTitle : S.title)}</Text>
       </View>
       <ScrollView
         ref={scrollRef}
@@ -643,6 +895,36 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 21, lineHeight: 27, fontWeight: '800', textAlign: 'center', marginTop: 10, letterSpacing: -0.2 },
   cardAction: { alignSelf: 'stretch', marginTop: 14 },
   position: { fontSize: 11, lineHeight: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
+  positionRow: { flexDirection: 'row', alignItems: 'center' },
+  ring: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  ringSeconds: { fontSize: 17, lineHeight: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  stageTop: { alignItems: 'center', marginBottom: 14 },
+  stageLine: { textAlign: 'center' },
+  stillLabel: { textAlign: 'center', marginTop: 4, marginBottom: 8 },
+  restRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  restLabel: { marginLeft: 12 },
+  carry: { alignSelf: 'stretch', marginTop: 16 },
+  carryText: { fontFamily: SERIF, fontSize: 19, lineHeight: 26, textAlign: 'center', marginTop: 4 },
+  streak: { fontSize: 44, lineHeight: 50, fontWeight: '800', marginTop: 6, fontVariant: ['tabular-nums'] },
+  bridgeRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 16,
+    paddingTop: 14,
+  },
+  bridgeText: { flex: 1, paddingRight: 12 },
+  bridgeLabel: { fontSize: 15, lineHeight: 21, fontWeight: '800' },
+  noteInput: {
+    alignSelf: 'stretch',
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    marginTop: 14,
+  },
   itemTitle: { fontFamily: SERIF, fontSize: 23, lineHeight: 30, marginTop: 6 },
   scene: { width: '100%', aspectRatio: 4 / 5, alignSelf: 'center', marginTop: 14, borderRadius: 22, overflow: 'hidden' },
   sceneSource: { fontSize: 12.5, lineHeight: 18, minHeight: 18, fontWeight: '600', marginTop: 8, textAlign: 'center' },

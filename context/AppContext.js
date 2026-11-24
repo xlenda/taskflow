@@ -10,6 +10,7 @@ import {
 import { resolveSavedLang } from '../constants/i18n';
 import { isNarratorId } from '../constants/narrators';
 import { todayISO, streakFrom } from '../utils/date';
+import { applyGuidedSessionDone } from '../utils/guidedSession';
 import { dreamToAffirmation } from '../utils/dreamToAffirmation';
 import {
   createPracticeReceipt,
@@ -570,6 +571,8 @@ function mergeDefensivo(parsed) {
     typeof st.storeReviewRequestedAt === 'string' && !Number.isNaN(Date.parse(st.storeReviewRequestedAt))
       ? st.storeReviewRequestedAt
       : null;
+  // Sessão de 7 minutos: o último dia registrado é um dia de verdade ou nada.
+  st.guidedSession = { lastDoneOn: validDay(st.guidedSession?.lastDoneOn) ? st.guidedSession.lastDoneOn : null };
   // Terminar a entrada fixa o idioma: refazer a entrada não devolve ao do celular.
   st.langChosen = st.langChosen === true || st.onboardingDone === true;
   st.lang = resolveSavedLang(st);
@@ -2380,6 +2383,15 @@ export function AppProvider({ children }) {
     }));
   }, []);
 
+  // Fim da sessão de 7 minutos: prática de hoje, ponte (se ela fez) e a linha dela, numa gravação só.
+  const registerGuidedSession = useCallback(
+    ({ note, bridge } = {}) =>
+      setState((s) =>
+        applyGuidedSessionDone(s, { day: todayISO(), note, bridge, now: new Date().toISOString() })
+      ),
+    []
+  );
+
   const evolveManifestation = useCallback(async (id) => {
     const target = shortText(id, 120);
     const snapshot = stateRef.current;
@@ -3713,6 +3725,7 @@ export function AppProvider({ children }) {
       logSession,
       undoSession,
       toggleBridgeCompletion,
+      registerGuidedSession,
       evolveManifestation,
       removeManifestation,
       toggleFavoriteAffirmation,
@@ -3765,6 +3778,7 @@ export function AppProvider({ children }) {
       logSession,
       undoSession,
       toggleBridgeCompletion,
+      registerGuidedSession,
       evolveManifestation,
       removeManifestation,
       toggleFavoriteAffirmation,
