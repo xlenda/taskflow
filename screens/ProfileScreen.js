@@ -104,6 +104,11 @@ const S = {
     en: 'No account or active subscription in this version',
     pt: 'Sem conta ou assinatura ativa nesta versão',
   },
+  // iPhone: a assinatura existe e é da Apple; o app continua sem conta própria.
+  localDataHintApple: {
+    en: 'No account: your subscription is through your Apple account.',
+    pt: 'Sem conta: a assinatura é pela sua conta da Apple.',
+  },
   reportDataTitle: { en: 'Submitted AI-content reports', pt: 'Denúncias de conteúdo de IA enviadas' },
   reportDataHint: {
     en: 'A report contains only the generated output you choose, your reason and optional note, minimum technical details, and a pseudonymous identifier used for authorization and abuse prevention. Report records are kept for no more than 180 days.',
@@ -828,7 +833,7 @@ export default function ProfileScreen({ navigation }) {
                 icon="phone-portrait-outline"
                 iconColor={accentAt(theme, 2)}
                 title={t(S.localData)}
-                note={t(S.localDataHint)}
+                note={t(RELEASE_FEATURES.subscription ? S.localDataHintApple : S.localDataHint)}
                 theme={theme}
               >
                 <Ionicons name="checkmark-circle" size={20} color={theme.success} />

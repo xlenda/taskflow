@@ -1042,6 +1042,12 @@ async function main() {
     assert.ok(/\{RELEASE_FEATURES\.subscription \? \(\n\s*<LegalLink\n\s*testID="manage-subscription"/.test(profile),
       'Perfil: "Gerenciar assinatura" só com assinatura');
     assert.ok(profile.includes("'https://apps.apple.com/account/subscriptions'"));
+    // o Perfil do iPhone não pode dizer que não há assinatura
+    assert.ok(profile.includes('note={t(RELEASE_FEATURES.subscription ? S.localDataHintApple : S.localDataHint)}'),
+      'Perfil: com assinatura, a linha "Salvo neste aparelho" não nega a assinatura');
+    assert.ok(profile.includes("pt: 'Sem conta: a assinatura é pela sua conta da Apple.'") &&
+      profile.includes("en: 'No account: your subscription is through your Apple account.'"), 'Perfil: texto da conta da Apple');
+    assert.strictEqual(profile.split('assinatura ativa nesta versão').length - 1, 1, 'o texto antigo só existe na linha do site e do Android');
 
     assert.strictEqual(require('../package.json').scripts['verify:paywall-preview'], 'node scripts/e2e-paywall-previa.js');
   }
