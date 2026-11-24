@@ -42,6 +42,14 @@ function load(relative, { stubs = {}, fresh = false } = {}) {
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replace(/\r\n/g, '\n');
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 
+// Promessa que nunca responde esvazia a fila e o Node sairia com 0, calado: sem o "ok" o portão cai.
+let finished = false;
+process.on('exit', () => {
+  if (finished || process.exitCode) return;
+  console.error('assinatura: o portão parou antes do fim (alguma espera nunca respondeu)');
+  process.exitCode = 1;
+});
+
 async function main() {
   const {
     ENTITLEMENT_ID,
@@ -140,16 +148,22 @@ async function main() {
   }
   assert.strictEqual(planFromPackage(pkgOf({ type: 'MONTHLY', identifier: '$rc_monthly' }), false).period, 'month');
   assert.strictEqual(planFromPackage(pkgOf({ type: 'WEEKLY' }), false).period, 'week');
-  assert.strictEqual(planFromPackage(pkgOf({ type: 'LIFETIME' }), false).period, 'other');
   assert.strictEqual(planFromPackage(pkgOf({ type: 'CUSTOM', subscriptionPeriod: 'P1Y' }), false).period, 'year');
   assert.strictEqual(planFromPackage(pkgOf({ type: 'CUSTOM', subscriptionPeriod: 'P1M' }), false).period, 'month');
-  assert.strictEqual(planFromPackage(pkgOf({ type: 'CUSTOM', subscriptionPeriod: 'P3M' }), false).period, 'other');
+  assert.strictEqual(planFromPackage(pkgOf({ type: 'CUSTOM', subscriptionPeriod: 'P1W' }), false).period, 'week');
+  // pacote que a linha legal não sabe descrever (vitalício não renova; trimestral não é "por mês") não vira plano
+  for (const type of ['LIFETIME', 'THREE_MONTH', 'SIX_MONTH', 'TWO_MONTH', 'UNKNOWN', 'CUSTOM', null]) {
+    assert.strictEqual(planFromPackage(pkgOf({ type, introPrice: freeIntro('DAY', 7) }), true), null, `pacote ${type} não é oferecido`);
+  }
+  for (const subscriptionPeriod of ['P3M', 'P6M', 'P2M', '', null]) {
+    assert.strictEqual(planFromPackage(pkgOf({ type: 'CUSTOM', subscriptionPeriod }), true), null, `período ${subscriptionPeriod}`);
+  }
 
   // ── paywallDisclosure ───────────────────────────────────────────────────────────────────────────
   const WORDS = {
-    pt: { year: 'por ano', month: 'por mês', days: '7 dias grátis', renew: 'Renova automaticamente',
+    pt: { year: 'por ano', month: 'por mês', week: 'por semana', days: '7 dias grátis', renew: 'Renova automaticamente',
       cancel: 'Ajustes > seu nome > Assinaturas', free: /gr[aá]tis/i },
-    en: { year: 'per year', month: 'per month', days: '7 days free', renew: 'Renews automatically',
+    en: { year: 'per year', month: 'per month', week: 'per week', days: '7 days free', renew: 'Renews automatically',
       cancel: 'Settings > your name > Subscriptions', free: /free/i },
   };
   const semDigitosAlheios = (text, plan) => {
@@ -160,7 +174,7 @@ async function main() {
   };
   for (const lang of ['pt', 'en']) {
     const words = WORDS[lang];
-    for (const [priceString, period] of [['R$ 99,90', 'year'], ['US$ 6.99', 'month']]) {
+    for (const [priceString, period] of [['R$ 99,90', 'year'], ['US$ 6.99', 'month'], ['R$ 9,90', 'week']]) {
       const withTrial = { id: 'x', period, priceString, trialDays: 7, pkg: {} };
       const text = paywallDisclosure(withTrial, lang);
       assert.ok(text.includes(words.days), `${lang}: dias do teste — ${text}`);
@@ -195,6 +209,11 @@ async function main() {
     paywallDisclosure({ period: 'month', priceString: '$6.99', trialDays: 0 }, 'en')
   );
   assert.strictEqual(paywallDisclosure(null, 'pt'), '', 'sem plano não há linha (e nenhum preço inventado)');
+  for (const period of ['other', undefined, 'lifetime', 'constructor']) {
+    for (const lang of ['pt', 'en']) {
+      assert.strictEqual(paywallDisclosure({ period, priceString: 'R$ 99,90', trialDays: 7 }, lang), '', `período ${period}: sem linha vaga`);
+    }
+  }
 
   // ── isRevenueCatIosKey ──────────────────────────────────────────────────────────────────────────
   const TWENTY = 'AbCdEfGhIjKlMnOpQrSt';
@@ -383,7 +402,8 @@ async function main() {
     assert.deepStrictEqual(loaded.plans.map((plan) => plan.trialDays), [0, 0]);
   }
   for (const offerings of [{ current: null }, { current: { availablePackages: [] } }, null,
-    { current: { availablePackages: [pkgOf({ priceString: '' })] } }]) {
+    { current: { availablePackages: [pkgOf({ priceString: '' })] } },
+    { current: { availablePackages: [pkgOf({ type: 'LIFETIME' }), pkgOf({ type: 'THREE_MONTH' })] } }]) {
     const { service } = ios({ getOfferings: async () => offerings });
     assert.deepStrictEqual(await service.loadPlans(), { ok: false, reason: 'no_products' });
   }
@@ -416,7 +436,73 @@ async function main() {
     assert.doesNotThrow(() => listeners[0](activeInfo));
   }
 
+  // ── Limite de tempo: loja que nunca responde não deixa o paywall parado ─────────────────────────
+  const never = () => new Promise(() => {});
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  const realSetTimeout = global.setTimeout;
+  const realClearTimeout = global.clearTimeout;
+  const clock = { timers: [], cleared: [] };
+  global.setTimeout = (fn, ms) => { const timer = { fn, ms }; clock.timers.push(timer); return timer; };
+  global.clearTimeout = (timer) => { clock.cleared.push(timer); };
+  const expire = async (index, label) => {
+    await tick();
+    assert.strictEqual(clock.timers.length, index + 1, `${label}: a espera tem limite de tempo`);
+    assert.strictEqual(clock.timers[index].ms, ENTITLEMENT_TIMEOUT_MS, `${label}: limite de ${ENTITLEMENT_TIMEOUT_MS} ms`);
+    clock.timers[index].fn();
+  };
+  const reset = () => { clock.timers.length = 0; clock.cleared.length = 0; };
+  try {
+    {
+      const { service } = ios({ getOfferings: never });
+      const pending = service.loadPlans();
+      await expire(0, 'getOfferings');
+      assert.deepStrictEqual(await pending, { ok: false, reason: 'unavailable' });
+      assert.deepStrictEqual(clock.cleared, clock.timers, 'relógio desligado depois do estouro');
+    }
+    reset();
+    {
+      // só o direito ao teste não respondeu: os planos aparecem, sem teste
+      const { service } = ios({ checkTrialOrIntroductoryPriceEligibility: never });
+      const pending = service.loadPlans();
+      await expire(1, 'direito ao teste');
+      const loaded = await pending;
+      assert.strictEqual(loaded.ok, true);
+      assert.deepStrictEqual(loaded.plans.map((plan) => [plan.id, plan.trialDays]), [['$rc_annual', 0], ['$rc_monthly', 0]]);
+      assert.deepStrictEqual(clock.cleared, clock.timers);
+    }
+    reset();
+    {
+      const { service } = ios({ restorePurchases: never });
+      const pending = service.restorePurchases();
+      await expire(0, 'restorePurchases');
+      assert.deepStrictEqual(await pending, { ok: false, reason: 'failed' });
+    }
+    reset();
+    {
+      // resposta normal: cada relógio armado é desligado, nenhum fica pendurado
+      const { service } = ios();
+      assert.strictEqual((await service.loadPlans()).ok, true);
+      assert.deepStrictEqual(await service.restorePurchases(), { ok: true, active: true });
+      assert.strictEqual(clock.timers.length, 3);
+      assert.deepStrictEqual(clock.cleared, clock.timers);
+    }
+    reset();
+    {
+      // a compra não tem limite: a folha da Apple fica aberta o tempo que ela precisar
+      const { service } = ios({ purchasePackage: never });
+      let settled = false;
+      service.buyPlan(annualPlan).then(() => { settled = true; });
+      await tick();
+      assert.strictEqual(clock.timers.length, 0, 'buyPlan não arma relógio');
+      assert.strictEqual(settled, false);
+    }
+  } finally {
+    global.setTimeout = realSetTimeout;
+    global.clearTimeout = realClearTimeout;
+  }
+
   assert.ok(exists('react-native.config.js'));
+  finished = true;
   console.log('assinatura (logica e fronteira): ok');
 }
 

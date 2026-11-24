@@ -3,11 +3,26 @@
 // { ok: false, reason }. Nomes do SDK conferidos nos .d.ts da versão instalada pelo portão.
 import Purchases from 'react-native-purchases';
 
-import { entitlementFromCustomerInfo, isRevenueCatIosKey, planFromPackage } from '../utils/entitlement';
+import {
+  ENTITLEMENT_TIMEOUT_MS,
+  entitlementFromCustomerInfo,
+  isRevenueCatIosKey,
+  planFromPackage,
+} from '../utils/entitlement';
 
 export const purchasesSupported = true;
 
 let configured = false;
+
+// Loja ou rede que não responde não pode deixar o paywall parado: a espera tem limite e vira erro tratado.
+// A compra (buyPlan) fica de fora de propósito: a folha da Apple está aberta e quem decide o tempo é ela.
+function within(promise) {
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), ENTITLEMENT_TIMEOUT_MS);
+  });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
 
 export async function configurePurchases() {
   if (configured) return { ok: true };
@@ -36,7 +51,7 @@ export async function readEntitlement() {
 async function trialEligibility(packages) {
   try {
     const ids = packages.map((pkg) => pkg?.product?.identifier).filter(Boolean);
-    return (await Purchases.checkTrialOrIntroductoryPriceEligibility(ids)) || {};
+    return (await within(Purchases.checkTrialOrIntroductoryPriceEligibility(ids))) || {};
   } catch {
     return {};
   }
@@ -45,7 +60,7 @@ async function trialEligibility(packages) {
 export async function loadPlans() {
   if (!(await configurePurchases()).ok) return { ok: false, reason: 'unavailable' };
   try {
-    const offerings = await Purchases.getOfferings();
+    const offerings = await within(Purchases.getOfferings());
     const packages = offerings?.current?.availablePackages;
     if (!Array.isArray(packages) || !packages.length) return { ok: false, reason: 'no_products' };
     const eligibility = await trialEligibility(packages);
@@ -81,7 +96,7 @@ export async function buyPlan(plan) {
 export async function restorePurchases() {
   if (!(await configurePurchases()).ok) return { ok: false, reason: 'failed' };
   try {
-    return { ok: true, active: entitlementFromCustomerInfo(await Purchases.restorePurchases()).active };
+    return { ok: true, active: entitlementFromCustomerInfo(await within(Purchases.restorePurchases())).active };
   } catch {
     return { ok: false, reason: 'failed' };
   }

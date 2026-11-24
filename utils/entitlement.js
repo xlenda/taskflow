@@ -38,25 +38,27 @@ function trialDaysOf(introPrice, eligible) {
   return Number.isInteger(count) && count > 0 ? unit * count : 0;
 }
 
+// Só anual, mensal e semanal viram plano: a linha legal precisa dizer o período certo e que renova.
+// Vitalício, trimestral ou outro pacote criado no painel do RevenueCat não aparece sem mudança de código.
 export function planFromPackage(pkg, eligible) {
   const product = pkg?.product;
   const priceString = product?.priceString;
   if (typeof priceString !== 'string' || !priceString) return null;
   const period =
     (hasOwn(PERIOD_BY_PACKAGE, pkg.packageType) && PERIOD_BY_PACKAGE[pkg.packageType]) ||
-    (hasOwn(PERIOD_BY_ISO, product.subscriptionPeriod) && PERIOD_BY_ISO[product.subscriptionPeriod]) ||
-    'other';
+    (hasOwn(PERIOD_BY_ISO, product.subscriptionPeriod) && PERIOD_BY_ISO[product.subscriptionPeriod]);
+  if (!period) return null;
   return { id: pkg.identifier, period, priceString, trialDays: trialDaysOf(product.introPrice, eligible), pkg };
 }
 
 const DISCLOSURE = {
   pt: {
-    per: { year: 'por ano', month: 'por mês', week: 'por semana', other: 'por período' },
+    per: { year: 'por ano', month: 'por mês', week: 'por semana' },
     trial: (days, price) => `${days} ${days === 1 ? 'dia' : 'dias'} grátis, depois ${price}.`,
     rest: 'Renova automaticamente até você cancelar. Cancele quando quiser em Ajustes > seu nome > Assinaturas, até 24 h antes da renovação.',
   },
   en: {
-    per: { year: 'per year', month: 'per month', week: 'per week', other: 'per period' },
+    per: { year: 'per year', month: 'per month', week: 'per week' },
     trial: (days, price) => `${days} ${days === 1 ? 'day' : 'days'} free, then ${price}.`,
     rest: 'Renews automatically until you cancel. Cancel anytime in Settings > your name > Subscriptions, up to 24 hours before renewal.',
   },
@@ -66,7 +68,8 @@ const DISCLOSURE = {
 export function paywallDisclosure(plan, lang) {
   if (!plan || typeof plan.priceString !== 'string' || !plan.priceString) return '';
   const text = DISCLOSURE[lang === 'pt' ? 'pt' : 'en'];
-  const price = `${plan.priceString} ${hasOwn(text.per, plan.period) ? text.per[plan.period] : text.per.other}`;
+  if (!hasOwn(text.per, plan.period)) return '';
+  const price = `${plan.priceString} ${text.per[plan.period]}`;
   return `${plan.trialDays > 0 ? text.trial(plan.trialDays, price) : `${price}.`} ${text.rest}`;
 }
 
