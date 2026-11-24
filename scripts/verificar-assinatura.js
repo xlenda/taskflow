@@ -294,7 +294,16 @@ async function main() {
   // ── services/purchases.js (site e Android): mesmas exportações, nada acontece ───────────────────
   const EXPORTS = ['buyPlan', 'configurePurchases', 'loadPlans', 'onEntitlementChange', 'purchasesSupported',
     'readEntitlement', 'restorePurchases'];
-  const closed = load('services/purchases.js');
+  const webService = (preview) => {
+    if (preview === undefined) delete process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW;
+    else process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW = preview;
+    try {
+      return load('services/purchases.js', { stubs: { 'expo/virtual/env': { env: process.env } }, fresh: true });
+    } finally {
+      delete process.env.EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW;
+    }
+  };
+  const closed = webService();
   assert.deepStrictEqual(Object.keys(closed).sort(), EXPORTS);
   assert.strictEqual(closed.purchasesSupported, false);
   assert.deepStrictEqual(await closed.configurePurchases(), { ok: false, reason: 'unsupported' });
@@ -304,6 +313,29 @@ async function main() {
   assert.deepStrictEqual(await closed.restorePurchases(), { ok: false, reason: 'failed' });
   assert.strictEqual(typeof closed.onEntitlementChange(() => {}), 'function');
   assert.doesNotThrow(() => closed.onEntitlementChange(() => {})());
+  // qualquer valor que não seja exatamente '1' deixa tudo fechado
+  for (const value of ['0', '', 'true', '11', ' 1']) assert.strictEqual(webService(value).purchasesSupported, false, `prévia "${value}"`);
+
+  // ── Prévia do paywall (D.7): planos de mentira, compra e restauração só na memória ──────────────
+  {
+    const preview = webService('1');
+    assert.deepStrictEqual(Object.keys(preview).sort(), EXPORTS);
+    assert.strictEqual(preview.purchasesSupported, true);
+    assert.deepStrictEqual(await preview.configurePurchases(), { ok: true });
+    assert.deepStrictEqual(await preview.readEntitlement(), { ok: true, ...INACTIVE });
+    const loaded = await preview.loadPlans();
+    assert.strictEqual(loaded.ok, true);
+    assert.deepStrictEqual(loaded.plans.map((plan) => [plan.id, plan.period, plan.priceString, plan.preview]),
+      [['$rc_annual', 'year', '0,00', true], ['$rc_monthly', 'month', '0,00', true]]);
+    for (const plan of loaded.plans) assert.ok(paywallDisclosure(plan, 'pt').includes('0,00'), 'a linha legal aceita o plano de mentira');
+    assert.deepStrictEqual(await preview.buyPlan(loaded.plans[0]), { ok: true, active: true });
+    assert.strictEqual((await preview.readEntitlement()).active, true, 'a compra de mentira ativa em memória');
+    const restored = webService('1');
+    assert.strictEqual((await restored.readEntitlement()).active, false, 'nada fica guardado entre aberturas');
+    assert.deepStrictEqual(await restored.restorePurchases(), { ok: true, active: true });
+    assert.strictEqual((await restored.readEntitlement()).active, true);
+    assert.doesNotThrow(() => restored.onEntitlementChange(() => {})());
+  }
 
   // ── services/purchases.ios.js com dublê do SDK ──────────────────────────────────────────────────
   const real = require('@revenuecat/purchases-typescript-internal');
@@ -502,8 +534,355 @@ async function main() {
   }
 
   assert.ok(exists('react-native.config.js'));
+
+  // ── Tarefa 9: a assinatura só existe no iPhone (e na prévia do site) ────────────────────────────
+  {
+    const { releaseFeaturesForPlatform } = load('constants/releaseFeatures.js', {
+      stubs: { 'react-native': { Platform: { OS: 'web' } }, 'expo/virtual/env': { env: process.env } },
+      fresh: true,
+    });
+    assert.strictEqual(releaseFeaturesForPlatform('ios').subscription, true);
+    assert.strictEqual(releaseFeaturesForPlatform('android').subscription, false);
+    assert.strictEqual(releaseFeaturesForPlatform('web').subscription, false);
+    assert.strictEqual(releaseFeaturesForPlatform('web', undefined, '1').subscription, true);
+    assert.strictEqual(releaseFeaturesForPlatform('android', undefined, '1').subscription, false, 'a prévia nunca liga o Android');
+    assert.strictEqual(releaseFeaturesForPlatform('android', '0', '1').subscription, false);
+    assert.strictEqual(releaseFeaturesForPlatform('ios', undefined, '0').subscription, true);
+    for (const value of ['0', '', 'true', 1, true]) {
+      assert.strictEqual(releaseFeaturesForPlatform('web', undefined, value).subscription, false, `prévia ${JSON.stringify(value)}`);
+    }
+  }
+
+  // ── Tarefa 9: portão único na raiz (App.js) ─────────────────────────────────────────────────────
+  {
+    const app = read('App.js');
+    const start = app.indexOf('function RootNav()');
+    const rootNav = app.slice(start, app.indexOf('const linking = {'));
+    assert.ok(start > 0 && rootNav.length > 0, 'RootNav encontrado');
+    assert.ok(rootNav.includes('const { status } = useEntitlement();'), 'RootNav lê a permissão do provedor');
+    assert.ok(rootNav.includes('accessFor({ subscription: RELEASE_FEATURES.subscription, onboarded, status })'),
+      'a tela raiz sai de accessFor');
+    assert.ok(/if \(access === 'checking'\) return <AppBootState \/>;/.test(rootNav), 'consultando: tela de abertura, nunca tela branca');
+    const screensOf = (source) => [...source.matchAll(/<Root\.Screen\s+name="([^"]+)"/g)].map((match) => match[1]);
+    const branches = rootNav.match(/\{access === 'paywall' \? \(([\s\S]*?)\n {6}\) : access === 'app' \? \(([\s\S]*?)\n {6}\) : \(([\s\S]*?)\n {6}\)\}/);
+    assert.ok(branches, 'RootNav tem os três ramos: paywall, app e entrada');
+    assert.deepStrictEqual(screensOf(branches[1]), ['Paywall'], 'sem permissão, o navegador só tem o paywall');
+    assert.ok(/<Root\.Screen\s+name="Paywall"\s+component=\{PaywallScreen\}\s+initialParams=\{\{ locked: true \}\}\s*\/>/.test(branches[1]),
+      'o paywall de quem volta abre trancado');
+    assert.ok(screensOf(branches[2]).includes('Main') && !screensOf(branches[2]).includes('Paywall'));
+    assert.deepStrictEqual(screensOf(branches[3]), ['Welcome', 'Notifications', 'ChatOnboarding', 'Reveal', 'Paywall'],
+      'a entrada continua como era');
+    assert.strictEqual(screensOf(rootNav).filter((name) => name === 'Main').length, 1, 'Main só existe no ramo do app');
+    assert.ok(/<EntitlementProvider>\s*<NavigationContainer linking=\{linking\}>\s*<RootNav \/>\s*<\/NavigationContainer>\s*<\/EntitlementProvider>/.test(app),
+      'o provedor da permissão envolve a navegação');
+  }
+
+  // ── Tarefa 9: provedor da permissão, com React, relógio e serviço de mentira ────────────────────
+  const fakeReact = () => {
+    const slots = [];
+    let cursor = 0;
+    let dirty = false;
+    let pending = [];
+    const slot = (make) => { if (!slots[cursor]) slots[cursor] = make(); return slots[cursor++]; };
+    const same = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
+    const React = {
+      Fragment: Symbol('Fragment'),
+      useState(initial) {
+        const state = slot(() => ({ value: initial }));
+        state.set = state.set || ((next) => {
+          const value = typeof next === 'function' ? next(state.value) : next;
+          if (!Object.is(value, state.value)) { state.value = value; dirty = true; }
+        });
+        return [state.value, state.set];
+      },
+      useRef: (initial) => slot(() => ({ current: initial })),
+      useMemo(make, deps) {
+        const memo = slot(() => ({}));
+        if (!same(memo.deps, deps)) Object.assign(memo, { value: make(), deps });
+        return memo.value;
+      },
+      useCallback: (fn, deps) => React.useMemo(() => fn, deps),
+      useEffect(effect, deps) {
+        const hook = slot(() => ({}));
+        if (same(hook.deps, deps)) return;
+        hook.deps = deps;
+        pending.push(() => { if (hook.cleanup) hook.cleanup(); hook.cleanup = effect(); });
+      },
+      createContext: (value) => ({ Provider: Symbol('Provider'), value }),
+      useContext: (context) => context.value,
+      createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    };
+    React.default = React;
+    const mount = (Component) => {
+      let tree;
+      const render = () => {
+        do {
+          dirty = false;
+          cursor = 0;
+          tree = Component({ children: 'filho' });
+          const run = pending;
+          pending = [];
+          run.forEach((effect) => effect());
+        } while (dirty);
+      };
+      render();
+      const fresh = () => { if (dirty) render(); return tree.props.value; };
+      return {
+        value: fresh,
+        status: () => fresh().status,
+        unmount: () => slots.forEach((hook) => { if (hook && typeof hook.cleanup === 'function') hook.cleanup(); }),
+      };
+    };
+    return { React, mount };
+  };
+  const entitlementContext = ({ subscription, service = {} }) => {
+    const calls = [];
+    const listeners = [];
+    const appState = [];
+    const purchases = {
+      configurePurchases: async () => ({ ok: true }),
+      readEntitlement: async () => ({ ok: true, active: true, expiresAt: null, willRenew: true }),
+      onEntitlementChange: (listener) => {
+        listeners.push(listener);
+        return () => listeners.splice(listeners.indexOf(listener), 1);
+      },
+      ...service,
+    };
+    const logged = Object.fromEntries(Object.entries(purchases).map(([name, fn]) => [name, (...args) => { calls.push(name); return fn(...args); }]));
+    const { React, mount } = fakeReact();
+    const context = load('context/EntitlementContext.js', {
+      stubs: {
+        react: React,
+        'react-native': {
+          AppState: {
+            currentState: 'active',
+            addEventListener: (type, handler) => {
+              assert.strictEqual(type, 'change');
+              appState.push(handler);
+              return { remove: () => appState.splice(appState.indexOf(handler), 1) };
+            },
+          },
+        },
+        '../constants/releaseFeatures': { RELEASE_FEATURES: { subscription } },
+        '../services/purchases': logged,
+      },
+      fresh: true,
+    });
+    return { React, mount, context, calls, listeners, appState };
+  };
+  const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
+  const comeBack = (appState) => { appState[0]('background'); appState[0]('active'); };
+  const reads = (calls) => calls.filter((call) => call === 'readEntitlement').length;
+
+  {
+    // site e Android: `active` fixo, nenhum componente, nenhum efeito, nenhuma chamada
+    const { React, context, calls, appState } = entitlementContext({ subscription: false });
+    assert.strictEqual(context.EntitlementProvider, React.Fragment, 'sem assinatura o provedor não é um componente');
+    const open = context.useEntitlement();
+    assert.strictEqual(open.status, 'active');
+    await open.refresh();
+    open.setActive();
+    await settle();
+    assert.strictEqual(context.useEntitlement().status, 'active');
+    assert.deepStrictEqual(calls, [], 'sem assinatura, nenhuma chamada ao serviço de compras');
+    assert.deepStrictEqual(appState, [], 'sem assinatura, ninguém escuta o primeiro plano');
+  }
+
+  global.setTimeout = (fn, ms) => { const timer = { fn, ms }; clock.timers.push(timer); return timer; };
+  global.clearTimeout = (timer) => { clock.cleared.push(timer); };
+  reset();
+  try {
+    {
+      // iPhone com `premium` ativo: consulta, depois app
+      const { mount, context, calls, listeners, appState } = entitlementContext({ subscription: true });
+      const view = mount(context.EntitlementProvider);
+      assert.strictEqual(view.status(), 'checking', 'começa consultando: nunca abre o app antes da resposta');
+      assert.strictEqual(listeners.length, 1);
+      assert.strictEqual(appState.length, 1);
+      await settle();
+      assert.strictEqual(view.status(), 'active');
+      assert.deepStrictEqual(calls.filter((call) => call !== 'onEntitlementChange'), ['configurePurchases', 'readEntitlement'],
+        'configura, depois lê a permissão');
+      assert.strictEqual(clock.timers.length, 1);
+      assert.strictEqual(clock.timers[0].ms, ENTITLEMENT_TIMEOUT_MS);
+      assert.deepStrictEqual(clock.cleared, clock.timers, 'relógio desligado quando a resposta chega');
+      assert.deepStrictEqual(Object.keys(view.value()).sort(), ['refresh', 'setActive', 'status']);
+      view.unmount();
+      assert.strictEqual(listeners.length + appState.length, 0, 'ao sair, os ouvintes são removidos');
+    }
+    reset();
+    {
+      // RevenueCat nunca responde: 8 s e vira `unavailable` (paywall com Tentar de novo), nunca preso em `checking`
+      let answer = never;
+      const { mount, context } = entitlementContext({ subscription: true, service: { readEntitlement: () => answer() } });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      assert.strictEqual(view.status(), 'checking');
+      await expire(0, 'permissão');
+      await settle();
+      assert.strictEqual(view.status(), 'unavailable');
+      assert.strictEqual(accessFor({ subscription: true, onboarded: true, status: view.status() }), 'paywall');
+      // "Tentar de novo": refaz tudo e mostra a consulta
+      answer = async () => ({ ok: true, active: true });
+      const again = view.value().refresh();
+      assert.strictEqual(view.status(), 'checking');
+      await again;
+      assert.strictEqual(view.status(), 'active');
+    }
+    reset();
+    {
+      // configurar também tem limite
+      const { mount, context, calls } = entitlementContext({ subscription: true, service: { configurePurchases: never } });
+      const view = mount(context.EntitlementProvider);
+      await expire(0, 'configuração');
+      await settle();
+      assert.strictEqual(view.status(), 'unavailable');
+      assert.strictEqual(reads(calls), 0);
+    }
+    reset();
+    for (const [label, service, expected, read] of [
+      ['chave ausente', { configurePurchases: async () => ({ ok: false, reason: 'missing_key' }) }, 'unavailable', 0],
+      ['sem resposta útil', { readEntitlement: async () => ({ ok: false, reason: 'unavailable' }) }, 'unavailable', 1],
+      ['sem premium', { readEntitlement: async () => ({ ok: true, active: false }) }, 'inactive', 1],
+      ['resposta torta', { readEntitlement: async () => ({ ok: true, active: 'sim' }) }, 'inactive', 1],
+      ['resposta vazia', { readEntitlement: async () => undefined }, 'unavailable', 1],
+      ['serviço estoura', { readEntitlement: async () => { throw new Error('x'); } }, 'unavailable', 1],
+      ['configurar estoura', { configurePurchases: () => { throw new Error('x'); } }, 'unavailable', 0],
+    ]) {
+      const { mount, context, calls } = entitlementContext({ subscription: true, service });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      assert.strictEqual(view.status(), expected, label);
+      assert.strictEqual(reads(calls), read, `${label}: leitura`);
+      assert.notStrictEqual(accessFor({ subscription: true, onboarded: true, status: view.status() }), 'app', label);
+    }
+    reset();
+    {
+      // compra concluída libera na hora; permissão vencida com o app aberto fecha na hora
+      const { mount, context, listeners } = entitlementContext({
+        subscription: true, service: { readEntitlement: async () => ({ ok: true, active: false }) },
+      });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      assert.strictEqual(view.status(), 'inactive');
+      view.value().setActive();
+      assert.strictEqual(view.status(), 'active');
+      listeners[0]({ active: false, expiresAt: null, willRenew: false });
+      assert.strictEqual(view.status(), 'inactive');
+      listeners[0]({ active: true, expiresAt: null, willRenew: true });
+      assert.strictEqual(view.status(), 'active');
+    }
+    reset();
+    {
+      // consulta antiga que chega depois da compra não derruba quem acabou de assinar
+      let release;
+      const { mount, context } = entitlementContext({
+        subscription: true, service: { readEntitlement: () => new Promise((resolve) => { release = resolve; }) },
+      });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      view.value().setActive();
+      release({ ok: true, active: false });
+      await settle();
+      assert.strictEqual(view.status(), 'active');
+    }
+    reset();
+    {
+      // voltar ao primeiro plano consulta de novo, sem trocar a tela pela de abertura
+      let answer = async () => ({ ok: true, active: true });
+      const { mount, context, calls, appState } = entitlementContext({ subscription: true, service: { readEntitlement: () => answer() } });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      const before = reads(calls);
+      appState[0]('inactive');
+      appState[0]('background');
+      assert.strictEqual(reads(calls), before, 'sair do app não consulta');
+      answer = async () => ({ ok: true, active: false });
+      appState[0]('active');
+      assert.strictEqual(view.status(), 'active', 'a consulta ao voltar não mostra a tela de abertura');
+      await settle();
+      assert.strictEqual(reads(calls), before + 1);
+      assert.strictEqual(view.status(), 'inactive', 'venceu enquanto estava fora: paywall');
+      appState[0]('active');
+      await settle();
+      assert.strictEqual(reads(calls), before + 1, 'active repetido não consulta');
+    }
+    reset();
+    {
+      // voltou sem internet: quem estava com a permissão confirmada continua; quem estava no paywall continua nele
+      for (const [first, kept] of [[true, 'active'], [false, 'inactive']]) {
+        let answer = async () => ({ ok: true, active: first });
+        const { mount, context, appState } = entitlementContext({ subscription: true, service: { readEntitlement: () => answer() } });
+        const view = mount(context.EntitlementProvider);
+        await settle();
+        answer = async () => ({ ok: false, reason: 'unavailable' });
+        comeBack(appState);
+        await settle();
+        assert.strictEqual(view.status(), kept);
+      }
+    }
+    reset();
+    {
+      // voltar ao primeiro plano no meio da primeira consulta não deixa ninguém preso em `checking`
+      const { mount, context, appState } = entitlementContext({ subscription: true, service: { readEntitlement: never } });
+      const view = mount(context.EntitlementProvider);
+      await settle();
+      comeBack(appState);
+      await settle();
+      assert.strictEqual(view.status(), 'checking');
+      assert.strictEqual(clock.timers.length, 2, 'cada consulta tem o próprio limite');
+      for (const timer of clock.timers) timer.fn();
+      await settle();
+      assert.strictEqual(view.status(), 'unavailable');
+    }
+  } finally {
+    global.setTimeout = realSetTimeout;
+    global.clearTimeout = realClearTimeout;
+  }
+
+  // ── Tarefa 9: o deploy do site recusa a prévia do paywall ───────────────────────────────────────
+  {
+    const os = require('os');
+    const { refusePaywallPreview } = require('./deploy-celeste-guards');
+    const VAR = 'EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW';
+    assert.strictEqual(typeof refusePaywallPreview, 'function', 'deploy-celeste-guards exporta refusePaywallPreview');
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'celeste-previa-'));
+    try {
+      assert.strictEqual(refusePaywallPreview({}, folder), true);
+      assert.strictEqual(refusePaywallPreview({ [VAR]: '0' }, folder), true);
+      assert.strictEqual(refusePaywallPreview({ [VAR]: '' }, folder), true);
+      for (const value of ['1', ' 1 ', 'true', 'sim']) {
+        assert.throws(() => refusePaywallPreview({ [VAR]: value }, folder), /PAYWALL_PREVIEW/, `ambiente "${value}"`);
+      }
+      const cases = [
+        ['.env', `${VAR}=1`, true], ['.env.local', `OUTRA=2\r\n${VAR}=1\r\n`, true], ['.env.production', `export ${VAR} = "1"`, true],
+        ['.env.development.local', `  ${VAR}='1' # ligar`, true], ['.env.qualquer', `${VAR}=true`, true],
+        ['.env', `${VAR}=0`, false], ['.env', `${VAR}=`, false], ['.env', `# ${VAR}=1`, false], ['.env', `OUTRA_${VAR}=1`, false],
+        ['env.txt', `${VAR}=1`, false],
+      ];
+      for (const [name, content, refused] of cases) {
+        const file = path.join(folder, name);
+        fs.writeFileSync(file, content);
+        if (refused) assert.throws(() => refusePaywallPreview({}, folder), (error) => error.message.includes(name), `${name}: ${content}`);
+        else assert.strictEqual(refusePaywallPreview({}, folder), true, `${name}: ${content}`);
+        fs.rmSync(file);
+      }
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+    assert.strictEqual(refusePaywallPreview({}, root), true, 'nenhum .env* do projeto liga a prévia');
+    const deploy = read('scripts/deploy-celeste.js');
+    const mainAt = deploy.indexOf('async function main() {');
+    const guardAt = deploy.indexOf('refusePaywallPreview(process.env, ROOT);', mainAt);
+    const exportAt = deploy.indexOf("'export', '--platform', 'web'", mainAt);
+    const firstReturnAt = deploy.indexOf("process.argv.includes('--validate-configuration')", mainAt);
+    assert.ok(mainAt > 0 && exportAt > mainAt && firstReturnAt > mainAt, 'deploy-celeste.js: main e export encontrados');
+    assert.ok(guardAt > mainAt && guardAt < exportAt, 'o deploy recusa a prévia antes do export');
+    assert.ok(guardAt < firstReturnAt, 'a recusa da prévia vale para todos os modos do deploy');
+  }
+
   finished = true;
-  console.log('assinatura (logica e fronteira): ok');
+  console.log('assinatura (logica, fronteira, portao na raiz e previa): ok');
 }
 
 main().catch((error) => {

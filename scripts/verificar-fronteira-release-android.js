@@ -29,6 +29,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android'), {
   cloudNarration: true,
   cloudText: true,
   paidCloudProcessing: false,
+  subscription: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
   androidStoreBoundary: true,
@@ -40,6 +41,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '1'), {
   cloudNarration: true,
   cloudText: true,
   paidCloudProcessing: false,
+  subscription: false,
 });
 assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
   androidStoreBoundary: false,
@@ -51,6 +53,7 @@ assert.deepStrictEqual(releaseFeaturesForPlatform('android', '0'), {
   cloudNarration: true,
   cloudText: true,
   paidCloudProcessing: false,
+  subscription: false,
 });
 for (const platformOS of ['ios', 'web']) {
   assert.deepStrictEqual(releaseFeaturesForPlatform(platformOS, '1'), {
@@ -63,6 +66,7 @@ for (const platformOS of ['ios', 'web']) {
     cloudNarration: true,
     cloudText: true,
     paidCloudProcessing: platformOS === 'web',
+    subscription: platformOS === 'ios',
   });
 }
 

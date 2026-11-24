@@ -17,6 +17,7 @@ const {
   liveProviderBilling,
   parseDeploymentOutput,
   providerBillingWarning,
+  refusePaywallPreview,
   runLiveSuite,
   validateAiReportGatewayBackend,
   validateAiReportGatewayPayload,
@@ -1269,6 +1270,7 @@ async function main() {
   }
   assert(path.dirname(DIST) === ROOT && path.basename(DIST) === 'dist', `Caminho dist inseguro: ${DIST}`);
   process.chdir(ROOT);
+  refusePaywallPreview(process.env, ROOT);
 
   const vercelCli = resolveVercelCli();
   await validateDeploymentEnvironment(vercelCli);
