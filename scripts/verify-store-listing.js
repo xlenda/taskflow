@@ -734,6 +734,57 @@ for (const [label, document, requiredIdeas] of [
   }
 }
 
+// Assinatura do iPhone (24/11, Diretriz 3.1.2 da App Store): a descricao diz o que se assina, como renova e
+// como cancelar, com os links de Termos de Uso e Privacidade; as novidades avisam quem usava de graca; nenhum
+// preco fica escrito (o app mostra o da loja, na moeda da pessoa).
+const subscriptionCopy = {
+  'en-US': {
+    description: ['7-minute session', 'new journey every week', 'celeste premium', '7-day free trial', 'yearly or monthly',
+      'price in your currency before you confirm', 'renews automatically', '24 hours', 'settings > your name > subscriptions',
+      'terms of use: https://celeste-jet-two.vercel.app/terms', 'privacy policy: https://celeste-jet-two.vercel.app/privacy'],
+    whatsNew: ['asks for a subscription', 'stay saved on your iphone'],
+  },
+  'pt-BR': {
+    description: ['sessao de 7 minutos', 'jornada nova toda semana', 'celeste premium', '7 dias gratis', 'anual ou mensal',
+      'preco na sua moeda antes de voce confirmar', 'renova automaticamente', '24 horas', 'ajustes > seu nome > assinaturas',
+      'termos de uso: https://celeste-jet-two.vercel.app/termos',
+      'politica de privacidade: https://celeste-jet-two.vercel.app/privacidade'],
+    whatsNew: ['passa a pedir a assinatura', 'continuam guardados no seu iphone'],
+  },
+};
+// O titular cola a ficha a partir do PREENCHER: um bloco antigo la (o roteiro ainda tinha a descricao de 11/11)
+// subiria sem os links de Termos e Privacidade que a Apple exige.
+const fillGuide = read('PREENCHER-APP-STORE-CONNECT.md').replace(/\r\n/g, '\n');
+for (const [locale, ideas] of Object.entries(subscriptionCopy)) {
+  const description = normalizedText(read(`${locale}/apple/description.txt`));
+  const whatsNew = normalizedText(read(`${locale}/apple/whats_new.txt`));
+  for (const idea of ideas.description) {
+    if (!description.includes(idea)) fail(`${locale} Apple description is missing the subscription disclosure: ${idea}`);
+  }
+  for (const idea of ideas.whatsNew) {
+    if (!whatsNew.includes(idea)) fail(`${locale} Apple what's new must tell current users about the subscription: ${idea}`);
+  }
+  for (const file of ['promotional_text', 'whats_new', 'description', 'keywords']) {
+    const text = read(`${locale}/apple/${file}.txt`).replace(/\r\n/g, '\n');
+    if (/(?:R\$|US\$|€|£|\$)\s?\d/.test(text)) fail(`${locale}/apple/${file}.txt writes a price; the app shows the store price`);
+    if (!fillGuide.includes('```\n' + text + '\n```')) {
+      fail(`PREENCHER-APP-STORE-CONNECT.md: the block for ${locale}/apple/${file}.txt is missing or outdated`);
+    }
+  }
+}
+for (const [label, document, ideas] of [
+  ['review notes', reviewNotes, ['keep my anchor scene', 'restore purchases', 'sandbox apple account', 'restaurar compras',
+    'site e android seguem gratis']],
+  ['privacy review', privacyReview, ['compras → historico de compras**, nao vinculado a identidade',
+    'com as finalidades **funcionalidade do app** e **analise**', 'revenuecat']],
+  ['PREENCHER', normalizedText(fillGuide), ['compras → **historico de compras**', 'funcionalidade do app **e** analise',
+    'restore purchases']],
+]) {
+  for (const idea of ideas) {
+    if (!document.includes(idea)) fail(`${label} is missing iPhone subscription evidence: ${idea}`);
+  }
+}
+
 try {
   const readiness = JSON.parse(fs.readFileSync(path.join(STORE, 'submission-readiness.json'), 'utf8'));
   const checks = readiness && readiness.checks;

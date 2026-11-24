@@ -1052,8 +1052,83 @@ async function main() {
     assert.strictEqual(require('../package.json').scripts['verify:paywall-preview'], 'node scripts/e2e-paywall-previa.js');
   }
 
+  // ── Tarefa 12: o build do iPhone não sai sem a chave pública do RevenueCat ──────────────────────
+  {
+    const os = require('os');
+    const { spawnSync } = require('child_process');
+    const LIB = 'scripts/celeste-release-lib.ps1';
+    const PUBLISH = 'scripts/publicar-app-store.ps1';
+    const PATTERN = '^appl_[A-Za-z0-9]{16,}$';
+    const MESSAGE = 'RevenueCat: falta a chave publica do iOS (EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, formato appl_...) ' +
+      'no ambiente production do EAS. O build do iPhone nao sai sem ela.';
+    for (const file of [LIB, PUBLISH]) {
+      const bytes = fs.readFileSync(path.join(root, file));
+      const at = bytes.findIndex((byte) => byte > 0x7f);
+      assert.strictEqual(at, -1, `${file} só em ASCII (byte 0x${(bytes[at] || 0).toString(16)} na posição ${at})`);
+    }
+
+    const lib = read(LIB);
+    const start = lib.indexOf('function Assert-CelesteRevenueCatIosKey {');
+    assert.ok(start > 0, 'a lib tem Assert-CelesteRevenueCatIosKey');
+    const body = lib.slice(start, lib.indexOf('\n}\n', start));
+    // o mesmo formato que o app aceita (isRevenueCatIosKey), sensível a maiúsculas
+    assert.ok(body.includes(`-cmatch '${PATTERN}'`), 'a lib exige o formato appl_ com -cmatch');
+    assert.ok(read('utils/entitlement.js').includes(`/${PATTERN}/.test(value)`), 'o app e o build aceitam o mesmo formato');
+    assert.ok(body.includes(`'${MESSAGE}'`), 'a recusa diz o que falta e onde');
+    assert.ok(!/Write-|Out-|echo\b|\$value\s*\|/i.test(body), 'a função nunca imprime o valor');
+
+    // a função de verdade, no PowerShell, com o EAS de mentira
+    const TWENTY = 'AbCdEfGhIjKlMnOpQrSt';
+    const cases = [
+      ['project', `appl_${TWENTY}`, 'PASSOU|EXPO_PUBLIC_REVENUECAT_IOS_API_KEY@project'],
+      ['account', `appl_${TWENTY}`, 'PASSOU|EXPO_PUBLIC_REVENUECAT_IOS_API_KEY@account'],
+      ...[`test_${TWENTY}`, `goog_${TWENTY}`, `APPL_${TWENTY}`, 'appl_curta', `appl_${TWENTY}!`, `appl_ ${TWENTY}`]
+        .map((key) => ['project', key, `${MESSAGE}|EXPO_PUBLIC_REVENUECAT_IOS_API_KEY@project`]),
+      // a variável nem existe no EAS: recusa sem consultar
+      [null, `appl_${TWENTY}`, `${MESSAGE}|`],
+    ];
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'celeste-chave-'));
+    try {
+      const probe = path.join(folder, 'probe.ps1');
+      fs.writeFileSync(probe, [
+        'Set-StrictMode -Version Latest',
+        "$ErrorActionPreference = 'Stop'",
+        `. '${path.join(root, LIB)}'`,
+        'function Get-PublicEnvironmentValue { param([string]$Name, [string]$Scope) $global:asked = "$Name@$Scope"; return $global:key }',
+        ...cases.map(([scope, key]) => {
+          const scopes = scope ? `@{ EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = '${scope}' }` : '@{}';
+          return `$global:asked = ''; $global:key = '${key}'; ` +
+            `try { Assert-CelesteRevenueCatIosKey -Scopes ${scopes}; $r = 'PASSOU' } catch { $r = $_.Exception.Message }; ` +
+            "Write-Output ($r + '|' + $global:asked)";
+        }),
+      ].join('\r\n'));
+      const run = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', probe],
+        { encoding: 'utf8', timeout: 60000 });
+      assert.strictEqual(run.status, 0, `PowerShell da chave: ${run.error || run.stderr}`);
+      assert.deepStrictEqual(run.stdout.trim().split(/\r?\n/), cases.map((item) => item[2]), 'a função aceita só appl_ e recusa o resto');
+      assert.ok(!(run.stdout + run.stderr).includes(TWENTY), 'nenhum valor de chave aparece na saída');
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+
+    // o script do iPhone confere a chave e roda este portão antes de qualquer build, envio ou "CHECK ONLY aprovado"
+    const publish = read(PUBLISH);
+    const envAt = publish.indexOf('$envScopes = Assert-CelesteEasProductionEnv');
+    const keyAt = publish.indexOf('Assert-CelesteRevenueCatIosKey -Scopes $envScopes');
+    const gateAt = publish.indexOf("Invoke-NpmGate -Npm $npm -Name 'verify:subscription'");
+    assert.strictEqual(publish.split('Assert-CelesteRevenueCatIosKey').length - 1, 1, 'o script chama a função uma vez');
+    assert.ok(envAt > 0 && keyAt > envAt, 'a chave é conferida logo depois das variáveis do EAS');
+    assert.ok(gateAt > envAt, 'o script roda verify:subscription');
+    for (const later of ['if ($CheckOnly) {', 'Invoke-EasVisible', "'build', '--platform', 'ios'", "'build:list'", "'submit', '--platform', 'ios'"]) {
+      assert.ok(publish.indexOf(later) > Math.max(keyAt, gateAt), `chave e portão vêm antes de ${later}`);
+    }
+    // a Apple abre os Termos da assinatura na revisão: o envio exige /terms no ar, como a privacidade
+    const live = publish.slice(publish.indexOf('function Test-CelesteLegalPagesLive'), publish.indexOf('$root = '));
+    assert.ok(/'\/terms'/.test(live), 'o envio confere /terms no ar');
+  }
+
   finished = true;
-  console.log('assinatura (logica, fronteira, portao na raiz, previa e paywall): ok');
+  console.log('assinatura (logica, fronteira, portao na raiz, previa, paywall e trava do build): ok');
 }
 
 main().catch((error) => {

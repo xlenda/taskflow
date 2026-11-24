@@ -288,3 +288,18 @@ function Assert-CelesteEasProductionEnv {
   }
   return $scopes
 }
+
+function Assert-CelesteRevenueCatIosKey {
+  # So o iPhone vende assinatura: sem a chave publica do RevenueCat (appl_...) no
+  # binario, o paywall nao carrega os planos e ninguem consegue assinar. Recusa a
+  # chave de teste (test_...) e a do Google (goog_...). Nunca imprime o valor.
+  # $Scopes e o mapa nome -> escopo devolvido por Assert-CelesteEasProductionEnv.
+  param([hashtable]$Scopes)
+  $name = 'EXPO_PUBLIC_REVENUECAT_IOS_API_KEY'
+  $refusal = 'RevenueCat: falta a chave publica do iOS (EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, formato appl_...) no ambiente production do EAS. O build do iPhone nao sai sem ela.'
+  if (-not $Scopes -or -not $Scopes.ContainsKey($name)) { throw $refusal }
+  $value = Get-PublicEnvironmentValue -Name $name -Scope $Scopes[$name]
+  $valid = $value -cmatch '^appl_[A-Za-z0-9]{16,}$'
+  $value = $null
+  if (-not $valid) { throw $refusal }
+}

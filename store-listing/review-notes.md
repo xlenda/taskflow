@@ -5,7 +5,36 @@ Modelo interno. Completar dados de contato e caminhos exatos no build final.
 ## Acesso
 
 - A versao atual nao exige conta para concluir o onboarding e usar a pratica local.
+- No iPhone (1.0.2), depois do onboarding, o app exige assinatura (ver a seção
+  abaixo). Não existe conta Celeste: a assinatura é da conta da Apple.
 - Se login for ativado antes do envio, fornecer uma conta de demonstracao que nao expire.
+
+## Assinatura no iPhone (1.0.2)
+
+- Onde o paywall aparece: logo depois do onboarding e da revelação da
+  Cena-Âncora (tocar em `Guardar minha Cena-Âncora`). A entrada e a revelação
+  da primeira cena são grátis; sem assinatura ou teste ativo, o app inteiro
+  fica atrás do paywall.
+- O que a tela mostra: os planos anual e mensal com o preço que a loja devolve
+  (nunca escrito no app), o selo de teste grátis de 7 dias só quando a Apple
+  confirma que a conta tem direito, a renovação automática, como cancelar
+  (`Ajustes > seu nome > Assinaturas`, até 24 h antes) e os links de Termos
+  (`/terms`, `/termos`) e Privacidade.
+- `Restaurar compras` fica sempre visível no rodapé do paywall, em todos os
+  estados, junto com Termos e Privacidade.
+- Se os planos não carregarem (sem internet ou RevenueCat fora do ar): `Não foi
+  possível carregar os planos`, `Tentar de novo` e `Restaurar compras`; nunca
+  tela branca nem pessoa presa sem saída.
+- Quem já usava a 1.0.1 de graça vê o mesmo paywall ao atualizar; o conteúdo
+  continua guardado no iPhone. Quem já assina gerencia em
+  `Perfil > Gerenciar assinatura` (abre as assinaturas da Apple).
+- Site e Android seguem grátis nesta versão: só o app do iPhone vende
+  assinatura, pela compra dentro do app da Apple (RevenueCat confere a compra).
+- Como o revisor testa: as compras rodam no sandbox da App Store; qualquer
+  conta sandbox da Apple assina, começa o teste, cancela e restaura.
+- Sessão de 7 minutos: cartão no topo da Início; com fone, um toque conduz
+  respiração, desejo, Cena-Âncora, três afirmações, o passo da jornada da
+  semana, a Ponte de Hoje e o fechamento.
 
 ## Conteudo personalizado
 
@@ -161,3 +190,41 @@ Texto atualizado em 21/10, o mesmo da auditoria
 `docs/AUDITORIA-PLAY-STORE-2026-10-20.md`:
 
 > No sign-in or credentials are required. Select a language and complete onboarding; the first Anchor Scene is created on the device with cloud processing off. This Android version has no Community, purchases, ads or exact alarm, and it does not generate images with AI. Its AI features are text and voice, both made from the user's own content and only after consent. The first time the user taps to listen, or creates a new desire on Home, a dialog asks them to confirm they are 18 or older and to allow the AI voice and AI-written texts. Texts: Celeste's server then has an AI text model rewrite the Anchor Scene and the visions and affirmations for six life areas from the user's desire and selected onboarding answers (Visions and Affirmations tabs); before consent, or without a connection, these texts are assembled on the device from the same answers. When the user switches the app language, the scene is translated by Google Gemini through Celeste's server, with the same Play Integrity check: the AI-written scene or, if the AI has not rewritten it, the on-device one (title, intention, affirmation, story, identity phrase, bridge step and the labels of the answers it used), with saved names of the user's children and other people replaced by "someone close to me". Voice: when the user taps to listen to their own affirmation, vision, story or Anchor Scene, Celeste can read that text aloud with an AI voice from ElevenLabs, in the narrator chosen at the reveal or in Profile > Narration voice; only the text they asked to hear, its language and the chosen voice are sent, through Celeste's server, to create the audio. The server accepts AI text and voice requests only from the app installed from Google Play (Play Integrity); otherwise, or offline, the texts stay the on-device versions and the device's built-in voice plays with a notice. Reporting: on every screen that shows AI-written text in full or plays the AI voice, tap "Report this AI content", choose a reason and submit without leaving the app. After the scene is revealed, the standard Google Play in-app review dialog may appear once. "My wake-up": Home > My wake-up, add an Anchor Scene, vision or affirmation, choose a time and turn the reminder on; it is an ordinary notification with sound (no exact alarm) that opens the sequence, which plays after a tap. Sharing: open an affirmation, vision or the Anchor Scene, tap Share, preview the card, then share the image or the 8-second video through the system share sheet. Celeste Plan: Home > Celeste Plan, select a vision or Anchor Scene and an affirmation, tap Listen to full vision, then tap to start the microphone (on-device recognition only; nothing is stored or uploaded); Not now, Snooze 10 min and manual completion are available.
+
+## Notas em inglês para a revisão da Apple (1.0.2, com assinatura)
+
+Mesmos textos do kit do dono (`NOTAS PARA A REVISAO DA APPLE.txt`, 24/11) e do
+`PREENCHER-APP-STORE-CONNECT.md`. A revisão da Apple lê em inglês: colar só o inglês.
+
+### Versão 1.0.2 (Informações para a equipe de revisão > Notas)
+
+> Celeste is a personal reflection and well-being app: affirmations, "Anchor Scene" visualizations, a one-minute ritual and a dream journal. New in 1.0.2: a 7-minute guided audio session and a new 7-day journey every week.
+>
+> SUBSCRIPTION (new in 1.0.2, iPhone only)
+> - Celeste Premium: yearly and monthly auto-renewable subscriptions in one group, each with a 7-day free trial for new subscribers. Purchases use StoreKit through the RevenueCat SDK.
+> - Where to find it: open the app, answer the short onboarding and tap "Keep my anchor scene" on the reveal screen. The subscription screen appears right after. The onboarding and the first Anchor Scene are free; the rest of the app requires an active trial or subscription.
+> - The subscription screen shows the plan name, the App Store price in the user's currency, the trial length, what happens after the trial, auto-renewal, how to cancel (Settings > your name > Subscriptions, at least 24 hours before renewal) and links to Restore purchases, Terms of Use and Privacy Policy, visible in every state. The (i) button explains how the trial works.
+> - No account or sign-in is needed. Please test with a Sandbox Apple Account. "Restore purchases" is on the subscription screen; Profile > "Manage subscription" opens Apple's subscription settings.
+> - Version 1.0.1 was free and had no purchases, so nobody loses anything they paid for. People updating from 1.0.1 see the same subscription screen, and their content stays saved on the device.
+> - Ongoing value: a new 7-day journey every week (one line, one affirmation and one small action per day) and the daily 7-minute session.
+>
+> OTHER NOTES
+> - All personal content stays on the device. Optional cloud features (AI-written texts and the chosen neural voice) run only after an explicit adult consent inside the app; on iPhone the server also requires App Attest. Without consent, Celeste uses texts assembled on the device and the system voice.
+> - The 7-minute session uses guide audio bundled in the app (headphones recommended) and keeps the screen on while it plays.
+> - Microphone: only in the "Celeste Plan" practice, after a separate tap, for on-device recognition of two repetitions of the affirmation shown on screen. Audio and transcript are discarded.
+> - Wake-up: on iOS 26+ the app can schedule a wake-up through AlarmKit; reminders use local notifications.
+> - No ads, no tracking and no analytics SDKs. The only new SDK is RevenueCat, which receives an anonymous app user ID and the purchase history to confirm the subscription.
+> - Celeste makes no medical, financial or predictive claims; it does not replace therapy.
+>
+> Terms of Use: https://celeste-jet-two.vercel.app/terms
+> Privacy Policy: https://celeste-jet-two.vercel.app/privacy
+> Support: https://celeste-jet-two.vercel.app/support (suporte@celestegroup.biz)
+> Data controller: VENUZPAY TECNOLOGIA EM VENDAS ONLINE LTDA (Brazil).
+
+### Produto anual (Assinaturas > Celeste Premium > Celeste Premium Anual > Notas de revisão)
+
+> Celeste Premium, yearly auto-renewable subscription. New subscribers get a 7-day free trial; after that it renews every year at the App Store price shown in the app until cancelled. It unlocks the whole app on iPhone (7-minute session, weekly journeys, scenes, affirmations, wake-up). Where to find it: open the app, answer the short onboarding and tap "Keep my anchor scene" on the reveal screen; the subscription screen appears next, with Restore purchases, Terms of Use and Privacy Policy always visible. No login is needed; please use a Sandbox Apple Account.
+
+### Produto mensal (Assinaturas > Celeste Premium > Celeste Premium Mensal > Notas de revisão)
+
+> Celeste Premium, monthly auto-renewable subscription. New subscribers get a 7-day free trial; after that it renews every month at the App Store price shown in the app until cancelled. It unlocks the whole app on iPhone (7-minute session, weekly journeys, scenes, affirmations, wake-up). Where to find it: open the app, answer the short onboarding and tap "Keep my anchor scene" on the reveal screen; the subscription screen appears next, with Restore purchases, Terms of Use and Privacy Policy always visible. No login is needed; please use a Sandbox Apple Account.

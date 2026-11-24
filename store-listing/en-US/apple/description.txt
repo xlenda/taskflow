@@ -2,6 +2,14 @@ Your affirmations should sound like you, not like a stock phrase.
 
 Celeste turns your wishes, dreams, and words into a personal manifestation practice. You receive an Anchor Scene to read or listen to, an affirmation shaped by your answers, and a Bridge for Today: one small, concrete step within your control.
 
+A 7-MINUTE SESSION, ONE TAP
+
+Put on your headphones and tap once. Celeste guides you through a minute of breathing, your wish, your Anchor Scene, three of your affirmations (a different set each day), and today's step from your weekly journey. Quiet pauses give you time to stay in the scene. At the end, one tap marks your day.
+
+A NEW JOURNEY EVERY WEEK
+
+Every week brings a new 7-day theme, such as calm, focus, gratitude, or self-confidence. Each day has one line to hear, one affirmation, and one small action you can actually do.
+
 A SCENE MADE FROM YOUR ANSWERS
 
 Share what you want, what matters, and how you imagine that future. Celeste combines only relevant details to create a personal sensory narrative. You can see which elements were used and edit the title, affirmation, and Bridge for Today.
@@ -28,6 +36,8 @@ Build the sequence you want to hear when you wake up: your Anchor Scene, visions
 
 WITH CELESTE, YOU CAN:
 
+- follow a 7-minute guided session with headphones;
+- start a new 7-day journey every week;
 - create a personalized Anchor Scene, story, and affirmation;
 - listen to your content in your chosen voice;
 - practice with a one-minute daily ritual;
@@ -42,4 +52,11 @@ YOU STAY IN CONTROL
 
 Celeste shows which details were used for personalization. You can edit or delete your records and decide what to keep. Personal content is never posted automatically.
 
+CELESTE PREMIUM
+
+Your first Anchor Scene is free. To keep using Celeste on iPhone, start Celeste Premium: new subscribers get a 7-day free trial. Choose yearly or monthly; the app shows the price in your currency before you confirm. Payment is charged to your Apple Account when the trial ends. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. Manage or cancel anytime in Settings > your name > Subscriptions. Your content stays saved on your iPhone.
+
 Celeste is a reflection and well-being tool. It does not predict events, replace therapy, or guarantee money, relationships, health, or any outcome.
+
+Terms of Use: https://celeste-jet-two.vercel.app/terms
+Privacy Policy: https://celeste-jet-two.vercel.app/privacy

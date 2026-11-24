@@ -621,6 +621,8 @@ async function liveAssetChecks(baseUrl = PROD) {
     '/privacy': 'privacy-en',
     '/suporte': 'support-pt',
     '/support': 'support-en',
+    '/termos': 'terms-pt',
+    '/terms': 'terms-en',
   };
   const livePublicPages = await Promise.all(
     Object.entries(publicPages).map(async ([pathname, marker]) => {
@@ -1113,6 +1115,8 @@ async function candidateChecks(vercelCli, candidate, env) {
     '/privacy': 'privacy-en',
     '/suporte': 'support-pt',
     '/support': 'support-en',
+    '/termos': 'terms-pt',
+    '/terms': 'terms-en',
   })) {
     const page = await vercelCurl(
       vercelCli,
