@@ -1,0 +1,252 @@
+// Portão da sessão de 7 minutos. `--logica`: roteiro, tempos, afirmações do dia e registro (utils/guidedSession.js).
+const assert = require('assert');
+const fs = require('fs');
+const Module = require('module');
+const path = require('path');
+const { transformSync } = require('@babel/core');
+
+const root = path.join(__dirname, '..');
+
+// Babel nos arquivos do projeto, inclusive nos imports aninhados (utils em ESM).
+function load(relative) {
+  const originalJs = Module._extensions['.js'];
+  Module._extensions['.js'] = (loaded, filename) => {
+    if (!filename.startsWith(root) || filename.includes(`${path.sep}node_modules${path.sep}`)) {
+      originalJs(loaded, filename);
+      return;
+    }
+    const code = transformSync(fs.readFileSync(filename, 'utf8'), {
+      filename,
+      presets: ['babel-preset-expo'],
+      sourceType: 'module',
+    }).code;
+    loaded._compile(code, filename);
+  };
+  try {
+    return require(path.join(root, relative));
+  } finally {
+    Module._extensions['.js'] = originalJs;
+  }
+}
+
+const {
+  SESSION_TARGET_SECONDS,
+  SESSION_PAUSE_MS,
+  SCENE_PAUSE_RANGE_MS,
+  SESSION_AFFIRMATIONS,
+  SESSION_AFFIRMATION_POOL,
+  pickDailyAffirmations,
+  sessionItemsForState,
+  sessionSeconds,
+  applyGuidedSessionDone,
+} = load('utils/guidedSession.js');
+const { wakeSequenceOptionsForState } = load('utils/wakeSequence.js');
+const { personalAffirmationsForState } = load('utils/personalAffirmations.js');
+const { journeyForDay } = load('utils/weeklyJourney.js');
+const { SESSION_GUIDE, SESSION_GUIDE_CLIPS } = load('constants/sessionGuide.js');
+const { bridgeDoneOn } = load('utils/livingMirror.js');
+
+// ---------- Lógica ----------
+assert.strictEqual(SESSION_TARGET_SECONDS, 420, 'alvo da sessão precisa ser 420 s');
+assert.deepStrictEqual(
+  SESSION_PAUSE_MS,
+  { breath: 60000, desire: 20000, affirmation: 20000, journey: 30000, bridge: 30000 },
+  'pausas da sessão mudaram'
+);
+assert.deepStrictEqual(SCENE_PAUSE_RANGE_MS, [30000, 120000], 'faixa da pausa da cena mudou');
+assert.strictEqual(SESSION_AFFIRMATIONS, 3, 'a sessão toca 3 afirmações');
+assert.strictEqual(SESSION_AFFIRMATION_POOL, 12, 'as afirmações saem das 12 primeiras');
+
+// Texto de tamanho exato, espaço simples e sem espaço nas pontas (a limpeza do app não muda o tamanho).
+const sized = (seed, n) => `${seed.repeat(Math.ceil(n / seed.length) + 1).slice(0, n - 1).trimEnd()}.`.padStart(n, 'E');
+const CATS = ['Love', 'Wealth', 'Career', 'Health', 'Confidence', 'Peace'];
+const DAY = '2026-11-24';
+const TITLE = sized('Minha casa clara perto do mar ', 40);
+const stateWith = (storyLength, extra = {}) => ({
+  lang: 'pt',
+  anchorSceneId: 'm1',
+  manifestations: [{
+    id: 'm1',
+    title: TITLE,
+    category: 'Peace',
+    story: sized('Eu entro na minha cena com calma e presença. ', storyLength),
+    affirmation: 'Eu sigo com presença.',
+    lang: 'pt',
+    goalDays: 21,
+    sessions: ['2026-11-20'],
+    evidence: [{ id: 'e-antiga', text: 'Sinal antigo', createdAt: '2026-11-20T10:00:00.000Z' }],
+    anchorStep: 'Arrumar a mesa da varanda.',
+    visual: { cacheKey: 'anchor-visual' },
+    journeySuiteByLang: {
+      pt: {
+        visions: [],
+        affirmations: CATS.map((category, i) => ({
+          category,
+          text: sized(`Afirmação ${i}: eu sigo firme no meu caminho, todo dia. `, 60),
+        })),
+      },
+    },
+  }],
+  morningRitual: { entries: [] },
+  ...extra,
+});
+const reference = stateWith(700);
+const anchorText = (state) => wakeSequenceOptionsForState(state, 'pt').find((o) => o.kind === 'anchor').text;
+assert.strictEqual(anchorText(reference).length, 700, 'fixture: história de 700 caracteres');
+assert.strictEqual(TITLE.length, 40, 'fixture: título de 40 caracteres');
+const pool = personalAffirmationsForState(reference);
+assert.strictEqual(pool.length, 6, 'fixture: 6 afirmações');
+assert.ok(pool.every((item) => item.text.length === 60), 'fixture: afirmações de 60 caracteres');
+
+const ORDER = [
+  'guide:breath', 'guide:desire', 'desire', 'guide:scene', 'anchor', 'guide:affirm',
+  'affirmation', 'affirmation', 'affirmation', 'journey', 'guide:bridge', 'guide:close',
+];
+const shape = (items) => items.map((item) => (item.kind === 'guide' ? item.id : item.kind));
+const journey = journeyForDay(DAY);
+assert.ok(journey, `biblioteca real precisa ter jornada em ${DAY}`);
+
+for (const lang of ['pt', 'en']) {
+  const items = sessionItemsForState(reference, lang, DAY);
+  const at = (key) => items.find((item) => (item.kind === 'guide' ? item.id : item.kind) === key);
+  assert.deepStrictEqual(shape(items), ORDER, `ordem dos itens da sessão (${lang})`);
+
+  for (const item of items.filter((i) => i.kind === 'guide' || i.kind === 'journey')) {
+    assert.ok(item.clipId && typeof item.text === 'string' && item.text.trim(), `${item.id} precisa de clipId e texto (${lang})`);
+  }
+  assert.deepStrictEqual(
+    items.filter((i) => i.kind === 'guide').map((i) => [i.clipId, i.text, i.lang]),
+    SESSION_GUIDE_CLIPS.map((clip) => [clip, SESSION_GUIDE[clip][lang], lang]),
+    `falas do guia fora da ordem ou do idioma (${lang})`
+  );
+
+  const option = wakeSequenceOptionsForState(reference, lang).find((o) => o.kind === 'anchor');
+  const anchor = at('anchor');
+  for (const field of ['id', 'title', 'text', 'lang', 'visualKey', 'category', 'manifestationId']) {
+    assert.strictEqual(anchor[field], option[field], `cena da sessão precisa ser a mesma do despertar (${field}, ${lang})`);
+  }
+  assert.strictEqual(anchor.still && anchor.still.kind, 'scene', `pausa da cena mostra a cena (${lang})`);
+
+  assert.strictEqual(at('desire').text, TITLE, `o desejo é o título da Cena-Âncora (${lang})`);
+  assert.strictEqual(at('journey').clipId, journey.clipId, `clip da jornada do dia (${lang})`);
+  assert.strictEqual(at('journey').text, journey.day.line[lang], `frase da jornada do dia (${lang})`);
+  assert.strictEqual(at('journey').title, journey.theme.title[lang], `título do tema (${lang})`);
+  assert.strictEqual(at('journey').still.text, journey.day.affirmation[lang], `pausa da jornada mostra a afirmação do tema (${lang})`);
+  assert.strictEqual(at('guide:bridge').still.text, journey.day.action[lang], `pausa da ponte mostra a micro-ação do dia (${lang})`);
+  for (const item of items.filter((i) => i.still)) {
+    assert.ok(item.still.label && item.still.label.pt && item.still.label.en, `${item.id}: rótulo da pausa em pt e en`);
+  }
+
+  const pauses = Object.fromEntries(items.map((item) => [item.kind === 'affirmation' ? item.id : shape([item])[0], item.pauseMs]));
+  assert.strictEqual(pauses['guide:breath'], 60000, `respiração: 60 s (${lang})`);
+  assert.strictEqual(pauses.desire, 20000, `desejo: 20 s (${lang})`);
+  assert.strictEqual(pauses.journey, 30000, `jornada: 30 s (${lang})`);
+  assert.strictEqual(pauses['guide:bridge'], 30000, `ponte: 30 s (${lang})`);
+  for (const key of ['guide:desire', 'guide:scene', 'guide:affirm', 'guide:close']) {
+    assert.strictEqual(pauses[key], undefined, `${key} segue com o respiro normal (${lang})`);
+  }
+  for (const item of items.filter((i) => i.kind === 'affirmation')) {
+    assert.strictEqual(item.pauseMs, 20000, `afirmação: 20 s (${lang})`);
+  }
+  // Afirmações do dia = as da roda, das afirmações dela.
+  assert.deepStrictEqual(
+    items.filter((i) => i.kind === 'affirmation').map((i) => [i.id, i.text]),
+    [pool[3], pool[4], pool[5]].map((p) => [p.id, p.text]),
+    `afirmações de ${DAY} (dia ímpar) são a 4a, 5a e 6a (${lang})`
+  );
+
+  const total = sessionSeconds(items);
+  assert.ok(total >= 400 && total <= 440, `sessão com história de 700 dura ${total} s (${lang}), fora de 400-440`);
+}
+
+const sceneOf = (items) => items.find((item) => item.kind === 'anchor');
+const long = sessionItemsForState(stateWith(1500), 'pt', DAY);
+const longTotal = sessionSeconds(long);
+assert.ok(longTotal >= 400 && longTotal <= 440, `história de 1.500 dura ${longTotal} s, fora de 400-440`);
+const short = sessionItemsForState(stateWith(200), 'pt', DAY);
+assert.strictEqual(sceneOf(short).pauseMs, 120000, 'história curta: pausa da cena no teto de 120 s');
+const shortTotal = sessionSeconds(short);
+assert.ok(shortTotal >= 330 && shortTotal <= 440, `história de 200 dura ${shortTotal} s, fora de 330-440`);
+const referencePause = sceneOf(sessionItemsForState(reference, 'pt', DAY)).pauseMs;
+assert.ok(referencePause > sceneOf(long).pauseMs, 'história maior precisa de pausa menor');
+assert.ok(sceneOf(long).pauseMs >= 30000, 'pausa da cena nunca abaixo de 30 s');
+
+// sessionSeconds: falas a 14 letras/s + pausas + 0,9 s de respiro por item sem pausa (o último não conta).
+const sample = sessionSeconds([{ text: 'a'.repeat(140), pauseMs: 5000 }, { text: 'b'.repeat(14) }, { text: 'c'.repeat(28) }]);
+assert.ok(Math.abs(sample - (10 + 5 + 1 + 0.9 + 2)) < 1e-9, `conta de sessionSeconds (veio ${sample})`);
+assert.strictEqual(sessionSeconds([]), 0, 'sessão vazia dura 0');
+
+// Afirmações do dia: roda pela data, nada de sorteio.
+const six = ['a0', 'a1', 'a2', 'a3', 'a4', 'a5'];
+assert.deepStrictEqual(pickDailyAffirmations(six, '2026-11-23'), ['a0', 'a1', 'a2'], '23/11/2026 (dia 20780, par) toca 1-3');
+assert.deepStrictEqual(pickDailyAffirmations(six, '2026-11-24'), ['a3', 'a4', 'a5'], '24/11/2026 (ímpar) toca 4-6');
+assert.deepStrictEqual(pickDailyAffirmations(six, '2026-11-24'), pickDailyAffirmations(six, '2026-11-24'), 'mesmo dia, mesmas três');
+assert.deepStrictEqual(pickDailyAffirmations(['x', 'y'], DAY), ['x', 'y'], 'com 2 afirmações, as 2');
+const fromSeven = pickDailyAffirmations(['s0', 's1', 's2', 's3', 's4', 's5', 's6'], DAY);
+assert.strictEqual(new Set(fromSeven).size, 3, `com 7 afirmações, 3 distintas (veio ${fromSeven})`);
+assert.deepStrictEqual(pickDailyAffirmations([], DAY), [], 'sem afirmações, nenhuma');
+
+// Só as 12 primeiras entram na roda.
+const fourteen = stateWith(700, {
+  morningRitual: { entries: Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, affirmation: `Sonho ${i} que eu sigo.`, lang: 'pt' })) },
+});
+const allFourteen = personalAffirmationsForState(fourteen);
+assert.strictEqual(allFourteen.length, 14, 'fixture: 14 afirmações');
+assert.deepStrictEqual(
+  sessionItemsForState(fourteen, 'pt', DAY).filter((i) => i.kind === 'affirmation').map((i) => i.id),
+  pickDailyAffirmations(allFourteen.slice(0, 12), DAY).map((p) => p.id),
+  'a roda usa só as 12 primeiras afirmações'
+);
+
+// Sem Cena-Âncora: nada. Sem jornada: sem item da jornada e a ponte sem o que mostrar.
+assert.deepStrictEqual(sessionItemsForState({ ...reference, manifestations: [] }, 'pt', DAY), [], 'sem Cena-Âncora, sessão vazia');
+const noJourney = sessionItemsForState(reference, 'pt', DAY, []);
+assert.ok(!noJourney.some((i) => i.kind === 'journey'), 'biblioteca vazia: sem item da jornada');
+assert.strictEqual(noJourney.find((i) => i.id === 'guide:bridge').still, undefined, 'biblioteca vazia: ponte sem still');
+assert.ok(sessionSeconds(noJourney) <= 440, 'biblioteca vazia: sessão continua cabendo');
+
+// ---------- Registro do dia ----------
+const NOW = '2026-11-24T08:30:00.000Z';
+const before = JSON.stringify(reference);
+const once = applyGuidedSessionDone(reference, { day: DAY, note: '  Vi um sinal no caminho.  ', bridge: true, now: NOW });
+assert.strictEqual(JSON.stringify(reference), before, 'applyGuidedSessionDone não pode mudar o estado recebido');
+const twice = applyGuidedSessionDone(once, { day: DAY, note: '', bridge: true, now: NOW });
+const anchorOf = (state) => state.manifestations.find((m) => m.id === 'm1');
+
+assert.deepStrictEqual(anchorOf(twice).sessions, ['2026-11-20', DAY], 'duas vezes no mesmo dia: uma entrada só em sessions');
+const bridges = anchorOf(twice).livingMirror.bridgeCompletions.filter((entry) => entry.date === DAY);
+assert.strictEqual(bridges.length, 1, 'duas vezes no mesmo dia: uma ponte só');
+assert.deepStrictEqual(
+  bridges[0],
+  { id: `bridge-m1-1-${DAY}`, date: DAY, step: journey.day.action.pt, chapter: 1, completedAt: NOW },
+  'ponte no mesmo formato de toggleBridgeCompletion, com a micro-ação do dia'
+);
+assert.ok(bridgeDoneOn(anchorOf(twice), DAY), 'a ponte registrada precisa valer para bridgeDoneOn');
+assert.strictEqual(twice.guidedSession.lastDoneOn, DAY, 'guidedSession.lastDoneOn = dia');
+assert.deepStrictEqual(
+  anchorOf(once).evidence,
+  [{ id: `e-${Date.parse(NOW)}`, text: 'Vi um sinal no caminho.', createdAt: NOW }, reference.manifestations[0].evidence[0]],
+  'nota vira evidência no início, como addEvidence'
+);
+assert.strictEqual(anchorOf(twice).evidence.length, 2, 'nota vazia não cria evidência');
+
+const blank = applyGuidedSessionDone(reference, { day: DAY, note: '   ', bridge: false, now: NOW });
+assert.strictEqual(anchorOf(blank).evidence.length, 1, 'nota só com espaços não cria evidência');
+assert.ok(!bridgeDoneOn(anchorOf(blank), DAY), 'bridge: false não cria ponte');
+assert.deepStrictEqual(anchorOf(blank).sessions, ['2026-11-20', DAY], 'registrar sem ponte ainda marca o dia');
+assert.strictEqual(blank.guidedSession.lastDoneOn, DAY, 'registrar sem ponte grava lastDoneOn');
+
+const longNote = applyGuidedSessionDone(reference, { day: DAY, note: 'x'.repeat(400), bridge: false, now: NOW });
+assert.strictEqual(anchorOf(longNote).evidence[0].text.length, 280, 'nota cortada em 280');
+
+const goal = applyGuidedSessionDone(stateWith(700, {}), { day: DAY, bridge: false, now: NOW });
+assert.strictEqual(anchorOf(goal).completedAt, undefined, 'meta longe: sem completedAt');
+const nearGoal = stateWith(700);
+nearGoal.manifestations[0].goalDays = 2;
+assert.strictEqual(anchorOf(applyGuidedSessionDone(nearGoal, { day: DAY, now: NOW })).completedAt, DAY, 'cruzar a meta grava completedAt, como logSession');
+
+const empty = { ...reference, manifestations: [] };
+assert.strictEqual(applyGuidedSessionDone(empty, { day: DAY, note: 'x', bridge: true, now: NOW }), empty, 'sem âncora devolve o mesmo state');
+
+process.stdout.write('sessao de 7 minutos (logica): ok\n');
+// A parte "motor" (Tarefa 6) entra abaixo, fora do --logica.
