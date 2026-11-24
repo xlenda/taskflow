@@ -224,7 +224,7 @@ A Celeste mostra os detalhes usados na personalização. Você pode editar ou ex
 
 CELESTE PREMIUM
 
-Sua primeira Cena-Âncora é grátis. Para continuar usando a Celeste no iPhone, comece o Celeste Premium: quem assina pela primeira vez tem 7 dias grátis. Escolha anual ou mensal; o app mostra o preço na sua moeda antes de você confirmar. A cobrança é feita na sua conta Apple quando o teste termina. A assinatura renova automaticamente, a menos que você cancele até 24 horas antes do fim do período atual. Gerencie ou cancele quando quiser em Ajustes > seu nome > Assinaturas. Seu conteúdo continua guardado no seu iPhone.
+Sua primeira Cena-Âncora é grátis. Para continuar usando a Celeste no iPhone, comece o Celeste Premium: quem assina pela primeira vez tem 7 dias grátis. Escolha anual ou mensal; o app mostra o preço na sua moeda antes de você confirmar. A cobrança é feita na sua conta Apple quando o teste grátis termina, ou na confirmação se não houver teste. A assinatura renova automaticamente, a menos que você cancele até 24 horas antes do fim do período atual. Gerencie ou cancele quando quiser em Ajustes > seu nome > Assinaturas. Seu conteúdo continua guardado no seu iPhone.
 
 Celeste é uma ferramenta de reflexão e bem-estar. Não prevê acontecimentos, não substitui terapia e não garante dinheiro, relacionamentos, saúde ou qualquer resultado.
 
@@ -318,7 +318,7 @@ Celeste shows which details were used for personalization. You can edit or delet
 
 CELESTE PREMIUM
 
-Your first Anchor Scene is free. To keep using Celeste on iPhone, start Celeste Premium: new subscribers get a 7-day free trial. Choose yearly or monthly; the app shows the price in your currency before you confirm. Payment is charged to your Apple Account when the trial ends. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. Manage or cancel anytime in Settings > your name > Subscriptions. Your content stays saved on your iPhone.
+Your first Anchor Scene is free. To keep using Celeste on iPhone, start Celeste Premium: new subscribers get a 7-day free trial. Choose yearly or monthly; the app shows the price in your currency before you confirm. Payment is charged to your Apple Account when the free trial ends, or when you confirm if no trial applies. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. Manage or cancel anytime in Settings > your name > Subscriptions. Your content stays saved on your iPhone.
 
 Celeste is a reflection and well-being tool. It does not predict events, replace therapy, or guarantee money, relationships, health, or any outcome.
 
@@ -405,6 +405,7 @@ SUBSCRIPTION (new in 1.0.2, iPhone only)
 - Where to find it: open the app, answer the short onboarding and tap "Keep my anchor scene" on the reveal screen. The subscription screen appears right after. The onboarding and the first Anchor Scene are free; the rest of the app requires an active trial or subscription.
 - The subscription screen shows the plan name, the App Store price in the user's currency, the trial length, what happens after the trial, auto-renewal, how to cancel (Settings > your name > Subscriptions, at least 24 hours before renewal) and links to Restore purchases, Terms of Use and Privacy Policy, visible in every state. The (i) button explains how the trial works.
 - No account or sign-in is needed. Please test with a Sandbox Apple Account. "Restore purchases" is on the subscription screen; Profile > "Manage subscription" opens Apple's subscription settings.
+- The website and the Android app are free in this version and sell nothing; only the iPhone app has the subscription.
 - Version 1.0.1 was free and had no purchases, so nobody loses anything they paid for. People updating from 1.0.1 see the same subscription screen, and their content stays saved on the device.
 - Ongoing value: a new 7-day journey every week (one line, one affirmation and one small action per day) and the daily 7-minute session.
 
