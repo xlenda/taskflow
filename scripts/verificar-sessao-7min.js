@@ -371,6 +371,17 @@ assert.ok(
   'registrar o dia vale uma vez: o segundo toque não registra e o botão fica desligado'
 );
 assert.ok(/testID="session-note"[\s\S]{0,300}maxLength=\{280\}/.test(code), 'nota de uma linha, até 280');
+// Com o teclado da nota aberto, o primeiro toque em "Registrar meu dia" vale e o botão não fica atrás dele no iPhone.
+assert.ok(
+  /<ScrollView[^>]*keyboardShouldPersistTaps="handled"[^>]*automaticallyAdjustKeyboardInsets[\s>]/.test(code),
+  'a rolagem da tela precisa deixar o toque passar com o teclado aberto e subir acima dele'
+);
+// Uma voz só também no aparelho nativo: item pessoal recusado pelo servidor é lido pela voz do aparelho
+// ({ ok: true, voice: 'device' }); dali em diante os clipes da guia não voltam para a voz da Celeste.
+assert.ok(
+  /\.then\(result => \{\s*if \(session && result && result\.voice === 'device'\) \{\s*cloudBrokenRef\.current = true;\s*setDeviceInsteadOfCeleste\(true\);\s*\}\s*if \(result && result\.ok && !result\.ready\) return;/.test(cloudBranch),
+  'na sessão, a voz do aparelho que leu um item recusado segue até o fim, com o aviso'
+);
 
 // Contexto: uma ação nova, uma gravação só, e o dia salvo é um dia de verdade.
 const context = read('context/AppContext.js');
@@ -389,5 +400,17 @@ assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: 20261124 } }), 
 assert.deepStrictEqual(loadGuided({}), { lastDoneOn: null }, 'estado antigo, sem guidedSession, carrega com null');
 assert.deepStrictEqual(loadGuided({ guidedSession: 'x' }), { lastDoneOn: null }, 'guidedSession corrompido carrega com null');
 assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: DAY } }), { lastDoneOn: DAY }, 'dia válido é mantido');
+
+// Lembretes recriados depois de reinstalar ou restaurar: a escolha salva ("abrir com a sessão") chega ao serviço
+// antes da sincronização do App, senão eles voltam como o despertar comum.
+const app = read('App.js');
+const choiceAt = app.indexOf('if (loaded) setWakeOpensSession(opensSession);');
+assert.ok(
+  app.includes('const opensSession = ritual?.wakeOpensSession === true;') &&
+    choiceAt >= 0 &&
+    choiceAt < app.indexOf('const sync = () => void syncWakeReminders(') &&
+    app.includes('}, [loaded, opensSession]);'),
+  'App: a escolha salva de abrir com a sessão precisa chegar aos lembretes antes de syncWakeReminders'
+);
 
 process.stdout.write('sessao de 7 minutos: ok\n');

@@ -370,6 +370,12 @@ export default function WakeSequenceScreen({ route }) {
       )
         .then((result) => {
           // Playing: the end arrives as lastCompletedPlaybackId (effect below).
+          // Session: one voice. The server refused this item and the narration read it with the device voice
+          // (native): the next clips stay with the device voice too, and the screen says so.
+          if (session && result && result.voice === 'device') {
+            cloudBrokenRef.current = true;
+            setDeviceInsteadOfCeleste(true);
+          }
           if (result && result.ok && !result.ready) return;
           if (result && result.error === 'audio_cancelled') {
             // Stopped elsewhere (the global player): this item waits for Continue.
@@ -879,6 +885,9 @@ export default function WakeSequenceScreen({ route }) {
         ref={scrollRef}
         style={styles.flex}
         showsVerticalScrollIndicator={false}
+        // the note's keyboard: "Registrar meu dia" answers the first tap and stays above it on iPhone
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>{body}</View>

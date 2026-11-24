@@ -56,6 +56,7 @@ import {
   cancelWakeReminders,
   configureWakeNotifications,
   initialWakeNotificationUrl,
+  setWakeOpensSession,
   subscribeWakeNotificationUrls,
   syncWakeReminders,
 } from './services/wakeReminders';
@@ -599,6 +600,12 @@ function WakeReminderSync() {
   React.useEffect(() => {
     if (loaded && (!enabled || !hasSequence)) void cancelWakeReminders();
   }, [loaded, enabled, hasSequence]);
+  // Her saved choice ("open with the 7-minute session") reaches the reminders before the sync below: after a
+  // reinstall or a restore they are re-created with the right address, not as the plain wake-up.
+  const opensSession = ritual?.wakeOpensSession === true;
+  React.useEffect(() => {
+    if (loaded) setWakeOpensSession(opensSession);
+  }, [loaded, opensSession]);
   React.useEffect(() => {
     if (!enabled || !hasSequence) return undefined;
     const sync = () => void syncWakeReminders({ time, weekdays: days.split(',').map(Number), lang });
