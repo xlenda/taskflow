@@ -127,9 +127,10 @@ export function sessionItemsForState(state, lang, dayISO, journeys = WEEKLY_JOUR
 /**
  * Registro do dia numa transformação só, na manifestação âncora: marca a prática (como logSession), a ponte com a
  * micro-ação do dia (formato de toggleBridgeCompletion; uma por dia) e a nota (formato de addEvidence).
- * Sem âncora devolve o mesmo state.
+ * Sem âncora ou com dia inválido devolve o mesmo state.
  */
 export function applyGuidedSessionDone(state, { day, note, bridge, now } = {}) {
+  if (daysSinceEpoch(day) === null) return state;
   const anchor = anchorManifestationForState(state);
   if (!anchor) return state;
   const journey = journeyForDay(day);

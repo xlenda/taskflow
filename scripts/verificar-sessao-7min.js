@@ -184,6 +184,11 @@ assert.deepStrictEqual(pickDailyAffirmations(six, '2026-11-24'), pickDailyAffirm
 assert.deepStrictEqual(pickDailyAffirmations(['x', 'y'], DAY), ['x', 'y'], 'com 2 afirmações, as 2');
 const fromSeven = pickDailyAffirmations(['s0', 's1', 's2', 's3', 's4', 's5', 's6'], DAY);
 assert.strictEqual(new Set(fromSeven).size, 3, `com 7 afirmações, 3 distintas (veio ${fromSeven})`);
+assert.deepStrictEqual(
+  pickDailyAffirmations(['s0', 's1', 's2', 's3', 's4', 's5', 's6'], '2026-11-28'),
+  ['s6', 's0', 's1'],
+  'a roda volta ao começo da lista (28/11/2026, 7 afirmações)'
+);
 assert.deepStrictEqual(pickDailyAffirmations([], DAY), [], 'sem afirmações, nenhuma');
 
 // Só as 12 primeiras entram na roda.
@@ -222,6 +227,13 @@ assert.deepStrictEqual(
   'ponte no mesmo formato de toggleBridgeCompletion, com a micro-ação do dia'
 );
 assert.ok(bridgeDoneOn(anchorOf(twice), DAY), 'a ponte registrada precisa valer para bridgeDoneOn');
+assert.notStrictEqual(journey.day.action.en, journey.day.action.pt, 'fixture: micro-ação do dia difere entre pt e en');
+assert.strictEqual(
+  anchorOf(applyGuidedSessionDone({ ...reference, lang: 'en' }, { day: DAY, bridge: true, now: NOW })).livingMirror
+    .bridgeCompletions[0].step,
+  journey.day.action.en,
+  'em inglês a ponte registra a micro-ação em inglês'
+);
 assert.strictEqual(twice.guidedSession.lastDoneOn, DAY, 'guidedSession.lastDoneOn = dia');
 assert.deepStrictEqual(
   anchorOf(once).evidence,
@@ -247,6 +259,13 @@ assert.strictEqual(anchorOf(applyGuidedSessionDone(nearGoal, { day: DAY, now: NO
 
 const empty = { ...reference, manifestations: [] };
 assert.strictEqual(applyGuidedSessionDone(empty, { day: DAY, note: 'x', bridge: true, now: NOW }), empty, 'sem âncora devolve o mesmo state');
+for (const bad of [undefined, '', '2026-02-30']) {
+  assert.strictEqual(
+    applyGuidedSessionDone(reference, { day: bad, note: 'x', bridge: true, now: NOW }),
+    reference,
+    `dia inválido ${JSON.stringify(bad)} devolve o mesmo state`
+  );
+}
 
 process.stdout.write('sessao de 7 minutos (logica): ok\n');
 // A parte "motor" (Tarefa 6) entra abaixo, fora do --logica.
