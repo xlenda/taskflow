@@ -10,10 +10,9 @@ export const WAKE_NOTIFICATION_KIND = 'wake_sequence';
 export const WAKE_URL = 'celeste://despertar/ouvir';
 export const WAKE_SESSION_URL = `${WAKE_URL}/session`;
 
-// "Abrir com a sessão de 7 minutos": the address lives in each scheduled reminder. The wake-up screen sets her
-// choice here; before that (app start, the sync) the reminders keep the address they already carry.
-// ponytail: reminders re-created after a reinstall or restore open the plain wake-up until she visits
-// "Meu despertar"; passing the saved choice in App's syncWakeReminders call removes that.
+// "Abrir com a sessão de 7 minutos": the address lives in each scheduled reminder. App.js (WakeReminderSync) sets
+// her saved choice here once the state loads, before the sync, so reminders re-created after a reinstall or a
+// restore keep the right address; the wake-up screen updates it when she changes the toggle.
 let opensSession;
 export function setWakeOpensSession(value) {
   opensSession = typeof value === 'boolean' ? value : undefined;
