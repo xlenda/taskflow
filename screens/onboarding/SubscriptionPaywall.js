@@ -2,12 +2,22 @@
 // loja devolveu; nada disso está escrito aqui. A linha legal, Restaurar, Termos e Privacidade aparecem em
 // todos os estados. scripts/verificar-assinatura.js lê este arquivo e recusa preço escrito, pressa e promessa.
 import React from 'react';
-import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import GradientCover from '../../components/GradientCover';
 import { APP_NAME, APP_URL, ONB, SERIF } from '../../constants/brand';
-import { txt } from '../../constants/i18n';
+import { tr, txt } from '../../constants/i18n';
 import { useApp } from '../../context/AppContext';
 import { useEntitlement } from '../../context/EntitlementContext';
 import { useNarration } from '../../context/NarrationContext';
@@ -24,6 +34,7 @@ const S = {
   ctaTrial: { pt: 'Começar {n} dias grátis', en: 'Start {n}-day free trial' },
   ctaPay: { pt: 'Assinar por {price}/{unit}', en: 'Subscribe for {price}/{unit}' },
   enter: { pt: 'Entrar no {app}', en: 'Enter {app}' },
+  loading: { pt: 'Carregando os planos', en: 'Loading plans' },
   loadFailed: { pt: 'Não foi possível carregar os planos.', en: 'Plans could not be loaded.' },
   retry: { pt: 'Tentar de novo', en: 'Try again' },
   restore: { pt: 'Restaurar compras', en: 'Restore purchases' },
@@ -66,7 +77,14 @@ const NOTICE = {
     pt: 'Nenhuma assinatura ativa nesta conta da Apple.',
     en: 'No active subscription on this Apple account.',
   },
+  // Restaurar logo depois de uma compra recebida: a loja ainda não confirmou, não é "nenhuma assinatura".
+  restore_received: {
+    pt: 'Compra recebida. Tente de novo em instantes.',
+    en: 'Purchase received. Try again in a moment.',
+  },
   restore_failed: { pt: 'Não foi possível restaurar agora. Tente de novo.', en: 'Could not restore right now. Try again.' },
+  // A permissão entrou e a gravação da entrada falhou: o botão já é "Entrar".
+  confirmed: { pt: 'Compra confirmada. Toque para entrar.', en: 'Purchase confirmed. Tap to enter.' },
 };
 
 export default function SubscriptionPaywall({ locked = false }) {
@@ -83,6 +101,7 @@ export default function SubscriptionPaywall({ locked = false }) {
   const [infoOpen, setInfoOpen] = React.useState(false);
   const alive = React.useRef(true);
   const busy = React.useRef(false);
+  const received = React.useRef(false);
 
   const load = React.useCallback(async () => {
     setPhase('loading');
@@ -110,7 +129,15 @@ export default function SubscriptionPaywall({ locked = false }) {
     stop();
   }, [stop]);
 
-  const selected = plans.find((plan) => plan.id === selectedId) || null;
+  // Aviso também para o leitor de tela do iPhone (a região viva só existe no Android e no site).
+  React.useEffect(() => {
+    if (notice) AccessibilityInfo.announceForAccessibility(tr(NOTICE[notice], lang));
+  }, [notice, lang]);
+
+  // Já tem a permissão e só falta gravar a entrada (assinante que reinstalou, ou gravação que falhou depois
+  // da compra): o botão entra, sem abrir a folha da Apple de novo, e a oferta (planos, linha legal) sai da tela.
+  const entitled = status === 'active';
+  const selected = entitled ? null : plans.find((plan) => plan.id === selectedId) || null;
   // Mesma fonte da Home: a Cena-Âncora dela.
   const scenes = (state && state.manifestations) || [];
   const scene =
@@ -119,25 +146,43 @@ export default function SubscriptionPaywall({ locked = false }) {
     scenes.find((item) => item.anchorOpenedAt) ||
     scenes[scenes.length - 1] ||
     null;
-  // Já tem a permissão e só falta gravar a entrada (assinante que reinstalou, ou gravação que falhou depois
-  // da compra): o botão entra, sem abrir a folha da Apple de novo.
-  const entitled = status === 'active';
 
   const act = async (action, call) => {
     if (busy.current) return;
     busy.current = true;
     setNotice(null);
     setBuying(true);
-    const outcome = storeOutcome(await call());
-    if (outcome === 'unlock') {
-      setActive();
-      // Fim do cadastro: o Lead do anúncio (só no site e só com o aceite dos cookies).
-      if (state.onboardingDone !== true && (await completeOnboarding())) trackSignup();
+    let outcome = 'failed';
+    let entered = false;
+    // Esta tela não tem "voltar": aconteça o que acontecer (até depois da cobrança), o botão volta a responder.
+    try {
+      outcome = storeOutcome(await call());
+      if (outcome === 'unlock') {
+        setActive();
+        if (state.onboardingDone === true) entered = true;
+        else if (await completeOnboarding()) {
+          entered = true;
+          // Fim do cadastro: o Lead do anúncio (só no site e só com o aceite dos cookies).
+          trackSignup();
+        }
+      }
+    } catch {
+      // o aviso abaixo sai do que já se sabe: sem resposta da loja é falha; com a permissão, falta só entrar
+    } finally {
+      busy.current = false;
+      if (alive.current) setBuying(false);
     }
-    busy.current = false;
     if (!alive.current) return;
-    setBuying(false);
-    setNotice(outcome === 'unlock' || outcome === 'cancelled' ? null : `${action}_${outcome}`);
+    if (action === 'buy' && outcome === 'inactive') received.current = true;
+    setNotice(
+      outcome === 'unlock'
+        ? entered ? null : 'confirmed'
+        : outcome === 'cancelled'
+          ? null
+          : action === 'restore' && outcome === 'inactive' && received.current
+            ? 'restore_received'
+            : `${action}_${outcome}`
+    );
   };
   const buy = () => act('buy', () => (entitled ? { ok: true, active: true } : buyPlan(selected)));
   const restore = () => act('restore', restorePurchases);
@@ -148,10 +193,10 @@ export default function SubscriptionPaywall({ locked = false }) {
   const open = (url) => Linking.openURL(url).catch(() => {});
 
   const price = selected ? { price: selected.priceString, per: t(PERIOD[selected.period].per) } : null;
-  const cta = !selected
-    ? ''
-    : entitled
-      ? t(S.enter, { app: APP_NAME })
+  const cta = entitled
+    ? t(S.enter, { app: APP_NAME })
+    : !selected
+      ? ''
       : selected.trialDays > 0
         ? t(S.ctaTrial, { n: selected.trialDays })
         : t(S.ctaPay, { price: selected.priceString, unit: t(PERIOD[selected.period].unit) });
@@ -225,7 +270,7 @@ export default function SubscriptionPaywall({ locked = false }) {
 
           {compact ? null : benefits}
 
-          {phase === 'error' ? (
+          {entitled ? null : phase === 'error' ? (
             <View style={styles.planFallback}>
               <Ionicons name="cloud-offline-outline" size={26} color={ONB.surfaceInk} />
               <Text testID="paywall-error" style={styles.errorText}>
@@ -281,7 +326,7 @@ export default function SubscriptionPaywall({ locked = false }) {
               {t(NOTICE[notice])}
             </Text>
           ) : null}
-          {phase === 'error' ? (
+          {phase === 'error' && !entitled ? (
             <Pressable
               testID="paywall-retry"
               accessibilityRole="button"
@@ -296,13 +341,13 @@ export default function SubscriptionPaywall({ locked = false }) {
             <Pressable
               testID="paywall-cta"
               accessibilityRole="button"
-              accessibilityLabel={cta}
-              accessibilityState={{ disabled: !selected || buying, busy: buying }}
-              disabled={!selected || buying}
+              accessibilityLabel={cta || t(S.loading)}
+              accessibilityState={{ disabled: !cta || buying, busy: !cta || buying }}
+              disabled={!cta || buying}
               onPress={buy}
-              style={({ pressed }) => [styles.cta, (pressed || !selected || buying) && styles.dim]}
+              style={({ pressed }) => [styles.cta, (pressed || !cta || buying) && styles.dim]}
             >
-              {buying || !selected ? <ActivityIndicator color={ONB.ctaInk} /> : <Text style={styles.ctaText}>{cta}</Text>}
+              {buying || !cta ? <ActivityIndicator color={ONB.ctaInk} /> : <Text style={styles.ctaText}>{cta}</Text>}
             </Pressable>
           )}
           <Text testID="paywall-disclosure" style={styles.disclosure}>
@@ -316,7 +361,7 @@ export default function SubscriptionPaywall({ locked = false }) {
               onPress={restore}
               style={styles.link}
             >
-              <Text style={[styles.linkText, notice === 'buy_inactive' && styles.linkStrong]}>{t(S.restore)}</Text>
+              <Text style={[styles.linkText, (notice === 'buy_inactive' || notice === 'restore_received') && styles.linkStrong]}>{t(S.restore)}</Text>
             </Pressable>
             <Text style={styles.linkDot}>·</Text>
             <Pressable testID="paywall-terms" accessibilityRole="link" onPress={() => open(t(S.termsUrl))} style={styles.link}>
@@ -331,7 +376,7 @@ export default function SubscriptionPaywall({ locked = false }) {
       </View>
 
       <Modal visible={infoOpen} transparent animationType="fade" onRequestClose={() => setInfoOpen(false)}>
-        <View style={styles.sheetBackdrop}>
+        <View accessibilityViewIsModal style={styles.sheetBackdrop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(S.close)}

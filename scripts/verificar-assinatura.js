@@ -1001,6 +1001,39 @@ async function main() {
     // tentar de novo consulta a permissão e os planos
     assert.ok(/refresh\(\);\n\s*load\(\);/.test(source), 'Tentar de novo chama refresh() e loadPlans()');
 
+    // a tela não tem "voltar": loja, permissão e gravação da entrada ficam dentro de um try cujo finally
+    // solta a trava e o botão, aconteça o que acontecer (até depois da cobrança)
+    const guarded = [];
+    traverse(ast, {
+      CallExpression(found) {
+        if (!['call', 'setActive', 'completeOnboarding'].includes(found.node.callee.name)) return;
+        const attempt = found.findParent((parent) => parent.isTryStatement());
+        const inBlock = attempt && found.findParent((parent) => parent.node === attempt.node.block);
+        guarded.push(found.node.callee.name + ':' + (inBlock && attempt.node.finalizer ? text(attempt.node.finalizer).replace(/\s+/g, ' ') : 'fora do try'));
+      },
+    });
+    const RELEASE = '{ busy.current = false; if (alive.current) setBuying(false); }';
+    assert.deepStrictEqual(guarded, ['call:' + RELEASE, 'setActive:' + RELEASE, 'completeOnboarding:' + RELEASE],
+      'compra e restauração soltam o botão no finally');
+
+    // quem já tem a permissão e só falta entrar: botão "Entrar" em qualquer estado, sem planos e sem linha legal
+    assert.ok(source.includes("const selected = entitled ? null : plans.find("), 'com a permissão não há plano selecionado nem linha legal');
+    assert.ok(/\{entitled \? null : phase === 'error' \? \(/.test(source), 'com a permissão os cartões de plano saem da tela');
+    assert.ok(/\{phase === 'error' && !entitled \? \(\n\s*<Pressable\n\s*testID="paywall-retry"/.test(source), 'com a permissão o botão Entrar aparece mesmo sem planos');
+    assert.ok(/const cta = entitled\n\s*\? t\(S\.enter, \{ app: APP_NAME \}\)/.test(source), 'com a permissão o botão é Entrar, com ou sem planos');
+    assert.ok(/entered \? null : 'confirmed'/.test(source), 'permissão ativa e entrada não gravada: aviso de compra confirmada');
+    assert.ok(/if \(action === 'buy' && outcome === 'inactive'\) received\.current = true;/.test(source) &&
+      /action === 'restore' && outcome === 'inactive' && received\.current\n\s*\? 'restore_received'/.test(source),
+      'restaurar logo depois de compra recebida não diz "nenhuma assinatura"');
+    for (const line of ['Compra confirmada. Toque para entrar.', 'Purchase confirmed. Tap to enter.',
+      'Compra recebida. Tente de novo em instantes.', 'Purchase received. Try again in a moment.']) {
+      assert.ok(source.includes(line), 'texto da tela: ' + line);
+    }
+    // leitor de tela
+    assert.ok(/if \(notice\) AccessibilityInfo\.announceForAccessibility\(tr\(NOTICE\[notice\], lang\)\);/.test(source), 'o aviso é anunciado no iPhone');
+    assert.ok(source.includes('accessibilityLabel={cta || t(S.loading)}'), 'o botão nunca fica com rótulo vazio');
+    assert.ok(/<Modal [^\n]*\n\s*<View accessibilityViewIsModal /.test(source), 'a folha de informação prende o leitor de tela');
+
     const screen = read('screens/onboarding/PaywallScreen.js');
     assert.ok(/<SubscriptionPaywall locked=\{route\?\.params\?\.locked === true\} \/>/.test(screen), 'PaywallScreen passa locked');
     assert.ok(/export default RELEASE_FEATURES\.subscription \? \w+ : \w+;/.test(screen), 'PaywallScreen escolhe a variante pela plataforma');

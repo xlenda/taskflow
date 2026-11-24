@@ -217,6 +217,39 @@ const seed = (onboardingDone) => ({
       await shot(paid, 'sem-teste', size);
       await paid.close();
 
+      // ── cobrou e a entrada não gravou: aviso, botão "Entrar", sem oferta na tela; depois entra ──
+      // (a) comprando com os planos na tela; (b) restaurando com a loja fora do ar (sem planos)
+      for (const [how, rewrite] of [['paywall-cta', undefined], ['paywall-restore', ['return{ok:!0,plans:', 'return{ok:!1,reason:"unavailable",plans:']]]) {
+        const stuck = await openPage(size, seed(false), '/oferta', rewrite);
+        await stuck.waitForSelector(rewrite ? id('paywall-retry') : `${id('paywall-cta')}:not([aria-disabled="true"])`, { visible: true, timeout: 30000 });
+        await stuck.evaluate(() => {
+          const proto = Object.getPrototypeOf(window.localStorage);
+          window.__celesteSetItem = proto.setItem;
+          proto.setItem = () => {
+            throw new Error('storage-blocked-on-paywall');
+          };
+        });
+        await stuck.click(id(how));
+        await stuck.waitForSelector(id('paywall-notice'), { visible: true, timeout: 30000 });
+        const label = `${size.width} (${rewrite ? 'restaurar sem planos' : 'comprar'})`;
+        check((await textOf(stuck, 'paywall-notice')) === 'Compra confirmada. Toque para entrar.', `${label}: aviso de compra confirmada`, await textOf(stuck, 'paywall-notice'));
+        check((await textOf(stuck, 'paywall-cta')) === 'Entrar no Celeste', `${label}: o botão vira Entrar`);
+        check((await stuck.$eval(id('paywall-cta'), (node) => node.getAttribute('aria-disabled'))) !== 'true', `${label}: o botão voltou a responder`);
+        check((await count(stuck, '[data-testid^="paywall-plan-"]')) === 0 && (await count(stuck, id('paywall-retry'))) === 0 &&
+          (await count(stuck, id('paywall-error'))) === 0, `${label}: com a permissão não há planos, erro nem Tentar de novo`);
+        check((await textOf(stuck, 'paywall-disclosure')) === '', `${label}: sem linha de oferta debaixo de Entrar`);
+        check(!(await stuck.evaluate(() => document.body.innerText)).includes('grátis'), `${label}: nada fala em teste grátis`);
+        await assertFits(stuck, size, label, ['paywall-cta', ...LINKS]);
+        if (!rewrite) await shot(stuck, 'confirmada', size);
+        await stuck.evaluate(() => {
+          Object.getPrototypeOf(window.localStorage).setItem = window.__celesteSetItem;
+        });
+        await stuck.click(id('paywall-cta'));
+        await stuck.waitForSelector(id('celeste-mascot-home'), { visible: true, timeout: 30000 });
+        check(true, `${label}: o segundo toque entra, sem comprar de novo`);
+        await stuck.close();
+      }
+
       // ── loja fora do ar: erro tratado, Tentar de novo, e os três links continuam ────────────────
       const down = await openPage(size, seed(true), '/', ['return{ok:!0,plans:', 'return{ok:!1,reason:"unavailable",plans:']);
       await down.waitForSelector(id('paywall-retry'), { visible: true, timeout: 30000 });
