@@ -61,6 +61,7 @@
     "verify:daily-ritual": "node scripts/verificar-ritual-um-minuto.js",
     "verify:daily-reminder": "node scripts/verificar-lembrete-ritual.js",
     "verify:weekly-journey": "node scripts/verificar-jornada-semanal.js",
+    "verify:session-audio": "node scripts/verificar-audio-sessao.js",
     "verify:manifestation-language": "node scripts/verificar-traducao-manifestacao.js",
     "verify:translation-api": "node scripts/verificar-api-traducao.js",
     "verify:suggestion-route": "node scripts/verificar-rota-sugestao.js",
