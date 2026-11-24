@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Keyboard,
+  Modal,
   Pressable,
   useWindowDimensions,
 } from 'react-native';
@@ -37,6 +38,8 @@ import { isUnder18Age } from './onboarding/flow';
 import { selectDailyRitual } from '../utils/dailyRitual';
 import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
 import { wakeSequenceItemsForState } from '../utils/wakeSequence';
+import { sessionItemsForState } from '../utils/guidedSession';
+import { journeyForDay } from '../utils/weeklyJourney';
 
 import AppStoreBadge from '../components/AppStoreBadge';
 import GradientCover from '../components/GradientCover';
@@ -128,6 +131,23 @@ const S = {
     en: 'Return to the scene created from your answers',
     pt: 'Volte à cena criada a partir das suas respostas',
   },
+  session: { en: 'Your session', pt: 'Sua sessão' },
+  sessionFull: { en: 'Your 7-minute session', pt: 'Sua sessão de 7 minutos' },
+  sessionMinutes: { en: '7 min', pt: '7 min' },
+  sessionDay: { en: '{theme} · day {n} of 7', pt: '{theme} · dia {n} de 7' },
+  sessionDone: { en: 'Done today', pt: 'Feita hoje' },
+  sessionInfo: { en: 'About the session', pt: 'Sobre a sessão' },
+  sessionInfoWhat: {
+    en: 'A guided practice with your Anchor Scene.',
+    pt: 'Uma prática guiada com a sua Cena-Âncora.',
+  },
+  sessionInfoHeadset: { en: 'Use headphones, somewhere calm.', pt: 'Use fone, num lugar calmo.' },
+  sessionInfoTime: { en: 'It takes 7 minutes.', pt: 'Dura 7 minutos.' },
+  sessionInfoInside: {
+    en: "Breathing, your desire, your scene, 3 affirmations and today's step.",
+    pt: 'Respiração, seu desejo, sua cena, 3 afirmações e o passo de hoje.',
+  },
+  sessionInfoClose: { en: 'Close', pt: 'Fechar' },
   minuteTitle: { en: 'Your Celeste minute', pt: 'Seu minuto Celeste' },
   minuteReady: {
     en: 'One affirmation and one possible step for today',
@@ -162,6 +182,7 @@ export default function HomeScreen() {
   // Só com o campo focado o envio precisa sair na descida do dedo (ver o botão).
   const [inputFocused, setInputFocused] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [sessionInfoOpen, setSessionInfoOpen] = useState(false);
 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -371,6 +392,13 @@ export default function HomeScreen() {
     state.manifestations[state.manifestations.length - 1] ||
     null;
   const dailyRitual = selectDailyRitual(state, todayISO());
+  // Sessão de 7 minutos: só existe com Cena-Âncora (a mesma regra do roteiro).
+  const hasSession = !!anchorScene && sessionItemsForState(state, lang, todayISO()).length > 0;
+  const sessionJourney = journeyForDay(todayISO());
+  const sessionDayLabel = sessionJourney
+    ? t(S.sessionDay, { theme: t(sessionJourney.theme.title), n: sessionJourney.dayIndex + 1 })
+    : '';
+  const sessionDoneToday = state.guidedSession?.lastDoneOn === todayISO();
   // Lista: pendentes de hoje primeiro, ativas já praticadas no meio,
   // concluídas por último (sort estável preserva a ordem de criação).
   const rankOf = (m) => (isComplete(m) ? 2 : m.sessions.includes(todayISO()) ? 1 : 0);
@@ -550,6 +578,89 @@ export default function HomeScreen() {
             )}
           />
         </View>
+
+        {hasSession ? (
+          <Card
+            testID="open-session"
+            onPress={() => navigation.navigate('WakeSequence', { mode: 'session' })}
+            accessibilityRole="button"
+            accessibilityLabel={[t(S.sessionFull), sessionDayLabel, sessionDoneToday ? t(S.sessionDone) : '']
+              .filter(Boolean)
+              .join('. ')}
+            style={[
+              styles.sessionCard,
+              {
+                backgroundColor: th.surface,
+                borderColor: alpha('#FFFFFF', 0.28),
+                borderRadius: th.radius.card,
+              },
+            ]}
+          >
+            {/* A foto da cena dela, parada: quem anima é o cartão da Cena-Âncora, logo abaixo. */}
+            <GradientCover
+              visualKey={anchorScene.visual?.cacheKey}
+              sceneCategory={anchorScene.category}
+              accent={typeof anchorScene.accent === 'number' ? anchorScene.accent : 0}
+              radius={th.radius.card}
+              decorative
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.sessionRow}>
+              <View
+                style={[
+                  styles.anchorSceneIcon,
+                  { backgroundColor: alpha('#FFFFFF', 0.22), borderRadius: th.radius.md },
+                ]}
+              >
+                <Ionicons name="headset" size={24} color="#FFFFFF" />
+              </View>
+              <View style={styles.anchorSceneCopy}>
+                <Text style={[th.typography.subhead, styles.anchorSceneTitle, styles.onScene]}>
+                  {t(S.session)}
+                </Text>
+                {sessionDayLabel ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[th.typography.bodySm, styles.anchorSceneName, styles.onSceneSoft]}
+                  >
+                    {sessionDayLabel}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                testID="session-info"
+                accessibilityRole="button"
+                accessibilityLabel={t(S.sessionInfo)}
+                onPress={() => setSessionInfoOpen(true)}
+                hitSlop={4}
+                style={({ pressed }) => [styles.sessionInfoButton, pressed && styles.actionPressed]}
+              >
+                <Ionicons name="information-circle-outline" size={24} color="#FFFFFF" />
+              </Pressable>
+            </View>
+            <View style={[styles.sessionRow, styles.sessionFacts]}>
+              <View style={[styles.sessionPill, { backgroundColor: alpha('#000000', 0.28) }]}>
+                <Ionicons name="time-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.sessionPillText}>{t(S.sessionMinutes)}</Text>
+              </View>
+              <View style={[styles.sessionPill, { backgroundColor: alpha('#000000', 0.28) }]}>
+                <Ionicons name="flame" size={16} color="#FFFFFF" />
+                <Text style={styles.sessionPillText}>{derived.streak}</Text>
+              </View>
+              <View style={styles.sessionSpacer} />
+              {sessionDoneToday ? (
+                <View style={[styles.sessionPill, styles.sessionDonePill]}>
+                  <Ionicons name="checkmark-circle" size={17} color="#1F8A5B" />
+                  <Text style={[styles.sessionPillText, styles.sessionDoneText]}>{t(S.sessionDone)}</Text>
+                </View>
+              ) : (
+                <View style={styles.sessionPlay}>
+                  <Ionicons name="play" size={18} color={th.accent} />
+                </View>
+              )}
+            </View>
+          </Card>
+        ) : null}
 
         {anchorScene ? (
           <Card
@@ -905,6 +1016,48 @@ export default function HomeScreen() {
         <AppStoreBadge testID="app-store-badge-home" style={{ marginTop: 8 }} />
         <View style={{ height: 24 }} />
       </ScrollView>
+      {/* ⓘ do cartão da sessão: a explicação fica aqui, fora da tela. */}
+      <Modal
+        visible={sessionInfoOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSessionInfoOpen(false)}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(S.sessionInfoClose)}
+          onPress={() => setSessionInfoOpen(false)}
+          style={styles.sessionInfoBackdrop}
+        >
+          <View
+            testID="session-info-sheet"
+            accessibilityViewIsModal
+            style={[styles.sessionInfoSheet, { backgroundColor: th.surface }]}
+          >
+            <Text style={[th.typography.subhead, styles.sessionInfoTitle, { color: th.text }]}>
+              {t(S.sessionFull)}
+            </Text>
+            {[
+              ['sparkles-outline', S.sessionInfoWhat],
+              ['headset-outline', S.sessionInfoHeadset],
+              ['time-outline', S.sessionInfoTime],
+              ['list-outline', S.sessionInfoInside],
+            ].map(([icon, copy]) => (
+              <View key={icon} style={styles.sessionInfoLine}>
+                <Ionicons name={icon} size={22} color={th.accent} />
+                <Text style={[th.typography.bodySm, styles.sessionInfoText, { color: th.text }]}>{t(copy)}</Text>
+              </View>
+            ))}
+            <Button
+              testID="session-info-close"
+              label={t(S.sessionInfoClose)}
+              variant="soft"
+              onPress={() => setSessionInfoOpen(false)}
+              style={styles.sessionInfoClose}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -947,6 +1100,37 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 10,
   },
+  sessionCard: { borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, marginTop: 6, marginBottom: 0 },
+  sessionRow: { flexDirection: 'row', alignItems: 'center' },
+  sessionFacts: { marginTop: 12 },
+  sessionInfoButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
+  sessionPill: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  sessionPillText: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '800', marginLeft: 6 },
+  sessionDonePill: { backgroundColor: 'rgba(255,255,255,0.94)', marginRight: 0 },
+  sessionDoneText: { color: '#1B1B2A' },
+  sessionSpacer: { flex: 1 },
+  sessionPlay: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+  },
+  // Centered: a bottom sheet would sit under the tab bar and the cookie notice.
+  sessionInfoBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.55)' },
+  sessionInfoSheet: { width: '100%', maxWidth: 420, alignSelf: 'center', padding: 20, borderRadius: 24 },
+  sessionInfoTitle: { fontWeight: '800', marginBottom: 8 },
+  sessionInfoLine: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  sessionInfoText: { flex: 1, marginLeft: 12 },
+  sessionInfoClose: { minHeight: 48, marginTop: 12 },
   anchorSceneIcon: {
     width: 48,
     height: 48,

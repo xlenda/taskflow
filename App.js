@@ -920,7 +920,7 @@ const linking = {
       },
       MorningRitual: 'sonhos',
       ...(RELEASE_FEATURES.wakeSequence
-        ? { AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }
+        ? { AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir/:mode?' }
         : {}),
       DailyRitual: 'ritual',
       ...(RELEASE_FEATURES.practicePlan

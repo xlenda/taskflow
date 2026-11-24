@@ -753,6 +753,8 @@ function mergeDefensivo(parsed) {
       (legacyCustomWake ? savedRitual.wakeAffirmationLang : savedRitual.wakeCustomLang) === 'en'
         ? 'en'
         : 'pt',
+    // The reminder opens the 7-minute session instead of the plain wake-up.
+    wakeOpensSession: savedRitual.wakeOpensSession === true,
     // Normalized below, once every content source of the alarm is known.
     wakeSequence: savedRitual.wakeSequence,
     entries: (Array.isArray(savedRitual.entries) ? savedRitual.entries : [])
@@ -3111,6 +3113,9 @@ export function AppProvider({ children }) {
       }
       if (patch && typeof patch.alarmSyncError === 'boolean') {
         next.alarmSyncError = patch.alarmSyncError;
+      }
+      if (patch && typeof patch.wakeOpensSession === 'boolean') {
+        next.wakeOpensSession = patch.wakeOpensSession;
       }
       if (patch && validTime(patch.reminderTime)) next.reminderTime = patch.reminderTime;
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'weekdays')) {

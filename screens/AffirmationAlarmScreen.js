@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -31,6 +32,8 @@ import {
   cancelWakeReminders,
   getWakeReminderCapability,
   scheduleWakeReminders,
+  setWakeOpensSession,
+  syncWakeReminders,
 } from '../services/wakeReminders';
 import { useTheme } from '../ui/theme';
 import { alarmWeekdaysOrDefault } from '../utils/alarmSchedule';
@@ -188,6 +191,7 @@ const COPY = {
     pt: 'Um lembrete com som avisa no horário escolhido e abre sua sequência. Pode atrasar alguns minutos; a voz toca quando você abrir.',
     en: 'A reminder with sound arrives at your chosen time and opens your sequence. It may arrive a few minutes late; the voice plays when you open it.',
   },
+  wakeOpensSession: { pt: 'Abrir com a sessão de 7 minutos', en: 'Open with the 7-minute session' },
   reminderActivate: { pt: 'Ativar lembrete', en: 'Turn reminder on' },
   reminderDeactivate: { pt: 'Desativar lembrete', en: 'Turn reminder off' },
   reminderConfirmTitle: { pt: 'Ativar este lembrete?', en: 'Turn on this reminder?' },
@@ -364,6 +368,24 @@ export default function AffirmationAlarmScreen() {
     setFeedback(null);
     haptic();
   }, [haptic, saveMorningRitualPreferences]);
+
+  // What the reminder opens travels in each scheduled reminder (services/wakeReminders): the service learns her
+  // saved choice here, before any scheduling from this screen.
+  const opensSession = ritual.wakeOpensSession === true;
+  useEffect(() => {
+    setWakeOpensSession(opensSession);
+  }, [opensSession]);
+
+  const toggleOpensSession = useCallback((value) => {
+    if (operationRef.current) return;
+    saveMorningRitualPreferences({ wakeOpensSession: value });
+    setWakeOpensSession(value);
+    // An active reminder is re-created with the new address, at the saved time and days; this never asks permission.
+    if (ritual.reminderEnabled) {
+      void syncWakeReminders({ time: ritual.reminderTime, weekdays: alarmWeekdaysOrDefault(ritual.weekdays), lang }).catch(() => {});
+    }
+    haptic();
+  }, [haptic, lang, ritual.reminderEnabled, ritual.reminderTime, ritual.weekdays, saveMorningRitualPreferences]);
 
   const addItem = useCallback((item) => {
     if (operationRef.current) return;
@@ -966,6 +988,20 @@ export default function AffirmationAlarmScreen() {
                 {t(COPY.reminderNote)}
               </Text>
             ) : null}
+            {/* Only where a tap on the reminder opens the app (Android): the AlarmKit alarm opens no address. */}
+            {reminderMode ? (
+              <View style={[styles.sessionRow, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                <Ionicons name="headset" size={22} color={theme.accent} />
+                <Text style={[styles.sessionRowText, { color: theme.text }]}>{t(COPY.wakeOpensSession)}</Text>
+                <Switch
+                  testID="wake-opens-session"
+                  accessibilityLabel={t(COPY.wakeOpensSession)}
+                  value={opensSession}
+                  disabled={busy}
+                  onValueChange={toggleOpensSession}
+                />
+              </View>
+            ) : null}
 
             <PrimaryButton
               testID="activate-affirmation-alarm"
@@ -1197,6 +1233,17 @@ const styles = StyleSheet.create({
   timeInput: { width: 144, height: 60, borderWidth: 1, borderRadius: 18, paddingHorizontal: 16, fontSize: 27, lineHeight: 32, fontWeight: '700', letterSpacing: 0.3 },
   clockIcon: { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   daysRow: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  sessionRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 14,
+  },
+  sessionRowText: { flex: 1, fontSize: 15, lineHeight: 21, fontWeight: '700', marginHorizontal: 12 },
   reminderNote: { fontSize: 13, lineHeight: 20, marginTop: 18, letterSpacing: 0 },
   dayChip: { minWidth: 48, minHeight: 48, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', margin: 4 },
   dayText: { fontSize: 12, fontWeight: '800', letterSpacing: 0 },

@@ -511,7 +511,7 @@ assert.ok(
   app.includes('RELEASE_FEATURES.wakeSequence ? (') &&
     app.includes('<Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />') &&
     app.includes('<Root.Screen name="WakeSequence" component={WakeSequenceScreen} />') &&
-    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }") &&
+    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir/:mode?' }") &&
     app.includes('await initialWakeNotificationUrl()') &&
     app.includes('subscribeWakeNotificationUrls(listener)') &&
     app.includes('configureWakeNotifications()'),
@@ -548,6 +548,27 @@ assert.ok(
     /useMemo\(\s*\(\) => !!state && wakeSequenceItemsForState\(state, lang\)\.length > 0/.test(wakeSync) &&
     !/requestPermissionsAsync|scheduleWakeReminders/.test(wakeSync),
   'Android: o lembrete ligado precisa ser refeito ao abrir e ao voltar (horário, dias e idioma), sem pedir permissão'
+);
+// "Abrir com a sessão de 7 minutos": interruptor só onde o toque no lembrete abre o app; grava a escolha, avisa o
+// serviço e refaz o lembrete ativo sem pedir permissão. O fim do despertar comum abre a sessão numa tela nova.
+const opensSessionToggle = alarmScreen.slice(
+  alarmScreen.indexOf('const toggleOpensSession = useCallback'),
+  alarmScreen.indexOf('const addItem = useCallback')
+);
+assert.ok(
+  /\{reminderMode \? \(\s*<View style=\{\[styles\.sessionRow[\s\S]{0,400}testID="wake-opens-session"[\s\S]{0,200}onValueChange=\{toggleOpensSession\}/.test(alarmScreen) &&
+    opensSessionToggle.includes('saveMorningRitualPreferences({ wakeOpensSession: value })') &&
+    opensSessionToggle.includes('setWakeOpensSession(value)') &&
+    /if \(ritual\.reminderEnabled\) \{\s*void syncWakeReminders\(/.test(opensSessionToggle) &&
+    !/scheduleWakeReminders|requestPermissionsAsync/.test(opensSessionToggle) &&
+    /useEffect\(\(\) => \{\s*setWakeOpensSession\(opensSession\);/.test(alarmScreen),
+  'interruptor "Abrir com a sessão de 7 minutos" ausente, sem gravar a escolha ou sem refazer o lembrete'
+);
+assert.ok(
+  /testID="wake-open-session"[\s\S]{0,260}navigation\.replace\('WakeSequence', \{ mode: 'session' \}\)/.test(
+    read('screens/WakeSequenceScreen.js')
+  ),
+  'o fim do despertar comum precisa abrir a sessão numa tela nova (replace), nunca trocando o modo da mesma tela'
 );
 const reminderActivation = alarmScreen.slice(
   alarmScreen.indexOf('const activateReminder = useCallback'),
@@ -1101,6 +1122,32 @@ async function verifyWakeReminders() {
   mock = useMock(deviceNotifications());
   assert.strictEqual((await service.syncWakeReminders({ ...plan, time: '7h' })).error, 'invalid_time');
   assert.strictEqual(mock.calls.scheduled.length, 0);
+
+  // 13b2. "Abrir com a sessão de 7 minutos": o endereço vai em cada lembrete e é o que o toque abre.
+  const SESSION_URL = 'celeste://despertar/ouvir/session';
+  const urlsOnDevice = (m) => [...new Set([...m.live.values()].map((item) => item.content.data.url))];
+  mock = useMock(deviceNotifications());
+  await service.syncWakeReminders(plan);
+  assert.deepStrictEqual(urlsOnDevice(mock), ['celeste://despertar/ouvir'], 'sem a escolha, o lembrete abre o despertar comum');
+  service.setWakeOpensSession(true);
+  assert.strictEqual((await service.syncWakeReminders(plan)).changed, true, 'ligar a sessão precisa refazer os lembretes');
+  assert.deepStrictEqual(urlsOnDevice(mock), [SESSION_URL], 'lembrete ligado na sessão continuou no despertar comum');
+  assert.strictEqual(wakeOnDevice(mock).length, 2, 'trocar o endereço duplicou os lembretes');
+  assert.deepStrictEqual(await service.syncWakeReminders(plan), { ok: true, changed: false });
+  // App recém-aberto (a tela ainda não disse a escolha): a sincronia conserva o endereço que já está agendado.
+  service.setWakeOpensSession(undefined);
+  assert.deepStrictEqual(await service.syncWakeReminders(plan), { ok: true, changed: false }, 'a sincronia perdeu a sessão');
+  await service.syncWakeReminders({ ...plan, time: '09:00' });
+  assert.deepStrictEqual(urlsOnDevice(mock), [SESSION_URL], 'reagendar pelo App voltou ao despertar comum');
+  const sessionResponse = responseFor({ kind: 'wake_sequence', url: SESSION_URL });
+  useMock(Object.assign(mock, { getLastNotificationResponse: () => sessionResponse }));
+  assert.strictEqual(await service.initialWakeNotificationUrl(), SESSION_URL, 'o toque no lembrete não abriu a sessão');
+  const sessionBehavior = await (service.configureWakeNotifications(), mock.calls.handler.handleNotification(sessionResponse.notification));
+  assert.strictEqual(sessionBehavior.shouldPlaySound, true, 'lembrete da sessão ficou sem som');
+  service.setWakeOpensSession(false);
+  await service.syncWakeReminders({ ...plan, time: '09:00' });
+  assert.deepStrictEqual(urlsOnDevice(mock), ['celeste://despertar/ouvir'], 'desligar a sessão não voltou ao despertar comum');
+  service.setWakeOpensSession(undefined);
 
   // 13c. Ritual diário: a limpeza de último recurso (troca de horário com os dois cancelamentos falhando) apaga só os
   // lembretes do próprio ritual — nunca os do despertar nem os do plano (antes: cancelAll).

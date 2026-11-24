@@ -95,6 +95,7 @@ const S = {
     en: 'Build what you want to hear when you wake up in My wake-up.',
   },
   build: { pt: 'Montar meu despertar', en: 'Build my wake-up' },
+  openSession: { pt: 'Sessão de 7 minutos', en: '7-minute session' },
   // Modo sessão (route.params.mode === 'session'): o mesmo motor, com o roteiro de 7 minutos.
   sessionTitle: { pt: 'Sua sessão de 7 minutos', en: 'Your 7-minute session' },
   sessionIntro: {
@@ -678,6 +679,20 @@ export default function WakeSequenceScreen({ route }) {
           {t(phase === 'done' ? S.doneBody : S.stoppedBody)}
         </Text>
         <PrimaryButton testID="wake-restart" label={S.again} icon="refresh" onPress={() => retryWithCeleste(0)} style={styles.cardAction} />
+        {/* The plain wake-up offers the session when she has one (an Anchor Scene). A fresh screen: stars again. */}
+        {!session && phase === 'done' && sessionItemsForState(state, lang, todayISO()).length > 0 ? (
+          <PrimaryButton
+            testID="wake-open-session"
+            label={S.openSession}
+            icon="headset"
+            variant="ghost"
+            onPress={() => {
+              silence();
+              navigation.replace('WakeSequence', { mode: 'session' });
+            }}
+            style={styles.cardAction}
+          />
+        ) : null}
         <PrimaryButton testID="wake-close" label={S.close} icon="close" variant="ghost" onPress={leave} style={styles.cardAction} />
       </View>
     );

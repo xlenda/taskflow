@@ -8,6 +8,22 @@ import { normalizeAlarmWeekdays } from '../utils/alarmSchedule';
 export const WAKE_CHANNEL_ID = 'celeste-despertar';
 export const WAKE_NOTIFICATION_KIND = 'wake_sequence';
 export const WAKE_URL = 'celeste://despertar/ouvir';
+export const WAKE_SESSION_URL = `${WAKE_URL}/session`;
+
+// "Abrir com a sessão de 7 minutos": the address lives in each scheduled reminder. The wake-up screen sets her
+// choice here; before that (app start, the sync) the reminders keep the address they already carry.
+// ponytail: reminders re-created after a reinstall or restore open the plain wake-up until she visits
+// "Meu despertar"; passing the saved choice in App's syncWakeReminders call removes that.
+let opensSession;
+export function setWakeOpensSession(value) {
+  opensSession = typeof value === 'boolean' ? value : undefined;
+}
+const wakeUrlFor = (scheduled) =>
+  opensSession === undefined
+    ? scheduled.find(({ data }) => data.url)?.data.url || WAKE_URL
+    : opensSession
+    ? WAKE_SESSION_URL
+    : WAKE_URL;
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -24,8 +40,12 @@ function api() {
   return notificationApi;
 }
 
-const isWakeData = (data) => data?.kind === WAKE_NOTIFICATION_KIND && data?.url === WAKE_URL;
-const responseIsWake = (response) => isWakeData(response?.notification?.request?.content?.data);
+const isWakeData = (data) =>
+  data?.kind === WAKE_NOTIFICATION_KIND && (data?.url === WAKE_URL || data?.url === WAKE_SESSION_URL);
+const wakeUrlOf = (response) => {
+  const data = response?.notification?.request?.content?.data;
+  return isWakeData(data) ? data.url : null;
+};
 
 // Android 13+ answers status "denied" with canAskAgain true before the first
 // prompt; only a refusal the system will not ask again counts as denied.
@@ -77,7 +97,7 @@ async function cancelEachQuietly(client, identifiers) {
   }
 }
 
-function wakeContent(lang, slot) {
+function wakeContent(lang, slot, url) {
   const en = lang === 'en';
   return {
     title: en ? 'Your wake-up is ready' : 'Seu despertar está pronto',
@@ -85,7 +105,7 @@ function wakeContent(lang, slot) {
       ? 'Tap, light the three stars and listen to your sequence.'
       : 'Toque, acenda as três estrelas e ouça sua sequência.',
     sound: true,
-    data: { kind: WAKE_NOTIFICATION_KIND, url: WAKE_URL, lang: en ? 'en' : 'pt', slot },
+    data: { kind: WAKE_NOTIFICATION_KIND, url, lang: en ? 'en' : 'pt', slot },
   };
 }
 
@@ -168,8 +188,12 @@ export function syncWakeReminders(input = {}) {
       const permission = permissionLabel(await client.getPermissionsAsync());
       if (permission !== 'granted') return { ok: false, error: 'permission_denied', permission };
       const lang = input.lang === 'en' ? 'en' : 'pt';
-      const wanted = wakeTriggers(client, plan.hour, plan.minute, plan.days).map((trigger) => `${lang} ${slotOf(trigger)}`);
-      const found = (await scheduledWake(client)).map(({ data }) => `${data.lang} ${data.slot}`);
+      const scheduled = await scheduledWake(client);
+      const url = wakeUrlFor(scheduled);
+      const wanted = wakeTriggers(client, plan.hour, plan.minute, plan.days).map(
+        (trigger) => `${url} ${lang} ${slotOf(trigger)}`
+      );
+      const found = scheduled.map(({ data }) => `${data.url} ${data.lang} ${data.slot}`);
       if (wanted.sort().join('|') === found.sort().join('|')) return { ok: true, changed: false };
     } catch (_error) {
       return { ok: false, error: 'status_failed' };
@@ -209,11 +233,13 @@ async function schedule({ time, weekdays, lang = 'pt' }, askPermission) {
       });
     }
 
-    const previous = await scheduledWakeIdentifiers(client);
+    const scheduled = await scheduledWake(client);
+    const previous = scheduled.map((item) => item.identifier);
+    const url = wakeUrlFor(scheduled);
     const created = [];
     try {
       for (const trigger of wakeTriggers(client, plan.hour, plan.minute, plan.days)) {
-        const identifier = await client.scheduleNotificationAsync({ content: wakeContent(lang, slotOf(trigger)), trigger });
+        const identifier = await client.scheduleNotificationAsync({ content: wakeContent(lang, slotOf(trigger), url), trigger });
         if (typeof identifier !== 'string' || !identifier) throw new Error('empty_identifier');
         created.push(identifier);
       }
@@ -269,9 +295,10 @@ export async function initialWakeNotificationUrl() {
         : typeof client.getLastNotificationResponseAsync === 'function'
         ? await client.getLastNotificationResponseAsync()
         : null;
-    if (!responseIsWake(response)) return null;
+    const url = wakeUrlOf(response);
+    if (!url) return null;
     clearLastResponse(client);
-    return WAKE_URL;
+    return url;
   } catch (_error) {
     return null;
   }
@@ -283,9 +310,10 @@ export function subscribeWakeNotificationUrls(listener) {
     return () => {};
   }
   const subscription = client.addNotificationResponseReceivedListener((response) => {
-    if (!responseIsWake(response)) return;
+    const url = wakeUrlOf(response);
+    if (!url) return;
     clearLastResponse(client);
-    listener(WAKE_URL);
+    listener(url);
   });
   return () => subscription?.remove?.();
 }

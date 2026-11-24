@@ -102,7 +102,7 @@ assert.ok(
   app.includes('RELEASE_FEATURES.wakeSequence ? (') &&
     app.includes('<Root.Screen name="AffirmationAlarm" component={AffirmationAlarmScreen} />') &&
     app.includes('<Root.Screen name="WakeSequence" component={WakeSequenceScreen} />') &&
-    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir' }"),
+    app.includes("{ AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir/:mode?' }"),
   'Meu despertar and its listening route must sit inside the wakeSequence boundary'
 );
 assert.ok(
