@@ -1,13 +1,26 @@
 // Minimal EN / PT-BR i18n for the onboarding + paywall.
 // Text fields in the flow are { en, pt } objects resolved by txt().
 
+// Idioma do aparelho: português → 'pt'; qualquer outro → 'en'.
+// No iPhone o locale do Intl segue as localizações do app, não o idioma do
+// celular, então a lista AppleLanguages (Settings do RN, NSUserDefaults) vem
+// primeiro. require tardio: os verificadores carregam este arquivo no Node.
 export function detectLang() {
   try {
-    const l =
-      (typeof navigator !== 'undefined' && (navigator.language || (navigator.languages && navigator.languages[0]))) ||
-      Intl.DateTimeFormat().resolvedOptions().locale ||
-      'en';
-    return String(l).toLowerCase().startsWith('pt') ? 'pt' : 'en';
+    const { Platform, Settings } = require('react-native');
+    let l;
+    if (Platform.OS === 'web') {
+      l = navigator.language || (navigator.languages && navigator.languages[0]);
+    } else {
+      if (Platform.OS === 'ios') {
+        try {
+          const langs = Settings.get('AppleLanguages');
+          l = Array.isArray(langs) ? langs[0] : langs;
+        } catch (e) {}
+      }
+      l = l || Intl.DateTimeFormat().resolvedOptions().locale;
+    }
+    return String(l || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en';
   } catch (e) {
     return 'en';
   }

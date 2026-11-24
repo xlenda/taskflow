@@ -438,10 +438,18 @@ async function main() {
   );
 
   const appConfig = JSON.parse(fs.readFileSync(appConfigFile, 'utf8'));
+  // Base em ingles no Info.plist; portugues no InfoPlist.strings gerado de locales/pt.json.
   assert.match(
     appConfig.expo.ios.infoPlist.NSAlarmKitUsageDescription,
-    /\S/,
-    'AlarmKit requires a non-empty usage description'
+    /^Celeste uses alarms to wake you with /,
+    'AlarmKit requires a non-empty English base usage description'
+  );
+  assert.strictEqual(appConfig.expo.locales.pt, './locales/pt.json');
+  const ptStrings = JSON.parse(fs.readFileSync(path.join(root, 'locales', 'pt.json'), 'utf8'));
+  assert.match(
+    ptStrings.ios.NSAlarmKitUsageDescription,
+    /^A Celeste usa alarmes para acordar você com /,
+    'AlarmKit requires a non-empty Portuguese usage description'
   );
 
   const moduleConfig = JSON.parse(fs.readFileSync(moduleConfigFile, 'utf8'));

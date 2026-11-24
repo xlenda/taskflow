@@ -292,9 +292,14 @@ assert.ok(
 );
 
 const appConfig = JSON.parse(read('app.json'));
+// Janela do iPhone no idioma do celular: base em inglês, português em locales/pt.json.
 const alarmUsage = appConfig.expo?.ios?.infoPlist?.NSAlarmKitUsageDescription || '';
+for (const label of ['affirmation', 'vision', 'Anchor Scene', 'dream phrase', 'own phrase']) {
+  assert.ok(alarmUsage.includes(label), `NSAlarmKitUsageDescription (en) omite ${label}`);
+}
+const alarmUsagePt = JSON.parse(read('locales/pt.json')).ios?.NSAlarmKitUsageDescription || '';
 for (const label of ['afirmação', 'visão', 'Cena-Âncora', 'frase de sonho', 'frase própria']) {
-  assert.ok(alarmUsage.includes(label), `NSAlarmKitUsageDescription omite ${label}`);
+  assert.ok(alarmUsagePt.includes(label), `NSAlarmKitUsageDescription (pt) omite ${label}`);
 }
 
 assert.ok(home.includes('testID="open-community-home"'), 'comunidade continua escondida fora da Home');

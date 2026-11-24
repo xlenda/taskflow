@@ -374,22 +374,11 @@ const audioPlugin = appConfig.expo.plugins?.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-audio'
 );
 const microphoneDisclosure = audioPlugin?.[1]?.microphonePermission;
-const normalizedMicrophoneDisclosure = normalizedText(microphoneDisclosure);
-const requiredDisclosureIdeas = [
-  'celeste',
-  'microfone',
-  'somente',
-  'toca',
-  'duas repeticoes',
-  'afirmacao exibida',
-  'audio nao e armazenado',
-];
 if (
   !audioPlugin ||
   typeof microphoneDisclosure !== 'string' ||
   microphoneDisclosure.length < 80 ||
   microphoneDisclosure.length > 320 ||
-  requiredDisclosureIdeas.some((idea) => !normalizedMicrophoneDisclosure.includes(idea)) ||
   audioPlugin[1]?.recordAudioAndroid !== false ||
   audioPlugin[1]?.enableBackgroundPlayback !== false
 ) {
@@ -398,36 +387,108 @@ if (
 if (microphoneDisclosure !== appConfig.expo.ios?.infoPlist?.NSMicrophoneUsageDescription) {
   fail('expo-audio and iOS microphone disclosures must describe the same restricted practice');
 }
-const normalizedSpeechDisclosure = normalizedText(
-  appConfig.expo.ios?.infoPlist?.NSSpeechRecognitionUsageDescription
+// As janelas de permissao seguem o idioma do celular (24/11/2026): base do Info.plist em ingles,
+// portugues no InfoPlist.strings que a Expo gera de locales/pt.json. Sem o
+// CFBundleAllowMixedLocalizations o iPhone em portugues abre o app inteiro em ingles.
+if (appConfig.expo.ios?.infoPlist?.CFBundleAllowMixedLocalizations !== true) {
+  fail('iOS Info.plist must set CFBundleAllowMixedLocalizations so the app follows the phone language');
+}
+let ptPermissions = {};
+if (appConfig.expo.locales?.pt !== './locales/pt.json') {
+  fail('app.json locales.pt must point to ./locales/pt.json (Portuguese iOS permission texts)');
+} else {
+  try {
+    ptPermissions = JSON.parse(fs.readFileSync(path.join(ROOT, 'locales', 'pt.json'), 'utf8')).ios || {};
+  } catch (error) {
+    fail(`locales/pt.json is invalid: ${error.message}`);
+  }
+}
+const basePermissionKeys = Object.keys(appConfig.expo.ios?.infoPlist || {}).filter((key) =>
+  key.endsWith('UsageDescription')
 );
-for (const idea of [
-  'reconhecimento de fala no aparelho',
-  'duas repeticoes',
-  'transcricao nao e armazenada',
-]) {
-  if (!normalizedSpeechDisclosure.includes(idea)) {
-    fail(`iOS speech recognition disclosure is incomplete: ${idea}`);
-  }
+for (const key of basePermissionKeys) {
+  const pt = ptPermissions[key];
+  if (typeof pt !== 'string' || pt.length < 40) fail(`locales/pt.json is missing the Portuguese ${key}`);
+  else if (pt === appConfig.expo.ios.infoPlist[key]) fail(`${key} base must be English and differ from locales/pt.json`);
+  // A Expo grava `chave = "texto";` sem escapar aspas: uma aspa quebraria o InfoPlist.strings.
+  else if (/["\\\n]/.test(pt)) fail(`locales/pt.json ${key} cannot contain quotes, backslashes or line breaks`);
 }
-// Apple ITMS-90683 (build 3, 12/11/2026): expo-image, expo-file-system e expo-video citam a API
-// de Fotos, entao o Info.plist precisa das frases mesmo sem a Celeste pedir acesso. A de salvar
-// tambem evita o crash do "Salvar imagem/video" na folha de compartilhar.
-for (const key of ['NSPhotoLibraryUsageDescription', 'NSPhotoLibraryAddUsageDescription']) {
-  const disclosure = normalizedText(appConfig.expo.ios?.infoPlist?.[key]);
-  if (!disclosure.includes('celeste') || !disclosure.includes('galeria') || !disclosure.includes('compartilhar')) {
-    fail(`iOS ${key} is required (Apple ITMS-90683) and must say it only saves what the person shares`);
-  }
+for (const key of Object.keys(ptPermissions)) {
+  if (!basePermissionKeys.includes(key)) fail(`locales/pt.json ${key} has no English base in app.json`);
 }
-for (const broadUse of [
-  'sempre ativo',
-  'em segundo plano',
-  'gravar suas conversas',
-  'gravar audio para uso futuro',
-  'usar o microfone a qualquer momento',
-]) {
-  if (normalizedMicrophoneDisclosure.includes(broadUse)) {
-    fail(`microphone disclosure permits overly broad use: ${broadUse}`);
+const permissionText = {
+  en: (key) => normalizedText(appConfig.expo.ios?.infoPlist?.[key]),
+  pt: (key) => normalizedText(ptPermissions[key]),
+};
+const requiredPermissionIdeas = {
+  en: {
+    NSMicrophoneUsageDescription: [
+      'celeste',
+      'microphone',
+      'only when you tap',
+      'two repetitions',
+      'affirmation shown',
+      'audio is not stored',
+    ],
+    NSSpeechRecognitionUsageDescription: [
+      'on-device speech recognition',
+      'two repetitions',
+      'transcription is not stored',
+    ],
+    // Apple ITMS-90683 (build 3, 12/11/2026): expo-image, expo-file-system e expo-video citam a API
+    // de Fotos, entao o Info.plist precisa das frases mesmo sem a Celeste pedir acesso. A de salvar
+    // tambem evita o crash do "Salvar imagem/video" na folha de compartilhar.
+    NSPhotoLibraryUsageDescription: ['celeste', 'does not read or send photos', 'photo library', 'sharing'],
+    NSPhotoLibraryAddUsageDescription: ['celeste', 'only saves', 'photo library', 'sharing'],
+  },
+  pt: {
+    NSMicrophoneUsageDescription: [
+      'celeste',
+      'microfone',
+      'somente',
+      'toca',
+      'duas repeticoes',
+      'afirmacao exibida',
+      'audio nao e armazenado',
+    ],
+    NSSpeechRecognitionUsageDescription: [
+      'reconhecimento de fala no aparelho',
+      'duas repeticoes',
+      'transcricao nao e armazenada',
+    ],
+    NSPhotoLibraryUsageDescription: ['celeste', 'nao le nem envia fotos', 'galeria', 'compartilhar'],
+    NSPhotoLibraryAddUsageDescription: ['celeste', 'so salva', 'galeria', 'compartilhar'],
+  },
+};
+const broadMicrophoneUses = {
+  en: [
+    'always on',
+    'in the background',
+    'record your conversations',
+    'record audio for future use',
+    'use the microphone at any time',
+  ],
+  pt: [
+    'sempre ativo',
+    'em segundo plano',
+    'gravar suas conversas',
+    'gravar audio para uso futuro',
+    'usar o microfone a qualquer momento',
+  ],
+};
+for (const lang of ['en', 'pt']) {
+  for (const [key, ideas] of Object.entries(requiredPermissionIdeas[lang])) {
+    const disclosure = permissionText[lang](key);
+    for (const idea of ideas) {
+      if (!disclosure.includes(idea)) fail(`iOS ${key} (${lang}) is incomplete: ${idea}`);
+    }
+  }
+  for (const key of ['NSMicrophoneUsageDescription', 'NSSpeechRecognitionUsageDescription']) {
+    for (const broadUse of broadMicrophoneUses[lang]) {
+      if (permissionText[lang](key).includes(broadUse)) {
+        fail(`iOS ${key} (${lang}) permits overly broad use: ${broadUse}`);
+      }
+    }
   }
 }
 if (!appConfig.expo.plugins?.includes('expo-notifications')) {

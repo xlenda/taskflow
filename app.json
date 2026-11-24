@@ -18,12 +18,16 @@
         "com.apple.developer.devicecheck.appattest-environment": "production"
       },
       "infoPlist": {
-        "NSAlarmKitUsageDescription": "A Celeste usa alarmes para acordar você com o conteúdo pessoal que escolheu, como afirmação, visão, Cena-Âncora, frase de sonho ou frase própria.",
-        "NSMicrophoneUsageDescription": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",
-        "NSPhotoLibraryAddUsageDescription": "A Celeste só salva na sua galeria o cartão ou o vídeo que você escolher salvar ao compartilhar.",
-        "NSPhotoLibraryUsageDescription": "A Celeste não lê nem envia fotos da sua galeria. Ela só salva no aparelho o cartão ou o vídeo que você escolher ao compartilhar.",
-        "NSSpeechRecognitionUsageDescription": "A Celeste usa reconhecimento de fala no aparelho para conferir duas repetições da afirmação exibida. A transcrição não é armazenada."
+        "CFBundleAllowMixedLocalizations": true,
+        "NSAlarmKitUsageDescription": "Celeste uses alarms to wake you with the personal content you chose, such as an affirmation, vision, Anchor Scene, dream phrase or your own phrase.",
+        "NSMicrophoneUsageDescription": "Celeste uses the microphone only when you tap to check two repetitions of the affirmation shown on the screen. The audio is not stored.",
+        "NSPhotoLibraryAddUsageDescription": "Celeste only saves to your photo library the card or video you choose to save when sharing.",
+        "NSPhotoLibraryUsageDescription": "Celeste does not read or send photos from your photo library. It only saves to your device the card or video you choose when sharing.",
+        "NSSpeechRecognitionUsageDescription": "Celeste uses on-device speech recognition to check two repetitions of the affirmation shown. The transcription is not stored."
       }
+    },
+    "locales": {
+      "pt": "./locales/pt.json"
     },
     "android": {
       "adaptiveIcon": {
@@ -51,7 +55,7 @@
         "expo-audio",
         {
           "enableBackgroundPlayback": false,
-          "microphonePermission": "A Celeste usa o microfone somente quando você toca para conferir duas repetições da afirmação exibida na tela. O áudio não é armazenado.",
+          "microphonePermission": "Celeste uses the microphone only when you tap to check two repetitions of the affirmation shown on the screen. The audio is not stored.",
           "recordAudioAndroid": false
         }
       ],
