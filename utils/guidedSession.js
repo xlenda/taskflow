@@ -12,6 +12,9 @@ import { daysSinceEpoch, journeyForDay } from './weeklyJourney';
 export const SESSION_TARGET_SECONDS = 420;
 export const SESSION_PAUSE_MS = { breath: 60000, desire: 20000, affirmation: 20000, journey: 30000, bridge: 30000 };
 export const SCENE_PAUSE_RANGE_MS = [30000, 120000];
+// História curta: com a cena no teto, o que falta vai para os silêncios das afirmações e da jornada, até este teto.
+export const SESSION_STRETCH_PAUSE_MAX_MS = 60000;
+export const SESSION_MIN_SECONDS = 400;
 export const SESSION_AFFIRMATIONS = 3;
 export const SESSION_AFFIRMATION_POOL = 12;
 
@@ -59,10 +62,16 @@ const guide = (clip, lang, extra) => ({
 
 const textStill = (key, text) => ({ kind: 'text', label: STILL_LABELS[key], text });
 
+// A mesma opção do despertar: mesmo id, mesma história, mesma imagem.
+const sessionAnchor = (state, lang) =>
+  wakeSequenceOptionsForState(state, lang).find((option) => option.kind === 'anchor');
+
+/** Existe sessão para tocar? A mesma regra do roteiro (Cena-Âncora), sem montar os itens. */
+export const hasGuidedSession = (state, lang) => !!state && !!sessionAnchor(state, lang);
+
 /** Itens da sessão na ordem em que tocam; [] sem Cena-Âncora. `journeys` só muda em teste. */
 export function sessionItemsForState(state, lang, dayISO, journeys = WEEKLY_JOURNEYS) {
-  // A mesma opção do despertar: mesmo id, mesma história, mesma imagem.
-  const anchor = wakeSequenceOptionsForState(state, lang).find((option) => option.kind === 'anchor');
+  const anchor = sessionAnchor(state, lang);
   if (!anchor) return [];
   const L = lang === 'en' ? 'en' : 'pt';
   const manifestation = anchorManifestationForState(state);
@@ -121,6 +130,14 @@ export function sessionItemsForState(state, lang, dayISO, journeys = WEEKLY_JOUR
   const [minMs, maxMs] = SCENE_PAUSE_RANGE_MS;
   const restMs = Math.round((SESSION_TARGET_SECONDS - sessionSeconds(items)) * 1000);
   scene.pauseMs = Math.min(maxMs, Math.max(minMs, restMs));
+  // História curta: a cena bateu no teto e a sessão ainda fica abaixo de 400 s. O que falta para os 420 s é
+  // dividido por igual entre os silêncios das afirmações e da jornada (cada um até 60 s).
+  const missingMs = Math.round((SESSION_TARGET_SECONDS - sessionSeconds(items)) * 1000);
+  const stretch = items.filter((item) => item.kind === 'affirmation' || item.kind === 'journey');
+  if (scene.pauseMs === maxMs && missingMs > (SESSION_TARGET_SECONDS - SESSION_MIN_SECONDS) * 1000 && stretch.length) {
+    const extraMs = Math.round(missingMs / stretch.length);
+    for (const item of stretch) item.pauseMs = Math.min(SESSION_STRETCH_PAUSE_MAX_MS, item.pauseMs + extraMs);
+  }
   return items;
 }
 

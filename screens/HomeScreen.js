@@ -38,7 +38,7 @@ import { isUnder18Age } from './onboarding/flow';
 import { selectDailyRitual } from '../utils/dailyRitual';
 import { currentPracticeSlot, practiceSlotsInDayOrder } from '../utils/practicePlan';
 import { wakeSequenceItemsForState } from '../utils/wakeSequence';
-import { sessionItemsForState } from '../utils/guidedSession';
+import { hasGuidedSession } from '../utils/guidedSession';
 import { anchorManifestationForState } from '../utils/personalJourney';
 import { journeyForDay } from '../utils/weeklyJourney';
 
@@ -195,6 +195,7 @@ export default function HomeScreen() {
     () => !!state && wakeSequenceItemsForState(state, lang).length > 0,
     [state, lang]
   );
+  const hasSession = useMemo(() => hasGuidedSession(state, lang), [state, lang]);
 
   useEffect(() => {
     let alive = true;
@@ -395,7 +396,7 @@ export default function HomeScreen() {
   const dailyRitual = selectDailyRitual(state, todayISO());
   // Sessão de 7 minutos: só existe com Cena-Âncora (a mesma regra do roteiro), e a foto do cartão é a da
   // manifestação que a sessão toca.
-  const sessionScene = sessionItemsForState(state, lang, todayISO()).length > 0 ? anchorManifestationForState(state) : null;
+  const sessionScene = hasSession ? anchorManifestationForState(state) : null;
   const sessionJourney = journeyForDay(todayISO());
   const sessionDayLabel = sessionJourney
     ? t(S.sessionDay, { theme: t(sessionJourney.theme.title), n: sessionJourney.dayIndex + 1 })
@@ -1031,17 +1032,16 @@ export default function HomeScreen() {
         animationType="fade"
         onRequestClose={() => setSessionInfoOpen(false)}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t(S.sessionInfoClose)}
-          onPress={() => setSessionInfoOpen(false)}
-          style={styles.sessionInfoBackdrop}
-        >
-          <View
-            testID="session-info-sheet"
-            accessibilityViewIsModal
-            style={[styles.sessionInfoSheet, { backgroundColor: th.surface }]}
-          >
+        {/* O fundo é irmão da folha, atrás dela: tocar dentro da folha não fecha, e o leitor de tela lê cada linha. */}
+        <View accessibilityViewIsModal style={styles.sessionInfoBackdrop}>
+          <Pressable
+            testID="session-info-backdrop"
+            accessibilityRole="button"
+            accessibilityLabel={t(S.sessionInfoClose)}
+            onPress={() => setSessionInfoOpen(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View testID="session-info-sheet" style={[styles.sessionInfoSheet, { backgroundColor: th.surface }]}>
             <Text style={[th.typography.subhead, styles.sessionInfoTitle, { color: th.text }]}>
               {t(S.sessionFull)}
             </Text>
@@ -1064,7 +1064,7 @@ export default function HomeScreen() {
               style={styles.sessionInfoClose}
             />
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </Screen>
   );

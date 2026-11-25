@@ -370,6 +370,8 @@ export default function AffirmationAlarmScreen() {
   // Only saves the choice: App's WakeReminderSync tells the service and re-creates an active reminder with the
   // new address, behind its own guards (reminder on, sequence not empty).
   const opensSession = ritual.wakeOpensSession === true;
+  // The session needs an Anchor Scene (the same rule as its script): without one the switch is not shown.
+  const hasSession = options.some((option) => option.kind === 'anchor');
   const toggleOpensSession = useCallback((value) => {
     if (operationRef.current) return;
     saveMorningRitualPreferences({ wakeOpensSession: value });
@@ -977,8 +979,9 @@ export default function AffirmationAlarmScreen() {
                 {t(COPY.reminderNote)}
               </Text>
             ) : null}
-            {/* Only where a tap on the reminder opens the app (Android): the AlarmKit alarm opens no address. */}
-            {reminderMode ? (
+            {/* Only where a tap on the reminder opens the app (Android): the AlarmKit alarm opens no address. And
+                only with an Anchor Scene: without it there is no session to open. */}
+            {reminderMode && hasSession ? (
               <View style={[styles.sessionRow, { borderColor: theme.border, backgroundColor: theme.surface }]}>
                 <Ionicons name="headset" size={22} color={theme.accent} />
                 <Text style={[styles.sessionRowText, { color: theme.text }]}>{t(COPY.wakeOpensSession)}</Text>

@@ -36,6 +36,8 @@ const {
   SCENE_PAUSE_RANGE_MS,
   SESSION_AFFIRMATIONS,
   SESSION_AFFIRMATION_POOL,
+  SESSION_STRETCH_PAUSE_MAX_MS,
+  hasGuidedSession,
   pickDailyAffirmations,
   sessionItemsForState,
   sessionSeconds,
@@ -167,7 +169,38 @@ assert.ok(longTotal >= 400 && longTotal <= 440, `história de 1.500 dura ${longT
 const short = sessionItemsForState(stateWith(200), 'pt', DAY);
 assert.strictEqual(sceneOf(short).pauseMs, 120000, 'história curta: pausa da cena no teto de 120 s');
 const shortTotal = sessionSeconds(short);
-assert.ok(shortTotal >= 330 && shortTotal <= 440, `história de 200 dura ${shortTotal} s, fora de 330-440`);
+assert.ok(shortTotal >= 400 && shortTotal <= 440, `história de 200 dura ${shortTotal} s, fora de 400-440`);
+// História curta: a cena no teto ainda deixa a sessão abaixo dos 7 minutos prometidos; o que falta vai, por igual,
+// para os silêncios das afirmações e da jornada (até 60 s cada).
+const tiny = sessionItemsForState(stateWith(100), 'pt', DAY);
+const tinyTotal = sessionSeconds(tiny);
+assert.strictEqual(sceneOf(tiny).pauseMs, 120000, 'história de 100: pausa da cena no teto de 120 s');
+assert.ok(tinyTotal >= 400 && tinyTotal <= 440, `história de 100 dura ${tinyTotal} s, fora de 400-440`);
+const stretched = tiny.filter((item) => item.kind === 'affirmation' || item.kind === 'journey');
+assert.strictEqual(stretched.length, 4, 'fixture: 3 afirmações e a jornada');
+for (const item of stretched) {
+  const base = item.kind === 'journey' ? SESSION_PAUSE_MS.journey : SESSION_PAUSE_MS.affirmation;
+  assert.ok(item.pauseMs > base && item.pauseMs <= SESSION_STRETCH_PAUSE_MAX_MS, `${item.id}: silêncio esticado de ${item.pauseMs} ms, fora de ${base}-60000`);
+}
+assert.strictEqual(SESSION_STRETCH_PAUSE_MAX_MS, 60000, 'cada silêncio esticado vai até 60 s');
+assert.strictEqual(new Set(stretched.map((item) => item.pauseMs - (item.kind === 'journey' ? 10000 : 0))).size, 1, 'o que falta é dividido por igual');
+for (const key of ['guide:breath', 'desire', 'guide:bridge']) {
+  const pick = (items) => items.find((item) => (item.kind === 'guide' ? item.id : item.kind) === key).pauseMs;
+  assert.strictEqual(pick(tiny), pick(long), `${key}: silêncio fixo, a história curta não mexe nele`);
+}
+assert.ok(long.every((item) => item.kind !== 'affirmation' || item.pauseMs === 20000), 'história longa: afirmações seguem com 20 s');
+// Sem afirmações e sem jornada não há onde pôr o que falta: a sessão sai como está, sem erro.
+const bare = sessionItemsForState(
+  { ...stateWith(100), manifestations: [{ ...stateWith(100).manifestations[0], affirmation: '', journeySuiteByLang: {} }] },
+  'pt',
+  DAY,
+  []
+);
+assert.ok(bare.length > 0 && bare.every((item) => item.pauseMs === undefined || Number.isFinite(item.pauseMs)), 'sessão sem afirmações nem jornada continua montando');
+// A sessão existe? A mesma resposta do roteiro, sem montar os itens.
+assert.strictEqual(hasGuidedSession(reference, 'pt'), true, 'com Cena-Âncora há sessão');
+assert.strictEqual(hasGuidedSession({ ...reference, manifestations: [] }, 'pt'), false, 'sem Cena-Âncora não há sessão');
+assert.strictEqual(hasGuidedSession(null, 'pt'), false, 'sem estado não há sessão');
 const referencePause = sceneOf(sessionItemsForState(reference, 'pt', DAY)).pauseMs;
 assert.ok(referencePause > sceneOf(long).pauseMs, 'história maior precisa de pausa menor');
 assert.ok(sceneOf(long).pauseMs >= 30000, 'pausa da cena nunca abaixo de 30 s');
@@ -300,8 +333,25 @@ assert.ok(
   /import \{[^}]*\bsessionItemsForState\b[^}]*\} from '\.\.\/utils\/guidedSession';/.test(code) &&
     /export default function WakeSequenceScreen\(\{\s*route\s*\}\)/.test(code) &&
     code.includes("const session = route?.params?.mode === 'session';") &&
-    code.includes('session ? sessionItemsForState(state, lang, todayISO()) : wakeSequenceItemsForState(state, lang)'),
+    code.includes('session ? sessionItemsForState(state, lang, day) : wakeSequenceItemsForState(state, lang)'),
   'modo sessão: itens de sessionItemsForState; fora dele, os do despertar'
+);
+// Meia-noite: o dia da sessão é lido uma vez, ao abrir a tela, e vale para os itens, a jornada, o "já registrei" e o
+// registro. Nenhum outro todayISO() na tela.
+assert.ok(
+  code.includes('const [day] = useState(todayISO);') &&
+    code.split('todayISO').length === 3 &&
+    code.includes('const journey = session ? journeyForDay(day) : null;') &&
+    code.includes('const registeredNow = tapped || state?.guidedSession?.lastDoneOn === day;') &&
+    /registerGuidedSession\(\{\s*note,\s*bridge: bridgeDone,\s*day\s*\}\)/.test(code),
+  'o dia da sessão precisa ser congelado ao abrir a tela e usado nos itens, na jornada e no registro'
+);
+// O fim do despertar comum só pergunta se existe sessão (memo), sem montar o roteiro a cada desenho.
+assert.ok(
+  code.includes('const sessionOffered = useMemo(() => !session && hasGuidedSession(state, lang), [session, state, lang]);') &&
+    code.includes("{sessionOffered && phase === 'done' ? <PrimaryButton testID=\"wake-open-session\"") &&
+    code.split('sessionItemsForState(').length === 2,
+  'a tela monta o roteiro da sessão uma vez só (useMemo); para saber se existe sessão usa hasGuidedSession'
 );
 
 // Clipe embutido: só com a voz da Celeste liberada e sem quebra anterior; a queda é a mesma do playPersonal.
@@ -310,12 +360,22 @@ const cloudAt = playItemBlock.indexOf('if (latest.current.cloudVoice && !cloudBr
 const cloudBranch = playItemBlock.slice(cloudAt);
 assert.ok(
   cloudAt >= 0 &&
-    /item\.clipId\s*\?\s*voice\.playBundled\(\{\s*clipId: item\.clipId,\s*narratorId: voice\.narratorId,\s*lang: item\.lang,\s*playbackId\s*\}\)\s*:\s*voice\.playPersonal\(\{/.test(cloudBranch) &&
+    /item\.clipId\s*\?\s*voice\.playBundled\(\{\s*clipId: item\.clipId,\s*narratorId: voice\.narratorId,\s*lang: item\.lang,\s*playbackId\s*\}\)[\s\S]{0,160}:\s*personal\(\)/.test(cloudBranch) &&
+    /const personal = \(\) => voice\.playPersonal\(\{\s*text: item\.text,\s*lang: item\.lang,\s*playbackId\s*\}\);/.test(cloudBranch) &&
     !/playBundled/.test(playItemBlock.slice(0, cloudAt)),
   'item com clipId toca o clipe embutido (playBundled) só no ramo da voz da Celeste; sem clipId, playPersonal'
 );
+// Clipe que falta ou falha: antes da voz do aparelho, a voz da Celeste lê o texto daquele item pelo mesmo caminho
+// dos itens dela (playPersonal). Só se isso também falhar entra a voz do aparelho (e aí vale "uma voz só").
 assert.ok(
-  /\.then\([\s\S]*deviceFallback\(playbackId, epoch\)[\s\S]*\.catch\(\(\) => deviceFallback\(playbackId, epoch\)\)/.test(cloudBranch) &&
+  /voice\s*\.playBundled\(\{[^}]*\}\)\s*\.then\(\s*result => clipFailed\(result\) \? personal\(\) : result,\s*\(\) => mine\(\) \? personal\(\) : null\s*\)/.test(cloudBranch) &&
+    /const clipFailed = result =>\s*mine\(\) && !\(result && result\.ok && !result\.ready\) && !\(result && result\.error === 'audio_cancelled'\);/.test(cloudBranch) &&
+    cloudBranch.includes('clipTryRef.current = item.clipId ? playbackId : null;') &&
+    /narration\.phase === 'error' && !narration\.activePlaybackId && clipTryRef\.current !== playbackId\) \{\s*deviceFallback\(/.test(code),
+  'clipe embutido que falha precisa tentar a voz da Celeste com o texto do item antes da voz do aparelho'
+);
+assert.ok(
+  /\.then\([\s\S]*deviceFallback\(playbackId, epoch\)[\s\S]*\.catch\(\(\) => \{[\s\S]{0,120}deviceFallback\(playbackId, epoch\);\s*\}\)/.test(cloudBranch) &&
     /speakWithDevice\(item, epoch\);\s*\}\s*$/.test(playItemBlock),
   'clipe que falta ou falha cai na voz do aparelho; sem a voz da Celeste, o aparelho lê tudo'
 );
@@ -379,15 +439,15 @@ assert.ok(
 // Uma voz só também no aparelho nativo: item pessoal recusado pelo servidor é lido pela voz do aparelho
 // ({ ok: true, voice: 'device' }); dali em diante os clipes da guia não voltam para a voz da Celeste.
 assert.ok(
-  /\.then\(result => \{\s*if \(session && result && result\.voice === 'device'\) \{\s*cloudBrokenRef\.current = true;\s*setDeviceInsteadOfCeleste\(true\);\s*\}\s*if \(result && result\.ok && !result\.ready\) return;/.test(cloudBranch),
+  /\.then\(result => \{\s*if \(clipTryRef\.current === playbackId\) clipTryRef\.current = null;\s*if \(session && result && result\.voice === 'device'\) \{\s*cloudBrokenRef\.current = true;\s*setDeviceInsteadOfCeleste\(true\);\s*\}\s*if \(result && result\.ok && !result\.ready\) return;/.test(cloudBranch),
   'na sessão, a voz do aparelho que leu um item recusado segue até o fim, com o aviso'
 );
 
 // Contexto: uma ação nova, uma gravação só, e o dia salvo é um dia de verdade.
 const context = read('context/AppContext.js');
 assert.ok(
-  /const registerGuidedSession = useCallback\(\s*\(\{ note, bridge \} = \{\}\) =>\s*setState\(\(s\) =>\s*applyGuidedSessionDone\(s, \{ day: todayISO\(\), note, bridge, now: new Date\(\)\.toISOString\(\) \}\)\s*\),\s*\[\]\s*\);/.test(context),
-  'registerGuidedSession grava pelo applyGuidedSessionDone numa transformação só'
+  /const registerGuidedSession = useCallback\(\s*(?:\/\/[^\n]*\n\s*)*\(\{ note, bridge, day \} = \{\}\) =>\s*setState\(\(s\) =>\s*applyGuidedSessionDone\(s, \{ day: day \|\| todayISO\(\), note, bridge, now: new Date\(\)\.toISOString\(\) \}\)\s*\),\s*\[\]\s*\);/.test(context),
+  'registerGuidedSession grava pelo applyGuidedSessionDone numa transformação só, no dia que a tela congelou (hoje só se faltar)'
 );
 assert.ok(context.split('      registerGuidedSession,').length >= 3, 'registerGuidedSession exposto no valor do contexto');
 const validDaySource = /const validDay = [\s\S]*?;\n/.exec(context);
@@ -406,11 +466,75 @@ assert.deepStrictEqual(loadGuided({ guidedSession: { lastDoneOn: DAY } }), { las
 const app = read('App.js');
 const choiceAt = app.indexOf('if (loaded) setWakeOpensSession(opensSession);');
 assert.ok(
-  app.includes('const opensSession = ritual?.wakeOpensSession === true;') &&
+  // Sem Cena-Âncora a sessão não tem itens: o lembrete volta ao despertar comum mesmo com a escolha salva ligada.
+  app.includes('const hasSession = React.useMemo(() => hasGuidedSession(state, lang), [state, lang]);') &&
+    app.includes('const opensSession = ritual?.wakeOpensSession === true && hasSession;') &&
     choiceAt >= 0 &&
     choiceAt < app.indexOf('const sync = () => void syncWakeReminders(') &&
     app.includes('}, [loaded, opensSession]);'),
   'App: a escolha salva de abrir com a sessão precisa chegar aos lembretes antes de syncWakeReminders'
+);
+
+// Abrir de fora de novo: o endereço do despertar e da sessão ganha um `run` novo a cada leitura (a tela usa como
+// chave) e o `run` nunca aparece no endereço. Com o leitor e o escritor de endereços de verdade.
+const navigationCore = (file) => require(`../node_modules/@react-navigation/core/lib/commonjs/${file}.js`).default;
+const runSource = /let wakeRuns = 0;\nconst withWakeRun = [\s\S]*?\nconst withoutWakeRun = [\s\S]*?;\n(?=\nconst linking = \{)/.exec(app);
+assert.ok(runSource, 'App: withWakeRun e withoutWakeRun ausentes');
+// eslint-disable-next-line no-new-func
+const { withWakeRun, withoutWakeRun } = new Function(`${runSource[0]}return { withWakeRun, withoutWakeRun };`)();
+assert.ok(
+  /getStateFromPath\(path, options\) \{\s*return withWakeRun\(safeNavigationStateFromPath\(path, options, getNavigationStateFromPath\)\);/.test(app) &&
+    /getPathFromState\(state, options\) \{\s*return withoutWakeRun\(getNavigationPathFromState\(state, options\)\);/.test(app),
+  'App: o linking precisa pôr o run ao ler o endereço e tirá-lo ao escrever'
+);
+// A tela registrada no App é a do despertar com a chave `run`: run novo, tela remontada do começo.
+assert.ok(
+  app.includes("import WakeSequenceRun from './screens/WakeSequenceScreen';") &&
+    /function WakeSequenceScreen\(\{ route \}\) \{\s*return <WakeSequenceRun key=\{route\?\.params\?\.run \|\| 'app'\} route=\{route\} \/>;\s*\}/.test(app) &&
+    /<Root\.Screen\s+name="WakeSequence"\s+component=\{WakeSequenceScreen\}/.test(app),
+  'App: cada abertura de fora (run novo) precisa remontar a tela do despertar do começo'
+);
+const navConfig = { screens: { Main: '', AffirmationAlarm: 'despertar', WakeSequence: 'despertar/ouvir/:mode?' } };
+const openFromOutside = (address) => withWakeRun(navigationCore('getStateFromPath')(address, navConfig));
+for (const address of ['despertar/ouvir/session', 'despertar/ouvir']) {
+  const first = openFromOutside(address).routes[0];
+  const second = openFromOutside(address).routes[0];
+  assert.strictEqual(first.name, 'WakeSequence', `${address} abre o despertar`);
+  assert.ok(first.params.run && second.params.run && first.params.run !== second.params.run, `${address}: abrir de novo precisa de um run novo`);
+  assert.strictEqual(first.params.mode, address.endsWith('session') ? 'session' : undefined, `${address}: o modo não muda`);
+  assert.strictEqual(
+    withoutWakeRun(navigationCore('getPathFromState')({ routes: [second] }, navConfig)),
+    `/${address}`,
+    `${address}: o run não pode aparecer no endereço`
+  );
+}
+assert.strictEqual(openFromOutside('despertar').routes[0].params, undefined, 'as outras telas não ganham run');
+assert.strictEqual(withWakeRun(undefined), undefined, 'endereço recusado continua recusado');
+for (const [from, to] of [
+  ['/despertar/ouvir/session?run=3', '/despertar/ouvir/session'],
+  ['/despertar/ouvir?run=3&utm=a', '/despertar/ouvir?utm=a'],
+  ['/despertar/ouvir?utm=a&run=3', '/despertar/ouvir?utm=a'],
+  ['/despertar/ouvir?utm=a&run=3&x=1', '/despertar/ouvir?utm=a&x=1'],
+  ['/m/prune=1', '/m/prune=1'],
+  ['/despertar/ouvir/?run=3', '/despertar/ouvir'],
+  ['/', '/'],
+]) {
+  assert.strictEqual(withoutWakeRun(from), to, `withoutWakeRun(${from})`);
+}
+
+// Home: a explicação da sessão (ⓘ) tem o fundo como irmão da folha (toque dentro não fecha; o leitor de tela lê as
+// linhas), e saber se existe sessão não monta o roteiro a cada desenho.
+const homeSource = read('screens/HomeScreen.js');
+assert.ok(
+  /<View accessibilityViewIsModal style=\{styles\.sessionInfoBackdrop\}>\s*<Pressable\s+testID="session-info-backdrop"[\s\S]{0,220}style=\{StyleSheet\.absoluteFill\}\s*\/>\s*<View testID="session-info-sheet"/.test(homeSource) &&
+    !/<Pressable[^>]*style=\{styles\.sessionInfoBackdrop\}/.test(homeSource),
+  'Home: a folha da explicação não pode ficar dentro do botão de fechar do fundo'
+);
+assert.ok(
+  homeSource.includes('const hasSession = useMemo(() => hasGuidedSession(state, lang), [state, lang]);') &&
+    homeSource.indexOf('const hasSession = useMemo(') < homeSource.indexOf('if (loading || !state) {') &&
+    !homeSource.includes('sessionItemsForState'),
+  'Home: existir sessão é um useMemo barato (hasGuidedSession), não o roteiro inteiro a cada desenho'
 );
 
 process.stdout.write('sessao de 7 minutos: ok\n');

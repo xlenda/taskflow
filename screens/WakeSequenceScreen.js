@@ -33,7 +33,7 @@ import {
 } from '../utils/captionProgress';
 import { accentAt, alpha } from '../utils/colors';
 import { todayISO } from '../utils/date';
-import { sessionItemsForState, sessionSeconds } from '../utils/guidedSession';
+import { hasGuidedSession, sessionItemsForState, sessionSeconds } from '../utils/guidedSession';
 import { pickReadyScene } from '../utils/readyScene';
 import { hasUnifiedCloudMediaConsent } from '../utils/useCloudMediaConsent';
 import { usePersonalNarration } from '../utils/usePersonalNarration';
@@ -186,12 +186,17 @@ export default function WakeSequenceScreen({ route }) {
   const narration = usePersonalNarration();
   // The 4:5 scene stays under half the window height, keeping the controls on screen.
   const sceneSize = { maxWidth: Math.min(420, Math.round(useWindowDimensions().height * 0.38)) };
+  // The session's day, frozen when the screen opens: a session that crosses midnight keeps its affirmations and its
+  // journey, and marks the day it began.
+  const [day] = useState(todayISO);
   const items = useMemo(
-    () => (session ? sessionItemsForState(state, lang, todayISO()) : wakeSequenceItemsForState(state, lang)),
-    [session, state, lang]
+    () => (session ? sessionItemsForState(state, lang, day) : wakeSequenceItemsForState(state, lang)),
+    [session, state, lang, day]
   );
+  // The plain wake-up offers the session at its end only when she has one (an Anchor Scene).
+  const sessionOffered = useMemo(() => !session && hasGuidedSession(state, lang), [session, state, lang]);
   // The week's theme, shown at the bridge and on the final card (her eyes are closed until the bridge).
-  const journey = session ? journeyForDay(todayISO()) : null;
+  const journey = session ? journeyForDay(day) : null;
   // Website and Android: the Celeste voice when she already allowed it (refused by the server, the narration reads
   // with the device voice and says so); otherwise, and always on iPhone, the device voice.
   const cloudVoice = narration.personalNarrationAvailable && hasUnifiedCloudMediaConsent(state?.profile);
@@ -226,6 +231,7 @@ export default function WakeSequenceScreen({ route }) {
   const resumeAtRef = useRef(0); // what Continue plays: this item, or the next one during the breath
   const cloudIdRef = useRef(null);
   const cloudBrokenRef = useRef(false);
+  const clipTryRef = useRef(null); // the playback whose shipped clip is still being tried (start or its retry)
   const deviceActiveRef = useRef(false);
   const gapRef = useRef(null);
   const watchdogRef = useRef(null);
@@ -362,13 +368,27 @@ export default function WakeSequenceScreen({ route }) {
       const voice = latest.current.narration;
       setVoiceText(voice.spokenText(item.text, item.lang));
       // A guide or journey line is a clip that ships with the app, in the voice she chose (prime: the same unlock
-      // playPersonal does). Missing or broken, it falls to the device voice like any other item.
+      // playPersonal does). Missing or broken, the Celeste voice reads that line's text, like her own items; only
+      // if that fails too does the device voice take over.
+      const personal = () => voice.playPersonal({ text: item.text, lang: item.lang, playbackId });
+      const mine = () => cloudIdRef.current === playbackId && epochRef.current === epoch;
+      const clipFailed = (result) =>
+        mine() && !(result && result.ok && !result.ready) && !(result && result.error === 'audio_cancelled');
       if (item.clipId) voice.prime();
+      // While the clip and its retry are open, the narration's own 'error' does not call the device voice (effect
+      // below): this chain decides.
+      clipTryRef.current = item.clipId ? playbackId : null;
       (item.clipId
-        ? voice.playBundled({ clipId: item.clipId, narratorId: voice.narratorId, lang: item.lang, playbackId })
-        : voice.playPersonal({ text: item.text, lang: item.lang, playbackId })
+        ? voice
+            .playBundled({ clipId: item.clipId, narratorId: voice.narratorId, lang: item.lang, playbackId })
+            .then(
+              (result) => (clipFailed(result) ? personal() : result),
+              () => (mine() ? personal() : null)
+            )
+        : personal()
       )
         .then((result) => {
+          if (clipTryRef.current === playbackId) clipTryRef.current = null;
           // Playing: the end arrives as lastCompletedPlaybackId (effect below).
           // Session: one voice. The server refused this item and the narration read it with the device voice
           // (native): the next clips stay with the device voice too, and the screen says so.
@@ -388,7 +408,10 @@ export default function WakeSequenceScreen({ route }) {
           }
           deviceFallback(playbackId, epoch);
         })
-        .catch(() => deviceFallback(playbackId, epoch));
+        .catch(() => {
+          if (clipTryRef.current === playbackId) clipTryRef.current = null;
+          deviceFallback(playbackId, epoch);
+        });
       return;
     }
     speakWithDevice(item, epoch);
@@ -448,7 +471,7 @@ export default function WakeSequenceScreen({ route }) {
     if (registered.current) return;
     registered.current = true;
     setTapped(true);
-    registerGuidedSession({ note, bridge: bridgeDone });
+    registerGuidedSession({ note, bridge: bridgeDone, day });
   }
 
   // The ring and the minutes left move while the silence runs.
@@ -470,7 +493,7 @@ export default function WakeSequenceScreen({ route }) {
     if (narration.lastCompletedPlaybackId === playbackId) {
       cloudIdRef.current = null;
       itemFinished(epochRef.current);
-    } else if (narration.phase === 'error' && !narration.activePlaybackId) {
+    } else if (narration.phase === 'error' && !narration.activePlaybackId && clipTryRef.current !== playbackId) {
       deviceFallback(playbackId, epochRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -555,7 +578,7 @@ export default function WakeSequenceScreen({ route }) {
 
   const ended = phase === 'done' || phase === 'stopped';
   const currentScene = scene && current && scene.id === current.id ? scene : null;
-  const registeredNow = tapped || state?.guidedSession?.lastDoneOn === todayISO();
+  const registeredNow = tapped || state?.guidedSession?.lastDoneOn === day;
   // What the session still takes: the items from here on, or the rest of this silence and what comes after it.
   const secondsLeft =
     session && current
@@ -688,7 +711,7 @@ export default function WakeSequenceScreen({ route }) {
         </Text>
         <PrimaryButton testID="wake-restart" label={S.again} icon="refresh" onPress={() => retryWithCeleste(0)} style={styles.cardAction} />
         {/* The plain wake-up offers the session when she has one (an Anchor Scene). A fresh screen: stars again. */}
-        {!session && phase === 'done' && sessionItemsForState(state, lang, todayISO()).length > 0 ? (
+        {sessionOffered && phase === 'done' ? (
           <PrimaryButton
             testID="wake-open-session"
             label={S.openSession}

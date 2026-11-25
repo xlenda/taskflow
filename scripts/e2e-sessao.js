@@ -13,6 +13,28 @@ const STORAGE_KEY = '@stella_state_v2';
 const SHOT_DIR = path.join(ROOT, 'output', 'sessao-e2e'); // fora do git
 const VIEWPORT = { width: 390, height: 844, deviceScaleFactor: 1 };
 const NOTE = 'Vi um sinal no caminho.';
+const CLOUD_CONSENT_VERSION = 'celeste-cloud-processors-v2'; // constants/cloudConsent.js (site)
+const AUDIO_FIXTURE = fs.readFileSync(path.join(ROOT, 'assets', 'audio', 'previews', 'luma-pt.wav'));
+const jwtPart = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+// Sessão anônima de mentira para a voz da Celeste (o pedido de áudio leva o token dela); nada sai para a rede.
+const mockSession = () => ({
+  access_token: `${jwtPart({ alg: 'none', typ: 'JWT' })}.${jwtPart({ aud: 'authenticated', role: 'authenticated', sub: '00000000-0000-4000-8000-000000000001', exp: 4102444800 })}.e2e`,
+  token_type: 'bearer',
+  expires_in: 2147483647,
+  expires_at: 4102444800,
+  refresh_token: 'celeste-sessao-e2e-refresh-token',
+  user: {
+    id: '00000000-0000-4000-8000-000000000001',
+    aud: 'authenticated',
+    role: 'authenticated',
+    app_metadata: { provider: 'anonymous', providers: ['anonymous'] },
+    user_metadata: {},
+    identities: [],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_anonymous: true,
+  },
+});
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const tid = (id) => `[data-testid="${id}"]`;
 
@@ -117,6 +139,12 @@ const screenText = (page) =>
   });
 
 const pathOf = (page) => new URL(page.url()).pathname;
+// Semeia o estado com o app parado (numa página estática do mesmo endereço): com o app de pé, uma gravação dele
+// ainda na fila poderia passar por cima da semente.
+async function seed(page, base, value) {
+  await page.goto(`${base}/legal.css`, { waitUntil: 'load', timeout: 60000 });
+  await page.evaluate((key, state) => localStorage.setItem(key, JSON.stringify(state)), STORAGE_KEY, value);
+}
 const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), STORAGE_KEY);
 
 (async () => {
@@ -185,6 +213,25 @@ const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getI
     });
     if (!closeReachable) fail('o botão de fechar a explicação está coberto ou fora da tela');
     await page.screenshot({ path: path.join(SHOT_DIR, '02-info.png') });
+    // Tocar dentro da folha (num texto) não fecha; tocar no fundo fecha; o botão também.
+    const inside = await page.$eval(tid('session-info-sheet'), (el) => {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + 30 };
+    });
+    await page.mouse.click(inside.x, inside.y);
+    await sleep(500);
+    if (!(await shown(page, 'session-info-sheet'))) fail('tocar dentro da explicação fechou a explicação');
+    const sheetLabel = await page.$eval(tid('session-info-sheet'), (el) => {
+      const button = el.closest('[role="button"]');
+      return button ? button.getAttribute('aria-label') || 'botão' : '';
+    });
+    if (sheetLabel) fail(`a explicação está dentro de um botão ("${sheetLabel}"): o leitor de tela só lê o botão`);
+    await page.mouse.click(6, 6);
+    await page.waitForSelector(tid('session-info-sheet'), { hidden: true, timeout: 10000 })
+      .catch(() => fail('tocar no fundo não fechou a explicação'));
+    await click(page, 'session-info');
+    await page.waitForSelector(tid('session-info-sheet'), { visible: true, timeout: 10000 });
+    await sleep(400);
     await click(page, 'session-info-close');
     await page.waitForSelector(tid('session-info-sheet'), { hidden: true, timeout: 10000 });
 
@@ -284,6 +331,131 @@ const savedState = (page) => page.evaluate((key) => JSON.parse(localStorage.getI
     await page.waitForFunction(() => location.pathname === '/despertar/ouvir', { timeout: 10000 });
     await assertFreshStart(page, 'despertar depois de uma sessão aberta a frio');
     if (!(await screenText(page)).includes('Ouvir meu despertar')) fail('"Ouvir agora" abriu a tela da sessão, não a do despertar');
+
+    // 10b. O mesmo link aberto de novo com a sessão parada no cartão final (ela saiu do app ali e tocou no lembrete
+    // ou no link outra vez): começa de novo pelas estrelas, sem recarregar a página. O endereço chega pelo linking
+    // (popstate numa entrada à frente), o mesmo caminho do toque no lembrete: lê o endereço e despacha a navegação.
+    await page.goto(`${server.url}/`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await click(page, 'open-session');
+    await page.waitForFunction(() => location.pathname === '/despertar/ouvir/session', { timeout: 10000 });
+    await playToEnd(page, 'session-complete');
+    await page.evaluate(() => {
+      window.__sameDocument = true; // some se a página recarregar
+      history.pushState(history.state, '', '/despertar/ouvir/session?utm_source=lembrete');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    });
+    await assertFreshStart(page, 'o mesmo link aberto de novo com a sessão no cartão final');
+    if (!(await page.evaluate(() => window.__sameDocument === true))) fail('abrir o link de novo recarregou a página');
+    if (!(await screenText(page)).includes('Sua sessão de 7 minutos')) fail('o link aberto de novo não ficou na sessão');
+    await sleep(300);
+    if (/run=/.test(page.url())) fail(`o run da abertura apareceu no endereço: ${page.url()}`);
+    // E de novo, já na tela recomeçada e tocando: outra abertura, outro começo.
+    for (const star of [1, 2, 3]) await click(page, `trace-star-${star}`);
+    await page.waitForSelector(tid('wake-player'), { visible: true, timeout: 15000 });
+    await page.evaluate(() => {
+      history.pushState(history.state, '', '/despertar/ouvir/session?utm_source=lembrete2');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    });
+    await assertFreshStart(page, 'o mesmo link aberto de novo com a sessão tocando');
+    // Aberto a frio, o endereço fica limpo (o run é só da navegação).
+    await page.goto(`${server.url}/despertar/ouvir/session`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await assertFreshStart(page, 'sessão aberta a frio');
+    await sleep(300);
+    if (new URL(page.url()).pathname !== '/despertar/ouvir/session' || new URL(page.url()).search) {
+      fail(`sessão aberta a frio ficou em ${page.url()}, esperado /despertar/ouvir/session sem parâmetros`);
+    }
+
+    // 10c. Meia-noite no meio da sessão: ela começa hoje e termina "amanhã". O registro vale para o dia em que
+    // começou, e o cartão final segue o mesmo dia.
+    const realToday = localDay();
+    await seed(page, server.url, seedState());
+    await page.goto(`${server.url}/despertar/ouvir/session`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await assertFreshStart(page, 'sessão antes da meia-noite');
+    await page.evaluate(() => {
+      const Real = Date;
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      window.Date = class extends Real {
+        constructor(...args) {
+          if (args.length) super(...args);
+          else super(Real.now() + DAY_MS);
+        }
+        static now() {
+          return Real.now() + DAY_MS;
+        }
+      };
+    });
+    await playToEnd(page, 'session-complete');
+    if (await shown(page, 'session-streak')) fail('virou o dia e o cartão final já veio como registrado');
+    await click(page, 'session-register');
+    await page.waitForFunction(
+      (key) => !!(JSON.parse(localStorage.getItem(key) || '{}').guidedSession || {}).lastDoneOn,
+      { timeout: 10000 },
+      STORAGE_KEY
+    ).catch(() => fail('o registro depois da meia-noite não foi gravado'));
+    const midnight = await savedState(page);
+    const midnightAnchor = (midnight.manifestations || []).find((item) => item.id === 'm-sessao') || {};
+    if (midnight.guidedSession.lastDoneOn !== realToday) {
+      fail(`sessão que cruzou a meia-noite registrou ${midnight.guidedSession.lastDoneOn}, esperado o dia em que começou (${realToday})`);
+    }
+    if (JSON.stringify(midnightAnchor.sessions) !== JSON.stringify([localDay(-1), realToday])) {
+      fail(`sessions depois da meia-noite: ${JSON.stringify(midnightAnchor.sessions)}, esperado ontem e ${realToday}`);
+    }
+    if (!(await shown(page, 'session-streak'))) fail('depois de registrar, o cartão final não mostrou o dia registrado');
+
+    // 10d. Clipe da guia que falta (ou falha) com a voz da Celeste ligada: quem lê aquela fala é a voz da Celeste,
+    // pelo texto, e a sessão não cai para a voz do aparelho.
+    const audioBodies = [];
+    const onRequest = (request) => {
+      const url = new URL(request.url());
+      if (/\.mp3$/.test(url.pathname)) return void request.abort().catch(() => {});
+      if (url.pathname.endsWith('/auth/v1/signup')) {
+        // outro endereço (Supabase): a resposta de mentira precisa liberar a origem, senão o navegador a recusa
+        const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
+        return void request
+          .respond(
+            request.method() === 'POST'
+              ? { status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(mockSession()) }
+              : { status: 204, headers: cors }
+          )
+          .catch(() => {});
+      }
+      if (request.method() === 'POST' && url.pathname === '/api/gerar-audio') {
+        audioBodies.push(JSON.parse(request.postData() || '{}'));
+        return void request.respond({ status: 200, contentType: 'audio/wav', body: AUDIO_FIXTURE }).catch(() => {});
+      }
+      return void request.continue().catch(() => {});
+    };
+    await page.setRequestInterception(true);
+    page.on('request', onRequest);
+    await seed(page, server.url, {
+      ...seedState(),
+      profile: {
+        cloudConsentVersion: CLOUD_CONSENT_VERSION,
+        cloudAdultConfirmed: true,
+        cloudPersonalization: true,
+        cloudNarrationConsent: true,
+        cloudDreamConsent: true,
+      },
+    });
+    await page.goto(`${server.url}/despertar/ouvir/session`, { waitUntil: 'networkidle2', timeout: 60000 });
+    for (const star of [1, 2, 3]) await click(page, `trace-star-${star}`);
+    await page.waitForSelector(tid('wake-player'), { visible: true, timeout: 15000 });
+    const guideLine = 'Feche os olhos. Inspire devagar';
+    for (let waited = 0; waited < 15000 && !audioBodies.length; waited += 200) await sleep(200);
+    const firstAudio = audioBodies[0];
+    if (!firstAudio) fail('clipe da guia ausente: a voz da Celeste não foi pedida para ler a fala');
+    if (firstAudio.mode !== 'personal' || !String(firstAudio.text || '').startsWith(guideLine)) {
+      fail(`clipe da guia ausente: o pedido de voz não levou o texto da fala: ${JSON.stringify(firstAudio).slice(0, 200)}`);
+    }
+    await sleep(1200);
+    if (await shown(page, 'wake-device-voice-notice')) fail('clipe da guia ausente: a sessão caiu para a voz do aparelho');
+    if (!/^1 de 12/i.test(await page.$eval(tid('wake-position'), (el) => el.innerText))) {
+      fail('clipe da guia ausente: a sessão não ficou na primeira fala');
+    }
+    await page.screenshot({ path: path.join(SHOT_DIR, '09-clipe-ausente-voz-celeste.png') });
+    page.off('request', onRequest);
+    await page.setRequestInterception(false);
+    await seed(page, server.url, midnight);
 
     // 11. Tela estreita (320x480), no estado mais largo ("Feita hoje"): o dia da jornada aparece inteiro e nada
     // sai do cartão. Medido nos elementos, não lido do texto.

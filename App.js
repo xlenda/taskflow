@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   NavigationContainer,
+  getPathFromState as getNavigationPathFromState,
   getStateFromPath as getNavigationStateFromPath,
 } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -63,6 +64,7 @@ import {
   syncWakeReminders,
 } from './services/wakeReminders';
 import { wakeSequenceItemsForState } from './utils/wakeSequence';
+import { hasGuidedSession } from './utils/guidedSession';
 
 import HomeScreen from './screens/HomeScreen';
 import ManifestationScreen from './screens/ManifestationScreen';
@@ -73,7 +75,7 @@ import JourneyScreen from './screens/JourneyScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import MorningRitualScreen from './screens/MorningRitualScreen';
 import AffirmationAlarmScreen from './screens/AffirmationAlarmScreen';
-import WakeSequenceScreen from './screens/WakeSequenceScreen';
+import WakeSequenceRun from './screens/WakeSequenceScreen';
 import DailyRitualScreen from './screens/DailyRitualScreen';
 import PracticePlanScreen from './screens/PracticePlanScreen';
 import PracticeRitualScreen from './screens/PracticeRitualScreen';
@@ -604,7 +606,10 @@ function WakeReminderSync() {
   }, [loaded, enabled, hasSequence]);
   // Her saved choice ("open with the 7-minute session") reaches the reminders before the sync below: after a
   // reinstall or a restore they are re-created with the right address, not as the plain wake-up.
-  const opensSession = ritual?.wakeOpensSession === true;
+  // Without an Anchor Scene there is no session to open (she may delete it with the choice still on): the reminder
+  // goes back to the plain wake-up.
+  const hasSession = React.useMemo(() => hasGuidedSession(state, lang), [state, lang]);
+  const opensSession = ritual?.wakeOpensSession === true && hasSession;
   React.useEffect(() => {
     if (loaded) setWakeOpensSession(opensSession);
   }, [loaded, opensSession]);
@@ -885,6 +890,22 @@ function RootNav() {
 // (history.back() vai pro site anterior). Com um path por tela, o voltar anda
 // tela a tela e F5 recarrega na mesma tela — o fallback SPA do Vercel já manda
 // qualquer path pro index.html. Paths são chaves técnicas, não passam por i18n.
+// Every open of the wake-up or the session that comes from outside (link, reminder) is a new run: the address gets
+// a `run` that keys the screen, so a screen left on its final card starts over from the stars instead of showing
+// that card again. The `run` never shows in the address bar.
+function WakeSequenceScreen({ route }) {
+  return <WakeSequenceRun key={route?.params?.run || 'app'} route={route} />;
+}
+let wakeRuns = 0;
+const withWakeRun = (state) => {
+  const route = state?.routes?.find((item) => item.name === 'WakeSequence');
+  if (route) route.params = { ...route.params, run: String((wakeRuns += 1)) };
+  return state;
+};
+// (the path writer only drops the trailing slash of an address without a query, so it is dropped again here)
+const withoutWakeRun = (path) =>
+  path.replace(/([?&])run=[^&#]*(&|$)/, (_match, lead, tail) => (tail ? lead : '')).replace(/(.)\/$/, '$1');
+
 const linking = {
   prefixes: [APP_URL, 'celeste://'],
   // Native React Navigation evaluates filter before extracting a path. Web v6
@@ -893,7 +914,10 @@ const linking = {
     return isSafeNavigationPath(url);
   },
   getStateFromPath(path, options) {
-    return safeNavigationStateFromPath(path, options, getNavigationStateFromPath);
+    return withWakeRun(safeNavigationStateFromPath(path, options, getNavigationStateFromPath));
+  },
+  getPathFromState(state, options) {
+    return withoutWakeRun(getNavigationPathFromState(state, options));
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();

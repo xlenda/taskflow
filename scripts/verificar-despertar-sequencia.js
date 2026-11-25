@@ -562,7 +562,10 @@ const opensSessionToggle = alarmScreen.slice(
   alarmScreen.indexOf('const addItem = useCallback')
 );
 assert.ok(
-  /\{reminderMode \? \(\s*<View style=\{\[styles\.sessionRow[\s\S]{0,400}testID="wake-opens-session"[\s\S]{0,200}onValueChange=\{toggleOpensSession\}/.test(alarmScreen) &&
+  // Sem Cena-Âncora não há sessão para abrir: o interruptor some (a mesma regra do roteiro: a opção 'anchor').
+  /\{reminderMode && hasSession \? \(\s*<View style=\{\[styles\.sessionRow[\s\S]{0,400}testID="wake-opens-session"[\s\S]{0,200}onValueChange=\{toggleOpensSession\}/.test(alarmScreen) &&
+    alarmScreen.includes("const hasSession = options.some((option) => option.kind === 'anchor');") &&
+    !/\{reminderMode \? \(\s*<View style=\{\[styles\.sessionRow/.test(alarmScreen) &&
     opensSessionToggle.includes('saveMorningRitualPreferences({ wakeOpensSession: value })') &&
     !/WakeReminders|setWakeOpensSession|requestPermissionsAsync/.test(opensSessionToggle) &&
     !/syncWakeReminders|setWakeOpensSession/.test(alarmScreen),
@@ -1143,6 +1146,20 @@ async function verifyWakeReminders() {
   service.setWakeOpensSession(true);
   assert.strictEqual((await service.syncWakeReminders(plan)).changed, true, 'ligar a sessão precisa refazer os lembretes');
   assert.deepStrictEqual(urlsOnDevice(mock), [SESSION_URL], 'lembrete ligado na sessão continuou no despertar comum');
+  // O lembrete diz o que o toque abre: quem abre a sessão não promete "sua sequência".
+  const wordsOnDevice = (m) => [...new Set([...m.live.values()].map((item) => `${item.content.title} | ${item.content.body}`))];
+  assert.deepStrictEqual(
+    wordsOnDevice(mock),
+    ['Sua sessão de 7 minutos | Toque, acenda as três estrelas e só ouça.'],
+    'lembrete que abre a sessão precisa falar da sessão, não da sequência'
+  );
+  await service.syncWakeReminders({ ...plan, lang: 'en' });
+  assert.deepStrictEqual(
+    wordsOnDevice(mock),
+    ['Your 7-minute session | Tap, light the three stars and just listen.'],
+    'lembrete da sessão em inglês'
+  );
+  await service.syncWakeReminders(plan);
   assert.strictEqual(wakeOnDevice(mock).length, 2, 'trocar o endereço duplicou os lembretes');
   assert.deepStrictEqual(await service.syncWakeReminders(plan), { ok: true, changed: false });
   // App recém-aberto (a tela ainda não disse a escolha): a sincronia conserva o endereço que já está agendado.
@@ -1158,6 +1175,11 @@ async function verifyWakeReminders() {
   service.setWakeOpensSession(false);
   await service.syncWakeReminders({ ...plan, time: '09:00' });
   assert.deepStrictEqual(urlsOnDevice(mock), ['celeste://despertar/ouvir'], 'desligar a sessão não voltou ao despertar comum');
+  assert.deepStrictEqual(
+    wordsOnDevice(mock),
+    ['Seu despertar está pronto | Toque, acenda as três estrelas e ouça sua sequência.'],
+    'lembrete do despertar comum perdeu o texto da sequência'
+  );
   service.setWakeOpensSession(undefined);
 
   // 13c. Ritual diário: a limpeza de último recurso (troca de horário com os dois cancelamentos falhando) apaga só os

@@ -2387,9 +2387,10 @@ export function AppProvider({ children }) {
 
   // Fim da sessão de 7 minutos: prática de hoje, ponte (se ela fez) e a linha dela, numa gravação só.
   const registerGuidedSession = useCallback(
-    ({ note, bridge } = {}) =>
+    // `day`: o dia em que a sessão começou (a tela o congela ao abrir), para a meia-noite não trocar o registro.
+    ({ note, bridge, day } = {}) =>
       setState((s) =>
-        applyGuidedSessionDone(s, { day: todayISO(), note, bridge, now: new Date().toISOString() })
+        applyGuidedSessionDone(s, { day: day || todayISO(), note, bridge, now: new Date().toISOString() })
       ),
     []
   );

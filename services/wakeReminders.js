@@ -96,13 +96,24 @@ async function cancelEachQuietly(client, identifiers) {
   }
 }
 
+// The words say what the tap opens: her sequence, or the 7-minute session.
+const WAKE_COPY = {
+  [WAKE_URL]: {
+    pt: ['Seu despertar está pronto', 'Toque, acenda as três estrelas e ouça sua sequência.'],
+    en: ['Your wake-up is ready', 'Tap, light the three stars and listen to your sequence.'],
+  },
+  [WAKE_SESSION_URL]: {
+    pt: ['Sua sessão de 7 minutos', 'Toque, acenda as três estrelas e só ouça.'],
+    en: ['Your 7-minute session', 'Tap, light the three stars and just listen.'],
+  },
+};
+
 function wakeContent(lang, slot, url) {
   const en = lang === 'en';
+  const [title, body] = (WAKE_COPY[url] || WAKE_COPY[WAKE_URL])[en ? 'en' : 'pt'];
   return {
-    title: en ? 'Your wake-up is ready' : 'Seu despertar está pronto',
-    body: en
-      ? 'Tap, light the three stars and listen to your sequence.'
-      : 'Toque, acenda as três estrelas e ouça sua sequência.',
+    title,
+    body,
     sound: true,
     data: { kind: WAKE_NOTIFICATION_KIND, url, lang: en ? 'en' : 'pt', slot },
   };
