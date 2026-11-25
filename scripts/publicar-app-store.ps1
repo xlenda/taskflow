@@ -76,7 +76,8 @@ O script nunca executa eas login, nunca pede senha e nunca grava credenciais.
 -StartBuild e obrigatorio para criar um build. -Submit envia ao TestFlight;
 o envio para revisao da App Store continua manual.
 Todos os modos exigem a chave publica do RevenueCat no EAS production
-(EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, formato appl_...).
+(EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, formato appl_...) e o audio da sessao
+completo (npm run verify:session-audio: os 744 clipes gerados e no manifesto).
 '@ | Write-Output
 }
 
@@ -94,13 +95,14 @@ if (-not $CheckOnly -and -not $StartBuild -and -not $Submit) {
 
 function Test-CelesteLegalPagesLive {
   # A ficha da App Store aponta para /privacidade (e /privacy) e, com a assinatura,
-  # para os Termos em /terms; a Apple abre essas URLs na revisao. Devolve a lista
-  # de problemas; vazia = paginas com o controlador ja no ar.
+  # para os Termos em /terms; o paywall em portugues abre /termos. A Apple abre essas
+  # URLs na revisao. Devolve a lista de problemas; vazia = paginas com o controlador ja no ar.
   param([string]$StoreDir, [string]$Cnpj)
   $urls = Get-Content -LiteralPath (Join-Path $StoreDir 'urls.json') -Raw | ConvertFrom-Json
   $privacy = [string]$urls.privacy
   $problems = @()
-  foreach ($url in @($privacy, ($privacy -replace '/privacidade$', '/privacy'), ($privacy -replace '/privacidade$', '/terms'))) {
+  foreach ($page in @('/privacidade', '/privacy', '/terms', '/termos')) {
+    $url = $privacy -replace '/privacidade$', $page
     $html = ''
     try {
       $html = [string](Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30).Content
@@ -166,10 +168,12 @@ try {
   Assert-CelesteRevenueCatIosKey -Scopes $envScopes
   Write-Host 'Login, projectId, variaveis EAS e chave do RevenueCat: OK (valores ocultos)'
 
-  # Fonte das paginas e textos da loja coerentes com o app; regras da assinatura.
+  # Fonte das paginas e textos da loja coerentes com o app; regras da assinatura; audio da sessao.
   Invoke-NpmGate -Npm $npm -Name 'verify:public-pages'
   Invoke-NpmGate -Npm $npm -Name 'verify:store'
   Invoke-NpmGate -Npm $npm -Name 'verify:subscription'
+  # Audio embutido da sessao: os 744 clipes presentes, MP3 validos e iguais ao manifesto e ao mapa.
+  Invoke-NpmGate -Npm $npm -Name 'verify:session-audio'
 
   # Paginas no ar: bloqueia o envio ao TestFlight, so avisa para build/checagem.
   $liveProblems = @(Test-CelesteLegalPagesLive -StoreDir (Join-Path $root 'store-listing') -Cnpj $ControllerCnpj)

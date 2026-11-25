@@ -1,9 +1,10 @@
-// Portao do audio embutido da sessao. Modos: (sem flag) completo (tocador + arquivos); `--estrutura` so script e
-// mapa; `--tocador` so o tocador do app (clipe embutido WAV ou MP3). Novos modos entram como mais uma funcao em MODES.
+// Portao do audio embutido da sessao. Modos: (sem flag) completo (tocador + arquivos); `--estrutura` so script, mapa
+// e a release do iPhone; `--tocador` so o tocador do app (clipe embutido WAV ou MP3); `--retomada` simula queda e
+// retomada do gerador numa pasta temporaria (voz de mentira, ffmpeg de verdade, sem rede). Novos modos entram em MODES.
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sha256, expectedClips, AUDIO_DIR, MANIFEST, MAP_FILE, FORMAT } = require('./gerar-audio-sessao');
+const { sha256, expectedClips, AUDIO_DIR, PENDING_DIR, MANIFEST, MAP_FILE, FORMAT } = require('./gerar-audio-sessao');
 
 const MAX_BYTES = 28_000_000;
 const MAX_DRY_CHARS = 59_160;
@@ -53,6 +54,23 @@ function estrutura() {
       fail('--confirm-chars errado nao parou o script');
     }
   }
+
+  // a release do iPhone roda este portao COMPLETO (sem flag) antes de qualquer build, envio ou "CHECK ONLY aprovado"
+  if (require('../package.json').scripts['verify:session-audio'] !== 'node scripts/verificar-audio-sessao.js') {
+    fail('verify:session-audio precisa rodar node scripts/verificar-audio-sessao.js sem flag (portao completo)');
+  }
+  const publish = fs.readFileSync(path.join(__dirname, 'publicar-app-store.ps1'), 'utf8');
+  const gate = "Invoke-NpmGate -Npm $npm -Name 'verify:session-audio'";
+  const gateAt = publish.indexOf(gate);
+  if (gateAt < 0 || publish.split(gate).length !== 2) fail('publicar-app-store.ps1 precisa rodar verify:session-audio uma vez');
+  for (const later of ['if ($CheckOnly) {', 'Invoke-EasVisible', "'build:list'"]) {
+    if (gateAt < 0 || publish.indexOf(later) < gateAt) fail(`publicar-app-store.ps1: verify:session-audio precisa vir antes de ${later}`);
+  }
+  // o paywall em portugues abre /termos: o envio ao TestFlight confere as quatro paginas no ar
+  const live = publish.slice(publish.indexOf('function Test-CelesteLegalPagesLive'), publish.indexOf('$root = '));
+  for (const page of ['/privacidade', '/privacy', '/terms', '/termos']) {
+    if (!live.includes(`'${page}'`)) fail(`publicar-app-store.ps1: o envio precisa conferir ${page} no ar`);
+  }
   return problems.length ? null : { clips, source };
 }
 
@@ -101,6 +119,13 @@ function completo() {
     if (entry && entry.textSha256 !== sha256(clip.text)) fail(`texto mudou depois do audio: ${clip.key}`);
   }
   if (bytes > MAX_BYTES) fail(`soma dos MP3 ${bytes} > ${MAX_BYTES}`);
+  // nada alem dos MP3 e do manifesto na pasta do mapa; sidecar sobrando = geracao que caiu e ainda nao foi adotada
+  for (const file of walk(AUDIO_DIR)) {
+    if (!file.endsWith('.mp3') && file !== MANIFEST) fail(`arquivo estranho em assets/audio/sessao: ${path.relative(AUDIO_DIR, file)}`);
+  }
+  for (const file of walk(PENDING_DIR)) {
+    fail(`sidecar pendente (rode o gerador para adotar): ${path.relative(PENDING_DIR, file)}`);
+  }
   if (!problems.length) console.log(`audio da sessao: ok (${clips.length} clipes, ${(bytes / 1e6).toFixed(1)} MB)`);
 }
 
@@ -301,9 +326,165 @@ async function tocador() {
   }
 }
 
+// Queda e retomada do gerador sem rede e sem gastar: pasta temporaria, voz de mentira (WAV de silencio pelo mesmo
+// pcmToWav da API) e o ffmpeg de verdade. Cada caso parte de uma pasta limpa.
+async function retomada() {
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'celeste-retomada-'));
+  const env = { SESSAO_AUDIO_SAIDA_TESTE: process.env.SESSAO_AUDIO_SAIDA_TESTE, ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY };
+  const modulePath = require.resolve('./gerar-audio-sessao');
+  const { renameSync } = fs;
+  const log = console.log;
+  process.env.SESSAO_AUDIO_SAIDA_TESTE = dir;
+  process.env.ELEVENLABS_API_KEY = 'chave-de-teste';
+  delete require.cache[modulePath];
+  try {
+    const gen = require('./gerar-audio-sessao');
+    if (!gen.AUDIO_DIR.startsWith(dir) || !gen.MAP_FILE.startsWith(dir)) return fail('retomada: o gerador nao usou a pasta temporaria');
+    const real = gen.load('api/gerar-audio.js')._internals;
+    const model = real.configuredModel();
+    const clips = gen.expectedClips();
+    const clipOf = new Map(clips.map((clip) => [clip.key, clip]));
+    const keyOf = new Map(clips.map((clip) => [`${clip.narratorId}/${clip.lang}|${clip.text}`, clip.key]));
+    const check = (ok, text) => ok || fail(`retomada: ${text}`);
+    const exists = (file) => fs.existsSync(file);
+    const isMp3 = (buf) => Buffer.isBuffer(buf) && buf.length > 3 && (buf.toString('latin1', 0, 3) === 'ID3' || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0));
+    const entryOf = (key, buf) => ({ textSha256: sha256(clipOf.get(key).text), chars: clipOf.get(key).text.length, bytes: buf.length });
+    const put = (file, content) => {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, content);
+    };
+    const manifest = () => JSON.parse(fs.readFileSync(gen.MANIFEST, 'utf8'));
+    const reset = () => {
+      fs.rmSync(path.join(dir, 'assets'), { recursive: true, force: true });
+      fs.mkdirSync(path.join(dir, 'constants'), { recursive: true });
+    };
+    const FAKE_MP3 = Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x64]), Buffer.alloc(400)]);
+    // voz de mentira: anota cada pedido; `refuse` falha sem audio (como um 5xx da ElevenLabs)
+    const voice = (refuse = false) => {
+      const calls = [];
+      const api = {
+        ...real,
+        requestElevenLabs: async (input, _model, apiKey, timed) => {
+          calls.push(keyOf.get(`${input.narratorId}/${input.lang}|${input.text}`));
+          if (timed !== false || apiKey !== 'chave-de-teste') throw new Error('pedido fora do combinado');
+          if (refuse) throw Object.assign(new Error('recusado'), { code: 'audio_unavailable' });
+          return real.pcmToWav(Buffer.alloc(9600));
+        },
+      };
+      return { api, calls };
+    };
+    // main do gerador em silencio; devolve o resumo ou o erro
+    const run = async (api, ...args) => {
+      console.log = () => {};
+      try {
+        return await gen.main(args, api);
+      } catch (error) {
+        return error;
+      } finally {
+        console.log = log;
+      }
+    };
+
+    // 1. o teste do ffmpeg com o WAV da API devolve MP3
+    const probe = await gen.preflightFfmpeg(real).catch((error) => error);
+    check(isMp3(probe), `preflight do ffmpeg sem MP3 (${probe && probe.message})`);
+
+    // 2. queda entre o MP3 no lugar e o manifesto: a volta adota sem pagar de novo
+    reset();
+    const first = voice();
+    const baseline = await run(first.api, '--dry-run');
+    fs.renameSync = function crash(from, to) {
+      if (to === gen.MANIFEST && first.calls.length) throw new Error('queda simulada');
+      return renameSync.call(this, from, to);
+    };
+    const crashed = await run(first.api, '--confirm-chars', String(baseline.total));
+    fs.renameSync = renameSync;
+    const paid = first.calls.filter(Boolean).sort();
+    check(crashed instanceof Error && /queda simulada/.test(crashed.message), `a queda nao derrubou a geracao (${crashed && crashed.message})`);
+    check(paid.length === 2 && first.calls.length === 2, `esperava 2 pedidos antes da queda, houve ${first.calls.length}`);
+    check(Object.keys(manifest().entries).length === 0, 'o manifesto ganhou entrada apesar da queda');
+    for (const key of paid) {
+      const sidecar = exists(gen.sidecarOf(key)) ? JSON.parse(fs.readFileSync(gen.sidecarOf(key), 'utf8')) : {};
+      const bytes = exists(gen.fileOf(key)) ? fs.statSync(gen.fileOf(key)).size : -1;
+      const want = { textSha256: sha256(clipOf.get(key).text), chars: clipOf.get(key).text.length, bytes, model, format: FORMAT };
+      check(JSON.stringify(sidecar) === JSON.stringify(want), `queda sem MP3 + sidecar certo: ${key} ${JSON.stringify(sidecar)}`);
+    }
+    const second = voice(true);
+    const dry = await run(second.api, '--dry-run');
+    const saved = paid.reduce((sum, key) => sum + clipOf.get(key).text.length, 0);
+    check(String(dry.adopted && dry.adopted.slice().sort()) === String(paid), `dry-run nao adotou os 2 clipes (${dry.adopted || dry.message})`);
+    check(dry.total === baseline.total - saved, `dry-run cobraria ${dry.total}, esperava ${baseline.total - saved}`);
+    check(Object.keys(manifest().entries).length === 0 && paid.every((key) => exists(gen.sidecarOf(key))), 'o dry-run gravou algo');
+    const resumed = await run(second.api, '--confirm-chars', String(dry.total));
+    check(resumed instanceof Error && /recusado/.test(resumed.message), `a retomada nao chegou a voz (${resumed && resumed.message})`);
+    check(second.calls.length > 0 && second.calls.every((key) => key && !paid.includes(key)), `a retomada pagou de novo um adotado (${second.calls})`);
+    const entries = manifest().entries;
+    const map = fs.readFileSync(gen.MAP_FILE, 'utf8');
+    for (const key of paid) {
+      check(entries[key] && entries[key].bytes === fs.statSync(gen.fileOf(key)).size, `adotado fora do manifesto: ${key}`);
+      check(!exists(gen.sidecarOf(key)), `sidecar do adotado nao sumiu: ${key}`);
+      check(map.includes(`'${key}': require('../assets/audio/sessao/${key}.mp3')`), `adotado fora do mapa: ${key}`);
+    }
+
+    // 3. MP3 sem entrada no manifesto e sem sidecar valido: para antes de contar e o arquivo fica intocado
+    reset();
+    const orphan = clips[5].key;
+    put(gen.fileOf(orphan), FAKE_MP3);
+    const third = voice();
+    for (const args of [['--dry-run'], ['--confirm-chars', String(baseline.total)]]) {
+      const result = await run(third.api, ...args);
+      check(result instanceof Error && result.message.includes('sem entrada no manifesto e sem sidecar') && result.message.includes(orphan), `MP3 orfao nao parou ${args[0]} (${result && result.message})`);
+    }
+    for (const [label, sidecar] of [
+      ['outro modelo', { ...entryOf(orphan, FAKE_MP3), model: 'eleven_outro_modelo', format: FORMAT }],
+      ['outros bytes', { ...entryOf(orphan, FAKE_MP3), bytes: FAKE_MP3.length + 1, model, format: FORMAT }],
+    ]) {
+      put(gen.sidecarOf(orphan), JSON.stringify(sidecar));
+      const result = await run(third.api, '--dry-run');
+      check(result instanceof Error && result.message.includes(orphan), `sidecar de ${label} foi adotado`);
+    }
+    check(third.calls.length === 0 && fs.readFileSync(gen.fileOf(orphan)).equals(FAKE_MP3) && !exists(gen.MANIFEST), 'MP3 orfao: pagou, mexeu no arquivo ou gravou o manifesto');
+
+    // 4. manifesto de outro modelo ou formato: para com mensagem clara, sem pagar
+    for (const [oldModel, oldFormat] of [['eleven_outro_modelo', FORMAT], [model, 'mp3-128k-stereo-44100']]) {
+      reset();
+      const key = clips[0].key;
+      put(gen.fileOf(key), FAKE_MP3);
+      put(gen.MANIFEST, JSON.stringify({ model: oldModel, format: oldFormat, entries: { [key]: entryOf(key, FAKE_MP3) } }));
+      const fourth = voice();
+      for (const args of [['--dry-run'], ['--confirm-chars', String(baseline.total)]]) {
+        const result = await run(fourth.api, ...args);
+        check(result instanceof Error && result.message.includes(`manifest.json e de ${oldModel}/${oldFormat} e o atual e ${model}/${FORMAT}`), `manifesto ${oldModel}/${oldFormat} nao parou (${result && result.message})`);
+      }
+      check(fourth.calls.length === 0, `manifesto ${oldModel}/${oldFormat} pagou`);
+    }
+
+    // 5. sidecar sem MP3 no lugar: o clipe volta a fila (cobrado no total) e o sidecar some ao gerar
+    reset();
+    const stale = clips[1].key;
+    put(gen.sidecarOf(stale), JSON.stringify({ ...entryOf(stale, FAKE_MP3), model, format: FORMAT }));
+    const fifth = voice(true);
+    const staleDry = await run(fifth.api, '--dry-run');
+    check(String(staleDry.stale) === stale && staleDry.todo.includes(stale) && staleDry.total === baseline.total, `sidecar sem MP3 nao voltou a fila (${staleDry.message || staleDry.total})`);
+    await run(fifth.api, '--confirm-chars', String(staleDry.total));
+    check(!exists(gen.sidecarOf(stale)), 'sidecar sem MP3 nao sumiu ao gerar');
+  } finally {
+    fs.renameSync = renameSync;
+    console.log = log;
+    for (const [name, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    delete require.cache[modulePath];
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const MODES = {
   '--estrutura': estrutura,
   '--tocador': tocador,
+  '--retomada': retomada,
   '': async () => {
     await tocador().catch((error) => fail(`erro no tocador: ${(error && error.stack) || error}`));
     completo();
