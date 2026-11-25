@@ -2,7 +2,8 @@
 // EXPO_PUBLIC_CELESTE_PAYWALL_PREVIEW=1, planos de mentira, sem loja e sem cobrança.
 // Uso: node scripts/e2e-paywall-previa.js
 //   PAYWALL_PREVIEW_DIST=<pasta> reaproveita um export já feito com a prévia ligada.
-// Capturas em output/ (390x844 e 320x480): com teste, sem teste, folha de informação, erro e bloqueado.
+// Capturas em output/ (390x844 e 320x480): com teste, sem teste, folha de informação, erro, bloqueado e
+// compra recebida sem a permissão.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -22,6 +23,9 @@ const SIZES = [
 const id = (testId) => `[data-testid="${testId}"]`;
 const ANNUAL = 'paywall-plan-$rc_annual';
 const MONTHLY = 'paywall-plan-$rc_monthly';
+const SUPPORT_EMAIL = fs.readFileSync(path.join(ROOT, 'constants', 'legal.js'), 'utf8').match(/SUPPORT_EMAIL = '([^']+)'/)[1];
+// A compra de mentira no pacote exportado: `<ativa>=!0,{ok:!0,active:!0}}`.
+const BOUGHT = '=!0,{ok:!0,active:!0}}';
 
 function exportedSite() {
   if (process.env.PAYWALL_PREVIEW_DIST) return path.resolve(process.env.PAYWALL_PREVIEW_DIST);
@@ -249,6 +253,44 @@ const seed = (onboardingDone) => ({
         check(true, `${label}: o segundo toque entra, sem comprar de novo`);
         await stuck.close();
       }
+
+      // ── cobrou e a permissão chegou atrasada: a tela confirma sozinha e entra, sem outro toque ───
+      const late = await openPage(size, seed(false), '/oferta', [BOUGHT, '=!0,{ok:!0,active:!1}}']);
+      await late.waitForSelector(`${id('paywall-cta')}:not([aria-disabled="true"])`, { visible: true, timeout: 30000 });
+      await late.click(id('paywall-cta'));
+      await late.waitForSelector(id('paywall-notice'), { visible: true, timeout: 10000 });
+      check((await textOf(late, 'paywall-notice')) === 'Confirmando sua compra…', `${size.width}: permissão atrasada, a tela avisa que está confirmando`);
+      check((await late.$eval(id('paywall-cta'), (node) => node.getAttribute('aria-disabled'))) === 'true', `${size.width}: confirmando, o botão não compra de novo`);
+      await late.waitForSelector(id('celeste-mascot-home'), { visible: true, timeout: 30000 });
+      check((await late.evaluate((key) => JSON.parse(localStorage.getItem(key)).onboardingDone, STORAGE_KEY)) === true,
+        `${size.width}: permissão atrasada libera sozinha e grava a entrada`);
+      await late.close();
+
+      // ── cobrou e a permissão nunca veio: 2 s + 4 s + 8 s de confirmação, depois Restaurar, Gerenciar e suporte ──
+      const never = await openPage(size, seed(false), '/oferta', [BOUGHT, '=!1,{ok:!0,active:!1}}']);
+      await never.waitForSelector(`${id('paywall-cta')}:not([aria-disabled="true"])`, { visible: true, timeout: 30000 });
+      const boughtAt = Date.now();
+      await never.click(id('paywall-cta'));
+      await never.waitForSelector(id('paywall-notice'), { visible: true, timeout: 10000 });
+      check((await textOf(never, 'paywall-notice')) === 'Confirmando sua compra…', `${size.width}: sem permissão, a tela avisa que está confirmando`);
+      check((await never.$eval(id('paywall-cta'), (node) => node.getAttribute('aria-disabled'))) === 'true', `${size.width}: sem permissão, confirmando, o botão fica travado`);
+      check((await count(never, id('paywall-manage'))) === 0 && (await count(never, id('paywall-support'))) === 0, `${size.width}: confirmando, ainda sem Gerenciar e suporte`);
+      await never.waitForFunction((selector) => document.querySelector(selector)?.innerText.startsWith('Compra recebida'), { timeout: 40000 }, id('paywall-notice'));
+      const waited = Date.now() - boughtAt;
+      check(waited >= 13500, `${size.width}: a confirmação esperou as três consultas (2 s, 4 s, 8 s)`, waited);
+      check((await textOf(never, 'paywall-notice')) === 'Compra recebida. Toque em Restaurar compras para liberar.', `${size.width}: sem permissão, aviso de compra recebida`);
+      check((await textOf(never, 'paywall-cta')) === 'Restaurar compras', `${size.width}: compra recebida, o botão principal restaura`, await textOf(never, 'paywall-cta'));
+      check((await never.$eval(id('paywall-cta'), (node) => node.getAttribute('aria-disabled'))) !== 'true', `${size.width}: compra recebida, o botão voltou a responder`);
+      check((await textOf(never, 'paywall-manage')) === 'Gerenciar assinatura', `${size.width}: compra recebida, Gerenciar assinatura na tela`);
+      check((await textOf(never, 'paywall-support')) === `Ajuda: ${SUPPORT_EMAIL}`, `${size.width}: compra recebida, linha de suporte com o e-mail`, await textOf(never, 'paywall-support'));
+      check((await count(never, id('celeste-mascot-home'))) === 0, `${size.width}: compra recebida sem permissão não abre o app`);
+      await assertFits(never, size, 'compra recebida', [...FOOTER, 'paywall-manage', 'paywall-support']);
+      await shot(never, 'recebida', size);
+      await never.click(id('paywall-cta'));
+      await never.waitForFunction((selector) => document.querySelector(selector)?.innerText === 'Compra recebida. Tente de novo em instantes.', { timeout: 10000 }, id('paywall-notice'));
+      check((await textOf(never, 'paywall-cta')) === 'Restaurar compras' && (await count(never, id('paywall-manage'))) === 1,
+        `${size.width}: o botão principal restaurou (não comprou de novo) e a ajuda continua na tela`);
+      await never.close();
 
       // ── loja fora do ar: erro tratado, Tentar de novo, e os três links continuam ────────────────
       const down = await openPage(size, seed(true), '/', ['return{ok:!0,plans:', 'return{ok:!1,reason:"unavailable",plans:']);

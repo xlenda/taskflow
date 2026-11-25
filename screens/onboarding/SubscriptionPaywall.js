@@ -18,10 +18,11 @@ import { Ionicons } from '@expo/vector-icons';
 import GradientCover from '../../components/GradientCover';
 import { APP_NAME, APP_URL, ONB, SERIF } from '../../constants/brand';
 import { tr, txt } from '../../constants/i18n';
+import { SUPPORT_EMAIL } from '../../constants/legal';
 import { useApp } from '../../context/AppContext';
 import { useEntitlement } from '../../context/EntitlementContext';
 import { useNarration } from '../../context/NarrationContext';
-import { buyPlan, loadPlans, restorePurchases } from '../../services/purchases';
+import { buyPlan, loadPlans, readEntitlement, restorePurchases } from '../../services/purchases';
 import { trackSignup } from '../../utils/adTracking';
 import { paywallDisclosure, storeOutcome } from '../../utils/entitlement';
 import { useT } from '../../utils/useT';
@@ -38,6 +39,8 @@ const S = {
   loadFailed: { pt: 'Não foi possível carregar os planos.', en: 'Plans could not be loaded.' },
   retry: { pt: 'Tentar de novo', en: 'Try again' },
   restore: { pt: 'Restaurar compras', en: 'Restore purchases' },
+  manage: { pt: 'Gerenciar assinatura', en: 'Manage subscription' },
+  support: { pt: 'Ajuda: {email}', en: 'Help: {email}' },
   terms: { pt: 'Termos', en: 'Terms' },
   termsUrl: { pt: `${APP_URL}/termos`, en: `${APP_URL}/terms` },
   privacy: { pt: 'Privacidade', en: 'Privacy' },
@@ -67,6 +70,7 @@ const PERIOD = {
 
 // Avisos depois de comprar ou restaurar. Compra cancelada por ela não gera aviso.
 const NOTICE = {
+  confirming: { pt: 'Confirmando sua compra…', en: 'Confirming your purchase…' },
   buy_inactive: {
     pt: 'Compra recebida. Toque em Restaurar compras para liberar.',
     en: 'Purchase received. Tap Restore purchases to unlock.',
@@ -87,6 +91,10 @@ const NOTICE = {
   confirmed: { pt: 'Compra confirmada. Toque para entrar.', en: 'Purchase confirmed. Tap to enter.' },
 };
 
+// A Apple cobrou e a permissão ainda não chegou (atraso do RevenueCat): esperas antes de cada nova consulta.
+const CONFIRM_WAITS_MS = [2000, 4000, 8000];
+const MANAGE_URL = 'https://apps.apple.com/account/subscriptions';
+
 export default function SubscriptionPaywall({ locked = false }) {
   const { state, completeOnboarding } = useApp();
   const { status, refresh, setActive } = useEntitlement();
@@ -101,7 +109,8 @@ export default function SubscriptionPaywall({ locked = false }) {
   const [infoOpen, setInfoOpen] = React.useState(false);
   const alive = React.useRef(true);
   const busy = React.useRef(false);
-  const received = React.useRef(false);
+  // Compra aceita pela Apple e a permissão não chegou nem na confirmação: esta tela não abre outra compra.
+  const [received, setReceived] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setPhase('loading');
@@ -157,6 +166,18 @@ export default function SubscriptionPaywall({ locked = false }) {
     // Esta tela não tem "voltar": aconteça o que acontecer (até depois da cobrança), o botão volta a responder.
     try {
       outcome = storeOutcome(await call());
+      if (action === 'buy' && outcome === 'inactive') {
+        // Botão, planos e Restaurar seguem travados enquanto a permissão é consultada de novo.
+        setNotice('confirming');
+        for (const ms of CONFIRM_WAITS_MS) {
+          await new Promise((resolve) => setTimeout(resolve, ms));
+          if (storeOutcome(await readEntitlement({ fresh: true })) === 'unlock') {
+            outcome = 'unlock';
+            break;
+          }
+        }
+        if (outcome === 'inactive') setReceived(true);
+      }
       if (outcome === 'unlock') {
         setActive();
         if (state.onboardingDone === true) entered = true;
@@ -173,19 +194,20 @@ export default function SubscriptionPaywall({ locked = false }) {
       if (alive.current) setBuying(false);
     }
     if (!alive.current) return;
-    if (action === 'buy' && outcome === 'inactive') received.current = true;
     setNotice(
       outcome === 'unlock'
         ? entered ? null : 'confirmed'
         : outcome === 'cancelled'
           ? null
-          : action === 'restore' && outcome === 'inactive' && received.current
+          : action === 'restore' && outcome === 'inactive' && received
             ? 'restore_received'
             : `${action}_${outcome}`
     );
   };
   const buy = () => act('buy', () => (entitled ? { ok: true, active: true } : buyPlan(selected)));
   const restore = () => act('restore', restorePurchases);
+  // Já cobrou e a permissão não veio: o botão principal restaura, nunca compra de novo.
+  const stuck = received && !entitled;
   const retry = () => {
     refresh();
     load();
@@ -195,11 +217,13 @@ export default function SubscriptionPaywall({ locked = false }) {
   const price = selected ? { price: selected.priceString, per: t(PERIOD[selected.period].per) } : null;
   const cta = entitled
     ? t(S.enter, { app: APP_NAME })
-    : !selected
-      ? ''
-      : selected.trialDays > 0
-        ? t(S.ctaTrial, { n: selected.trialDays })
-        : t(S.ctaPay, { price: selected.priceString, unit: t(PERIOD[selected.period].unit) });
+    : stuck
+      ? t(S.restore)
+      : !selected
+        ? ''
+        : selected.trialDays > 0
+          ? t(S.ctaTrial, { n: selected.trialDays })
+          : t(S.ctaPay, { price: selected.priceString, unit: t(PERIOD[selected.period].unit) });
   const infoRows = !selected
     ? []
     : selected.trialDays > 0
@@ -344,7 +368,7 @@ export default function SubscriptionPaywall({ locked = false }) {
               accessibilityLabel={cta || t(S.loading)}
               accessibilityState={{ disabled: !cta || buying, busy: !cta || buying }}
               disabled={!cta || buying}
-              onPress={buy}
+              onPress={stuck ? restore : buy}
               style={({ pressed }) => [styles.cta, (pressed || !cta || buying) && styles.dim]}
             >
               {buying || !cta ? <ActivityIndicator color={ONB.ctaInk} /> : <Text style={styles.ctaText}>{cta}</Text>}
@@ -372,6 +396,21 @@ export default function SubscriptionPaywall({ locked = false }) {
               <Text style={styles.linkText}>{t(S.privacy)}</Text>
             </Pressable>
           </View>
+          {stuck ? (
+            <View style={styles.links}>
+              <Pressable testID="paywall-manage" accessibilityRole="link" onPress={() => open(MANAGE_URL)} style={styles.link}>
+                <Text style={styles.linkText}>{t(S.manage)}</Text>
+              </Pressable>
+              <Pressable
+                testID="paywall-support"
+                accessibilityRole="link"
+                onPress={() => open(`mailto:${SUPPORT_EMAIL}`)}
+                style={styles.link}
+              >
+                <Text style={styles.linkText}>{t(S.support, { email: SUPPORT_EMAIL })}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </View>
 

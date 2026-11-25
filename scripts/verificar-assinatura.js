@@ -266,7 +266,7 @@ async function main() {
     .map((file) => fs.readFileSync(path.join(internalDir, file), 'utf8'))
     .join('\n');
   const methods = [...new Set([...iosSource.matchAll(/\bPurchases\.([A-Za-z_]\w*)\(/g)].map((match) => match[1]))];
-  assert.ok(methods.length >= 7, `métodos do SDK encontrados: ${methods.join(', ')}`);
+  assert.ok(methods.length >= 8, `métodos do SDK encontrados: ${methods.join(', ')}`);
   for (const name of methods) {
     assert.ok(new RegExp(`^\\s*static ${name}\\(`, 'm').test(sdkTypes), `Purchases.${name}( não existe no .d.ts instalado`);
   }
@@ -364,7 +364,8 @@ async function main() {
       INTRO_ELIGIBILITY_STATUS: real.INTRO_ELIGIBILITY_STATUS,
       PURCHASES_ERROR_CODE: real.PURCHASES_ERROR_CODE,
       configure: (config) => { calls.push(['configure', config]); },
-      getCustomerInfo: async () => activeInfo,
+      invalidateCustomerInfoCache: async () => { calls.push(['invalidate']); },
+      getCustomerInfo: async () => { calls.push(['info']); return activeInfo; },
       getOfferings: async () => ({ current: { availablePackages: [annualDays, monthly] } }),
       checkTrialOrIntroductoryPriceEligibility: async (ids) => {
         calls.push(['eligibility', ids]);
@@ -396,6 +397,10 @@ async function main() {
     assert.deepStrictEqual(await service.configurePurchases(), { ok: true });
     assert.deepStrictEqual(calls, [['configure', { apiKey: KEY }]], 'configura uma vez só, com a chave do ambiente');
     assert.deepStrictEqual(await service.readEntitlement(), { ok: true, active: true, expiresAt: '2026-12-01T10:00:00Z', willRenew: true });
+    assert.deepStrictEqual(calls.splice(1), [['info']], 'a consulta comum usa a cópia guardada pelo SDK');
+    // depois de uma compra: a cópia guardada é descartada antes de perguntar de novo
+    assert.deepStrictEqual(await service.readEntitlement({ fresh: true }), { ok: true, active: true, expiresAt: '2026-12-01T10:00:00Z', willRenew: true });
+    assert.deepStrictEqual(calls.splice(1), [['invalidate'], ['info']], 'fresh descarta a cópia e só depois consulta');
 
     const loaded = await service.loadPlans();
     assert.strictEqual(loaded.ok, true);
@@ -427,10 +432,11 @@ async function main() {
   // nenhuma função lança, com o SDK inteiro quebrado (síncrono e assíncrono)
   for (const broken of [boom, rejects]) {
     const { service } = ios({
-      getCustomerInfo: broken, getOfferings: broken, checkTrialOrIntroductoryPriceEligibility: broken,
+      getCustomerInfo: broken, invalidateCustomerInfoCache: broken, getOfferings: broken, checkTrialOrIntroductoryPriceEligibility: broken,
       purchasePackage: broken, restorePurchases: broken, addCustomerInfoUpdateListener: boom, removeCustomerInfoUpdateListener: boom,
     });
     assert.deepStrictEqual(await service.readEntitlement(), { ok: false, reason: 'unavailable' });
+    assert.deepStrictEqual(await service.readEntitlement({ fresh: true }), { ok: false, reason: 'unavailable' });
     assert.deepStrictEqual(await service.loadPlans(), { ok: false, reason: 'unavailable' });
     assert.deepStrictEqual(await service.buyPlan(annualPlan), { ok: false, reason: 'failed' });
     assert.deepStrictEqual(await service.buyPlan(null), { ok: false, reason: 'failed' });
@@ -488,10 +494,10 @@ async function main() {
   const clock = { timers: [], cleared: [] };
   global.setTimeout = (fn, ms) => { const timer = { fn, ms }; clock.timers.push(timer); return timer; };
   global.clearTimeout = (timer) => { clock.cleared.push(timer); };
-  const expire = async (index, label) => {
+  const expire = async (index, label, ms = ENTITLEMENT_TIMEOUT_MS) => {
     await tick();
     assert.strictEqual(clock.timers.length, index + 1, `${label}: a espera tem limite de tempo`);
-    assert.strictEqual(clock.timers[index].ms, ENTITLEMENT_TIMEOUT_MS, `${label}: limite de ${ENTITLEMENT_TIMEOUT_MS} ms`);
+    assert.strictEqual(clock.timers[index].ms, ms, `${label}: limite de ${ms} ms`);
     clock.timers[index].fn();
   };
   const reset = () => { clock.timers.length = 0; clock.cleared.length = 0; };
@@ -516,12 +522,34 @@ async function main() {
     }
     reset();
     {
+      // restaurar pode abrir a folha de senha da Apple: limite longo (60 s), nunca os 8 s das consultas
       const { service } = ios({ restorePurchases: never });
       const pending = service.restorePurchases();
-      await expire(0, 'restorePurchases');
+      await expire(0, 'restorePurchases', 60000);
       assert.deepStrictEqual(await pending, { ok: false, reason: 'failed' });
     }
     reset();
+    {
+      // restauração que responde aos 30 s (senha da Apple) vale: o limite longo é desligado, sem falso erro
+      let answer;
+      const { service } = ios({ restorePurchases: () => new Promise((resolve) => { answer = resolve; }) });
+      const pending = service.restorePurchases();
+      await tick();
+      assert.ok(clock.timers[0].ms > 30000, 'restaurar espera mais que 30 s');
+      answer(activeInfo);
+      assert.deepStrictEqual(await pending, { ok: true, active: true });
+      assert.deepStrictEqual(clock.cleared, clock.timers);
+    }
+    reset();
+    for (const [stuckCall, fresh] of [['getCustomerInfo', false], ['getCustomerInfo', true], ['invalidateCustomerInfoCache', true]]) {
+      // a confirmação depois da compra não pode pendurar a tela: ler a permissão também tem limite
+      const { service } = ios({ [stuckCall]: never });
+      const pending = service.readEntitlement({ fresh });
+      await tick();
+      await expire(stuckCall === 'getCustomerInfo' && fresh ? 1 : 0, `${stuckCall} (fresh ${fresh})`);
+      assert.deepStrictEqual(await pending, { ok: false, reason: 'unavailable' });
+      reset();
+    }
     {
       // resposta normal: cada relógio armado é desligado, nenhum fica pendurado
       const { service } = ios();
@@ -938,7 +966,7 @@ async function main() {
       },
     });
     for (const id of ['paywall-plan-*', 'paywall-cta', 'paywall-disclosure', 'paywall-restore', 'paywall-terms', 'paywall-privacy',
-      'paywall-retry', 'paywall-info']) {
+      'paywall-retry', 'paywall-info', 'paywall-manage', 'paywall-support']) {
       assert.ok(ids.has(id), 'a tela tem o testID ' + id);
     }
 
@@ -1022,9 +1050,48 @@ async function main() {
     assert.ok(/\{phase === 'error' && !entitled \? \(\n\s*<Pressable\n\s*testID="paywall-retry"/.test(source), 'com a permissão o botão Entrar aparece mesmo sem planos');
     assert.ok(/const cta = entitled\n\s*\? t\(S\.enter, \{ app: APP_NAME \}\)/.test(source), 'com a permissão o botão é Entrar, com ou sem planos');
     assert.ok(/entered \? null : 'confirmed'/.test(source), 'permissão ativa e entrada não gravada: aviso de compra confirmada');
-    assert.ok(/if \(action === 'buy' && outcome === 'inactive'\) received\.current = true;/.test(source) &&
-      /action === 'restore' && outcome === 'inactive' && received\.current\n\s*\? 'restore_received'/.test(source),
+    assert.ok(/action === 'restore' && outcome === 'inactive' && received\n\s*\? 'restore_received'/.test(source),
       'restaurar logo depois de compra recebida não diz "nenhuma assinatura"');
+
+    // cobrou e a permissão não veio ativa: a tela confirma sozinha (2 s, 4 s, 8 s) antes de pedir Restaurar
+    assert.ok(source.includes('const CONFIRM_WAITS_MS = [2000, 4000, 8000];'), 'esperas da confirmação: 2 s, 4 s e 8 s');
+    const confirmAt = source.indexOf("if (action === 'buy' && outcome === 'inactive') {");
+    const unlockAt = source.indexOf("if (outcome === 'unlock') {");
+    assert.ok(confirmAt > source.indexOf('outcome = storeOutcome(await call());') && confirmAt < unlockAt,
+      'a confirmação roda depois da compra e antes de liberar, dentro do mesmo try');
+    const confirm = source.slice(confirmAt, unlockAt).replace(/\s+/g, ' ');
+    assert.ok(confirm.includes("setNotice('confirming'); for (const ms of CONFIRM_WAITS_MS) { " +
+      'await new Promise((resolve) => setTimeout(resolve, ms)); ' +
+      "if (storeOutcome(await readEntitlement({ fresh: true })) === 'unlock') { outcome = 'unlock'; break; } } " +
+      "if (outcome === 'inactive') setReceived(true); }"),
+      'confirmação: avisa, espera e consulta a permissão de novo; só "unlock" libera; sem ela, marca a compra recebida');
+    assert.strictEqual(calls('readEntitlement'), 1, 'a permissão só é relida na confirmação da compra');
+    assert.strictEqual(calls('setReceived'), 1, 'compra recebida só é marcada na confirmação');
+    assert.ok(source.includes('const [received, setReceived] = React.useState(false);'));
+    // enquanto confirma, a trava do try (busy + buying) segura botão, planos e Restaurar; depois, o botão
+    // principal restaura e nunca abre outra compra
+    assert.ok(source.includes('const stuck = received && !entitled;'), 'compra recebida sem permissão: tela travada para compra');
+    assert.ok(source.includes('onPress={stuck ? restore : buy}'), 'com a compra recebida o botão principal restaura, não compra');
+    assert.ok(/const cta = entitled\n\s*\? t\(S\.enter, \{ app: APP_NAME \}\)\n\s*: stuck\n\s*\? t\(S\.restore\)\n/.test(source),
+      'com a compra recebida o botão principal diz Restaurar compras');
+    assert.strictEqual(source.split('onPress={buy}').length - 1, 0, 'nenhum botão compra sem olhar a compra recebida');
+    // Gerenciar assinatura e suporte aparecem na própria tela, só nesse estado
+    for (const id of ['paywall-manage', 'paywall-support']) {
+      const gate = ids.get(id).findParent((parent) => parent.isConditionalExpression() || parent.isLogicalExpression());
+      assert.ok(gate && text(gate.node.test || gate.node.left) === 'stuck', id + ' só aparece com a compra recebida sem permissão');
+    }
+    assert.ok(source.includes("const MANAGE_URL = 'https://apps.apple.com/account/subscriptions';") &&
+      /testID="paywall-manage" accessibilityRole="link" onPress=\{\(\) => open\(MANAGE_URL\)\}/.test(source),
+      'Gerenciar assinatura abre a página de assinaturas da Apple');
+    assert.ok(source.includes("import { SUPPORT_EMAIL } from '../../constants/legal';") &&
+      source.includes('{t(S.support, { email: SUPPORT_EMAIL })}') && source.includes('open(`mailto:${SUPPORT_EMAIL}`)'),
+      'a linha de suporte usa o e-mail de constants/legal.js');
+    assert.ok(!/[\w.]@[\w-]+\.[a-z]/i.test(source), 'nenhum e-mail escrito na tela');
+    assert.strictEqual(load('constants/legal.js').SUPPORT_EMAIL, 'suporte@celestegroup.biz');
+    for (const line of ['Confirmando sua compra…', 'Confirming your purchase…', "pt: 'Gerenciar assinatura', en: 'Manage subscription'",
+      "pt: 'Ajuda: {email}', en: 'Help: {email}'"]) {
+      assert.ok(source.includes(line), 'texto da tela: ' + line);
+    }
     for (const line of ['Compra confirmada. Toque para entrar.', 'Purchase confirmed. Tap to enter.',
       'Compra recebida. Tente de novo em instantes.', 'Purchase received. Try again in a moment.']) {
       assert.ok(source.includes(line), 'texto da tela: ' + line);

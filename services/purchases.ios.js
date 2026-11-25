@@ -14,12 +14,15 @@ export const purchasesSupported = true;
 
 let configured = false;
 
+// Restaurar pode abrir a folha de senha da Apple, que demora bem mais que uma consulta: limite próprio, longo.
+const RESTORE_TIMEOUT_MS = 60000;
+
 // Loja ou rede que não responde não pode deixar o paywall parado: a espera tem limite e vira erro tratado.
 // A compra (buyPlan) fica de fora de propósito: a folha da Apple está aberta e quem decide o tempo é ela.
-function within(promise) {
+function within(promise, ms = ENTITLEMENT_TIMEOUT_MS) {
   let timer;
   const limit = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('timeout')), ENTITLEMENT_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new Error('timeout')), ms);
   });
   return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
 }
@@ -37,11 +40,14 @@ export async function configurePurchases() {
   }
 }
 
-export async function readEntitlement() {
+// `fresh` (logo depois de uma compra): o SDK guarda a última resposta por minutos; joga a cópia fora e
+// pergunta de novo ao RevenueCat.
+export async function readEntitlement({ fresh = false } = {}) {
   const ready = await configurePurchases();
   if (!ready.ok) return ready;
   try {
-    return { ok: true, ...entitlementFromCustomerInfo(await Purchases.getCustomerInfo()) };
+    if (fresh) await within(Purchases.invalidateCustomerInfoCache());
+    return { ok: true, ...entitlementFromCustomerInfo(await within(Purchases.getCustomerInfo())) };
   } catch {
     return { ok: false, reason: 'unavailable' };
   }
@@ -96,7 +102,7 @@ export async function buyPlan(plan) {
 export async function restorePurchases() {
   if (!(await configurePurchases()).ok) return { ok: false, reason: 'failed' };
   try {
-    return { ok: true, active: entitlementFromCustomerInfo(await within(Purchases.restorePurchases())).active };
+    return { ok: true, active: entitlementFromCustomerInfo(await within(Purchases.restorePurchases(), RESTORE_TIMEOUT_MS)).active };
   } catch {
     return { ok: false, reason: 'failed' };
   }
