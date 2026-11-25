@@ -1,6 +1,6 @@
 // Sessão de 7 minutos de ponta a ponta no navegador (390x844), com estado semeado: cartão da Home ->
 // sessão -> cartão final -> registrar -> Home em "feita hoje". Roda contra um export local:
-//   npx expo export -p web && node scripts/e2e-sessao.js            (sobe o servidor de dist/ sozinho)
+//   npx expo export -p web --clear && node scripts/e2e-sessao.js    (sobe o servidor de dist/ sozinho)
 //   TARGET_URL=http://127.0.0.1:4317 node scripts/e2e-sessao.js     (servidor já de pé)
 const fs = require('fs');
 const path = require('path');
@@ -78,6 +78,11 @@ const seedState = () => ({
 
 async function startServer() {
   const dir = path.join(ROOT, process.env.EXPORT_DIR || 'dist');
+  // O cache do Metro guarda o EXPO_PUBLIC_ da prévia do paywall (e2e-paywall-previa): export sem --clear sai com o paywall.
+  const jsDir = path.join(dir, '_expo', 'static', 'js', 'web');
+  if (fs.existsSync(jsDir) && fs.readdirSync(jsDir).some((f) => fs.readFileSync(path.join(jsDir, f), 'utf8').includes('$rc_monthly'))) {
+    fail(`o export em ${dir} saiu com a prévia do paywall ligada (cache do Metro): rode npx expo export -p web --clear`);
+  }
   const port = 4300 + Math.floor(Math.random() * 500);
   const child = spawn(process.execPath, [path.join(__dirname, 'serve-export.js'), dir, String(port)], {
     stdio: ['ignore', 'pipe', 'inherit'],
