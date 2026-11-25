@@ -1,5 +1,3726 @@
 {
   "model": "eleven_multilingual_v2",
   "format": "mp3-48k-mono-24000",
-  "entries": {}
+  "entries": {
+    "atlas/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 21789
+    },
+    "atlas/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 56349
+    },
+    "atlas/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 23517
+    },
+    "atlas/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 29709
+    },
+    "atlas/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 15165
+    },
+    "atlas/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 25245
+    },
+    "atlas/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 22365
+    },
+    "atlas/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 28269
+    },
+    "atlas/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 24669
+    },
+    "atlas/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 27405
+    },
+    "atlas/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 23229
+    },
+    "atlas/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 29133
+    },
+    "atlas/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 27693
+    },
+    "atlas/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 23805
+    },
+    "atlas/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 30285
+    },
+    "atlas/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 22365
+    },
+    "atlas/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 30717
+    },
+    "atlas/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 28269
+    },
+    "atlas/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 22653
+    },
+    "atlas/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 31293
+    },
+    "atlas/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 31293
+    },
+    "atlas/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 28845
+    },
+    "atlas/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 31005
+    },
+    "atlas/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 23805
+    },
+    "atlas/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 17613
+    },
+    "atlas/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 21789
+    },
+    "atlas/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 27117
+    },
+    "atlas/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 26109
+    },
+    "atlas/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 27405
+    },
+    "atlas/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 21645
+    },
+    "atlas/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 31005
+    },
+    "atlas/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 27117
+    },
+    "atlas/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 20205
+    },
+    "atlas/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 31869
+    },
+    "atlas/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 33021
+    },
+    "atlas/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 29133
+    },
+    "atlas/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 26253
+    },
+    "atlas/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 24957
+    },
+    "atlas/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 20781
+    },
+    "atlas/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 27693
+    },
+    "atlas/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 24381
+    },
+    "atlas/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 30285
+    },
+    "atlas/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 19629
+    },
+    "atlas/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 29133
+    },
+    "atlas/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 22653
+    },
+    "atlas/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 22941
+    },
+    "atlas/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 20493
+    },
+    "atlas/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 33021
+    },
+    "atlas/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 27117
+    },
+    "atlas/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 27117
+    },
+    "atlas/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 24669
+    },
+    "atlas/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 29709
+    },
+    "atlas/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 24669
+    },
+    "atlas/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 25821
+    },
+    "atlas/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 31293
+    },
+    "atlas/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 36333
+    },
+    "atlas/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 24093
+    },
+    "atlas/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 22653
+    },
+    "atlas/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 27117
+    },
+    "atlas/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 26109
+    },
+    "atlas/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 21789
+    },
+    "atlas/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 33885
+    },
+    "atlas/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 28845
+    },
+    "atlas/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 57213
+    },
+    "atlas/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 26109
+    },
+    "atlas/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 46701
+    },
+    "atlas/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 17613
+    },
+    "atlas/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 28269
+    },
+    "atlas/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 22365
+    },
+    "atlas/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 24381
+    },
+    "atlas/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 34461
+    },
+    "atlas/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 29997
+    },
+    "atlas/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 28845
+    },
+    "atlas/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 34461
+    },
+    "atlas/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 30717
+    },
+    "atlas/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 27117
+    },
+    "atlas/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 32733
+    },
+    "atlas/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 27405
+    },
+    "atlas/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 34893
+    },
+    "atlas/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 28269
+    },
+    "atlas/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 30717
+    },
+    "atlas/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 31869
+    },
+    "atlas/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 33597
+    },
+    "atlas/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 34749
+    },
+    "atlas/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 34173
+    },
+    "atlas/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 30429
+    },
+    "atlas/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 27117
+    },
+    "atlas/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 22653
+    },
+    "atlas/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 32157
+    },
+    "atlas/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 26541
+    },
+    "atlas/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 33309
+    },
+    "atlas/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 28845
+    },
+    "atlas/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 34173
+    },
+    "atlas/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 25245
+    },
+    "atlas/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 23229
+    },
+    "atlas/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 30717
+    },
+    "atlas/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 37773
+    },
+    "atlas/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 35757
+    },
+    "atlas/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 33885
+    },
+    "atlas/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 26541
+    },
+    "atlas/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 25533
+    },
+    "atlas/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 31293
+    },
+    "atlas/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 35757
+    },
+    "atlas/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 42237
+    },
+    "atlas/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 24381
+    },
+    "atlas/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 32157
+    },
+    "atlas/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 24957
+    },
+    "atlas/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 26109
+    },
+    "atlas/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 20493
+    },
+    "atlas/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 36333
+    },
+    "atlas/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 34893
+    },
+    "atlas/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 31005
+    },
+    "atlas/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 32733
+    },
+    "atlas/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 32445
+    },
+    "atlas/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 29133
+    },
+    "atlas/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 27405
+    },
+    "atlas/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 34893
+    },
+    "atlas/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 34461
+    },
+    "atlas/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 26109
+    },
+    "atlas/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 30285
+    },
+    "atlas/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 32157
+    },
+    "atlas/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 33021
+    },
+    "atlas/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 20205
+    },
+    "atlas/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 32445
+    },
+    "aurora/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 26109
+    },
+    "aurora/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 51741
+    },
+    "aurora/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 23229
+    },
+    "aurora/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 28269
+    },
+    "aurora/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 13005
+    },
+    "aurora/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 25533
+    },
+    "aurora/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 29133
+    },
+    "aurora/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 29709
+    },
+    "aurora/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 23805
+    },
+    "aurora/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 24957
+    },
+    "aurora/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 26829
+    },
+    "aurora/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 31005
+    },
+    "aurora/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 25533
+    },
+    "aurora/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 23805
+    },
+    "aurora/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 26829
+    },
+    "aurora/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 23805
+    },
+    "aurora/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 31005
+    },
+    "aurora/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 29997
+    },
+    "aurora/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 22941
+    },
+    "aurora/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 33597
+    },
+    "aurora/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 34173
+    },
+    "aurora/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 33021
+    },
+    "aurora/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 32445
+    },
+    "aurora/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 25821
+    },
+    "aurora/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 17901
+    },
+    "aurora/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 28557
+    },
+    "aurora/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 30429
+    },
+    "aurora/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 27981
+    },
+    "aurora/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 24957
+    },
+    "aurora/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 22365
+    },
+    "aurora/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 34173
+    },
+    "aurora/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 28845
+    },
+    "aurora/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 25245
+    },
+    "aurora/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 33885
+    },
+    "aurora/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 31869
+    },
+    "aurora/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 25821
+    },
+    "aurora/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 30717
+    },
+    "aurora/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 25533
+    },
+    "aurora/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 22077
+    },
+    "aurora/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 30717
+    },
+    "aurora/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 26109
+    },
+    "aurora/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 35757
+    },
+    "aurora/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 23229
+    },
+    "aurora/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 29709
+    },
+    "aurora/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 23229
+    },
+    "aurora/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 25245
+    },
+    "aurora/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 24093
+    },
+    "aurora/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 28845
+    },
+    "aurora/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 29997
+    },
+    "aurora/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 24381
+    },
+    "aurora/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 23229
+    },
+    "aurora/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 25821
+    },
+    "aurora/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 24669
+    },
+    "aurora/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 34173
+    },
+    "aurora/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 31869
+    },
+    "aurora/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 36909
+    },
+    "aurora/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 25821
+    },
+    "aurora/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 25245
+    },
+    "aurora/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 29997
+    },
+    "aurora/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 23517
+    },
+    "aurora/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 24093
+    },
+    "aurora/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 27693
+    },
+    "aurora/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 30717
+    },
+    "aurora/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 50301
+    },
+    "aurora/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 23805
+    },
+    "aurora/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 43245
+    },
+    "aurora/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 14877
+    },
+    "aurora/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 27693
+    },
+    "aurora/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 23517
+    },
+    "aurora/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 29997
+    },
+    "aurora/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 32157
+    },
+    "aurora/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 35181
+    },
+    "aurora/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 24381
+    },
+    "aurora/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 30717
+    },
+    "aurora/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 26253
+    },
+    "aurora/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 26541
+    },
+    "aurora/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 32445
+    },
+    "aurora/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 33885
+    },
+    "aurora/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 32733
+    },
+    "aurora/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 29709
+    },
+    "aurora/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 31005
+    },
+    "aurora/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 33885
+    },
+    "aurora/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 26829
+    },
+    "aurora/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 35469
+    },
+    "aurora/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 29709
+    },
+    "aurora/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 29133
+    },
+    "aurora/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 27405
+    },
+    "aurora/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 27117
+    },
+    "aurora/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 30429
+    },
+    "aurora/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 22941
+    },
+    "aurora/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 32157
+    },
+    "aurora/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 35181
+    },
+    "aurora/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 32157
+    },
+    "aurora/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 27981
+    },
+    "aurora/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 22941
+    },
+    "aurora/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 32445
+    },
+    "aurora/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 40509
+    },
+    "aurora/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 37773
+    },
+    "aurora/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 27693
+    },
+    "aurora/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 27117
+    },
+    "aurora/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 33309
+    },
+    "aurora/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 31005
+    },
+    "aurora/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 32733
+    },
+    "aurora/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 35469
+    },
+    "aurora/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 25533
+    },
+    "aurora/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 28557
+    },
+    "aurora/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 24669
+    },
+    "aurora/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 26829
+    },
+    "aurora/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 19629
+    },
+    "aurora/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 29997
+    },
+    "aurora/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 30717
+    },
+    "aurora/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 34893
+    },
+    "aurora/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 30717
+    },
+    "aurora/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 33309
+    },
+    "aurora/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 28845
+    },
+    "aurora/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 35181
+    },
+    "aurora/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 31581
+    },
+    "aurora/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 32733
+    },
+    "aurora/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 27981
+    },
+    "aurora/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 39645
+    },
+    "aurora/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 29997
+    },
+    "aurora/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 34461
+    },
+    "aurora/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 21357
+    },
+    "aurora/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 37197
+    },
+    "luma/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 20781
+    },
+    "luma/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 43245
+    },
+    "luma/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 19053
+    },
+    "luma/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 25533
+    },
+    "luma/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 11565
+    },
+    "luma/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 17901
+    },
+    "luma/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 19053
+    },
+    "luma/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 21645
+    },
+    "luma/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 19341
+    },
+    "luma/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 23805
+    },
+    "luma/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 18765
+    },
+    "luma/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 25533
+    },
+    "luma/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 18477
+    },
+    "luma/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 17469
+    },
+    "luma/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 25245
+    },
+    "luma/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 22653
+    },
+    "luma/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 25245
+    },
+    "luma/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 22941
+    },
+    "luma/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 17613
+    },
+    "luma/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 24093
+    },
+    "luma/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 22653
+    },
+    "luma/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 24093
+    },
+    "luma/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 22365
+    },
+    "luma/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 20781
+    },
+    "luma/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 16029
+    },
+    "luma/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 18477
+    },
+    "luma/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 22653
+    },
+    "luma/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 19917
+    },
+    "luma/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 22077
+    },
+    "luma/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 16317
+    },
+    "luma/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 22941
+    },
+    "luma/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 20493
+    },
+    "luma/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 16893
+    },
+    "luma/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 27405
+    },
+    "luma/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 23229
+    },
+    "luma/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 25533
+    },
+    "luma/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 19629
+    },
+    "luma/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 20205
+    },
+    "luma/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 16605
+    },
+    "luma/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 23229
+    },
+    "luma/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 19629
+    },
+    "luma/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 25533
+    },
+    "luma/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 17901
+    },
+    "luma/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 24957
+    },
+    "luma/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 17469
+    },
+    "luma/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 19053
+    },
+    "luma/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 14877
+    },
+    "luma/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 24957
+    },
+    "luma/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 21069
+    },
+    "luma/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 22941
+    },
+    "luma/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 22077
+    },
+    "luma/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 21645
+    },
+    "luma/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 17901
+    },
+    "luma/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 26253
+    },
+    "luma/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 22653
+    },
+    "luma/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 29133
+    },
+    "luma/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 19053
+    },
+    "luma/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 19629
+    },
+    "luma/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 24669
+    },
+    "luma/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 21645
+    },
+    "luma/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 17613
+    },
+    "luma/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 26829
+    },
+    "luma/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 24669
+    },
+    "luma/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 43101
+    },
+    "luma/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 20493
+    },
+    "luma/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 35469
+    },
+    "luma/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 14589
+    },
+    "luma/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 23805
+    },
+    "luma/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 17613
+    },
+    "luma/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 20781
+    },
+    "luma/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 28269
+    },
+    "luma/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 30285
+    },
+    "luma/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 22653
+    },
+    "luma/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 25821
+    },
+    "luma/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 22653
+    },
+    "luma/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 23229
+    },
+    "luma/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 26253
+    },
+    "luma/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 24381
+    },
+    "luma/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 26541
+    },
+    "luma/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 22653
+    },
+    "luma/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 25821
+    },
+    "luma/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 27693
+    },
+    "luma/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 26109
+    },
+    "luma/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 29709
+    },
+    "luma/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 26541
+    },
+    "luma/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 25533
+    },
+    "luma/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 23229
+    },
+    "luma/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 24381
+    },
+    "luma/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 28269
+    },
+    "luma/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 21645
+    },
+    "luma/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 27693
+    },
+    "luma/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 22653
+    },
+    "luma/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 27693
+    },
+    "luma/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 23805
+    },
+    "luma/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 18189
+    },
+    "luma/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 24381
+    },
+    "luma/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 25821
+    },
+    "luma/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 27693
+    },
+    "luma/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 22365
+    },
+    "luma/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 20781
+    },
+    "luma/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 19053
+    },
+    "luma/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 24381
+    },
+    "luma/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 26541
+    },
+    "luma/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 24669
+    },
+    "luma/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 20781
+    },
+    "luma/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 22365
+    },
+    "luma/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 22941
+    },
+    "luma/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 19917
+    },
+    "luma/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 16029
+    },
+    "luma/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 27405
+    },
+    "luma/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 28845
+    },
+    "luma/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 27117
+    },
+    "luma/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 25245
+    },
+    "luma/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 24381
+    },
+    "luma/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 28269
+    },
+    "luma/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 24957
+    },
+    "luma/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 25533
+    },
+    "luma/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 25533
+    },
+    "luma/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 20205
+    },
+    "luma/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 25533
+    },
+    "luma/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 25821
+    },
+    "luma/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 24381
+    },
+    "luma/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 18765
+    },
+    "luma/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 29997
+    },
+    "nilo/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 31869
+    },
+    "nilo/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 64269
+    },
+    "nilo/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 28845
+    },
+    "nilo/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 33597
+    },
+    "nilo/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 15453
+    },
+    "nilo/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 31581
+    },
+    "nilo/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 32157
+    },
+    "nilo/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 39645
+    },
+    "nilo/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 35181
+    },
+    "nilo/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 34173
+    },
+    "nilo/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 33309
+    },
+    "nilo/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 36045
+    },
+    "nilo/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 28269
+    },
+    "nilo/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 29709
+    },
+    "nilo/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 40509
+    },
+    "nilo/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 32445
+    },
+    "nilo/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 42525
+    },
+    "nilo/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 39069
+    },
+    "nilo/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 28269
+    },
+    "nilo/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 38061
+    },
+    "nilo/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 40221
+    },
+    "nilo/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 36333
+    },
+    "nilo/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 36333
+    },
+    "nilo/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 38061
+    },
+    "nilo/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 25533
+    },
+    "nilo/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 28269
+    },
+    "nilo/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 36909
+    },
+    "nilo/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 31581
+    },
+    "nilo/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 38637
+    },
+    "nilo/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 25533
+    },
+    "nilo/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 38349
+    },
+    "nilo/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 38925
+    },
+    "nilo/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 27405
+    },
+    "nilo/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 39645
+    },
+    "nilo/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 36621
+    },
+    "nilo/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 39069
+    },
+    "nilo/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 29997
+    },
+    "nilo/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 33021
+    },
+    "nilo/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 28845
+    },
+    "nilo/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 39645
+    },
+    "nilo/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 34749
+    },
+    "nilo/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 41661
+    },
+    "nilo/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 30717
+    },
+    "nilo/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 36621
+    },
+    "nilo/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 27693
+    },
+    "nilo/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 27981
+    },
+    "nilo/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 25821
+    },
+    "nilo/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 43101
+    },
+    "nilo/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 36333
+    },
+    "nilo/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 36621
+    },
+    "nilo/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 36909
+    },
+    "nilo/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 38637
+    },
+    "nilo/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 26829
+    },
+    "nilo/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 37197
+    },
+    "nilo/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 40221
+    },
+    "nilo/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 41085
+    },
+    "nilo/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 33597
+    },
+    "nilo/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 27405
+    },
+    "nilo/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 31869
+    },
+    "nilo/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 33021
+    },
+    "nilo/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 28845
+    },
+    "nilo/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 35181
+    },
+    "nilo/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 34893
+    },
+    "nilo/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 68157
+    },
+    "nilo/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 29709
+    },
+    "nilo/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 50301
+    },
+    "nilo/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 17469
+    },
+    "nilo/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 35757
+    },
+    "nilo/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 25533
+    },
+    "nilo/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 27981
+    },
+    "nilo/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 37773
+    },
+    "nilo/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 36333
+    },
+    "nilo/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 32445
+    },
+    "nilo/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 41373
+    },
+    "nilo/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 33597
+    },
+    "nilo/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 32733
+    },
+    "nilo/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 39069
+    },
+    "nilo/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 31581
+    },
+    "nilo/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 39069
+    },
+    "nilo/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 37773
+    },
+    "nilo/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 38637
+    },
+    "nilo/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 40221
+    },
+    "nilo/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 42525
+    },
+    "nilo/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 36909
+    },
+    "nilo/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 36909
+    },
+    "nilo/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 37197
+    },
+    "nilo/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 30285
+    },
+    "nilo/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 29133
+    },
+    "nilo/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 42525
+    },
+    "nilo/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 29133
+    },
+    "nilo/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 40797
+    },
+    "nilo/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 30717
+    },
+    "nilo/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 39645
+    },
+    "nilo/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 29421
+    },
+    "nilo/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 27117
+    },
+    "nilo/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 41661
+    },
+    "nilo/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 39933
+    },
+    "nilo/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 38925
+    },
+    "nilo/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 34461
+    },
+    "nilo/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 34461
+    },
+    "nilo/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 29133
+    },
+    "nilo/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 43101
+    },
+    "nilo/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 43101
+    },
+    "nilo/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 41085
+    },
+    "nilo/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 26541
+    },
+    "nilo/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 36333
+    },
+    "nilo/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 25533
+    },
+    "nilo/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 27405
+    },
+    "nilo/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 21789
+    },
+    "nilo/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 41085
+    },
+    "nilo/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 38349
+    },
+    "nilo/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 34461
+    },
+    "nilo/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 42237
+    },
+    "nilo/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 39069
+    },
+    "nilo/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 34749
+    },
+    "nilo/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 34461
+    },
+    "nilo/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 41085
+    },
+    "nilo/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 41661
+    },
+    "nilo/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 32157
+    },
+    "nilo/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 39357
+    },
+    "nilo/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 33021
+    },
+    "nilo/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 36333
+    },
+    "nilo/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 24381
+    },
+    "nilo/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 37773
+    },
+    "rio/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 22077
+    },
+    "rio/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 51453
+    },
+    "rio/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 23229
+    },
+    "rio/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 25821
+    },
+    "rio/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 14301
+    },
+    "rio/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 24093
+    },
+    "rio/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 23517
+    },
+    "rio/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 28269
+    },
+    "rio/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 24381
+    },
+    "rio/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 26109
+    },
+    "rio/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 23229
+    },
+    "rio/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 30429
+    },
+    "rio/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 24669
+    },
+    "rio/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 19917
+    },
+    "rio/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 30285
+    },
+    "rio/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 26541
+    },
+    "rio/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 31581
+    },
+    "rio/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 25821
+    },
+    "rio/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 22077
+    },
+    "rio/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 27693
+    },
+    "rio/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 31869
+    },
+    "rio/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 27117
+    },
+    "rio/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 28269
+    },
+    "rio/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 25821
+    },
+    "rio/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 19053
+    },
+    "rio/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 22365
+    },
+    "rio/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 26109
+    },
+    "rio/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 22365
+    },
+    "rio/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 28557
+    },
+    "rio/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 18765
+    },
+    "rio/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 28557
+    },
+    "rio/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 27117
+    },
+    "rio/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 19629
+    },
+    "rio/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 30285
+    },
+    "rio/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 31005
+    },
+    "rio/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 29133
+    },
+    "rio/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 25245
+    },
+    "rio/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 23517
+    },
+    "rio/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 20205
+    },
+    "rio/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 26829
+    },
+    "rio/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 24093
+    },
+    "rio/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 30429
+    },
+    "rio/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 21789
+    },
+    "rio/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 26829
+    },
+    "rio/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 19629
+    },
+    "rio/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 22077
+    },
+    "rio/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 19341
+    },
+    "rio/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 32733
+    },
+    "rio/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 27117
+    },
+    "rio/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 26541
+    },
+    "rio/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 24093
+    },
+    "rio/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 28269
+    },
+    "rio/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 21069
+    },
+    "rio/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 27117
+    },
+    "rio/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 29133
+    },
+    "rio/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 32445
+    },
+    "rio/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 22941
+    },
+    "rio/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 22941
+    },
+    "rio/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 25533
+    },
+    "rio/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 23229
+    },
+    "rio/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 21357
+    },
+    "rio/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 30285
+    },
+    "rio/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 25533
+    },
+    "rio/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 49437
+    },
+    "rio/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 22941
+    },
+    "rio/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 36333
+    },
+    "rio/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 14877
+    },
+    "rio/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 27117
+    },
+    "rio/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 21357
+    },
+    "rio/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 22653
+    },
+    "rio/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 29997
+    },
+    "rio/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 30429
+    },
+    "rio/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 27405
+    },
+    "rio/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 29421
+    },
+    "rio/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 25821
+    },
+    "rio/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 26109
+    },
+    "rio/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 30717
+    },
+    "rio/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 26829
+    },
+    "rio/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 30717
+    },
+    "rio/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 24381
+    },
+    "rio/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 30285
+    },
+    "rio/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 27117
+    },
+    "rio/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 29133
+    },
+    "rio/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 29133
+    },
+    "rio/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 29709
+    },
+    "rio/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 25245
+    },
+    "rio/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 22365
+    },
+    "rio/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 23517
+    },
+    "rio/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 28269
+    },
+    "rio/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 23517
+    },
+    "rio/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 27693
+    },
+    "rio/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 25245
+    },
+    "rio/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 28845
+    },
+    "rio/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 23805
+    },
+    "rio/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 20781
+    },
+    "rio/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 27405
+    },
+    "rio/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 35469
+    },
+    "rio/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 33021
+    },
+    "rio/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 25533
+    },
+    "rio/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 21645
+    },
+    "rio/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 25245
+    },
+    "rio/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 30429
+    },
+    "rio/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 32157
+    },
+    "rio/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 34173
+    },
+    "rio/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 20493
+    },
+    "rio/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 24957
+    },
+    "rio/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 22365
+    },
+    "rio/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 21357
+    },
+    "rio/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 18189
+    },
+    "rio/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 29421
+    },
+    "rio/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 28845
+    },
+    "rio/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 27117
+    },
+    "rio/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 29709
+    },
+    "rio/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 29997
+    },
+    "rio/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 28557
+    },
+    "rio/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 25821
+    },
+    "rio/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 31005
+    },
+    "rio/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 31005
+    },
+    "rio/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 23805
+    },
+    "rio/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 30285
+    },
+    "rio/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 25245
+    },
+    "rio/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 28269
+    },
+    "rio/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 18477
+    },
+    "rio/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 30717
+    },
+    "serena/en/affirm": {
+      "textSha256": "98865cfe9597a0bf0bc2605437cc3a7ba7267d911e1a41761df6ae743c2aa269",
+      "chars": 59,
+      "bytes": 31005
+    },
+    "serena/en/breath": {
+      "textSha256": "d758bc0ce5b70dd82f4d12778095dd7f8f716ccde04246ef4716e68862777d6d",
+      "chars": 131,
+      "bytes": 63405
+    },
+    "serena/en/bridge": {
+      "textSha256": "231973c91bf13844608f4848b8672effa058c4918ce7240f667a4710d0aec996",
+      "chars": 57,
+      "bytes": 27405
+    },
+    "serena/en/close": {
+      "textSha256": "b9263135db0193595024fb1ced72ccb6d856765706b6574a225870aee7571af4",
+      "chars": 76,
+      "bytes": 33309
+    },
+    "serena/en/desire": {
+      "textSha256": "6f05562de287999d8724af3df19677dca4b291050e955a718788424a8950f01a",
+      "chars": 34,
+      "bytes": 15453
+    },
+    "serena/en/j_amor_1": {
+      "textSha256": "af3ad604d7abe339f30b39a92db8b5fac8f33de231a0752a8b590d4a04ab2b4f",
+      "chars": 63,
+      "bytes": 26253
+    },
+    "serena/en/j_amor_2": {
+      "textSha256": "83f4420b21804aa682e2d23c77def1a547fb80cf227271d14fac184465d4bab2",
+      "chars": 67,
+      "bytes": 23517
+    },
+    "serena/en/j_amor_3": {
+      "textSha256": "4853c6d286460a0dcfe303488f0138f826b28927b430dfcd62cc2cafa0a1218e",
+      "chars": 70,
+      "bytes": 33597
+    },
+    "serena/en/j_amor_4": {
+      "textSha256": "883fb9c94659419bb06488e269fcf354160a7f9b0308d5c868a3af447bc8199c",
+      "chars": 59,
+      "bytes": 28845
+    },
+    "serena/en/j_amor_5": {
+      "textSha256": "365f9a138942b71be41b83237e4a51210d319b29e01a2e8d5b8521f9c5a7ef8b",
+      "chars": 69,
+      "bytes": 36909
+    },
+    "serena/en/j_amor_6": {
+      "textSha256": "c17f60d853d58731fde451333e511718944daf352adf9cdb4f0866b6293e0b76",
+      "chars": 62,
+      "bytes": 31293
+    },
+    "serena/en/j_amor_7": {
+      "textSha256": "dbf2845971d6bf28236d401ef86e50ec7e4335290c244f768f05d072481df039",
+      "chars": 69,
+      "bytes": 30717
+    },
+    "serena/en/j_autoconfianca_1": {
+      "textSha256": "041dc5dc7f6da3cd7d76f94e3e3a9bf7cb0f6e983e1fe31f686deaadb430fbc5",
+      "chars": 66,
+      "bytes": 28269
+    },
+    "serena/en/j_autoconfianca_2": {
+      "textSha256": "d92d03a35e6a56397e1e55b39db557a1825e2bb2afbfbc10c6caae1a78ab8903",
+      "chars": 66,
+      "bytes": 24093
+    },
+    "serena/en/j_autoconfianca_3": {
+      "textSha256": "5bb33ae0b8805149ba9dafef323c33e1d0eecbf0e825cc4d5962ada81a2019a1",
+      "chars": 73,
+      "bytes": 31581
+    },
+    "serena/en/j_autoconfianca_4": {
+      "textSha256": "bfd77e8237e77c0e38b755931bbd3e2ff637eb8d5ef2c917607e7a04834321da",
+      "chars": 70,
+      "bytes": 28845
+    },
+    "serena/en/j_autoconfianca_5": {
+      "textSha256": "9a42e55b6c90a2eda56872fee69bada8171305f0b3d5231516123e1cafa4bc1a",
+      "chars": 72,
+      "bytes": 39645
+    },
+    "serena/en/j_autoconfianca_6": {
+      "textSha256": "f1261fd731f700c87d75eeddf2ce7543eddab79e4a986b5a66c2b8f2b3b43623",
+      "chars": 70,
+      "bytes": 28557
+    },
+    "serena/en/j_autoconfianca_7": {
+      "textSha256": "7b43a92e1a8b6ac75be61c79f6f4437793e18a9cb08459e1e4f03d8b32164c30",
+      "chars": 60,
+      "bytes": 24957
+    },
+    "serena/en/j_calma_1": {
+      "textSha256": "b4c3e8b2a917cb061f0accbc7100578be196732e12f0186aafd48f9721044551",
+      "chars": 74,
+      "bytes": 32733
+    },
+    "serena/en/j_calma_2": {
+      "textSha256": "fedc3c7bebd8eebec387d543e5bcdb46b71f2ee9d97e3290ef0352e5bb66faf8",
+      "chars": 68,
+      "bytes": 31581
+    },
+    "serena/en/j_calma_3": {
+      "textSha256": "a86e7ad3bef58f6007e7948f8d71bcc8420343106ac19f6aa4a32b9c1222b7d5",
+      "chars": 70,
+      "bytes": 29421
+    },
+    "serena/en/j_calma_4": {
+      "textSha256": "7de98d6b07de6c8c125ed20ae7c8f931acf3e4e0dee85a64e5a25c5125f44eb3",
+      "chars": 69,
+      "bytes": 30429
+    },
+    "serena/en/j_calma_5": {
+      "textSha256": "fa33cd838a47dd4e3368429f98fece9263b5920b878ee60d0955c10e9a350695",
+      "chars": 62,
+      "bytes": 32733
+    },
+    "serena/en/j_calma_6": {
+      "textSha256": "680cad07a330a0104e5626ca2ad33b27f228ad1662b2dafb2255d44a8a2c3c4d",
+      "chars": 53,
+      "bytes": 20205
+    },
+    "serena/en/j_calma_7": {
+      "textSha256": "f3dce063c2a09e4805751b9dc19355d21e2c2b92b26af210bfa23c9cc4262eae",
+      "chars": 61,
+      "bytes": 25245
+    },
+    "serena/en/j_foco_1": {
+      "textSha256": "15834a321babd607c9ca7b7e6539040c88a8e6f38b1413f8eba47a533575267d",
+      "chars": 67,
+      "bytes": 30717
+    },
+    "serena/en/j_foco_2": {
+      "textSha256": "8036e3b1e52de3964c3f4fcd60791e6859686e7f8e97ebbe9d0e3b2a6301a82f",
+      "chars": 65,
+      "bytes": 30285
+    },
+    "serena/en/j_foco_3": {
+      "textSha256": "dab3bb3c3b98525b686def22bdb2fe3373ad06d28d01e3b65c528beec61284a6",
+      "chars": 72,
+      "bytes": 30717
+    },
+    "serena/en/j_foco_4": {
+      "textSha256": "26e54a3295195d06bf873dc812379b61df6281a72b2e9c7c819907e786020612",
+      "chars": 58,
+      "bytes": 23229
+    },
+    "serena/en/j_foco_5": {
+      "textSha256": "afbe8347c5a4b074aa4faa97f72763ee27e97a172316a286057f0beea59a5884",
+      "chars": 66,
+      "bytes": 33597
+    },
+    "serena/en/j_foco_6": {
+      "textSha256": "e977f0fea4c9847a32934c5862be9c6f73addb94a0c8a76ff65e695d6dec16ee",
+      "chars": 67,
+      "bytes": 32733
+    },
+    "serena/en/j_foco_7": {
+      "textSha256": "8480b54d9d3256016d4bb3b1eda22dc45e4e46c4071e02b97488076cf7f6242f",
+      "chars": 53,
+      "bytes": 20493
+    },
+    "serena/en/j_gratidao_1": {
+      "textSha256": "8f0178b058b4b07a0caf47f92f303fd9e59abf1d373f9ac38f7ea5c8a4a2ff3b",
+      "chars": 71,
+      "bytes": 33309
+    },
+    "serena/en/j_gratidao_2": {
+      "textSha256": "dbe4c512a38ffb5b0694461b270d6d4db244f6ecaba3fb8138f9ab61c779ae3d",
+      "chars": 72,
+      "bytes": 31869
+    },
+    "serena/en/j_gratidao_3": {
+      "textSha256": "10ec873336fad8f17edf1763178f024b742a14083a9f1bb27d642d10a25b69fe",
+      "chars": 67,
+      "bytes": 33885
+    },
+    "serena/en/j_gratidao_4": {
+      "textSha256": "26bc49526c6e71d1b9bd1626ab9a229b606a2428e78ea09fd25800fb12e3142e",
+      "chars": 65,
+      "bytes": 26541
+    },
+    "serena/en/j_gratidao_5": {
+      "textSha256": "ef6673aba90d8794b0f791e3181f21cf99b6159af2db860d3c565891d8a486b7",
+      "chars": 63,
+      "bytes": 24381
+    },
+    "serena/en/j_gratidao_6": {
+      "textSha256": "0dc7ecddb9bccc6538f7e4eccf6a60cfe70a97ef2809b327a1d5960e50afd828",
+      "chars": 55,
+      "bytes": 19629
+    },
+    "serena/en/j_gratidao_7": {
+      "textSha256": "c54aa637fa12c983e02a03af506f57a4d76faef1f6804415d7f87e3408b1cc7c",
+      "chars": 66,
+      "bytes": 35469
+    },
+    "serena/en/j_lar_1": {
+      "textSha256": "2b685649436557bb87b02286dbeb8ab01f8fc3527805a9edc43700702ffc6f6e",
+      "chars": 62,
+      "bytes": 27693
+    },
+    "serena/en/j_lar_2": {
+      "textSha256": "1ee69ec3ba1a037a03e131c401a1fc1ac40e27453d17f5b2f52e52a302f19a23",
+      "chars": 72,
+      "bytes": 34749
+    },
+    "serena/en/j_lar_3": {
+      "textSha256": "00779853fe2ca63f0bd4ab7ee27624c52d29fb1b4d76d1f0302013864aec214f",
+      "chars": 60,
+      "bytes": 21069
+    },
+    "serena/en/j_lar_4": {
+      "textSha256": "9f1ee48c878a6059fac02af65e5bc340dba4dbe0b44afc96030a68df9eb5dfd8",
+      "chars": 66,
+      "bytes": 29997
+    },
+    "serena/en/j_lar_5": {
+      "textSha256": "a7130a1e7b1d9b2b2245ba2499cbe4596ff1e68ebce5bb278d402a219a536440",
+      "chars": 59,
+      "bytes": 22077
+    },
+    "serena/en/j_lar_6": {
+      "textSha256": "320dcf09467e8aa911aa4b3650aa87b459696db5ab0ce3a6bfd47f42476f7b3d",
+      "chars": 58,
+      "bytes": 22941
+    },
+    "serena/en/j_lar_7": {
+      "textSha256": "e68bce117024f3ba059ee70e43ec7f0b4896ab7d73d74cdf984e80a17d2a6eca",
+      "chars": 49,
+      "bytes": 21789
+    },
+    "serena/en/j_proposito_1": {
+      "textSha256": "f8de849e3c5485b57edb863c4f34675659d304ba80928106fa828c72cc7607a5",
+      "chars": 72,
+      "bytes": 33309
+    },
+    "serena/en/j_proposito_2": {
+      "textSha256": "96f3f1cbfb93e479706f83408b32d041b727759c998f0038a6e31bcf4f7891c8",
+      "chars": 69,
+      "bytes": 30285
+    },
+    "serena/en/j_proposito_3": {
+      "textSha256": "37576b8024d51fab25b33c0165915034901b37bfe295e27a10992fd88b272edd",
+      "chars": 69,
+      "bytes": 33309
+    },
+    "serena/en/j_proposito_4": {
+      "textSha256": "cd79770f8856c2804e9ce5798de2ba5d41533345534aeb3aeb20cf260974c4b3",
+      "chars": 67,
+      "bytes": 27981
+    },
+    "serena/en/j_proposito_5": {
+      "textSha256": "57763a44648058ca116530bc2af7bf55489b062fc21094e08ea50cca5940ba5c",
+      "chars": 68,
+      "bytes": 34893
+    },
+    "serena/en/j_proposito_6": {
+      "textSha256": "e41073f790e2682114eac375c13fb01add1af5a635cf7268b0fcea4fac0d377b",
+      "chars": 56,
+      "bytes": 22653
+    },
+    "serena/en/j_proposito_7": {
+      "textSha256": "4492a29ac241af5ebc107c53d4fb7a1a13a57792a8ca55146e7cd909edf97b86",
+      "chars": 73,
+      "bytes": 32157
+    },
+    "serena/en/j_prosperidade_1": {
+      "textSha256": "31eebe1b40c5518d2fb3ea56442f8e7f95bd39da264158ee6b473462b2ced019",
+      "chars": 74,
+      "bytes": 34893
+    },
+    "serena/en/j_prosperidade_2": {
+      "textSha256": "443acbb651cc8896ff43a44f807936937fa2aa4338ab151ed3f4f304e0eaea4d",
+      "chars": 75,
+      "bytes": 38349
+    },
+    "serena/en/j_prosperidade_3": {
+      "textSha256": "e673dbd2d8c2517e73daffe13a5a39c877df83df55a0769c622d0a9215ee9b92",
+      "chars": 62,
+      "bytes": 31005
+    },
+    "serena/en/j_prosperidade_4": {
+      "textSha256": "876d80669f6e36905280b4ea84e5c6bfc2cb21cd802c4c82552ac096e3084b0f",
+      "chars": 60,
+      "bytes": 24093
+    },
+    "serena/en/j_prosperidade_5": {
+      "textSha256": "fd675734f6095cd6f446deabe7ec458cade669f26fad46c1bdf9dfb63a697be0",
+      "chars": 70,
+      "bytes": 28557
+    },
+    "serena/en/j_prosperidade_6": {
+      "textSha256": "97d94074fcea49af92238daa00d0f26e1b5a8795b6412fd6aad8567a87962cfd",
+      "chars": 68,
+      "bytes": 29421
+    },
+    "serena/en/j_prosperidade_7": {
+      "textSha256": "3ff5abdc666c2f199fe16795223bd18d29d468822e79213bf201589f72b22fff",
+      "chars": 62,
+      "bytes": 23229
+    },
+    "serena/en/scene": {
+      "textSha256": "8ddb7a47b389e23d4bae709a8a3c2797d12ce31655a8b38f71c8c4665c1d443e",
+      "chars": 67,
+      "bytes": 34893
+    },
+    "serena/pt/affirm": {
+      "textSha256": "f707907bb01d11398e69a0f38f0ff1ec200de2e5b7358b8224b10a39b12515bf",
+      "chars": 63,
+      "bytes": 37197
+    },
+    "serena/pt/breath": {
+      "textSha256": "23755181ecb709b0cdcc4a5502cc2dafc75c666f72afa58178f0d147c964daa0",
+      "chars": 114,
+      "bytes": 64989
+    },
+    "serena/pt/bridge": {
+      "textSha256": "cf58e1a5d7b4b7cac320e5e7b37779c5ec89665ce6c7fbd7bc88469f4922d183",
+      "chars": 61,
+      "bytes": 31005
+    },
+    "serena/pt/close": {
+      "textSha256": "36c23ce0672f12bbbbea73987b52284dbb400eb942eae5af285e6d3002cf7866",
+      "chars": 88,
+      "bytes": 47565
+    },
+    "serena/pt/desire": {
+      "textSha256": "fcc7983154e2ae901080e4e4d1961a6f5b87799263633089a6770f28c9d1ef73",
+      "chars": 40,
+      "bytes": 16605
+    },
+    "serena/pt/j_amor_1": {
+      "textSha256": "f584589741a14011b43f7bc870139a2b757f2010119dafa3b4849868a0d5bf71",
+      "chars": 65,
+      "bytes": 34461
+    },
+    "serena/pt/j_amor_2": {
+      "textSha256": "6fcfab2103fb52eae2ecd79557ee05dd105c8e99d0d26b1e6f798aea350d0bff",
+      "chars": 55,
+      "bytes": 22941
+    },
+    "serena/pt/j_amor_3": {
+      "textSha256": "72c3374c89b7c972e1e5074d4a8a1d86b8a016dddab5e7d0bb6b0895aadd3913",
+      "chars": 59,
+      "bytes": 25821
+    },
+    "serena/pt/j_amor_4": {
+      "textSha256": "b19cb17be7977d07bbf0c15fdd4f45f2882f8ea0ce6cf27a799b7150aea1188b",
+      "chars": 71,
+      "bytes": 40797
+    },
+    "serena/pt/j_amor_5": {
+      "textSha256": "34f6a3df83c06bfa4893ca14501862b5d21f6bbd6d389616ca106f661f19fd55",
+      "chars": 76,
+      "bytes": 37485
+    },
+    "serena/pt/j_amor_6": {
+      "textSha256": "e4eec71ccc7d9af11c7fd1308b1b41f7e436d1e4d4c9b5d2cd88645cb3f29920",
+      "chars": 66,
+      "bytes": 31293
+    },
+    "serena/pt/j_amor_7": {
+      "textSha256": "b45511c83d1724dbd1cfb2699a45bb962db93a8f0593dd23c2c613f385a47387",
+      "chars": 69,
+      "bytes": 38349
+    },
+    "serena/pt/j_autoconfianca_1": {
+      "textSha256": "b4ba83094cae57184c1746d540b570818fc94ea11e480c33a850d5b1058ca9f2",
+      "chars": 67,
+      "bytes": 31581
+    },
+    "serena/pt/j_autoconfianca_2": {
+      "textSha256": "2470458f3ea412b5f7f3ebd8a93d9e139061df629b786485e26f716fe2e2209b",
+      "chars": 64,
+      "bytes": 26253
+    },
+    "serena/pt/j_autoconfianca_3": {
+      "textSha256": "d56ef75e7ca32425d9d2efd9818fff6ea1ef24264340d15a128cf6423980491c",
+      "chars": 70,
+      "bytes": 39933
+    },
+    "serena/pt/j_autoconfianca_4": {
+      "textSha256": "ac8469ef14d60d37dddd586143ab371051f48f5d03e6bf0bfcb0c0935ff71012",
+      "chars": 71,
+      "bytes": 36045
+    },
+    "serena/pt/j_autoconfianca_5": {
+      "textSha256": "703b5434bc2b2e030bacf37cf44ca101fee7d6cea0138665b50bac499791fe85",
+      "chars": 75,
+      "bytes": 36909
+    },
+    "serena/pt/j_autoconfianca_6": {
+      "textSha256": "a0c040cb02717f3354d664f529535806e04c5018c6e1b1bda3ee47983a136c61",
+      "chars": 63,
+      "bytes": 37197
+    },
+    "serena/pt/j_autoconfianca_7": {
+      "textSha256": "2da434dd8498da309b6cc7549ddff2ab417e1fb9be16f9a6a01c2b7ad69d326f",
+      "chars": 69,
+      "bytes": 33597
+    },
+    "serena/pt/j_calma_1": {
+      "textSha256": "ece724f949616abacce2fec6bc19fddf4e60f917b560c132f787926b93dadc47",
+      "chars": 73,
+      "bytes": 34893
+    },
+    "serena/pt/j_calma_2": {
+      "textSha256": "b15fdebd6b40ce07839ff6f53c59d328e6d9a2a82c903ce86d46a4d06b22bd17",
+      "chars": 69,
+      "bytes": 38925
+    },
+    "serena/pt/j_calma_3": {
+      "textSha256": "69d923ef3b0887efa20147d36d090dea4a6c18426ae9067a6760b457f64f307b",
+      "chars": 73,
+      "bytes": 39645
+    },
+    "serena/pt/j_calma_4": {
+      "textSha256": "7aeb22caed5d92156593c143c852f05b7e0d65a86a7f101b6a502f9d43bac300",
+      "chars": 65,
+      "bytes": 36045
+    },
+    "serena/pt/j_calma_5": {
+      "textSha256": "5c54d761b654591f561560061e263fbe5cba36783da4eb62a39016b5c19d961f",
+      "chars": 66,
+      "bytes": 35181
+    },
+    "serena/pt/j_calma_6": {
+      "textSha256": "008b47f921c936f3e42e7bb4826e552e76810c9e63e15ce2c24e63d1d7845c06",
+      "chars": 66,
+      "bytes": 25245
+    },
+    "serena/pt/j_calma_7": {
+      "textSha256": "175608782334f9a8f37ca9fccff65a383a78fbc32f707bc838625925b2feccc5",
+      "chars": 62,
+      "bytes": 27405
+    },
+    "serena/pt/j_foco_1": {
+      "textSha256": "b299f49e2510fb8debd81bc345b8a69762883b942a710e77dc103cd8c0fe9d76",
+      "chars": 69,
+      "bytes": 34893
+    },
+    "serena/pt/j_foco_2": {
+      "textSha256": "34c2cb568ba9f011b921cabfbd26315489901341c88cf380f26abb112290ae88",
+      "chars": 62,
+      "bytes": 28845
+    },
+    "serena/pt/j_foco_3": {
+      "textSha256": "61f981d8421806f8caa5382422951ba750357c18b322bfdeac8742f46925adda",
+      "chars": 76,
+      "bytes": 36621
+    },
+    "serena/pt/j_foco_4": {
+      "textSha256": "8f48ddf9e10eeea1cc3398121ab8ac45a199eab706f54ba14ca5afef4da83c0d",
+      "chars": 65,
+      "bytes": 33021
+    },
+    "serena/pt/j_foco_5": {
+      "textSha256": "c846b4feb590c646bffff2366061be790e2a3cb1e1545877e39773f7de0b207d",
+      "chars": 71,
+      "bytes": 37485
+    },
+    "serena/pt/j_foco_6": {
+      "textSha256": "b557e890b0f608e1effc5757d13c3cd1acc163d070ba9329e73b27edeef7babc",
+      "chars": 63,
+      "bytes": 29133
+    },
+    "serena/pt/j_foco_7": {
+      "textSha256": "4ce30178c9c9a729e55803c4887e597f7665d947ddd29dbb140dbbbce0560906",
+      "chars": 58,
+      "bytes": 27117
+    },
+    "serena/pt/j_gratidao_1": {
+      "textSha256": "a15cc77d8ce05f13f130660c9edae0f59a4a3d33548f51abf4e02235f576bbfd",
+      "chars": 67,
+      "bytes": 34893
+    },
+    "serena/pt/j_gratidao_2": {
+      "textSha256": "50994b9a573b20213ecc7e52fac39e7bc7fbee4a140c6df0de3c2d0a33b735bf",
+      "chars": 79,
+      "bytes": 40221
+    },
+    "serena/pt/j_gratidao_3": {
+      "textSha256": "8b836ca47dfe75598e0e19d89c2e18478135c54af10006a5fe9388d00bb65782",
+      "chars": 69,
+      "bytes": 41661
+    },
+    "serena/pt/j_gratidao_4": {
+      "textSha256": "ab58e520e5274d4de5ab42a98f04ac49371c5fb61ab8d6984f4b8bea20022412",
+      "chars": 71,
+      "bytes": 31581
+    },
+    "serena/pt/j_gratidao_5": {
+      "textSha256": "5b4e0a79b3b772c6d4810e71b8be669ffa0068fd572d443e363fd866fd003b77",
+      "chars": 61,
+      "bytes": 30285
+    },
+    "serena/pt/j_gratidao_6": {
+      "textSha256": "b8a6d948b317b2cd5821355f763d7c8456c4f3ee69eedac24a616c3654a74649",
+      "chars": 60,
+      "bytes": 34173
+    },
+    "serena/pt/j_gratidao_7": {
+      "textSha256": "f9eefdb4eb3d79184825ebf70337a4e4adbce77d47346fe901ddd0323bb5bc8d",
+      "chars": 73,
+      "bytes": 33021
+    },
+    "serena/pt/j_lar_1": {
+      "textSha256": "b598c0e3a4a37e6585fd34ed8de1e3f32faf8275bf4e9899d7d6ee453f84db07",
+      "chars": 72,
+      "bytes": 35469
+    },
+    "serena/pt/j_lar_2": {
+      "textSha256": "7499c8ff6339b43b100b6467aa372b8a863841aa67b361b272abfb85473e631c",
+      "chars": 68,
+      "bytes": 42813
+    },
+    "serena/pt/j_lar_3": {
+      "textSha256": "abe84167794eb011f9e37caba8094631cc2bcc536b933411130deb2f72aaa8fa",
+      "chars": 60,
+      "bytes": 25821
+    },
+    "serena/pt/j_lar_4": {
+      "textSha256": "2fdb27f75e522d5cdccb6722e06198bbff2a9c72ad245a635ceda67344403510",
+      "chars": 68,
+      "bytes": 33885
+    },
+    "serena/pt/j_lar_5": {
+      "textSha256": "47dfd6354ef7a469d12ba4338d1af3d49f7b06051003c06e160771efaf003dfc",
+      "chars": 63,
+      "bytes": 26541
+    },
+    "serena/pt/j_lar_6": {
+      "textSha256": "195a80d6cca4810a1ccdfaa41f74532ffdd7bd9e9a0b3bc535ccf710597c0514",
+      "chars": 60,
+      "bytes": 29421
+    },
+    "serena/pt/j_lar_7": {
+      "textSha256": "f169d4a57354db2c67c45379acabdfcb97309a1318d21324c0d9f34fe41b1f29",
+      "chars": 47,
+      "bytes": 23517
+    },
+    "serena/pt/j_proposito_1": {
+      "textSha256": "ca175c36a1973e69e56cca24662c0817fda56da9d92826e65fa1567040a6ce94",
+      "chars": 73,
+      "bytes": 43101
+    },
+    "serena/pt/j_proposito_2": {
+      "textSha256": "5bca292a85c93e20e95d1686155ac96d0fc4f687199a3bf8bac69e2bcc5e2ec3",
+      "chars": 77,
+      "bytes": 39933
+    },
+    "serena/pt/j_proposito_3": {
+      "textSha256": "0c7b74e86f98857432d583250dce935a1416029553938a09b76ce823d5f4d3f9",
+      "chars": 71,
+      "bytes": 33597
+    },
+    "serena/pt/j_proposito_4": {
+      "textSha256": "57088f57d67f6a17e057a4398a02003164be00d09e4899dbe67bcea57bd7b986",
+      "chars": 76,
+      "bytes": 34893
+    },
+    "serena/pt/j_proposito_5": {
+      "textSha256": "9f4289fd6a9463a1346e393c9ede24768e3cc799d7d2cbeee836bdf5eb273442",
+      "chars": 78,
+      "bytes": 36621
+    },
+    "serena/pt/j_proposito_6": {
+      "textSha256": "1f6ebb6ee10b86f597d2da311098f4c809582497b500f46b19bc5e88c18c8ce6",
+      "chars": 68,
+      "bytes": 34749
+    },
+    "serena/pt/j_proposito_7": {
+      "textSha256": "126de286e0fbcf51cbdeb3654371666e216c2aabb47caa2e8f173b100760e778",
+      "chars": 70,
+      "bytes": 33597
+    },
+    "serena/pt/j_prosperidade_1": {
+      "textSha256": "92403b09433896fe32c640ba9ed357c7d84e252abe6ed42345fa9cd2e2e8f1e9",
+      "chars": 77,
+      "bytes": 36045
+    },
+    "serena/pt/j_prosperidade_2": {
+      "textSha256": "05e83233763f99c022ec490439652a164f0c2564494dae4534db8b10f2ce08fe",
+      "chars": 74,
+      "bytes": 46989
+    },
+    "serena/pt/j_prosperidade_3": {
+      "textSha256": "42a6856799340e90cf5b7dbde5715d29bd3e32cc80a04edd929d3a86aac07ac6",
+      "chars": 60,
+      "bytes": 31005
+    },
+    "serena/pt/j_prosperidade_4": {
+      "textSha256": "e7aef05a5b0d21774161e58cdde8b45a0c48ba7c720c44258c91afe1e6fcabf7",
+      "chars": 70,
+      "bytes": 37197
+    },
+    "serena/pt/j_prosperidade_5": {
+      "textSha256": "7c89c68daae854125b85c3ca658950924d3cc64f573f856b5e3850d945b15caf",
+      "chars": 70,
+      "bytes": 32733
+    },
+    "serena/pt/j_prosperidade_6": {
+      "textSha256": "d8693540a8276b4fe2cfc9b4548c9c77eaf3d335971d60a615d01f270b8cb675",
+      "chars": 68,
+      "bytes": 34461
+    },
+    "serena/pt/j_prosperidade_7": {
+      "textSha256": "01b76504b809dd4de3135f891f3cebeec5f5c05c018e65ede2fa160e397cbad8",
+      "chars": 52,
+      "bytes": 24381
+    },
+    "serena/pt/scene": {
+      "textSha256": "cce90943cceb60b135054886a041aea4f0b451204b472902caa871822aad864f",
+      "chars": 72,
+      "bytes": 41949
+    }
+  }
 }
