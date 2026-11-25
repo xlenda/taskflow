@@ -21,3 +21,6 @@ service-account*.json
 *.pem
 *.p8
 supabase/.temp/
+
+# provas dos e2e (prints e logs), nunca vao para o repo
+/output/
